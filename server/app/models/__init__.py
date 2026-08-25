@@ -44,6 +44,13 @@ from app.models.offboarding import (
     OffboardingTask,
 )
 from app.models.settlement import FnfLine, FnfLineKind, FnfSource
+from app.models.workflowlevels import (
+    MAX_LEVELS,
+    ReviewerRule,
+    StepStatus,
+    WorkflowLevel,
+    WorkflowStep,
+)
 from app.models.engagement import (
     Announcement,
     AnnouncementRead,
@@ -248,6 +255,11 @@ __all__ = [
     "SurveyQuestion",
     "SurveyResponse",
     "SurveyStatus",
+    "MAX_LEVELS",
+    "ReviewerRule",
+    "StepStatus",
+    "WorkflowLevel",
+    "WorkflowStep",
     "OfficeLocation",
     "OnboardingCategory",
     "OnboardingDocument",

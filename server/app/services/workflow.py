@@ -23,6 +23,20 @@ five services stop caring is a poor trade. It records them, once, in the policy
 that describes each flow, so the drift is data in one table instead of knowledge
 spread over five files.
 
+Levels
+------
+
+:func:`decide` walks an approval chain when the flow has one configured, in
+``services.chains``. An intermediate approval leaves the record **untouched and
+still pending** — it has not been approved, it has been approved by one person —
+and the side effect does not run. Only the last rung stamps the record and
+debits the balance.
+
+A flow with no configured chain takes the path it always took. That is one
+lookup's worth of overhead and no behaviour change, which is the point: chains
+are opt-in, and a two-person company routing leave through three levels is a
+company where nothing gets approved.
+
 What the kernel owns
 --------------------
 
@@ -167,6 +181,11 @@ class Policy:
     #: already on the wire; see the module docstring.
     stale_code: str = "already_decided"
 
+    #: The permission flag a CAPABILITY rung in an approval chain checks — see
+    #: ``services.chains``. Null for flows whose approver is decided by line
+    #: management rather than by a flag.
+    capability: str | None = None
+
     #: Whether :func:`decide` may drive this flow.
     #:
     #: False for the settlement, and the reason is worth stating rather than
@@ -205,6 +224,7 @@ class Policy:
 
 LEAVE = Policy(
     kind="leave",
+    capability="can_approve_leave",
     label="leave request",
     pending=("pending",),
     approved="approved",
@@ -222,6 +242,7 @@ LEAVE = Policy(
 
 TIMESHEET = Policy(
     kind="timesheet",
+    capability="can_approve_timesheets",
     label="timesheet",
     # Everything except `approved`. A timesheet has no explicit "awaiting a
     # decision" state — a manager may approve a draft period directly, which is
@@ -244,6 +265,7 @@ TIMESHEET = Policy(
 
 REGULARIZATION = Policy(
     kind="regularization",
+    capability="can_approve_regularization",
     label="regularization request",
     pending=("pending",),
     approved="approved",
@@ -257,6 +279,7 @@ REGULARIZATION = Policy(
 
 EXPENSE = Policy(
     kind="expense",
+    capability="can_approve_expenses",
     label="expense claim",
     pending=("submitted",),
     approved="approved",
@@ -273,6 +296,7 @@ EXPENSE = Policy(
 
 LOAN = Policy(
     kind="loan",
+    capability="can_approve_loans",
     label="loan request",
     pending=("requested",),
     approved="approved",
@@ -427,6 +451,44 @@ def decide(
     ensure_not_self(policy, record, reviewer)
     cleaned = ensure_reason(policy, approve=approve, note=note)
 
+    # --- the chain, if this flow has one ------------------------------------ #
+    #
+    # `advance` returns final=True when there is no chain at all, so a company
+    # that has never opened the setup screen takes exactly the path this
+    # function took before chains existed — no step rows, no extra queries
+    # beyond one lookup, no behaviour change.
+    from app.services import chains  # local: chains imports this module's types
+
+    moved = chains.advance(
+        db, record_id=record.id, viewer=reviewer, approve=approve,
+        note=cleaned, capability=policy.capability,
+    )
+    if not moved.final:
+        # An intermediate approval. The record stays exactly as it is — still
+        # pending, still unstamped — because it has not been approved yet, it
+        # has been approved *by one person*. Critically `on_approve` does not
+        # run: debiting a leave balance at level one of three would spend it
+        # against a decision nobody has finished making.
+        audit(
+            db,
+            org_id=reviewer.org_id,
+            actor=reviewer,
+            action=policy.action_for(True),
+            request=request,
+            target_type=policy.target_type,
+            target_id=str(record.id),
+            detail={
+                "decision": "advanced",
+                "level": moved.step.level if moved.step else None,
+                "of": moved.total,
+                "next_level": moved.next_step.level if moved.next_step else None,
+                "note": cleaned,
+                **(detail or {}),
+            },
+        )
+        db.flush()
+        return record
+
     if approve and on_approve is not None:
         on_approve()
     if not approve and on_reject is not None:
@@ -453,6 +515,10 @@ def decide(
             **({"for": str(subject)} if subject else {}),
             "decision": record.status,
             "note": cleaned,
+            # Absent entirely on a single-step approval rather than sent as 1
+            # of 1: "level 1 of 1" reads as a chain that exists, and for most
+            # companies none does.
+            **({"level": moved.step.level, "of": moved.total} if moved.step else {}),
             **(detail or {}),
         },
     )

@@ -107,7 +107,7 @@ from app.models.leave import (
 )
 from app.services import notifications as notif
 from app.services import reports, timesheets as ts
-from app.services import workflow
+from app.services import chains, workflow
 
 log = logging.getLogger(__name__)
 
@@ -1128,9 +1128,36 @@ def apply_for_leave(
     if not leave_type.requires_approval:
         # Some orgs run sick leave as a declaration. The application is still
         # recorded and still debits; it just never sits in the pending state.
-        _approve(db, application, reviewer=actor, note="Auto-approved: this leave "
-                 "type does not require approval")
+        _auto_approve(db, application, actor=actor)
+    else:
+        # A chain begins when the request does. Does nothing when leave has no
+        # chain configured, which is most companies.
+        chains.start_for(db, kind="leave", record_id=application.id, subject=employee)
     return application
+
+
+def _auto_approve(db: Session, application: LeaveApplication, *, actor: User) -> None:
+    """Approve on submission, for a type that requires no decision.
+
+    Deliberately **not** through ``services.workflow``. The kernel's guards are
+    about a person deciding — not your own, not twice, say why if you refuse —
+    and none of them mean anything when nobody decided: this is the leave type
+    saying it needs no approval, not a manager agreeing. Routing it through
+    ``decide`` would also walk an approval chain, which for a declaration is a
+    chain with nobody in it.
+
+    The debit still happens, in the same order the decided path uses: spend the
+    balance first, stamp second, write attendance last.
+    """
+    debit_for_application(db, application, actor_id=actor.id)
+    application.status = LeaveStatus.APPROVED.value
+    application.reviewed_at = utcnow()
+    application.reviewed_by_user_id = actor.id
+    application.review_note = (
+        "Auto-approved: this leave type does not require approval"
+    )
+    db.flush()
+    stamp_on_leave(db, application)
 
 
 def decide(

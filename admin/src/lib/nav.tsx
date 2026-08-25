@@ -229,6 +229,15 @@ export const NAV: NavGroup[] = [
       { to: '/appraisals', label: 'Appraisals', icon: IconGauge, sub: true, teamOnly: true },
     ],
   },
+  /* Beside Account rather than under a module: a chain is configuration that
+     spans six flows, and filing it under any one of them would make it
+     findable only by somebody already looking in the right place. */
+  {
+    heading: 'Setup',
+    items: [
+      { to: '/workflow', label: 'Approval workflow', icon: IconSitemap, sub: true, adminOnly: true },
+    ],
+  },
   {
     heading: 'Account',
     items: [

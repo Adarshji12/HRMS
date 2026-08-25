@@ -19,7 +19,7 @@ import { permits } from '../helpdesk/Helpdesk'
 /**
  * The merged approvals inbox — §9.4.
  *
- * Five modules, one queue, sorted by age. What this file is **not** is a
+ * Six modules, one queue, sorted by age. What this file is **not** is a
  * workflow engine: each module already owns its own approve and reject
  * endpoints, already scopes its queue, and already writes its own audit row and
  * sends its own notification. This page is a read-side aggregation over their
@@ -63,6 +63,19 @@ import { permits } from '../helpdesk/Helpdesk'
    subtly wrong twice. Same reason the leave vocabulary is imported from
    `MyLeave.tsx`: those files say in their own headers that this page is who
    they were exporting for. */
+
+/** One row of `GET /performance/cycles/{id}/reviews?status_filter=self_submitted`.
+ *  Only the fields this page reads — the full shape is in lib/types. */
+interface PendingReview {
+  id: string
+  user_id: string
+  user_name: string | null
+  cycle_name: string | null
+  self_submitted_at: string | null
+  created_at: string
+  self_comment: string | null
+  goals: Array<{ id: string; title: string; self_rating: number | null }>
+}
 
 /** One row of `GET /expenses/review` — the claims awaiting this approver. */
 interface PendingClaim {
@@ -117,7 +130,7 @@ interface TeamSheet {
   rows: TeamSheetRow[]
 }
 
-type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'loan'
+type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'loan' | 'performance'
 
 /** One row of the merged queue, whichever module produced it. */
 interface InboxItem {
@@ -145,6 +158,7 @@ const LANE_LABEL: Record<Lane, string> = {
   timesheet: 'Timesheet',
   expense: 'Expense',
   loan: 'Loan',
+  performance: 'Review',
 }
 
 /* -------------------------------------------------------------- helpers --- */
@@ -238,7 +252,14 @@ export default function ApprovalsInbox() {
      rows the server would happily have decided. */
   const mayExpense = permits(user, 'can_approve_expenses')
   const mayLoan = permits(user, 'can_approve_loans')
-  const mayAnything = mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan
+  /* Appraisals are assigned per review rather than by a permission flag: the
+     review records the manager it was given to, and a reorganisation must not
+     move somebody's appraisal to whoever manages them today. So the lane is
+     fetched for any team viewer and the server returns only the ones actually
+     assigned to this reader. */
+  const mayReview = isTeamViewer
+  const mayAnything =
+    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayReview
 
   /* The lanes fetch in parallel and fail independently. A leave outage must
      not hide the four regularizations that are also waiting. */
@@ -279,6 +300,31 @@ export default function ApprovalsInbox() {
     `inbox-loan:${reloadKey}`,
     () => api.get<PendingLoan[]>('/loans?status=requested'),
     { enabled: mayLoan },
+  )
+  /* Appraisals hang off a cycle, so "everything pending" means asking the open
+     cycles. One extra call for the cycle list, then one per open cycle — in
+     practice one, because companies run one round at a time. */
+  const cyclesQ = useQuery<Array<{ id: string; status: string }>>(
+    `inbox-cycles:${reloadKey}`,
+    () => api.get('/performance/cycles'),
+    { enabled: mayReview },
+  )
+  const openCycleIds = (cyclesQ.data ?? [])
+    .filter((c) => c.status === 'open')
+    .map((c) => c.id)
+  const reviewQ = useQuery<PendingReview[]>(
+    `inbox-review:${openCycleIds.join(',')}:${reloadKey}`,
+    async () => {
+      const batches = await Promise.all(
+        openCycleIds.map((id) =>
+          api.get<PendingReview[]>(
+            `/performance/cycles/${id}/reviews?status_filter=self_submitted`,
+          ),
+        ),
+      )
+      return batches.flat()
+    },
+    { enabled: mayReview && openCycleIds.length > 0 },
   )
 
   /* Self-review is refused by all three services unless the reader is the
@@ -524,7 +570,49 @@ export default function ApprovalsInbox() {
       })
     }
 
-    /* Oldest first. That is the whole point of merging five queues: the thing
+    for (const row of reviewQ.data ?? []) {
+      const rated = row.goals.filter((g) => g.self_rating !== null).length
+      out.push({
+        key: `review:${row.id}`,
+        lane: 'performance',
+        userId: row.user_id,
+        personName: row.user_name ?? 'Unknown employee',
+        waitingSince: row.self_submitted_at ?? row.created_at,
+        claim: (
+          <>
+            Submitted their self-assessment for <b>{row.cycle_name ?? 'this round'}</b>.
+          </>
+        ),
+        facts: (
+          <>
+            <span>
+              Submitted <b>{dateTime(row.self_submitted_at ?? row.created_at)}</b>
+            </span>
+            <span>
+              {rated} of {row.goals.length} goals rated
+            </span>
+            {/* Approving here passes it to HR; it does not set a rating. That
+                needs the appraisal screen, where the goals and the weighted
+                score are, and pretending otherwise would invite a decision made
+                without reading either. */}
+            <span>Rate their goals on the appraisal screen before passing it on.</span>
+          </>
+        ),
+        quote: row.self_comment || null,
+        decide: async (approve, note) => {
+          await api.post(`/performance/reviews/${row.id}/decision`, {
+            approve,
+            note: note.trim() || null,
+          })
+        },
+        outcome: (approve) =>
+          approve
+            ? 'Passed on to HR to finalise.'
+            : 'Sent back. They can edit and resubmit, and have been told why.',
+      })
+    }
+
+    /* Oldest first. That is the whole point of merging six queues: the thing
        that has waited longest is the thing to do next, whichever module it
        came from. A timestamp we cannot parse sorts *last*, not first — an
        unknown age is not evidence of a long wait, and NaN in a comparator
@@ -535,7 +623,7 @@ export default function ApprovalsInbox() {
     }
     return out.sort((a, b) => at(a) - at(b))
   }, [regQ.data, leaveQ.data, tsNowQ.data, tsPrevQ.data, expenseQ.data,
-      loanQ.data, tz])
+      loanQ.data, reviewQ.data, tz])
 
   if (!mayAnything) {
     return (
@@ -584,10 +672,12 @@ export default function ApprovalsInbox() {
     (mayLeave && leaveQ.loading) ||
     (mayTimesheet && (tsNowQ.loading || tsPrevQ.loading)) ||
     (mayExpense && expenseQ.loading) ||
-    (mayLoan && loanQ.loading)
+    (mayLoan && loanQ.loading) ||
+    (mayReview && (cyclesQ.loading || reviewQ.loading))
   const refetching =
     regQ.refetching || leaveQ.refetching || tsNowQ.refetching ||
-    tsPrevQ.refetching || expenseQ.refetching || loanQ.refetching
+    tsPrevQ.refetching || expenseQ.refetching || loanQ.refetching ||
+    reviewQ.refetching
 
   return (
     <div>
@@ -595,10 +685,12 @@ export default function ApprovalsInbox() {
         <div>
           <h1 className="page-title">Approvals</h1>
           <p className="page-sub">
-            Everything waiting on you, oldest first, across attendance corrections, leave and
-            timesheets. Who appears here is the reporting subtree the server already resolves for
-            each of those queues — this page does not widen it, and each decision is recorded by
-            the module it belongs to.
+            Everything waiting on you, oldest first, across attendance corrections,
+            leave, timesheets, expense claims and loan requests. Who appears here
+            is what the server already resolves for each of those queues — this
+            page does not widen it, and each decision is recorded by the module it
+            belongs to. Where an approval chain is configured, a row reaches you
+            only when it is your level's turn.
           </p>
         </div>
         <div className="head-actions">
@@ -659,6 +751,9 @@ export default function ApprovalsInbox() {
           )}
           {mayExpense && <Chip id="expense" lane={lane} count={counts.expense} onPick={setLane} />}
           {mayLoan && <Chip id="loan" lane={lane} count={counts.loan} onPick={setLane} />}
+          {mayReview && (
+            <Chip id="performance" lane={lane} count={counts.performance} onPick={setLane} />
+          )}
         </div>
       </div>
 

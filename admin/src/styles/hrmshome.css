@@ -198,6 +198,9 @@
    needs at a glance is "this one spends money" rather than which of the two. */
 .ai-row-expense { border-left-color: var(--status-bad, #b3261e); }
 .ai-row-loan { border-left-color: var(--status-bad, #b3261e); }
+/* Appraisals get their own colour rather than joining the money lanes: a review
+   is the one row here that is about a person rather than a transaction. */
+.ai-row-performance { border-left-color: var(--brand-ink, #2f5aa8); }
 
 /* The person on the left, the age on the right. The age is the only thing in
    this row that belongs at the far edge, because it is the sort key. */

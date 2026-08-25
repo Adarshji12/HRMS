@@ -1,0 +1,43 @@
+/* Approval chain setup.
+
+   The one thing this sheet is for: making an **inherited** chain look different
+   from an owned one. An administrator who cannot tell them apart will press
+   Save on a department that was following the company chain, quietly fork it,
+   and discover six months later that a change they made centrally never reached
+   that department. So inherited rows are dimmed, un-editable, and sit behind an
+   explicit "override" — the visual difference carries a real one. */
+
+.wf-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.wf-scope { margin-bottom: 14px; }
+
+.wf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin: 8px 0; }
+.wf-field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.wf-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.wf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+
+/* One rung. The number is a rail down the left rather than a label, so the
+   order reads at a glance — which is the only thing a chain really says. */
+.wf-level {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 14px 0; border-top: 1px solid var(--gridline);
+}
+.wf-level-body { flex: 1; min-width: 0; }
+.wf-level-no {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--brand); color: #fff;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+.wf-levels { list-style: none; padding: 0; margin: 12px 0; }
+.wf-levels li {
+  display: flex; gap: 12px; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
+}
+.wf-levels li:last-child { border-bottom: none; }
+/* Inherited: shown, not editable, visibly not this scope's own. */
+.wf-levels.is-inherited { opacity: 0.72; }
+.wf-levels.is-inherited .wf-level-no { background: var(--text-muted); }

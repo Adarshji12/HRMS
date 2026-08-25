@@ -28,6 +28,7 @@ import MyReview from './pages/hrms/performance/MyReview'
 import Appraisals from './pages/hrms/performance/Appraisals'
 import Engagement from './pages/hrms/engagement/Engagement'
 import EngagementAdmin from './pages/hrms/engagement/EngagementAdmin'
+import WorkflowSetup from './pages/hrms/workflow/WorkflowSetup'
 import Settings from './pages/Settings'
 // Core HR. First of the HRMS modules, because everything below hangs off the
 // person it describes.
@@ -307,6 +308,10 @@ function Shell() {
           {/* No page guard: an employee's own review is theirs, and the
               server scopes it to them. */}
           <Route path="/reviews" element={<MyReview />} />
+          <Route
+            path="/workflow"
+            element={isAdmin ? <WorkflowSetup /> : <Navigate to="/approvals" replace />}
+          />
           {/* The noticeboard is everybody's — announcements, the
               surveys they were asked, and the recognition wall. */}
           <Route path="/noticeboard" element={<Engagement />} />

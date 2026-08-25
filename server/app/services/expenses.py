@@ -48,7 +48,7 @@ from app.models import (
     Role,
     User,
 )
-from app.services import hierarchy, storage, workflow
+from app.services import chains, hierarchy, storage, workflow
 
 log = logging.getLogger(__name__)
 
@@ -241,7 +241,14 @@ def get_claim(db: Session, viewer: User, claim_id: uuid.UUID) -> ExpenseClaim:
         raise ExpenseError("not_permitted", "You may not view this claim.", 403)
     allowed = scope_ids(db, viewer)
     if allowed is not None and row.user_id not in allowed:
-        raise ExpenseError("out_of_scope", "That claim is not in your team.", 403)
+        # An approval chain can route a claim to somebody outside the requester's
+        # line management — Finance at level 2 is the ordinary case — and that
+        # reviewer is out of scope by the rule above however the chain is
+        # configured. Being the rung the claim is *currently* waiting on is an
+        # additional allow for exactly this one record, and never an override of
+        # any other denial: see `chains.is_current_reviewer`.
+        if not chains.is_current_reviewer(db, row.id, viewer):
+            raise ExpenseError("out_of_scope", "That claim is not in your team.", 403)
     return row
 
 
@@ -596,6 +603,12 @@ def submit(
     claim.reviewed_by = None
     claim.reviewed_at = None
     claim.review_note = None
+
+    # A chain begins when the request does, not when somebody first looks at
+    # it: a lazily-written chain has its first rung consumed by whoever
+    # happened to open the queue. Returns [] and does nothing when this flow
+    # has no chain configured, which is most companies.
+    chains.start_for(db, kind="expense", record_id=claim.id, subject=viewer)
 
     audit(db, org_id=viewer.org_id, actor=viewer, action="expenses.submitted",
           request=request, target_type="expense_claim", target_id=str(claim.id),

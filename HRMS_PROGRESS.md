@@ -34,6 +34,7 @@ and covered by tests that go through the real HTTP surface.
 | 13 | **Loans & advances** | `loans` | **done this effort** | 41 |
 | 14 | Payroll + Indian statutory | `payroll` | **done — checkpoints 1–5** | 138 |
 | 15 | **Approval kernel + unified queue** | — | **done this effort** | 27 |
+| 15b | **Multi-level approval chains** | — | **done this effort** | 21 |
 | 16 | **Performance / appraisals** | `performance` | **done this effort** | 30 |
 | 17 | Recruitment / ATS | `recruitment` | planned | — |
 | 18 | **Communication & engagement** | `engagement` | **done this effort** | 28 |
@@ -917,7 +918,104 @@ Files: [`models/engagement.py`](server/app/models/engagement.py) ·
 [`EngagementAdmin.tsx`](admin/src/pages/hrms/engagement/EngagementAdmin.tsx) ·
 migration `f6b1d4e82a5c` · flag `can_manage_engagement`
 
-### 2.16 Small consolidations
+### 2.16 Multi-level approval chains
+
+The kernel in §2.13 unified *how* seven flows decide. It always decided at **one
+level**: somebody approves and it is finished. That is right for a half-day of
+leave and wrong for a ₹4,00,000 loan, which most companies route through the
+manager, then the department head, then finance.
+
+This is that routing — greytHR's *Workflow → Setup → Workflow Levels*, built onto
+the kernel that was already there.
+
+**Two tables, and the split is the whole design.** `workflow_levels` is
+configuration an administrator edits. `workflow_steps` is the chain as it
+actually happened on one record, with each reviewer resolved to a real person at
+the moment the request was submitted. Nothing on a live chain is read back
+through the configuration — the same discipline onboarding uses for checklists,
+for the same reason: a step somebody approved last Tuesday silently becoming a
+different step is the failure the split exists to prevent. There is a test that
+adds a third level mid-flight and asserts the in-flight claim still has one.
+
+**The guarantee everything else rests on: no configured chain means exactly the
+behaviour that came before.** No step rows, no extra state, the original
+permission rules. Chains are opt-in per flow and per department, and a company
+that never opens the setup screen sees no change whatever. That is the correct
+default rather than a compatibility shim — a two-person company routing leave
+through three levels is a company where nothing gets approved.
+
+**An intermediate approval does not approve anything**, and this is where the
+money is. The record stays pending and untouched, and critically `on_approve`
+does not run: debiting a leave balance or stamping an expense claim's
+`approved_amount` at level one of three spends a decision nobody has finished
+making. A test asserts a mid-chain claim carries no signed-off figure.
+
+**A rejection at any level is terminal.** Sending it back to level 1 for another
+attempt is a *resubmission* — the requester's act, a different endpoint. A chain
+that loops on rejection is one where nobody can say whether a request was
+refused or is still going.
+
+**Reviewers are rules, not names.** The requester's manager, that manager's
+manager, the department head, a named person, or anybody holding the flow's
+capability. A chain naming Priya breaks the day Priya changes team, and every
+company that has run one for a year has a level pointing at somebody who left.
+
+**A level that resolves to nobody is unassigned, not skipped.** Skipping it would
+approve through a gate that was supposed to exist, silently — the worst of the
+three options. The one case genuinely skipped is a rung resolving to the
+requester themselves, common where the department head files their own claim;
+the kernel's self-review rule would refuse it anyway, so it is recorded as
+skipped rather than left to deadlock.
+
+**Escalation reassigns; auto-forward skips.** They are different and the sweep
+checks escalation first: a rung configured for both should reach a human who can
+act, not slide past them. An escalated rung stays `pending` under a new reviewer,
+because it still needs deciding — closing it and moving on would approve through
+a gate nobody passed.
+
+> **The one permission this widens, and how narrowly.** A chain routing expense
+> claims to Finance at level 2 is useless if Finance cannot see the claim: every
+> module scopes records by line management, and somebody two departments away is
+> out of scope however the chain is configured. So each flow's scope check
+> consults `chains.is_current_reviewer` as an **additional allow, never an
+> override of a denial**. What it grants is exactly: this one record, to the
+> person the chain is currently waiting on, while it is still waiting. Nothing
+> once the step is decided, nothing on other records, nothing to the levels above
+> or below. Two tests pin the layering — a level-2 reviewer out of scope is
+> refused by the *module* first, and somebody in scope at the wrong rung is
+> refused by the *chain*.
+
+An owner can act on any rung. Not because owners outrank the chain, but because
+one whose named reviewer has left would otherwise deadlock with no way out but
+editing the database. The audit row records who actually acted, so it is visible
+rather than indistinguishable from the level working.
+
+**Three things this work found:**
+
+1. **A regression I introduced in §2.13.** The kernel refactor deleted
+   `leave._approve` while leaving its one caller — the auto-approve path for a
+   declaration-style leave type — pointing at a name that no longer existed.
+   1,400 passing tests said nothing, because nothing covered a
+   `requires_approval=False` type. Fixed, with `_auto_approve` written
+   deliberately *outside* the kernel: its guards are about a person deciding,
+   and none of them mean anything when nobody did.
+2. **The isolation test caught my unique constraint.** `workflow_steps.record_id`
+   is polymorphic and carries no foreign key, so `(record_id, level)` was scoped
+   only by an argument about UUID uniqueness. `test_uniqueness_is_scoped_to_one_tenant`
+   requires every constraint to be *provably* tenant-scoped; `org_id` now leads it.
+3. **Two bugs in the approvals inbox**, both mine: the intro copy still named
+   three lanes after I added two, and performance reviews reached the server
+   queue but had no lane on the page — so a manager saw them in the count and
+   not on the screen. Both fixed; the inbox now carries six lanes.
+
+Files: [`models/workflowlevels.py`](server/app/models/workflowlevels.py) ·
+[`services/chains.py`](server/app/services/chains.py) ·
+[`api/v1/chains.py`](server/app/api/v1/chains.py) ·
+[`services/workflow.py`](server/app/services/workflow.py) (`decide` walks the chain) ·
+[`WorkflowSetup.tsx`](admin/src/pages/hrms/workflow/WorkflowSetup.tsx) ·
+migration `a7c2e5f93b18`
+
+### 2.17 Small consolidations
 
 - `add_months` existed in `services/leave` and was duplicated into
   `services/corehr` for probation dates. Both now delegate to
@@ -1006,28 +1104,40 @@ is inconsistent with everything around it.
 | Survey trends across cycles | Each survey stands alone; no quarter-on-quarter chart | Comparing two anonymous surveys means comparing two frozen populations, which the model supports — but a trend line that silently spans a reorganisation is a worse answer than no trend line. Belongs with the report builder (item 19), where the population can be stated. |
 | Announcement attachments | Body text only | Documents have a home already, and an attachment here would be a second uploader with its own retention rules. A link to a filed document is the cheaper and more honest join. |
 | Survey reminders | No nudge to non-responders | The outstanding list exists and is named; wiring it to the notification dispatcher is small. Left out because an automatic reminder on an anonymous survey needs a decision about how often is chasing and how often is pressure. |
+| Timesheet chains | Configurable, but timesheets have no submission event | A timesheet approval row is created lazily by the approver, so there is no moment at which a chain could begin. The flow accepts a chain and will never walk one until timesheets gain an explicit submit. |
+| Parallel approvals | Levels are sequential only | "Any two of these three" is a quorum, not a chain, and needs a different table shape. Sequential covers what companies configure; quorum is worth building properly rather than as a flag on a level. |
+| Amount-based routing | A chain is per flow and per department, not per value | "Loans over ₹1,00,000 need finance" is the obvious next rule and the levels table has nowhere to put it. It needs a condition column and a decision about what happens when a claim's total changes mid-chain. |
 | Attendance and payroll | Only unpaid *leave* affects days paid | Absence recorded as attendance rather than leave does not yet reduce pay. Needs a decision about which is authoritative before it is wired. |
 
 ---
 
 ## 5. Next step
 
-**Eighteen of nineteen modules are complete.** One remains:
+**Eighteen of nineteen modules are complete**, plus the multi-level approval
+chains added on top of the kernel. One module remains:
 
 **19 — Ad-hoc report builder.** Last on purpose: its value depends entirely on
 everything else existing, and it now has payroll registers, appraisal ratings,
-settlements, approval history and survey results to draw on that it would not
-have had six modules ago.
+settlements, approval history and survey results to draw on.
 
-One thing it will have to be careful about, which did not exist before this
-module: **a report builder that can query `survey_responses` would undo the
-anonymity guarantee in a single afternoon.** Whatever schema it exposes must
-either omit those tables or expose them only through the same suppression rules
-`services/engagement.results` applies. That is a design constraint on item 19,
-not an afterthought.
+Two design constraints it inherits, neither optional:
+
+* **Survey responses must stay unreachable.** A builder that can query
+  `survey_responses` would undo the anonymity guarantee in a single afternoon.
+  Whatever schema it exposes must omit those tables or apply the same
+  suppression rules `services/engagement.results` does.
+* **`workflow_steps` is a reporting table people will want** — "how long does
+  approval take by department" is a real question — and it is safe to expose:
+  a step carries who reviewed and when, and nothing about what was decided.
 
 Two decisions still open, neither blocking:
 
-* **Attendance does not affect pay.** Only unpaid leave reduces days paid;
-  absence recorded as attendance does not.
-* **Leave rejections require no reason**, alone among the seven approval flows.
+* **Attendance does not affect pay.** Only unpaid leave reduces days paid.
+* **Leave rejections require no reason**, alone among the seven flows.
+
+And one gap in onboarding worth closing whenever convenient:
+`onboarding.maybe_start_for_new_hire` exists, is tested, and is documented as
+safe to call from a user-creation path — but **nothing calls it**. Adding a
+genuine new hire still needs somebody to remember to start their checklist by
+hand. It is a two-line change in `admin.create_employee`, and the hook already
+declines for bulk imports by design.

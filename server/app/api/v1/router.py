@@ -8,6 +8,7 @@ from app.api.v1 import (
     approvals,
     assets,
     attendance,
+    chains,
     auth,
     corehr,
     engagement,
@@ -81,6 +82,10 @@ api_router.include_router(
 # company that never bought expenses, and each flow's adapter already applies
 # that flow's own permission rule.
 api_router.include_router(approvals.router)
+# No module gate, like the approvals queue: a chain is configuration for
+# whichever flows a company already has, and gating it on one module would
+# hide leave routing from a company that never bought expenses.
+api_router.include_router(chains.router)
 api_router.include_router(
     performance.router, dependencies=[Depends(require_module("performance"))]
 )

@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import audit
 from app.core.dates import add_months
-from app.services import workflow
+from app.services import chains, workflow
 from app.models import (
     InstalmentStatus,
     Loan,
@@ -260,6 +260,12 @@ def request(
         requested_on=date.today(),
     )
     db.add(row)
+    db.flush()
+    # A chain begins when the request does, not when somebody first looks at
+    # it: written lazily, its first rung would be consumed by whoever happened
+    # to open the queue. Does nothing when this flow has no chain configured,
+    # which is most companies.
+    chains.start_for(db, kind="loan", record_id=row.id, subject=subject)
     audit(db, org_id=viewer.org_id, actor=viewer, action="loans.requested",
           request=request_obj, target_type="loan", target_id=str(row.id),
           detail={"for": str(subject.id), "on_behalf": on_behalf,

@@ -70,7 +70,7 @@ from app.models import (
     User,
 )
 from app.services import attendance
-from app.services import workflow, hierarchy
+from app.services import chains, workflow, hierarchy
 from app.services import notifications as notif
 
 log = logging.getLogger(__name__)
@@ -279,6 +279,12 @@ def submit(
             "decided, or ask your manager to reject it first.",
             409,
         ) from None
+    # A chain begins when the request does, not when somebody first looks at
+    # it: written lazily, its first rung would be consumed by whoever happened
+    # to open the queue. Does nothing when this flow has no chain configured,
+    # which is most companies.
+    chains.start_for(db, kind="regularization", record_id=row.id, subject=employee)
+
     return row
 
 
