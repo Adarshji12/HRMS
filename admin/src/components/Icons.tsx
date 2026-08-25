@@ -9,19 +9,30 @@ import type { ReactNode } from 'react'
  * All are aria-hidden. Every icon here sits beside a visible text label, so
  * announcing it would only make screen readers say everything twice.
  */
-function Svg({ size = 17, children }: { size?: number; children: ReactNode }) {
+function Svg({
+  size = 17,
+  className,
+  children,
+}: {
+  size?: number
+  /* Only so the nav's disclosure chevron can be rotated by CSS. Icons are
+     otherwise styled entirely by `currentColor` from whatever contains them. */
+  className?: string
+  children: ReactNode
+}) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true" focusable="false" style={{ flex: 'none' }}
+      aria-hidden="true" focusable="false" className={className}
+      style={{ flex: 'none' }}
     >
       {children}
     </svg>
   )
 }
 
-type P = { size?: number }
+type P = { size?: number; className?: string }
 
 export const IconDashboard = (p: P) => (
   <Svg {...p}>

@@ -390,6 +390,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
    a margin on the heading cannot be zeroed for the first one. */
 .nav-section + .nav-section { margin-top: 14px; }
 
+/* ------------------------------------------------- collapsible groups ---- */
+
+/* The heading is a button now. `.nav-group` itself is shared with the report
+   picker in org.css and stays a plain block there, so everything a button needs
+   resetting is scoped to this class rather than added to that one. */
+.nav-group-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: 0; cursor: pointer;
+  /* Inherits .nav-group's type; only the button chrome is removed. */
+  font: inherit; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-muted); text-align: left;
+  padding: 5px 11px; border-radius: 7px;
+}
+.nav-group-toggle:hover { color: var(--text-primary); background: var(--nav-hover, rgba(0,0,0,0.04)); }
+.nav-group-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.nav-group-toggle > span:first-child { flex: 1; min-width: 0; }
+
+/* How many rows are behind a shut heading. Only rendered while shut — open,
+   the rows are right there and a number beside them is furniture. */
+.nav-group-count {
+  flex: none; font-size: 10px; font-weight: 600; letter-spacing: 0;
+  color: var(--text-muted); opacity: 0.75;
+}
+
+/* Points right when shut, down when open. Rotating one glyph rather than
+   swapping two keeps the motion continuous and halves the icons to keep. */
+.nav-chevron {
+  flex: none; opacity: 0.6;
+  transition: transform 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-group-toggle.is-open .nav-chevron { transform: rotate(90deg); }
+
 /* ------------------------------------------------------- collapsed rail -- */
 
 /* Icons only. Labels come back as native tooltips (title=), set in App.tsx —
@@ -402,6 +435,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .shell-collapsed .brand-word,
 .shell-collapsed .nav-label,
 .shell-collapsed .nav-group,
+.shell-collapsed .nav-group-toggle,
 .shell-collapsed .foot-org,
 .shell-collapsed .foot-id { display: none; }
 .shell-collapsed .sidebar-head .brand { flex: none; justify-content: center; }
@@ -1749,6 +1783,7 @@ tbody tr:last-child td { border-bottom: none; }
   .shell-collapsed .brand-word,
   .shell-collapsed .nav-label,
   .shell-collapsed .nav-group,
+  .shell-collapsed .nav-group-toggle,
   .shell-collapsed .foot-org,
   .shell-collapsed .foot-id { display: revert; }
   .shell-collapsed .nav-link { justify-content: flex-start; height: auto; padding: 7px 11px; }

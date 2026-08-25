@@ -59,13 +59,26 @@ export interface NavGroup {
   items: NavItem[]
 }
 
-/* Grouped to match how the work is actually organised: what happened (Time &
-   Activity), who it happened to (Employees), and what it was for (Timesheets,
-   Projects). Flat lists of nine links stop being scannable at about six.
-
-   This lives outside App.tsx because three surfaces read it now — the rail, the
-   breadcrumb, and the command palette's Pages section. A second copy in any of
-   them is a link that silently stops existing when someone edits the other. */
+/* One group per module, and the rail collapses them.
+ *
+ * An administrator can reach about fifty pages. Rendered flat and open, that is
+ * a wall nobody scans — they stop reading at the fold and use the command
+ * palette instead, which means the rail is costing space while doing nothing.
+ * So the rail shows **headings** by default and opens one group at a time; the
+ * group holding the current page opens itself, and the rest stay shut until
+ * asked. An admin sees roughly sixteen rows instead of fifty.
+ *
+ * That only works if the grouping matches how people name things, so two
+ * headings describing one module were merged (see 'Time & Work' below) and one
+ * named for half its contents was renamed ('Expenses & Loans').
+ *
+ * The unheaded first group is deliberately not collapsible: Dashboard, Home and
+ * Approvals are the rows people come here to click, and putting them behind a
+ * disclosure would add a click to the three most-used links in the product.
+ *
+ * This lives outside App.tsx because three surfaces read it — the rail, the
+ * breadcrumb, and the command palette's Pages section. A second copy in any of
+ * them is a link that silently stops existing when someone edits the other. */
 export const NAV: NavGroup[] = [
   {
     items: [
@@ -77,12 +90,20 @@ export const NAV: NavGroup[] = [
       { to: '/me', label: 'My performance', icon: IconGauge },
     ],
   },
+  /* Timesheets, activity and projects were two groups — "Time & Activity" and
+     "Work" — sitting five headings apart while describing one module: what work
+     happened and what it was for. Somebody looking for a timesheet had no way
+     to guess which of the two it lived under. One group, ordered from the thing
+     people open daily to the thing they open monthly. */
   {
-    heading: 'Time & Activity',
+    heading: 'Time & Work',
     items: [
+      { page: 'timesheets', to: '/timesheets', label: 'Timesheets', icon: IconSheet, sub: true },
       { page: 'activity', to: '/activity', label: 'Time & Activity', icon: IconClock, sub: true },
-      { to: '/screenshots', label: 'Screenshots', icon: IconCamera, sub: true },
       { page: 'apps', to: '/apps', label: 'Apps & Websites', icon: IconGlobe, sub: true },
+      { to: '/screenshots', label: 'Screenshots', icon: IconCamera, sub: true },
+      { page: 'projects', to: '/projects', label: 'Projects', icon: IconFolder, sub: true },
+      { page: 'reports', to: '/reports', label: 'Reports', icon: IconChart, sub: true },
     ],
   },
   {
@@ -136,7 +157,7 @@ export const NAV: NavGroup[] = [
      surfaces (mine, approvals, payments, settings) and burying four links under
      a heading about assets and tickets makes none of them findable. */
   {
-    heading: 'Expenses',
+    heading: 'Expenses & Loans',
     items: [
       { to: '/expenses', label: 'My expenses', icon: IconCard, sub: true, end: true },
       { to: '/expenses/review', label: 'Approvals', icon: IconCheck, sub: true, teamOnly: true },
@@ -209,14 +230,6 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    heading: 'Work',
-    items: [
-      { page: 'timesheets', to: '/timesheets', label: 'Timesheets', icon: IconSheet, sub: true },
-      { page: 'projects', to: '/projects', label: 'Projects', icon: IconFolder, sub: true },
-      { page: 'reports', to: '/reports', label: 'Reports', icon: IconChart, sub: true },
-    ],
-  },
-  {
     heading: 'Account',
     items: [
       { to: '/notifications', label: 'Notifications', icon: IconBell, sub: true },
@@ -231,6 +244,9 @@ export interface NavAccess {
   isAdmin: boolean
   canViewTeam: boolean
   isOwner: boolean
+  /** Whether they decide anything — wider than `canViewTeam`, because a finance
+   *  approver is routinely nobody's manager. See `canApproveSomething`. */
+  canApprove: boolean
   /** Page keys this person has been switched out of. */
   hiddenPages: string[]
 }
@@ -243,6 +259,7 @@ export function visibleItems(access: NavAccess): Array<NavItem & { heading?: str
         (item) =>
           (!item.adminOnly || access.isAdmin) &&
           (!item.teamOnly || access.canViewTeam) &&
+          (!item.approverOnly || access.canApprove) &&
           (!item.ownerOnly || access.isOwner) &&
           !(item.page && access.hiddenPages.includes(item.page)),
       )

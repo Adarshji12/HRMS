@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { canAdminister, canApproveSomething, canViewTeam, isOwner, useAuth } from './lib/auth'
-import { NAV } from './lib/nav'
+import { NAV, locate } from './lib/nav'
 import Brand from './components/Brand'
 import Topbar from './components/Topbar'
 import { Avatar } from './components/ui'
@@ -65,9 +65,24 @@ import MyOnboarding from './pages/hrms/onboarding/MyOnboarding'
 import Offboarding from './pages/hrms/offboarding/Offboarding'
 import EmployeeHome from './pages/hrms/home/EmployeeHome'
 import ApprovalsInbox from './pages/hrms/home/ApprovalsInbox'
-import { IconClose, IconPanel, IconSignOut } from './components/Icons'
+import { IconChevronRight, IconClose, IconPanel, IconSignOut } from './components/Icons'
 
 const COLLAPSE_KEY = 'hrdesktimesol.nav-collapsed'
+/* Which nav groups the reader has opened. Per-browser and per-person: two
+   people sharing a workspace organise their rail differently, and one of them
+   opening Payroll is not a statement about the other. */
+const OPEN_GROUPS_KEY = 'hrdesktimesol.nav-open-groups'
+
+function storedOpenGroups(): string[] {
+  try {
+    const raw = localStorage.getItem(OPEN_GROUPS_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    /* A private window, cleared site data, or a browser that throws on access.
+       An empty rail is a working rail — every group opens on click. */
+    return []
+  }
+}
 
 function Shell() {
   const { user, organization, logout } = useAuth()
@@ -90,10 +105,34 @@ function Shell() {
     () => localStorage.getItem(COLLAPSE_KEY) === '1',
   )
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [openGroups, setOpenGroups] = useState<string[]>(storedOpenGroups)
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
   }, [collapsed])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(openGroups))
+    } catch {
+      /* Nothing to do and nothing to tell anybody: the rail still works, it
+         just forgets between visits. */
+    }
+  }, [openGroups])
+
+  /* The group holding the current page, from `locate` — the same function the
+     breadcrumb and the command palette use. Deriving it here rather than
+     tracking it in state means a group cannot be shut while the reader is
+     standing inside it, which would hide the page they are looking at. */
+  const activeHeading = locate(location.pathname, access)?.heading
+
+  const toggleGroup = useCallback((heading: string) => {
+    setOpenGroups((open) =>
+      open.includes(heading)
+        ? open.filter((name) => name !== heading)
+        : [...open, heading],
+    )
+  }, [])
 
   // A drawer left open over the page you just navigated to is a dead end on a
   // phone: the content is behind a scrim with no obvious way back.
@@ -160,10 +199,39 @@ function Shell() {
               !(item.page && hiddenPages.includes(item.page)),
           )
           if (items.length === 0) return null
+
+          /* Three ways a group is open, and the order matters:
+
+             1. It has no heading — the Dashboard/Home/Approvals rows, which are
+                what people come here to click and must never need a click to
+                reveal.
+             2. The rail is collapsed to icons. Headings are not rendered at all
+                in that mode, so a shut group would be items nobody can reach
+                and no control to reach them with.
+             3. It holds the current page, or the reader opened it. */
+          const isOpen =
+            !group.heading ||
+            collapsed ||
+            group.heading === activeHeading ||
+            openGroups.includes(group.heading)
+
           return (
             <div className="nav-section" key={group.heading ?? index}>
-              {group.heading && <div className="nav-group">{group.heading}</div>}
-              {items.map((item) => (
+              {group.heading && (
+                <button
+                  type="button"
+                  className={`nav-group nav-group-toggle${isOpen ? ' is-open' : ''}`}
+                  aria-expanded={isOpen}
+                  onClick={() => toggleGroup(group.heading!)}
+                >
+                  <span>{group.heading}</span>
+                  {/* Count only while shut. Open, the rows say it themselves,
+                      and a number beside them is furniture. */}
+                  {!isOpen && <span className="nav-group-count">{items.length}</span>}
+                  <IconChevronRight size={14} className="nav-chevron" />
+                </button>
+              )}
+              {isOpen && items.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
