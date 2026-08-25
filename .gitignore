@@ -1,0 +1,37 @@
+__pycache__/
+*.py[cod]
+.venv/
+# throwaway interpreter the agent build scripts create
+.venv-build/
+venv/
+.env
+*.db
+*.sqlite3
+storage/
+node_modules/
+dist/
+build/
+*.spec.bak
+.vite/
+.DS_Store
+Thumbs.db
+agent-data/
+
+# SQLite writes these alongside the database file; *.db alone does not catch
+# them, and a 2 MB WAL of local dev data was staged for commit because of it.
+*.db-wal
+*.db-shm
+
+# Timestamped database backups. `*.db` does not catch `foo.db.bak-20260824`,
+# and one of these was staged on the first `git add` — 4 MB of demo data
+# including password hashes and encrypted statutory identity.
+*.db.bak*
+*.db.backup*
+
+# Deployment image archives. `docker save` output is carried to the server by
+# hand (see DEPLOYMENT.md) — 160 MB per release has no business in git history,
+# where it can never be removed again.
+*.tar
+
+# TypeScript incremental build cache.
+*.tsbuildinfo

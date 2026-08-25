@@ -1,0 +1,133 @@
+/* Projects: card grid, task board, budget meters. */
+
+.pj-back {
+  display: inline-block; font-size: 12.5px; color: var(--text-secondary);
+  text-decoration: none; margin-bottom: 6px;
+}
+.pj-back:hover { color: var(--brand-ink); }
+
+.pj-swatch {
+  width: 12px; height: 12px; border-radius: 4px; flex: none;
+  display: inline-block; vertical-align: middle;
+}
+
+/* ---------------------------------------------------------- card grid --- */
+
+.pj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+
+.pj-card {
+  display: block;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 15px 16px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.pj-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
+}
+
+.pj-card-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.pj-name {
+  font-size: 14.5px; font-weight: 650; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pj-sub {
+  font-size: 12px; color: var(--text-muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.pj-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.pj-stats > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pj-stat-label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.pj-stats b { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pj-of { color: var(--text-muted); font-weight: 400; }
+
+/* ------------------------------------------------------------- budget --- */
+
+.pj-budget { margin-top: 14px; }
+.pj-budget-head {
+  display: flex; justify-content: space-between;
+  font-size: 11.5px; color: var(--text-muted); margin-bottom: 5px;
+}
+.pj-budget-head b { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.pj-budget-track { display: block; height: 6px; background: var(--gridline); border-radius: 3px; overflow: hidden; }
+.pj-budget-fill { display: block; height: 100%; background: var(--prod); border-radius: 3px; }
+/* Over-budget is stated as a number in the label as well as coloured here —
+   colour alone would be invisible to a third of colour-blind readers, and this
+   is the number that starts a client conversation. */
+.pj-budget-over { background: var(--unprod); }
+.pj-over { color: var(--unprod); font-weight: 600; }
+
+.pj-flag {
+  margin-top: 12px; font-size: 11.5px; color: var(--text-muted);
+  border-top: 1px solid var(--gridline); padding-top: 9px;
+}
+
+/* -------------------------------------------------------------- pills --- */
+
+.pj-pill {
+  display: inline-block; flex: none;
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+}
+.pj-active { color: var(--success-text); border-color: color-mix(in srgb, var(--status-good) 40%, transparent); background: color-mix(in srgb, var(--status-good) 10%, transparent); }
+.pj-on_hold { color: var(--text-primary); background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+.pj-completed { color: var(--text-secondary); }
+.pj-archived { color: var(--text-muted); border-style: dashed; }
+.pj-nonbillable { color: var(--text-secondary); border-style: dashed; }
+
+/* --------------------------------------------------------- task board --- */
+
+.pj-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.pj-column {
+  background: var(--surface-2, var(--page));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-height: 120px;
+}
+.pj-column-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 10px;
+}
+.pj-count {
+  background: var(--gridline); color: var(--text-secondary);
+  border-radius: 999px; padding: 1px 8px; font-size: 11px; letter-spacing: 0;
+}
+.pj-column-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 14px 0; margin: 0; }
+
+.pj-task {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+  margin-bottom: 9px;
+  box-shadow: var(--shadow);
+}
+.pj-task-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.pj-task-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+.pj-task-tracked { font-size: 11.5px; color: var(--text-secondary); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.pj-task-move {
+  width: 100%; margin-top: 9px; font-size: 12px; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1);
+}
+
+@media (max-width: 640px) {
+  .pj-stats { grid-template-columns: repeat(2, 1fr); row-gap: 12px; }
+}

@@ -1,0 +1,124 @@
+name: ci
+
+# Runs on every push and pull request. The audit that prompted this suite found
+# tenant isolation intact — the point of running it here is that it stays that
+# way without anyone re-checking by hand.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    services:
+      # The suite runs on SQLite for speed; this instance is here so the
+      # migrations are also exercised against the engine production uses.
+      # SQLite forgives things Postgres does not, so passing on SQLite alone
+      # proves less than it appears to.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+        ports: ['5432:5432']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/requirements-dev.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Migrations apply to an empty Postgres
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
+        run: alembic upgrade head
+
+      - name: Migrations are reversible
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
+        # A downgrade nobody ever runs is a downgrade that does not work, and
+        # the day it is needed is the worst day to find that out.
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: No model drift
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
+        # If the models and the migrations disagree, autogenerate produces a
+        # non-empty migration. Catching that here beats catching it as a
+        # missing column in production.
+        run: |
+          alembic revision --autogenerate -m drift-check --rev-id drift_check
+          if grep -qE "op\.(add|drop|alter|create)_" alembic/versions/drift_check_*.py; then
+            echo "::error::Models and migrations have drifted. Generate a migration."
+            cat alembic/versions/drift_check_*.py
+            exit 1
+          fi
+          rm alembic/versions/drift_check_*.py
+
+      - name: Tests
+        run: pytest --cov=app --cov-report=term-missing
+
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      # tsc first: a type error should fail as a type error, not as a
+      # confusing bundler message halfway through the build.
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  images:
+    # Proves the deployment artifacts actually build. They are not pushed —
+    # this only answers "would a deploy get this far".
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Console image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./admin
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

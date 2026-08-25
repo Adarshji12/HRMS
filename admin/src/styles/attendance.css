@@ -1,0 +1,309 @@
+/* Attendance — punch screen, month calendar, daily muster, policy admin.
+
+   Every colour here resolves through a token in styles.css. The six-value day
+   status is *categorical state*, so it uses the status ramp and a written
+   label, never a hue on its own: "green square" is not a legible answer to
+   "was I marked half-day", and roughly one reader in twelve cannot see the
+   difference between the present and absent tints at all. */
+
+/* ------------------------------------------------------------- punch --- */
+
+.att-punch {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px 28px;
+  align-items: start;
+}
+
+.att-clock {
+  font-size: 30px; font-weight: 650; letter-spacing: -0.5px;
+  color: var(--text-primary); line-height: 1.1;
+}
+.att-clock-sub { margin-top: 4px; font-size: 12.5px; color: var(--text-secondary); }
+
+.att-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.att-pair-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.att-pair-value { margin-top: 2px; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.att-pair-meta { margin-top: 1px; font-size: 11.5px; color: var(--text-secondary); }
+
+.att-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.att-note-input { width: 100%; }
+
+/* The verdict banner. Three states, and none of them is styled as an error:
+   an unverified punch is accepted and flagged, so red would be a lie. */
+.att-verdict {
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  font-size: 13px; line-height: 1.6;
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.att-verdict b { font-weight: 650; }
+.att-verdict-ok {
+  border-left-color: var(--status-good);
+  background: color-mix(in srgb, var(--status-good) 9%, transparent);
+}
+.att-verdict-flag {
+  border-left-color: var(--status-warn);
+  background: color-mix(in srgb, var(--status-warn) 10%, transparent);
+}
+.att-verdict-plain { border-left-color: var(--baseline); }
+.att-verdict-detail { margin-top: 5px; font-size: 12px; color: var(--text-secondary); }
+
+.att-offices { margin-top: 12px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.att-offices b { color: var(--text-primary); font-weight: 600; }
+
+/* ---------------------------------------------------------- calendar --- */
+
+.att-cal-nav { display: flex; align-items: center; gap: 6px; }
+.att-cal-month { font-size: 13.5px; font-weight: 600; min-width: 130px; text-align: center; }
+
+.att-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.att-cal-dow {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted); text-align: center; padding-bottom: 2px;
+}
+
+.att-cell {
+  min-height: 74px;
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 6px 7px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.att-cell:hover { border-color: var(--border-strong); }
+.att-cell:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.att-cell-blank { border: 1px dashed var(--gridline); background: none; cursor: default; }
+.att-cell-blank:hover { border-color: var(--gridline); }
+/* No record at all — the nightly job has not run for this day yet, or it is
+   still in the future. Deliberately distinct from `absent`, which is a
+   decision somebody's payroll depends on. A *past* recordless day is still
+   openable, because "I was on a client site all Tuesday and never punched" is
+   the case regularization exists for, so only the disabled ones lose the
+   pointer. */
+.att-cell-none { background: none; color: var(--text-muted); }
+.att-cell:disabled { cursor: default; }
+.att-cell:disabled:hover { border-color: var(--gridline); }
+.att-cell-today { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+.att-cell-on { border-color: var(--brand-strong); box-shadow: 0 0 0 2px var(--brand-strong) inset; }
+
+.att-daynum { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.att-cell-today .att-daynum { color: var(--brand-ink); }
+.att-cell-label { font-size: 11px; font-weight: 600; line-height: 1.25; }
+.att-cell-time { font-size: 10.5px; color: var(--text-secondary); margin-top: auto; }
+
+/* Status tints. Paired with the written label inside the cell. */
+.att-present    { background: color-mix(in srgb, var(--status-good) 11%, var(--surface-1)); }
+.att-absent     { background: color-mix(in srgb, var(--status-critical) 11%, var(--surface-1)); }
+.att-half_day   { background: color-mix(in srgb, var(--status-warn) 13%, var(--surface-1)); }
+.att-on_leave   { background: color-mix(in srgb, var(--prod) 13%, var(--surface-1)); }
+.att-holiday    { background: var(--brand-soft); }
+.att-weekly_off { background: var(--surface-2); }
+
+.att-flags { display: flex; flex-wrap: wrap; gap: 3px; }
+.att-flag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em;
+  border-radius: 4px; padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  background: var(--surface-1);
+}
+.att-flag-late    { border-color: color-mix(in srgb, var(--status-warn) 55%, transparent); color: var(--warn-ink); }
+.att-flag-early   { border-color: color-mix(in srgb, var(--status-warn) 45%, transparent); color: var(--warn-ink); }
+.att-flag-missing { border-color: color-mix(in srgb, var(--status-critical) 50%, transparent); color: var(--unprod); }
+.att-flag-reg     { border-color: color-mix(in srgb, var(--brand) 45%, transparent); color: var(--brand-ink); }
+.att-flag-geo     { border-color: var(--border-strong); color: var(--text-secondary); }
+
+.att-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 14px; }
+.att-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+.att-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--gridline); flex: none; }
+
+/* ------------------------------------------------------- status pill --- */
+
+.att-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  padding: 2px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-1);
+}
+.att-status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* ------------------------------------------------------------ detail --- */
+
+.att-detail {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 14px 16px;
+}
+.att-detail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.att-detail-title { font-size: 14px; font-weight: 650; }
+.att-detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 18px;
+}
+
+/* -------------------------------------------------------------- admin --- */
+
+.att-admin-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.att-form-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+
+.att-choices { display: flex; flex-direction: column; gap: 8px; }
+.att-choice {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  cursor: pointer;
+}
+.att-choice:hover { background: var(--surface-hover); }
+.att-choice-on { border-color: var(--brand); background: var(--brand-soft); }
+/* Genuinely disabled, not merely dimmed: an option that looks live, accepts a
+   click and is then refused by the server is worse than one that refuses. */
+.att-choice-off { opacity: 0.5; cursor: not-allowed; }
+.att-choice-off:hover { background: none; }
+.att-choice input { margin-top: 2px; }
+.att-choice-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.att-choice-desc { grid-column: 2; font-size: 12px; color: var(--text-secondary); line-height: 1.55; margin: 0; }
+
+.att-warn {
+  border-left: 3px solid var(--status-warn);
+  background: color-mix(in srgb, var(--status-warn) 10%, transparent);
+  padding: 11px 14px; border-radius: var(--radius-sm);
+  font-size: 12.5px; line-height: 1.6; color: var(--text-primary);
+  margin-bottom: 14px;
+}
+.att-warn b { font-weight: 650; }
+
+.att-rowactions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.att-closed td { opacity: 0.62; }
+
+/* ----------------------------------------------------- regularization --- */
+
+/* The correction block that hangs off a day, and the manager's queue. Nothing
+   here invents a colour: a request's three states borrow the same status ramp
+   the day statuses use, and every one of them is written out in words beside
+   the dot — "amber pill" is not a legible answer to "was my correction
+   approved". */
+
+.att-reg { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.att-reg-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.att-reg-title { margin: 0; font-size: 13px; font-weight: 650; color: var(--text-primary); }
+
+.att-reg-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.att-reg-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 10px 12px;
+}
+.att-reg-item-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+}
+
+/* Times a person is being asked to check against a gate log. Tabular so the
+   columns line up when there are six of them down a table. */
+.att-reg-asked {
+  font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.att-reg-reason { font-size: 12.5px; color: var(--text-secondary); max-width: 34ch; }
+.att-reg-meta { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+.att-reg-note {
+  font-size: 12.5px; color: var(--text-secondary); line-height: 1.55;
+  border-left: 2px solid var(--gridline); padding-left: 9px; margin: 6px 0;
+}
+.att-reg-outcome { font-size: 12.5px; color: var(--text-primary); line-height: 1.55; }
+.att-reg-outcome b { font-weight: 650; }
+/* An approved request a later approval has overtaken. Not an error — it was a
+   real decision — but the record no longer reflects it, and a reader must not
+   take it for the current state. */
+.att-reg-super { color: var(--warn-ink); }
+
+/* --- the form --- */
+
+.att-reg-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 13px 14px;
+}
+.att-reg-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 20px;
+}
+.att-reg-field { display: flex; flex-direction: column; gap: 6px; }
+.att-reg-field input[type='time'] { max-width: 150px; }
+.att-reg-check {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; color: var(--text-primary); cursor: pointer;
+}
+.att-reg-check-sm { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+
+/* What will actually be sent, in the organisation's clock rather than the
+   viewer's — the server validates these instants against org.timezone, so
+   showing the browser's reading of them would be showing a different thing
+   from the one being submitted. */
+.att-reg-preview {
+  margin-top: 12px;
+  border-left: 3px solid var(--baseline);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-primary);
+}
+.att-reg-preview b { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.att-reg-problems {
+  margin: 10px 0 0; padding-left: 18px;
+  font-size: 12px; line-height: 1.6; color: var(--warn-ink);
+}
+
+/* --- the queue --- */
+
+.att-reg-cards { display: flex; flex-direction: column; gap: 12px; }
+.att-reg-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  padding: 13px 15px;
+}
+.att-reg-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.att-reg-ask { margin-bottom: 2px; }
+
+@media (max-width: 860px) {
+  .att-punch { grid-template-columns: minmax(0, 1fr); }
+  .att-reg-reason { max-width: none; }
+}
+@media (max-width: 640px) {
+  .att-cell { min-height: 58px; padding: 4px 5px; }
+  .att-cell-time, .att-cell-label { display: none; }
+  .att-cal-nav { width: 100%; }
+}

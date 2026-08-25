@@ -1,0 +1,19 @@
+# node_modules is installed inside the image by `npm ci`. Copying the host's
+# copy in on top of it replaces Linux-built native binaries (esbuild, rollup)
+# with Windows ones, which either fails the build or — worse — silently
+# produces a bundle nobody can explain. It is also 73MB of build context on
+# every build, which was costing 75 seconds a time.
+node_modules
+dist
+.vite
+
+# Local-only overrides and anything that should never reach an image.
+vite.config.local.ts
+*.local
+.env
+.env.*
+
+.git
+.gitignore
+*.log
+tsconfig.tsbuildinfo

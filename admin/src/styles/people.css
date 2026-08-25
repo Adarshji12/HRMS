@@ -1,0 +1,103 @@
+/* Core HR — the master record, its document file, and the directory. */
+
+/* Two columns on a wide screen, one below. The sections are independent forms
+   with independent Save buttons, so they stack rather than sharing a footer —
+   a single Save across four sections would submit fields the user never
+   touched, and the server's exclude_unset patch exists precisely so it does
+   not have to. */
+.hr-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.hr-section-wide { grid-column: 1 / -1; }
+.hr-profile-foot { margin-top: 14px; }
+
+.hr-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 14px;
+}
+
+.hr-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hr-field-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.hr-field input,
+.hr-field select,
+.hr-field textarea { width: 100%; }
+.hr-field textarea { resize: vertical; }
+.hr-field-hint {
+  font-size: 11.5px; line-height: 1.45; color: var(--text-muted);
+}
+.err-inline { color: var(--danger-text, #b3261e); }
+
+/* Reveal sits inside the hint line rather than beside the input: it is a rare,
+   deliberate action, and giving it button chrome next to the field makes it
+   look like part of ordinary editing. */
+.link-btn {
+  padding: 0; border: none; background: none;
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--brand); cursor: pointer; text-decoration: underline;
+}
+.link-btn:hover { color: var(--brand-strong); }
+
+.hr-section-actions {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.ok-note { font-size: 12.5px; color: var(--success-text); }
+
+.hr-subhead {
+  margin: 0 0 8px; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+}
+.hr-confirm {
+  grid-column: 1 / -1;
+  margin-top: 8px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.hr-confirm-row {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.hr-confirm-row input,
+.hr-confirm-row select { flex: 1 1 130px; min-width: 0; }
+
+/* Status pill in the page header. */
+.hr-pill {
+  padding: 5px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+  border: 1px solid currentColor;
+}
+.hr-pill-ok { color: var(--success-text); }
+.hr-pill-warn { color: var(--warn-ink); }
+.hr-pill-bad { color: var(--danger-text, #b3261e); }
+.hr-pill-muted { color: var(--text-muted); border-color: var(--border-strong); }
+
+.hr-ok { color: var(--success-text); }
+.hr-warn { color: var(--warn-ink); font-weight: 600; }
+.hr-bad { color: var(--danger-text, #b3261e); font-weight: 600; }
+.hr-muted { color: var(--text-muted); }
+
+.hr-doc-name { font-weight: 600; color: var(--text-primary); }
+
+.hr-upload {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 14px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.hr-upload select,
+.hr-upload input[type='text'],
+.hr-upload input:not([type]) { flex: 1 1 140px; min-width: 0; }
+.hr-upload input[type='date'] { flex: 0 1 150px; }
+.hr-upload input[type='file'] { flex: 1 1 200px; min-width: 0; font-size: 12.5px; }
+
+.hr-search { min-width: 260px; }
+
+@media (max-width: 640px) {
+  .hr-field-grid { grid-template-columns: 1fr; }
+  .hr-search { min-width: 0; width: 100%; }
+}

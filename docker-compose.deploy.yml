@@ -1,0 +1,121 @@
+# MyDeskTime — deployment stack.
+#
+# For a server that has the images but not the source. Copy this file and the
+# image archive across, then:
+#
+#   docker load -i hrdesktimesol-1.0.tar
+#   docker compose -f docker-compose.deploy.yml up -d
+#
+# There are no `build:` directives anywhere in this file, on purpose. The
+# development compose builds from ./server and ./admin, which do not exist on a
+# deployment host — `docker compose up` there fails with "path ./server not
+# found". Referring only to image tags means this file cannot try.
+#
+# Services:
+#   db        PostgreSQL
+#   migrate   runs alembic once, then exits; everything else waits for it
+#   api       the application
+#   console   the admin console behind nginx, proxying /api to api
+#   jobs      the scheduler for alerts and retention
+
+# Pinned so this stack's containers and volumes are namespaced
+# hrdesktimesol_* regardless of the directory it is checked out into. A
+# MyDeskTime stack on the same host keeps its own mydesktime_* volumes; the two
+# never share a database.
+name: hrdesktimesol
+
+x-api-env: &api-env
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  DATABASE_URL: postgresql+psycopg://hrdesktimesol:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/hrdesktimesol
+  # No default on purpose. Compose refuses to start without it, which is the
+  # whole point — a signing key that falls back to a published default is not
+  # a signing key. The API refuses to start on it too.
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY to a long random string}
+  BASE_DOMAIN: ${BASE_DOMAIN:?set BASE_DOMAIN to the hostname or IP this is reached on}
+  PUBLIC_SCHEME: ${PUBLIC_SCHEME:-https}
+  PUBLIC_PORT: ${PUBLIC_PORT:-}
+  MARKETING_HOST: ${MARKETING_HOST:-app}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+  RAZORPAY_LIVE: ${RAZORPAY_LIVE:-false}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hrdesktimesol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: hrdesktimesol
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hrdesktimesol"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Not published. Nothing outside this network needs the database, and an
+    # exposed 5432 on a client's server is how these get found.
+    expose:
+      - "5432"
+
+  # Migrations run once, in their own container, rather than on API start.
+  # With more than one API replica, start-time migrations race each other.
+  migrate:
+    image: ${API_IMAGE:-hrdesktimesol-api:1.0}
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ${API_IMAGE:-hrdesktimesol-api:1.0}
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/data/storage
+      # The agent bundles the console offers for download. A host bind, not a
+      # named volume, because the whole point is that an operator can drop a
+      # newly built agent in with scp and have the console serve it — no image
+      # rebuild, no compose change, no restart. Read-only: the API only ever
+      # reads from here, and nothing reachable from the network should be able
+      # to write an executable that staff are told to run.
+      - ./agent-dist:/data/agent:ro
+    expose:
+      - "8000"
+
+  console:
+    image: ${CONSOLE_IMAGE:-hrdesktimesol-console:1.0}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${CONSOLE_PORT:-80}:80"
+
+  # Notifications and retention. Both were complete and neither had a runner,
+  # so alerts never fired and nothing was ever deleted despite the retention
+  # window the console advertises to administrators and to staff.
+  jobs:
+    image: ${API_IMAGE:-hrdesktimesol-api:1.0}
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/data/storage
+    entrypoint: ["python", "-m", "app.scheduler"]
+
+volumes:
+  pgdata:
+  storage:

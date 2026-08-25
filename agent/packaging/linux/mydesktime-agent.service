@@ -1,0 +1,23 @@
+[Unit]
+Description=MyDeskTime activity agent
+# A *user* unit, not a system one, and deliberately. The agent reads the
+# foreground window and idle time from the X11 session, which only exists once
+# somebody has logged in and which a root service cannot reach at all.
+After=graphical-session.target
+PartOf=graphical-session.target
+# The agent spools to disk and backfills, so a restart loses nothing. Cap the
+# burst anyway: on a Wayland session the tracker refuses to start, and without
+# this the unit would spin on that refusal forever. These two live in [Unit],
+# not [Service] — systemd moved them in v229 and still parses the old spelling
+# with only a warning, so the limit silently does nothing if they are misplaced.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/mydesktime/sentinel-agent
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=graphical-session.target

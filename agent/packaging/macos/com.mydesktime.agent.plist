@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mydesktime.agent</string>
+
+  <!-- A LaunchAgent, not a LaunchDaemon. Screen Recording, Accessibility and
+       the window list are all per-session and per-user; a daemon running as
+       root sees none of them, no matter what it is granted. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Sentinel Agent.app/Contents/MacOS/sentinel-agent</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <!-- Restart on a crash, but not on a clean exit. A clean exit is what the
+         agent does when the server revokes the device, and relaunching then
+         would fight the revocation every ten seconds. -->
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/mydesktime-agent.err</string>
+</dict>
+</plist>

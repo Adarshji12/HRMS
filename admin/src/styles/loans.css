@@ -1,0 +1,90 @@
+/* Loans and advances — my loans, administration, deduction schedule. */
+
+.ln-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.ln-tile {
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1);
+}
+.ln-tile-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+/* Tabular figures throughout: a column of balances that does not line up on the
+   decimal point cannot be compared at a glance, which is the only thing anybody
+   does with a column of balances. */
+.ln-tile-value {
+  margin-top: 4px; font-size: 22px; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+.ln-tile-meta { margin-top: 2px; font-size: 11.5px; color: var(--text-muted); }
+
+.ln-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ln-row input, .ln-row select { flex: 1 1 150px; min-width: 0; }
+.ln-row input.is-bad { border-color: var(--danger-text, #b3261e); }
+.ln-request { margin-bottom: 16px; }
+
+.ln-list { display: flex; flex-direction: column; gap: 10px; }
+.ln-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1); overflow: hidden;
+}
+.ln-card.is-open { border-color: var(--border-strong); }
+.ln-card-head {
+  display: flex; gap: 14px; align-items: center; width: 100%;
+  padding: 13px 16px; border: none; background: none;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.ln-card-head:hover { background: var(--surface-hover); }
+.ln-card-title { flex: 1 1 auto; min-width: 0; }
+.ln-title { font-weight: 600; color: var(--text-primary); }
+.ln-card-amount {
+  text-align: right; font-weight: 700; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ln-sub {
+  font-size: 11px; font-weight: 500; color: var(--text-muted);
+}
+.ln-card-body { padding: 4px 16px 16px; border-top: 1px solid var(--border); }
+
+.ln-schedule td, .ln-schedule th { vertical-align: top; }
+/* A left rule rather than a background tint: the row still has to be readable,
+   and a red wash behind a table row makes the figures on it harder to read
+   rather than easier to spot. */
+.ln-schedule tr.is-overdue td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger-text, #b3261e);
+}
+.ln-total-row td { font-weight: 700; border-top: 2px solid var(--border-strong); }
+
+.ln-repay { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ln-repay input { flex: 1 1 110px; min-width: 0; font-size: 12px; }
+
+.ln-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.ln-total { flex: 1 1 auto; font-variant-numeric: tabular-nums; font-size: 14px; }
+.ln-actions input { flex: 0 1 170px; min-width: 0; }
+
+.ln-pill {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em; border: 1px solid currentColor; white-space: nowrap;
+}
+.ln-pill-ok { color: var(--success-text); }
+.ln-pill-go { color: var(--brand); }
+.ln-pill-warn { color: var(--warn-ink); }
+.ln-pill-bad { color: var(--danger-text, #b3261e); }
+.ln-pill-muted { color: var(--text-muted); border-color: var(--border-strong); }
+
+.ln-ok { color: var(--success-text); }
+.ln-warn { color: var(--warn-ink); font-weight: 600; }
+.ln-bad { color: var(--danger-text, #b3261e); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .ln-card-head { flex-wrap: wrap; }
+  .ln-card-amount { text-align: left; }
+  .ln-row > * { flex: 1 1 100% !important; }
+}

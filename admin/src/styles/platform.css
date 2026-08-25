@@ -1,0 +1,566 @@
+/* Super Admin console.
+ *
+ * Deliberately a darker, cooler chrome than the company dashboard. An operator
+ * will have both open in adjacent tabs, and the one destructive action here
+ * (suspend) stops a paying customer's data collection — so "which system am I
+ * in" must be answerable at a glance, not by reading the URL.
+ *
+ * It consumes the shared tokens and defines none, so a brand change still flows
+ * through. Only the surfaces are re-pointed.
+ */
+
+.pf-shell {
+  display: flex;
+  min-height: 100%;
+  /* Same ambient wash as the company console, so the two feel like one product
+     even though the chrome differs. */
+  background:
+    radial-gradient(900px 520px at 12% -8%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 70%),
+    var(--page);
+  background-attachment: fixed;
+  --pf-rail: 248px;
+  --pf-gutter: 12px;
+}
+
+/* ------------------------------------------------------------- sidebar --- */
+
+/* A floating dark island, matching the company console's rail geometry. It
+   stays dark in both themes on purpose — see the note at the top of this file.
+   The colours are literals rather than tokens for the same reason: this surface
+   must NOT follow the theme, or the one visual cue telling an operator which
+   system they are about to suspend a customer in disappears in dark mode. */
+.pf-sidebar {
+  width: var(--pf-rail);
+  flex: 0 0 var(--pf-rail);
+  padding: var(--pf-gutter) 0 var(--pf-gutter) var(--pf-gutter);
+  background: transparent;
+  border: 0;
+}
+.pf-sidebar-inner {
+  position: sticky;
+  top: var(--pf-gutter);
+  height: calc(100vh - var(--pf-gutter) * 2);
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px;
+  border-radius: var(--radius-xl);
+  background: #14121f;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.25);
+  color: #c9c6db;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.pf-sidebar-inner::-webkit-scrollbar { width: 0; }
+
+.pf-brand {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 -12px 10px;
+  padding: 16px 14px 13px;
+  background: color-mix(in srgb, #14121f 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.pf-brand svg {
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--brand) 45%, transparent));
+}
+.pf-brand-word {
+  font-size: 15px; font-weight: 750; letter-spacing: -0.025em;
+  color: #fff; line-height: 1.2;
+}
+/* The label that answers "which system am I in" at a glance. */
+.pf-brand-tag {
+  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--brand-accent); font-weight: 700;
+}
+
+.pf-nav-link {
+  position: relative;
+  display: flex; align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 2px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #b6b2cc;
+  font-size: 13.5px; font-weight: 500;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+/* The 2px nudge is the affordance — another grey fill is not. */
+.pf-nav-link:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: #fff;
+  transform: translateX(2px);
+}
+.pf-nav-link[aria-current='page'] {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--brand) 34%, transparent),
+    color-mix(in srgb, var(--brand) 12%, transparent)
+  );
+  color: #fff;
+  font-weight: 640;
+  transform: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 40%, transparent);
+}
+/* Weight and a rail carry the active state too — tint alone is one channel. */
+.pf-nav-link[aria-current='page']::before {
+  content: '';
+  position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--brand-accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--brand-accent) 60%, transparent);
+}
+
+.pf-nav-gap { flex: 1; min-height: 12px; }
+
+.pf-sidebar-foot {
+  position: sticky; bottom: 0;
+  margin: auto -12px 0;
+  padding: 12px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, #14121f 86%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 12px; color: #8d89a6;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.pf-admin-name { color: #fff; font-weight: 600; font-size: 13px; }
+
+.pf-main { flex: 1; min-width: 0; padding: 22px 26px 60px; }
+
+/* ---------------------------------------------------------------- head --- */
+
+.pf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.pf-title {
+  margin: 0; font-size: 25px; font-weight: 680;
+  letter-spacing: -0.025em; line-height: 1.15;
+}
+.pf-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-secondary); max-width: 76ch; line-height: 1.55; }
+.pf-back {
+  display: inline-block;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.pf-back:hover { color: var(--brand-ink); }
+
+/* --------------------------------------------------------------- tiles --- */
+
+.pf-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+/* Accent rail across the top, matching the company console's stat tiles, so a
+   number means the same thing whichever console you read it in. */
+.pf-tile {
+  position: relative;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 15px 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow 180ms ease, transform 180ms ease;
+}
+.pf-tile::before {
+  content: '';
+  position: absolute; inset: 0 0 auto; height: 3px;
+  background: linear-gradient(90deg, var(--brand), var(--brand-accent));
+}
+.pf-tile:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+/* A rail, not a fill: an amber card behind dark text is unreadable in dark
+   mode, and the rail reads identically in both. */
+.pf-tile-warn::before { background: var(--status-warn); }
+.pf-tile-bad::before { background: var(--status-critical); }
+.pf-tile-good::before { background: var(--status-good); }
+.pf-tile-label {
+  font-size: 11.5px; color: var(--text-secondary); margin-bottom: 5px;
+  font-weight: 550;
+}
+.pf-tile-value {
+  font-size: 26px; font-weight: 680; letter-spacing: -0.025em; line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.pf-tile-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 5px; line-height: 1.45; }
+.pf-of { font-size: 15px; color: var(--text-muted); font-weight: 400; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-nav-link:hover, .pf-tile:hover { transform: none; }
+}
+
+/* ------------------------------------------------------------- filters --- */
+
+.pf-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* --------------------------------------------------------------- cards --- */
+
+.pf-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 17px 19px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+}
+.pf-card-title { margin: 0 0 14px; font-size: 13px; font-weight: 650; }
+.pf-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+
+.pf-notice {
+  border-left: 3px solid var(--status-good);
+  background: color-mix(in srgb, var(--status-good) 8%, transparent);
+  padding: 10px 13px; border-radius: var(--radius-sm);
+  font-size: 13px; margin-bottom: 14px;
+}
+.pf-warn-box {
+  border-left: 3px solid var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 8%, transparent);
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  font-size: 13px; margin-bottom: 16px; line-height: 1.6;
+}
+
+/* -------------------------------------------------------------- tables --- */
+
+.pf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pf-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-weight: 700; font-size: 10px;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  /* A 200-row activity log is unreadable once the header scrolls away. */
+  background: var(--surface-1);
+}
+.pf-table td { padding: 10px; border-bottom: 1px solid var(--gridline); vertical-align: top; }
+.pf-table td.num, .pf-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pf-table tbody tr:hover { background: var(--surface-hover); }
+.pf-table tbody tr:last-child td { border-bottom: none; }
+
+.pf-link { font-weight: 600; text-decoration: none; color: var(--brand-ink); }
+.pf-link:hover { text-decoration: underline; }
+.pf-muted { color: var(--text-muted); font-size: 12px; }
+.pf-danger { color: var(--unprod); }
+.pf-ok { color: var(--success-text); font-size: 13px; }
+.pf-mono { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+.pf-empty { padding: 26px 12px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.pf-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; display: block; }
+
+/* --------------------------------------------------------------- pills --- */
+
+/* The word is the signal; the tint only reinforces it. These gate money, so
+   they must survive a monochrome screenshot pasted into a support ticket. */
+.pf-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.pf-pill-ok { color: var(--success-text); border-color: color-mix(in srgb, var(--status-good) 40%, transparent); background: color-mix(in srgb, var(--status-good) 10%, transparent); }
+.pf-pill-bad { color: var(--unprod); border-color: color-mix(in srgb, var(--status-critical) 40%, transparent); background: color-mix(in srgb, var(--status-critical) 10%, transparent); }
+.pf-pill-warn { color: var(--text-primary); border-color: color-mix(in srgb, var(--brand) 35%, transparent); background: var(--brand-soft); }
+.pf-pill-neutral { color: var(--text-secondary); }
+
+/* --------------------------------------------------------------- seats --- */
+
+.pf-seats { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 62px; }
+.pf-seats-text { font-variant-numeric: tabular-nums; }
+.pf-seats-track { width: 58px; height: 5px; background: var(--gridline); border-radius: 3px; overflow: hidden; }
+.pf-seats-fill { display: block; height: 100%; background: var(--prod); border-radius: 3px; }
+.pf-seats-tight { background: var(--unprod); }
+
+/* ------------------------------------------------------------ det lists -- */
+
+.pf-dl { margin: 0; display: grid; gap: 2px; }
+.pf-dl div {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 7px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
+}
+.pf-dl div:last-child { border-bottom: none; }
+.pf-dl dt { color: var(--text-secondary); }
+.pf-dl dd { margin: 0; text-align: right; font-weight: 550; }
+
+.pf-activity { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.pf-activity li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--gridline);
+}
+.pf-activity li:last-child { border-bottom: none; }
+.pf-activity-action { text-transform: capitalize; }
+
+/* --------------------------------------------------------------- forms --- */
+
+.pf-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.pf-form-grid label, .pf-login-card label {
+  display: flex; flex-direction: column; gap: 5px;
+  font-size: 13px; color: var(--text-secondary);
+}
+
+.pf-btn-danger {
+  border-color: color-mix(in srgb, var(--status-critical) 45%, transparent);
+  color: var(--unprod);
+  font-weight: 600;
+}
+.pf-btn-danger:hover { background: color-mix(in srgb, var(--status-critical) 10%, transparent); }
+
+/* --------------------------------------------------------------- login --- */
+
+.pf-login-wrap {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(900px 400px at 50% -120px, #241a44, #0c0a16 70%);
+}
+.pf-login-card {
+  width: 100%; max-width: 380px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  padding: 26px 26px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.pf-login-note {
+  margin: 4px 0 0; font-size: 11.5px; color: var(--text-muted);
+  text-align: center; line-height: 1.55;
+}
+
+@media (max-width: 860px) {
+  .pf-shell { flex-direction: column; }
+  .pf-sidebar {
+    width: auto; flex: none; height: auto; position: static;
+    flex-direction: row; align-items: center; overflow-x: auto;
+    border-right: none; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 12px;
+  }
+  .pf-brand { padding: 0 14px 0 4px; }
+  .pf-sidebar-foot { margin: 0 0 0 auto; padding: 0; border: none; flex-direction: row; align-items: center; }
+  .pf-main { padding: 18px 16px 48px; }
+}
+
+/* ------------------------------------------------------ operator screens -- */
+
+/* Overview groups tiles under headings, because "is anything broken" and
+   "how is the business doing" are two questions and one undifferentiated row
+   of nine tiles gets neither of them read. */
+.pf-section {
+  margin: 22px 0 10px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pf-section:first-of-type { margin-top: 6px; }
+
+.pf-tile-good { border-left: 3px solid var(--status-good); }
+.pf-tile-bad { border-left: 3px solid var(--status-critical); }
+.pf-tile-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45; }
+
+.pf-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.pf-card-title { margin: 0; font-size: 13px; font-weight: 650; }
+.pf-link { font-size: 12.5px; color: var(--brand-accent); text-decoration: none; }
+.pf-link:hover { text-decoration: underline; }
+.pf-mailrow { font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+.pf-mailrow svg { vertical-align: -2px; }
+
+.pf-kv { margin: 0; display: grid; gap: 2px; }
+.pf-kv div {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 7px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
+}
+.pf-kv div:last-child { border-bottom: none; }
+.pf-kv dt { color: var(--text-secondary); }
+.pf-kv dd { margin: 0; text-align: right; font-weight: 600; }
+.pf-bad { color: var(--status-critical); }
+
+.pf-filters {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.pf-filters input[type='search'] { min-width: 280px; }
+.pf-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+
+.pf-nav-gap { flex: 1; min-height: 12px; }
+
+/* Monospace for machine-readable values — an action key and a plan id are
+   identifiers to match, not prose to read. */
+.pf-code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11.5px; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  padding: 2px 6px; border-radius: 5px;
+}
+.pf-nowrap { white-space: nowrap; }
+/* Sensitive rows carry a rail as well as being filterable — someone scanning
+   for "who opened a screenshot" should not have to read every line. */
+.pf-row-notable td:first-child { box-shadow: inset 3px 0 0 var(--status-warn); }
+
+.pf-plangrid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.pf-plan-price { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.pf-plan-price span { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.pf-plan-price-sub { font-size: 12.5px; color: var(--text-secondary); margin: 2px 0 14px; }
+.pf-features {
+  margin: 14px 0 0; padding-left: 18px;
+  font-size: 12.5px; color: var(--text-secondary); line-height: 1.7;
+}
+
+/* Group headings, matching the company rail. The space above separates one
+   group from the last; a rule would be a second, competing divider next to the
+   card edge already there. */
+.pf-nav-group {
+  margin-top: 16px;
+  padding: 0 12px 5px;
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.11em; text-transform: uppercase;
+  color: #6f6b8a;
+}
+
+/* ------------------------------------------------------ provisioning form -- */
+
+.pf-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 18px;
+}
+.pf-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.pf-field input, .pf-field select { width: 100%; }
+.pf-form-section {
+  margin: 22px 0 12px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pf-form-section .pf-muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+/* The success panel. Bordered in brand rather than green: the password inside
+   is the point, and "done" is not the message — "copy this now" is. */
+.pf-created { border: 1px solid color-mix(in srgb, var(--brand) 32%, transparent); }
+.pf-created .pf-card-title { display: flex; align-items: center; gap: 8px; }
+.pf-created .pf-kv dd code { font-size: 13px; }
+
+/* ------------------------------------------------------- plan catalogue --- */
+
+/* A plan card is now a control surface, not a spec sheet, so it needs to say
+   what state it is in before it says what it costs. */
+.pf-plan { display: flex; flex-direction: column; }
+
+/* Withdrawn from sale. Dimmed rather than hidden: companies are still on it,
+   and a catalogue that quietly omits what people are paying for is worse than
+   one that shows it greyed. */
+.pf-plan-off { opacity: 0.62; }
+.pf-plan-off:hover { opacity: 1; }
+
+.pf-plan-flags {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: -4px 0 10px;
+}
+.pf-plan-usage { font-size: 11.5px; }
+.pf-plan-desc {
+  margin: 0 0 12px; font-size: 12.5px; line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* Pushed to the bottom so the buttons line up across cards of different
+   heights — a row of Edit buttons at four different heights reads as four
+   unrelated things. */
+.pf-plan-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: auto; padding-top: 16px;
+}
+
+/* --- Company module grants ------------------------------------------------ */
+
+.pf-card-sub { margin: -4px 0 16px; line-height: 1.6; }
+
+.pf-module-group + .pf-module-group { margin-top: 18px; }
+.pf-module-group-title {
+  margin: 0 0 8px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+/* Grid, not flex, so the segmented control sits on one column across every row
+   regardless of how long a module's description runs. With flex the buttons
+   shifted per row and the eye could not scan the column. */
+.pf-module-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.pf-module-group-title + .pf-module-row { border-top: none; }
+.pf-module-row.is-planned { opacity: 0.55; }
+
+.pf-module-name {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 13.5px; font-weight: 600; color: var(--text-primary);
+}
+.pf-module-desc {
+  margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary);
+}
+.pf-module-state {
+  margin-top: 4px; font-size: 11.5px; color: var(--text-muted);
+}
+
+.pf-chip {
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.pf-chip-warn {
+  background: var(--warn-bg, var(--surface-2));
+  color: var(--warn-ink);
+  border-color: currentColor;
+}
+
+/* Segmented Plan/On/Off. A three-way control rather than a checkbox because
+   "follow the plan" is a real state and a checkbox cannot hold it — see the
+   header comment in CompanyModules.tsx. */
+.pf-seg {
+  display: inline-flex; padding: 2px; gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pf-seg-btn {
+  padding: 5px 12px; border: none; border-radius: 6px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--text-secondary); background: transparent; cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.pf-seg-btn:hover:not(:disabled) { background: var(--surface-hover); }
+.pf-seg-btn.is-on {
+  background: var(--brand); color: var(--brand-on);
+}
+.pf-seg-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.pf-seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.pf-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+
+@media (max-width: 560px) {
+  .pf-module-row { grid-template-columns: 1fr; gap: 10px; }
+}

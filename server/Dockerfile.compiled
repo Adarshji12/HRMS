@@ -1,0 +1,110 @@
+# MyDeskTime API, compiled to a native binary.
+#
+#   docker build -f Dockerfile.compiled -t hrdesktimesol-api:compiled .
+#
+# For installing on a customer's own hardware, where they hold root and can
+# read anything on disk. On a server you control this buys nothing worth the
+# build time — see the note at the bottom.
+#
+# Nuitka compiles the Python to C and then to machine code, so the image
+# carries no .py and no .pyc for the application. That is the difference that
+# matters: bytecode decompiles back to readable source in seconds, machine code
+# does not.
+
+FROM python:3.12-slim AS build
+
+# Nuitka needs a C toolchain and patchelf; psycopg needs libpq to build.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential patchelf libpq-dev ccache \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt nuitka==2.5.9
+
+COPY app ./app
+COPY serve.py .
+
+# --standalone gathers the interpreter and every dependency beside the binary,
+# so the runtime image needs no Python at all.
+#
+# The explicit --include-package list is not redundancy: SQLAlchemy dialects,
+# uvicorn's protocol implementations and passlib's hash backends are all chosen
+# by name at runtime, so nothing imports them where static analysis can see it.
+# Miss one and the build succeeds, then fails on the first request that needs it.
+RUN python -m nuitka \
+        --standalone \
+        --assume-yes-for-downloads \
+        --output-dir=/out \
+        --output-filename=hrdesktimesol-api \
+        --include-package=app \
+        --include-package=uvicorn \
+        --include-package=sqlalchemy \
+        --include-package=psycopg \
+        --include-package=pydantic \
+        --include-package=email_validator \
+        --include-package=jose \
+        --include-package=bcrypt \
+        --include-package=cryptography \
+        --include-package=alembic \
+        --nofollow-import-to=pytest \
+        --python-flag=no_asserts \
+        --remove-output \
+        serve.py
+
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --uid 10001 hrdesktimesol
+
+WORKDIR /app
+
+# The compiled program and its bundled runtime. No source, no bytecode.
+COPY --from=build --chown=hrdesktimesol:hrdesktimesol /out/serve.dist ./
+
+# Migrations stay as Python, on purpose, and this is not an oversight.
+# Alembic discovers revisions by scanning the filesystem at runtime, so they
+# cannot simply be compiled in. More to the point, they are worth nothing to
+# read: they describe the shape of the customer's own database, which they can
+# already dump with one psql command. The business logic — pricing, scoping,
+# attribution, the tenant rules — is what is compiled, and none of it is here.
+COPY --chown=hrdesktimesol:hrdesktimesol alembic.ini ./
+COPY --chown=hrdesktimesol:hrdesktimesol alembic ./alembic
+
+RUN mkdir -p /data/storage && chown hrdesktimesol:hrdesktimesol /data/storage
+# The packaged agent bundles the console offers for download. Not baked in: the
+# agent is built by a different job on a different schedule, and copying a new
+# one in should not mean rebuilding the API.
+RUN mkdir -p /data/agent && chown hrdesktimesol:hrdesktimesol /data/agent
+# Stated outright rather than derived from __file__, which in a compiled build
+# points into the dist directory and would send the schema check looking for
+# alembic.ini in the wrong place — quietly, reporting "nothing" for the current
+# revision instead of failing with something you could act on.
+ENV SERVER_ROOT=/app \
+    STORAGE_DIR=/data/storage \
+    AGENT_DIST_DIR=/data/agent \
+    PYTHONUNBUFFERED=1
+
+USER hrdesktimesol
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+CMD ["./hrdesktimesol-api"]
+
+# What this does and does not achieve
+# -----------------------------------
+# Raises the cost of reading your logic from "unzip and open in an editor" to
+# "reverse engineer machine code". That is a large step, and it is not infinity:
+# anything running on hardware someone else controls can be reversed given
+# enough motivation. Treat it as a deterrent, and keep the licence terms as the
+# thing that actually binds them.
+#
+# It protects nothing else. Whoever has root on this host still has the database,
+# SECRET_KEY, and every screenshot in it. If those matter more than the source —
+# and they usually do — the controls that help are managed hosting, encrypted
+# volumes, and short-lived credentials, not a compiler.

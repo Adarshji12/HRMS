@@ -1,0 +1,201 @@
+/* Helpdesk: ticket lists, the two-audience thread, and the staff queue.
+
+   One rule governs this sheet. There is no class here for "internal note" that
+   the employee-facing page could ever reach — `.hd-internal` is styled once and
+   is referenced only from HelpdeskQueue.tsx. A shared thread component with a
+   conditional class is how the note eventually renders on the wrong page, so
+   the two threads are two components and this sheet serves both without
+   pretending they are one. */
+
+/* --------------------------------------------------------------- pills --- */
+
+.hd-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+}
+
+.hd-open {
+  color: var(--brand-ink); background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.hd-in_progress {
+  color: var(--warn-ink);
+  background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-warn) 42%, transparent);
+}
+.hd-resolved {
+  color: var(--success-text);
+  background: color-mix(in srgb, var(--status-good) 10%, transparent);
+  border-color: color-mix(in srgb, var(--status-good) 40%, transparent);
+}
+.hd-closed { color: var(--text-muted); border-style: dashed; }
+
+/* Priority is a separate scale from status and must not read as a second
+   opinion about it, so it is a bare word rather than another coloured capsule.
+   Only `urgent` shouts: a page where all four levels shout has one level. */
+.hd-prio { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.hd-prio-low { color: var(--text-muted); }
+.hd-prio-normal { color: var(--text-secondary); }
+.hd-prio-high { color: var(--warn-ink); }
+.hd-prio-urgent { color: var(--unprod); }
+
+/* ---------------------------------------------------------------- list --- */
+
+.hd-subject { font-weight: 620; font-size: 13px; line-height: 1.45; }
+.hd-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+/* Local rather than borrowed from org.css: a class defined in another page's
+   stylesheet only exists here because that page happens to be in the bundle. */
+.hd-muted { font-size: 12px; color: var(--text-muted); }
+.hd-when {
+  font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+
+.hd-rowbtn {
+  display: block; width: 100%; text-align: left; background: none;
+  border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
+}
+.hd-rowbtn:hover .hd-subject { color: var(--brand-ink); text-decoration: underline; }
+.hd-row-selected { background: var(--surface-hover); }
+
+/* The counts column. `.hd-unknown` is what a row with no count keys renders,
+   and it is deliberately not a zero. See D-026: a confident zero teaches the
+   reader exactly as much as a confident eight. */
+.hd-counts {
+  font-size: 12px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.hd-counts b { font-weight: 650; }
+.hd-count-int { color: var(--warn-ink); font-weight: 650; }
+.hd-unknown { color: var(--text-muted); font-size: 12px; }
+
+/* -------------------------------------------------------------- detail --- */
+
+.hd-detail { display: grid; gap: 14px; }
+.hd-detail-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+.hd-detail-title {
+  font-size: 16px; font-weight: 650; letter-spacing: -0.01em;
+  margin: 0; line-height: 1.35;
+}
+.hd-detail-meta {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 7px;
+}
+.hd-body {
+  font-size: 13px; line-height: 1.65; color: var(--text-secondary);
+  white-space: pre-wrap; margin: 0;
+}
+
+/* resolved_at and closed_at render as two separate facts, never folded into
+   one "finished on" line: a ticket can be closed without ever having been
+   resolved (a duplicate, a withdrawal), and reopening clears resolved_at and
+   leaves nothing behind it. Two rows, two answers, either may be absent. */
+.hd-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 18px;
+}
+.hd-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hd-fact-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.hd-fact-value { font-size: 12.5px; font-weight: 600; }
+.hd-fact-none { font-size: 12.5px; color: var(--text-muted); font-weight: 400; }
+
+/* -------------------------------------------------------------- source --- */
+
+.hd-source {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 11px; background: var(--surface-2);
+}
+.hd-source-mod {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-muted); flex: none;
+}
+/* Unavailable renders identically whether the row was deleted, belongs to
+   another tenant, or is simply none of the caller's business (D-019). No
+   second style, no tooltip, no reason — telling the two apart is what turns
+   the back-link into an existence oracle. */
+.hd-source-out { color: var(--text-muted); font-style: italic; }
+
+/* -------------------------------------------------------------- thread --- */
+
+.hd-thread { display: grid; gap: 10px; }
+.hd-comment {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 12px; background: var(--surface-1);
+}
+.hd-comment-head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 5px;
+}
+.hd-comment-who { font-size: 12.5px; font-weight: 620; }
+.hd-comment-role { font-size: 11px; color: var(--text-muted); }
+.hd-comment-when {
+  font-size: 11px; color: var(--text-muted); margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.hd-comment-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+
+/* Referenced only from the staff queue. An internal note is a different kind
+   of object, not a decorated reply: the rail and the warn tint are there so
+   nobody pastes one into a mail to the employee by mistake. */
+.hd-internal {
+  background: color-mix(in srgb, var(--status-warn) 8%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--status-warn) 40%, transparent);
+  border-left: 3px solid var(--status-warn);
+}
+.hd-internal-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--warn-ink);
+  border: 1px solid color-mix(in srgb, var(--status-warn) 45%, transparent);
+  border-radius: 4px; padding: 1px 5px;
+}
+
+/* ------------------------------------------------------------ composer --- */
+
+.hd-composer { display: grid; gap: 10px; }
+.hd-composer textarea { min-height: 84px; resize: vertical; font: inherit; }
+
+/* Staff pick an audience for every comment and nothing is pre-selected: the
+   server requires the field with no default because both defaults are wrong.
+   A pre-ticked radio here would put the default straight back. */
+.hd-audience {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;
+}
+.hd-aud {
+  display: flex; gap: 10px; align-items: flex-start;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px 11px; background: var(--surface-1); cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.hd-aud:hover { border-color: var(--text-muted); }
+.hd-aud input { accent-color: var(--brand); margin-top: 2px; flex: none; }
+.hd-aud:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  background: var(--brand-soft);
+}
+.hd-aud-label { font-size: 13px; font-weight: 600; }
+.hd-aud-hint {
+  font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 2px;
+}
+
+.hd-note {
+  font-size: 12px; color: var(--text-muted); line-height: 1.55;
+  border-left: 2px solid var(--gridline); padding-left: 9px;
+}
+
+/* -------------------------------------------------------------- layout --- */
+
+.hd-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 14px; align-items: start;
+}
+@media (max-width: 1100px) {
+  .hd-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+.hd-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

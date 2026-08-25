@@ -1,0 +1,19 @@
+# The image installs dependencies from requirements.txt; the local virtualenv
+# is Windows-built and useless in a Linux container.
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+
+# Never ship the development database, real secrets, or stored screenshots.
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+storage/
+
+tests
+.pytest_cache
+.git
+*.log

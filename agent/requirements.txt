@@ -1,0 +1,17 @@
+requests==2.32.3
+pillow==11.0.0
+mss==10.0.0
+psutil==6.1.0
+pystray==0.19.5
+
+# Windows only — foreground window, idle time and browser URL via UI Automation.
+pywin32==308; sys_platform == "win32"
+comtypes==1.4.8; sys_platform == "win32"
+
+# macOS only — NSWorkspace, Quartz window list and accessibility API.
+pyobjc-framework-Cocoa==10.3.2; sys_platform == "darwin"
+pyobjc-framework-Quartz==10.3.2; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices==10.3.2; sys_platform == "darwin"
+
+# Linux only — X11 window properties and idle time.
+python-xlib==0.33; sys_platform == "linux"

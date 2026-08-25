@@ -1,0 +1,267 @@
+/* Onboarding: the HR pipeline, the per-hire checklist, and the new hire's own
+   view of it. Everything is prefixed `ob-` so it cannot collide with the asset,
+   helpdesk or offboarding sheets, all of which are loaded into the same shell.
+   Colours are tokens from styles.css — the console is theme-aware and a literal
+   hex here would be right in exactly one of the two themes. */
+
+/* ---------------------------------------------------------------- pills --- */
+
+.ob-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+}
+.ob-pill-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* Instance status. `pending_setup` is brand-tinted rather than warned: a hire
+   who has not started yet is the ordinary state of every future joiner, not a
+   problem somebody has to fix. */
+.ob-pending_setup {
+  color: var(--brand-ink); background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.ob-in_progress {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+.ob-completed {
+  color: var(--success-text);
+  border-color: color-mix(in srgb, var(--status-good) 40%, transparent);
+  background: color-mix(in srgb, var(--status-good) 10%, transparent);
+}
+.ob-cancelled { color: var(--text-muted); border-style: dashed; }
+
+/* The employment-lifecycle pill (users.status, D-016). Deliberately a different
+   shape from the checklist pills beside it: "has no login yet" is a fact about
+   the person, not a stage of their checklist, and the two are read together. */
+.ob-lifecycle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em;
+  text-transform: uppercase; padding: 1px 7px; border-radius: var(--radius-sm);
+  border: 1px dashed color-mix(in srgb, var(--brand) 45%, transparent);
+  color: var(--brand-ink); background: var(--brand-soft); white-space: nowrap;
+}
+.ob-lifecycle-inactive {
+  border-color: var(--baseline); color: var(--text-muted); background: transparent;
+}
+
+/* ------------------------------------------------------------- pipeline --- */
+
+.ob-who { font-weight: 600; font-size: 13px; }
+.ob-muted { font-size: 12px; color: var(--text-muted); }
+.ob-when { font-size: 12px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ob-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.ob-row-open { background: var(--surface-hover); }
+.ob-row-click { cursor: pointer; }
+
+/* The progress cell. The meter is narrow on purpose — the caption beside it is
+   the honest number and the bar is only its shape. */
+.ob-progress { display: flex; align-items: center; gap: 9px; min-width: 170px; }
+.ob-progress .meter { flex: 1; }
+.ob-progress-pct {
+  font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums;
+  min-width: 34px; text-align: right;
+}
+.ob-progress-caption { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+.ob-overdue { color: var(--unprod); font-weight: 650; }
+.ob-flag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; color: var(--warn-ink);
+}
+
+/* -------------------------------------------------------------- panels --- */
+
+.ob-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.ob-panel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.ob-panel-title { font-size: 13px; font-weight: 650; margin: 0; }
+.ob-panel-sub { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; line-height: 1.55; max-width: 72ch; }
+
+/* A standing explanation rather than an error: the template/instance rule and
+   the "no login yet" rule both need saying where the control is, not in a
+   release note nobody reads. */
+.ob-note {
+  border-left: 2px solid color-mix(in srgb, var(--brand) 55%, transparent);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px; font-size: 12.5px; line-height: 1.55;
+}
+.ob-note-warn {
+  border-left-color: color-mix(in srgb, var(--status-warn) 60%, transparent);
+  background: color-mix(in srgb, var(--status-warn) 11%, transparent);
+  color: var(--warn-ink);
+}
+.ob-note b { font-weight: 650; }
+
+/* ----------------------------------------------------------- checklist --- */
+
+.ob-groups { display: grid; gap: 14px; }
+
+.ob-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+.ob-group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 14px; background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.ob-group-name { font-size: 12.5px; font-weight: 650; letter-spacing: 0.01em; }
+.ob-group-counts {
+  font-size: 11.5px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.ob-task {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 12px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--gridline);
+  align-items: start;
+}
+.ob-task:first-child { border-top: none; }
+.ob-task-done { background: color-mix(in srgb, var(--status-good) 5%, transparent); }
+.ob-task-skipped { opacity: 0.72; }
+
+.ob-tick {
+  width: 16px; height: 16px; border-radius: 50%; margin-top: 2px;
+  border: 1.5px solid var(--baseline); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--brand-on);
+}
+.ob-tick-done { background: var(--status-good); border-color: var(--status-good); }
+.ob-tick-skipped { border-style: dashed; background: transparent; }
+.ob-tick-progress { border-color: var(--brand); box-shadow: inset 0 0 0 3px var(--brand); }
+
+.ob-task-body { min-width: 0; }
+.ob-task-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.ob-task-title-done { text-decoration: line-through; text-decoration-color: var(--baseline); }
+.ob-task-desc { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; margin-top: 3px; white-space: pre-wrap; }
+.ob-task-meta {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  font-size: 11.5px; color: var(--text-muted); margin-top: 5px;
+}
+.ob-task-meta b { font-weight: 600; color: var(--text-secondary); }
+.ob-task-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.ob-task-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+.ob-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); color: var(--text-secondary);
+}
+.ob-tag-doc {
+  border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+  color: var(--brand-ink); background: var(--brand-soft);
+}
+
+.ob-task-note {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.55; margin-top: 6px;
+  white-space: pre-wrap; border-left: 2px solid var(--gridline); padding-left: 9px;
+}
+.ob-task-note-label {
+  display: block; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 2px;
+}
+
+/* The skip reason is asked for inline rather than in a modal: the server
+   refuses a skip with no reason, so the field is part of the action. */
+.ob-inline-form { margin-top: 8px; display: grid; gap: 7px; max-width: 460px; }
+.ob-inline-form textarea { min-height: 56px; resize: vertical; }
+
+/* ----------------------------------------------------------- documents --- */
+
+.ob-docs { display: grid; gap: 8px; }
+.ob-doc {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px 12px; background: var(--surface-1);
+}
+.ob-doc-body { min-width: 0; flex: 1; }
+.ob-doc-name {
+  font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere;
+}
+.ob-doc-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.ob-doc-actions { display: flex; gap: 6px; flex: none; flex-wrap: wrap; }
+.ob-verified {
+  color: var(--success-text);
+  border-color: color-mix(in srgb, var(--status-good) 40%, transparent);
+  background: color-mix(in srgb, var(--status-good) 10%, transparent);
+}
+.ob-unverified {
+  color: var(--warn-ink);
+  border-color: color-mix(in srgb, var(--status-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+}
+
+.ob-upload {
+  display: grid; gap: 8px; margin-top: 8px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  padding: 10px 12px; background: var(--surface-2); max-width: 520px;
+}
+.ob-upload-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ob-upload input[type='file'] { font-size: 12px; max-width: 100%; }
+
+/* ----------------------------------------------------------- templates --- */
+
+.ob-tpl-list { display: grid; gap: 8px; }
+.ob-tpl {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 12px; background: var(--surface-1);
+}
+.ob-tpl-body { min-width: 0; flex: 1; }
+.ob-tpl-name { font-size: 13px; font-weight: 620; }
+.ob-tpl-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.ob-tpl-rows { display: grid; gap: 8px; margin-top: 10px; }
+.ob-tpl-row {
+  display: grid;
+  grid-template-columns: 1fr 130px 110px 92px auto;
+  gap: 8px; align-items: center;
+}
+.ob-tpl-row input, .ob-tpl-row select { min-width: 0; }
+
+/* ---------------------------------------------------- the hire's own view --- */
+
+.ob-my-head {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-1); box-shadow: var(--shadow);
+  padding: 16px 18px; margin-bottom: 14px;
+}
+.ob-my-top { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.ob-my-date { font-size: 12.5px; color: var(--text-secondary); }
+.ob-my-date b { font-weight: 650; color: var(--text-primary); }
+.ob-my-bar { margin-top: 12px; }
+.ob-my-caption {
+  font-size: 12px; color: var(--text-muted); margin-top: 6px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+
+/* A task somebody else owns is shown, never offered. Seeing that IT still owes
+   you a laptop is the point of the page; being handed a control that 403s is
+   not. */
+.ob-waiting { font-size: 11.5px; color: var(--text-muted); font-style: italic; white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .ob-tpl-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .ob-actions { justify-content: flex-start; }
+  .ob-task { grid-template-columns: 20px 1fr; }
+  .ob-task-side { grid-column: 2; align-items: flex-start; }
+  .ob-task-controls { justify-content: flex-start; }
+}

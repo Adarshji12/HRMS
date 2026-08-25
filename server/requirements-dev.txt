@@ -1,0 +1,6 @@
+# Test and lint dependencies. Kept out of requirements.txt so the production
+# image does not ship a test runner.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-cov==6.0.0

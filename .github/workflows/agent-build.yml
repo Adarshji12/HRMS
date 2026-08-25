@@ -1,0 +1,208 @@
+name: agent build
+
+# PyInstaller does not cross-compile — the bootloader and every native
+# dependency are baked in for the platform doing the building. There is no
+# flag for this and no container trick on macOS. Three runners is not
+# thoroughness, it is the only way to get three artifacts.
+
+on:
+  push:
+    tags: ['agent-v*']
+    paths: ['agent/**', '.github/workflows/agent-build.yml']
+  pull_request:
+    paths: ['agent/**', '.github/workflows/agent-build.yml']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: agent
+
+jobs:
+  build:
+    strategy:
+      # One platform failing should not hide whether the other two are fine —
+      # the macOS and Linux trackers have never run on real hardware, so a red
+      # run there is information, not a reason to cancel the rest.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: ubuntu-22.04     # oldest glibc still supported; a binary built
+            name: linux-x64      # on 24.04 will not start on a 22.04 desktop
+          - os: macos-14
+            name: macos-arm64
+          - os: macos-13
+            name: macos-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install X11 build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        working-directory: .
+        # PyInstaller bundles only what it can find at build time. Without
+        # these the build still succeeds and the tray icon silently never
+        # appears — which on a monitoring product is the disclosure to the
+        # person being monitored, so it is a compliance failure, not cosmetic.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxss1 libcairo2 libgirepository-1.0-1 \
+            gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 xvfb
+
+      - name: Build
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller==6.11.1
+          pyinstaller sentinel-agent.spec --noconfirm --clean
+
+      - name: Smoke-test the bundle
+        shell: bash
+        # Proves the artifact runs. PyInstaller exiting 0 proves only that it
+        # wrote files; every hidden import the spec missed is still an
+        # ImportError waiting on an employee's laptop, and --status touches
+        # config, spool and the platform name, so those surface here.
+        #
+        # xvfb-run on Linux because the runner is headless and the tracker
+        # needs an X display even to report that it cannot find one.
+        run: |
+          case "${{ matrix.os }}" in
+            windows*) ./dist/sentinel-agent/sentinel-setup.exe --status ;;
+            macos*)   "./dist/Sentinel Agent.app/Contents/MacOS/sentinel-agent" --status ;;
+            *)        xvfb-run -a ./dist/sentinel-agent/sentinel-agent --status ;;
+          esac
+
+      - name: Capability self-test
+        shell: bash
+        # Never fails the build. It reports which platform APIs are reachable,
+        # and a CI runner legitimately has no browser focused, no editor and —
+        # on macOS — none of the TCC permissions a real machine would be given.
+        # The value is the log: it is the only place the macOS and Linux
+        # trackers get exercised at all before they reach a laptop.
+        continue-on-error: true
+        run: |
+          case "${{ matrix.os }}" in
+            windows*) ./dist/sentinel-agent/sentinel-setup.exe --selftest ;;
+            macos*)   "./dist/Sentinel Agent.app/Contents/MacOS/sentinel-agent" --selftest ;;
+            *)        xvfb-run -a ./dist/sentinel-agent/sentinel-agent --selftest ;;
+          esac
+
+      # Signing runs only when the certificates are configured, so a fork or a
+      # first-time contributor still gets a working build. Unsigned is a real
+      # problem — SmartScreen blocks the Windows binaries and Gatekeeper refuses
+      # to open the .app at all — but a build that fails for want of a secret
+      # helps nobody.
+      - name: Sign (Windows)
+        if: startsWith(matrix.os, 'windows') && env.WINDOWS_CERT != ''
+        env:
+          WINDOWS_CERT: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+                      Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          # Both binaries: the tracker and the console setup twin.
+          & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD `
+              /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
+              dist\sentinel-agent\sentinel-agent.exe dist\sentinel-agent\sentinel-setup.exe
+          Remove-Item cert.pfx
+
+      - name: Sign and notarise (macOS)
+        if: startsWith(matrix.os, 'macos') && env.APPLE_CERT != ''
+        env:
+          APPLE_CERT: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          echo "$APPLE_CERT" | base64 --decode > cert.p12
+          security create-keychain -p runner build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p runner build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner build.keychain
+
+          # --options runtime is the hardened runtime, and notarisation is
+          # refused without it.
+          codesign --deep --force --options runtime --timestamp \
+                   --sign "$APPLE_SIGN_IDENTITY" "dist/Sentinel Agent.app"
+
+          ditto -c -k --keepParent "dist/Sentinel Agent.app" notarize.zip
+          xcrun notarytool submit notarize.zip --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          # Staple, so the app also opens on a machine that is offline.
+          xcrun stapler staple "dist/Sentinel Agent.app"
+          rm -f cert.p12 notarize.zip
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p out
+          case "${{ matrix.os }}" in
+            windows*)
+              cp packaging/windows/install.ps1 dist/sentinel-agent/
+              7z a "out/mydesktime-agent-${{ matrix.name }}.zip" ./dist/sentinel-agent
+              ;;
+            macos*)
+              rm -rf stage && mkdir stage
+              cp -a "dist/Sentinel Agent.app" stage/
+              cp packaging/macos/com.mydesktime.agent.plist packaging/macos/install.sh stage/
+              chmod +x stage/install.sh
+              # ditto, not zip: only ditto keeps the bundle's symlinks and
+              # extended attributes, and a bundle that loses them is refused by
+              # Gatekeeper with an error that reads like a signing problem.
+              ( cd stage && ditto -c -k --keepParent . "../out/mydesktime-agent-${{ matrix.name }}.zip" )
+              ;;
+            *)
+              cp packaging/linux/mydesktime-agent.service packaging/linux/install.sh dist/sentinel-agent/
+              chmod +x dist/sentinel-agent/install.sh
+              tar -czf "out/mydesktime-agent-${{ matrix.name }}.tar.gz" -C dist sentinel-agent
+              ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mydesktime-agent-${{ matrix.name }}
+          path: agent/out/*
+          if-no-files-found: error
+
+  release:
+    # Tag pushes only. Every other trigger stops at the artifacts above.
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          # None of these are signed yet. Say so on the release page rather
+          # than letting an employee meet the warning with no explanation:
+          # Windows shows a SmartScreen block, macOS refuses to open the app
+          # at all, and both look exactly like malware to the person clicking.
+          body: |
+            Signed when the signing secrets are configured on this repository;
+            unsigned otherwise. To enable:
+
+            * **Windows** — Authenticode-sign both EXEs, or SmartScreen blocks them.
+            * **macOS** — `codesign --deep --options runtime`, then `notarytool submit`
+              and `stapler staple`. Without notarisation Gatekeeper refuses to open
+              the app and the only route past it is right-click → Open, per machine.
+            * **Linux** — no signing needed; ship the tarball or repackage as
+              `.deb`/`.rpm`.

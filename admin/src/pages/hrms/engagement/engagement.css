@@ -1,0 +1,124 @@
+/* Announcements, surveys and recognition.
+
+   One rule shapes the survey half of this sheet: **a withheld result must look
+   deliberate, not broken.** A greyed-out empty chart is indistinguishable from
+   a loading failure, and somebody will either file a bug or conclude that
+   nobody answered. So a withheld result gets a bordered block with a sentence
+   in it, occupying the space the numbers would have — it reads as a decision
+   because it looks like one. */
+
+.eg-tabs { display: flex; gap: 8px; }
+.eg-title { font-weight: 620; }
+.eg-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.eg-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.eg-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.eg-form input[type='text'], .eg-form input:not([type]), .eg-form textarea { width: 100%; }
+.eg-field { display: flex; flex-direction: column; gap: 4px; }
+.eg-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.eg-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.eg-check input { margin-top: 3px; flex: none; }
+
+.eg-pill {
+  display: inline-block; font-size: 11.5px; font-weight: 600;
+  padding: 2px 9px; border-radius: 11px; border: 1px solid currentColor;
+}
+.eg-draft { color: var(--text-muted); }
+.eg-published, .eg-open { color: var(--status-ok, #2e7d32); }
+.eg-archived, .eg-closed { color: var(--text-muted); }
+
+.eg-tag {
+  display: inline-block; margin-left: 8px; font-size: 11px;
+  padding: 1px 8px; border-radius: 10px;
+  background: var(--surface-2, rgba(0,0,0,0.05)); color: var(--text-secondary);
+}
+.eg-tag.is-private, .eg-tag.is-named { color: var(--status-warn, #b26a00); }
+.eg-pin {
+  display: inline-block; margin-right: 8px; font-size: 11px; font-weight: 600;
+  color: var(--brand-ink, #2f5aa8);
+}
+
+/* --- the feed ------------------------------------------------------------- */
+
+.eg-post { padding: 14px 0; border-bottom: 1px solid var(--gridline); }
+.eg-post:last-child { border-bottom: none; }
+.eg-post.is-pinned { background: var(--surface-2, rgba(0,0,0,0.02)); padding-left: 12px; }
+.eg-post-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.eg-body { margin: 8px 0; white-space: pre-wrap; line-height: 1.6; }
+.eg-post-foot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.eg-done { font-size: 12.5px; color: var(--status-ok, #2e7d32); }
+
+/* --- surveys -------------------------------------------------------------- */
+
+.eg-survey { padding: 12px 0; border-bottom: 1px solid var(--gridline); }
+.eg-survey:last-child { border-bottom: none; }
+.eg-survey-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+
+/* The promise, where somebody decides whether to answer honestly. Bordered
+   rather than muted: this is the most important sentence on the page and
+   styling it as a footnote would be styling it as ignorable. */
+.eg-privacy {
+  margin: 10px 0; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--status-ok, #2e7d32);
+  font-size: 12.5px; line-height: 1.6;
+}
+.eg-privacy.is-named { border-color: var(--status-warn, #b26a00); }
+
+.eg-question { margin: 14px 0; }
+.eg-prompt { font-weight: 600; margin-bottom: 8px; }
+.eg-scale { display: flex; gap: 6px; flex-wrap: wrap; }
+.eg-point {
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent;
+  font-weight: 620; font-variant-numeric: tabular-nums;
+}
+.eg-point.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.eg-choices { display: flex; flex-direction: column; gap: 6px; }
+.eg-choice { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+
+/* --- results -------------------------------------------------------------- */
+
+/* Deliberate, not broken. See the sheet header. */
+.eg-withheld {
+  margin: 12px 0; padding: 14px 16px; border-radius: 10px;
+  border: 1px dashed var(--status-warn, #b26a00);
+  color: var(--text-secondary); font-size: 13px; line-height: 1.6;
+}
+
+.eg-result { padding: 14px 0; border-bottom: 1px solid var(--gridline); }
+.eg-result:last-child { border-bottom: none; }
+.eg-mean {
+  font-size: 28px; font-weight: 660; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.eg-dist { display: flex; gap: 8px; align-items: flex-end; height: 70px; margin-top: 10px; }
+.eg-bar {
+  flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  height: 100%; text-align: center; font-size: 11px; color: var(--text-muted);
+}
+.eg-bar-fill { background: var(--brand); border-radius: 3px 3px 0 0; min-height: 2px; }
+.eg-counts, .eg-texts { list-style: none; padding: 0; margin: 8px 0 0; }
+.eg-counts li {
+  display: flex; justify-content: space-between; padding: 5px 0;
+  border-bottom: 1px solid var(--gridline); font-size: 13px;
+}
+.eg-texts li {
+  padding: 8px 12px; margin-bottom: 6px; border-radius: 8px;
+  background: var(--surface-2, rgba(0,0,0,0.03)); font-size: 13px; line-height: 1.6;
+}
+
+.eg-figures { display: flex; gap: 28px; flex-wrap: wrap; margin: 12px 0; }
+.eg-figures > div { display: flex; flex-direction: column; }
+.eg-figure {
+  font-size: 26px; font-weight: 660; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- recognition ---------------------------------------------------------- */
+
+.eg-wall { list-style: none; padding: 0; margin: 12px 0 0; }
+.eg-wall li { padding: 12px 0; border-bottom: 1px solid var(--gridline); }
+.eg-wall li:last-child { border-bottom: none; }
+.eg-wall p { margin: 6px 0; line-height: 1.6; }

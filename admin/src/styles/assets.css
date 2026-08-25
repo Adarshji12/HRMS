@@ -1,0 +1,150 @@
+/* Asset register: status pills, custody ledger, the assign/return forms.
+   Everything here is prefixed `as-` so it cannot collide with the helpdesk
+   sheet, which is loaded on the same shell. Colours come from the tokens in
+   styles.css — the console is theme-aware and a literal hex here would be
+   correct in exactly one of the two themes. */
+
+/* ---------------------------------------------------------------- pills --- */
+
+.as-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); white-space: nowrap;
+}
+.as-pill-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* Four statuses, four readings. `assigned` is brand-tinted rather than green:
+   an issued laptop is not a good or a bad state, it is simply the one where
+   custody is open, and colouring it like success invites the reader to treat
+   `available` as a problem. */
+.as-available {
+  color: var(--success-text);
+  border-color: color-mix(in srgb, var(--status-good) 40%, transparent);
+  background: color-mix(in srgb, var(--status-good) 10%, transparent);
+}
+.as-assigned {
+  color: var(--brand-ink); background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.as-under_repair {
+  color: var(--warn-ink);
+  border-color: color-mix(in srgb, var(--status-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+}
+.as-retired { color: var(--text-muted); border-style: dashed; }
+
+/* ---------------------------------------------------------------- table --- */
+
+.as-tag {
+  font-weight: 650; font-size: 13px;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+.as-serial {
+  font-size: 11.5px; color: var(--text-muted);
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+.as-cat { font-size: 12.5px; color: var(--text-secondary); }
+/* Local rather than borrowed from org.css: a class defined in another page's
+   stylesheet only exists here because that page happens to be in the bundle. */
+.as-muted { font-size: 12px; color: var(--text-muted); }
+.as-when { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.as-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* The register table is the whole page on a wide screen and unreadable on a
+   narrow one, so the wrapper scrolls rather than the body. */
+.as-row-open { background: var(--surface-hover); }
+
+/* ------------------------------------------------------------- panels ---- */
+
+.as-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.as-panel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.as-panel-title { font-size: 13px; font-weight: 650; margin: 0; }
+.as-panel-sub { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; line-height: 1.5; }
+
+/* The three outcomes of a return, stated as choices rather than implied by a
+   dropdown default. See the comment on ReturnForm: "returned" and "available
+   again" are different events and the second one is a decision. */
+.as-choices { display: grid; gap: 8px; }
+.as-choice {
+  display: flex; gap: 10px; align-items: flex-start;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px 11px; background: var(--surface-1); cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.as-choice:hover { border-color: var(--text-muted); }
+.as-choice input { accent-color: var(--brand); margin-top: 2px; flex: none; }
+.as-choice:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  background: var(--brand-soft);
+}
+.as-choice-label { font-size: 13px; font-weight: 600; }
+.as-choice-hint { font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 2px; }
+
+/* -------------------------------------------------------------- ledger --- */
+
+.as-ledger { display: grid; gap: 0; }
+.as-entry {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 12px;
+  padding: 0 0 14px;
+  position: relative;
+}
+.as-entry:last-child { padding-bottom: 0; }
+/* The rail is drawn on the entry rather than the list so the last row does not
+   trail a line into empty space. */
+.as-entry:not(:last-child)::before {
+  content: ''; position: absolute; left: 5px; top: 14px; bottom: 0;
+  width: 1px; background: var(--gridline);
+}
+.as-dot {
+  width: 11px; height: 11px; border-radius: 50%; margin-top: 3px;
+  border: 2px solid var(--surface-1); background: var(--text-muted); flex: none;
+  box-shadow: 0 0 0 1px var(--baseline);
+}
+.as-dot-open { background: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+.as-entry-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.as-entry-who { font-size: 13px; font-weight: 600; }
+.as-entry-when { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.as-note {
+  font-size: 12.5px; color: var(--text-secondary); line-height: 1.55;
+  margin-top: 5px; white-space: pre-wrap;
+  border-left: 2px solid var(--gridline); padding-left: 9px;
+}
+.as-note-label {
+  display: block; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 2px;
+}
+
+/* ------------------------------------------------------ my assets cards --- */
+
+.as-my-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.as-my-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 15px 16px;
+  box-shadow: var(--shadow);
+}
+.as-my-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.as-my-meta { display: grid; gap: 7px; }
+.as-my-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.as-my-row span { color: var(--text-muted); }
+.as-my-row b { font-weight: 600; text-align: right; }
+
+@media (max-width: 640px) {
+  .as-actions { justify-content: flex-start; }
+}

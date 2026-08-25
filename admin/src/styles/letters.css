@@ -1,0 +1,98 @@
+/* Letters — templates, drafts, issued letters. */
+
+.lt-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.lt-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 180px; }
+.lt-field-wide { flex: 2 1 260px; }
+.lt-field-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.lt-field-hint {
+  display: block; font-size: 11.5px; line-height: 1.45; color: var(--text-muted);
+}
+.lt-field input, .lt-field select, .lt-field textarea { width: 100%; }
+
+.lt-compose-row {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+  margin-bottom: 12px;
+}
+.lt-compose { margin-bottom: 16px; }
+
+.lt-subhead {
+  margin: 0 0 8px; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+}
+
+.lt-name { font-weight: 600; color: var(--text-primary); }
+
+.lt-pill {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em; border: 1px solid currentColor;
+}
+.lt-pill-ok { color: var(--success-text); }
+.lt-pill-warn { color: var(--warn-ink); }
+.lt-pill-bad { color: var(--danger-text, #b3261e); }
+
+.lt-ok { color: var(--success-text); }
+.lt-warn { color: var(--warn-ink); font-size: 12px; font-weight: 600; }
+
+/* The rendered letter. Serif and generous line height because it is prose, not
+   data — the same reason the printable page uses Georgia. `pre-wrap` keeps the
+   paragraph breaks the body actually contains without turning them into <p>
+   here; the printable route does that properly. */
+.lt-body {
+  margin: 12px 0; padding: 18px 20px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  font: 13.5px/1.7 Georgia, 'Times New Roman', serif;
+  white-space: pre-wrap; overflow-x: auto;
+  color: var(--text-primary);
+}
+.lt-body-edit {
+  width: 100%; padding: 14px 16px;
+  font: 13.5px/1.7 Georgia, 'Times New Roman', serif;
+  resize: vertical;
+}
+
+.lt-detail { padding: 6px 2px 12px; }
+.lt-subject { font-weight: 700; margin-bottom: 6px; }
+.lt-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.lt-actions input { flex: 1 1 240px; min-width: 0; }
+
+.lt-preview { margin-top: 8px; }
+
+/* Editor: body on the left, field palette on the right. Collapses to one column
+   below 900px, where a 200px sidebar would leave the textarea unusable. */
+.lt-editor-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 20px;
+  align-items: start;
+}
+.lt-editor-main { min-width: 0; }
+.lt-fields {
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-2);
+}
+.lt-field-group + .lt-field-group { margin-top: 12px; }
+.lt-field-group-title {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 5px;
+}
+.lt-token {
+  display: block; width: 100%; margin-bottom: 3px; padding: 4px 8px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-1); color: var(--text-secondary);
+  font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.lt-token:hover { border-color: var(--brand); color: var(--brand); }
+
+.lt-check {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin: 10px 0; font-size: 13px;
+}
+.lt-check input { margin-top: 2px; flex: none; }
+
+@media (max-width: 900px) {
+  .lt-editor-grid { grid-template-columns: 1fr; }
+  .lt-fields { order: -1; }
+}

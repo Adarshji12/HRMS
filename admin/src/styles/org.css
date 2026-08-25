@@ -1,0 +1,431 @@
+/* Organisation structure and the reporting tree. */
+
+/* .tabs moved to styles.css — it is a shared control used by two pages now,
+   and this file is bundled BEFORE styles.css, so anything left here loses every
+   same-specificity tie. */
+
+.muted-sm { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ---------------------------------------------------------- reports --- */
+
+.rp-layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+/* .rp-picker / .rp-item moved to styles.css with the other tab dialects. */
+
+.rp-totals td {
+  border-top: 2px solid var(--border);
+  font-weight: 650;
+  background: var(--surface-2, var(--page));
+}
+
+@media (max-width: 860px) {
+  .rp-layout { grid-template-columns: 1fr; }
+  .rp-picker { position: static; display: flex; flex-wrap: wrap; gap: 4px; }
+  .rp-picker .nav-group { width: 100%; }
+}
+
+/* Key/value list. Shared by any page that shows "field: value" rows. */
+.kv { margin: 0; display: grid; gap: 2px; }
+.kv div {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 7px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
+}
+.kv div:last-child { border-bottom: none; }
+.kv dt { color: var(--text-secondary); }
+.kv dd { margin: 0; text-align: right; font-weight: 550; }
+
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--gridline);
+}
+
+/* ------------------------------------------------------- grouped nav --- */
+
+/* Sized to read as a label for the rows beneath it rather than as a row of its
+   own: 10px caps carry the tracking.
+   The space that separates one group from the last belongs to the section
+   wrapper, NOT to this heading. A margin here needs zeroing on the first group,
+   and neither :first-child nor :first-of-type can express that — every heading
+   is the first div inside its own wrapper, so both match all of them, which is
+   what quietly flattened the spacing to nothing. */
+.nav-group {
+  margin-top: 0;
+  padding: 0 11px 4px;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: 14px;
+}
+.rp-picker > div + div { margin-top: 14px; }
+
+/* .nav-sub lives in styles.css, beside .nav-link. It has to override that
+   rule's padding shorthand, and this file is bundled BEFORE styles.css —
+   pages import it, so it resolves earlier in the module graph — which means it
+   loses every same-specificity tie. .nav-group has no counterpart there and is
+   shared with .rp-picker below, so it stays. */
+
+/* ---------------------------------------------------------- day picker --- */
+
+.day-picker { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.day-chip {
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  min-width: 42px;
+}
+.day-chip:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.day-on {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+  font-weight: 650;
+}
+
+/* ---------------------------------------------------------------- tree --- */
+
+.tree { list-style: none; margin: 0; padding: 0; }
+
+/* Nested lists get an indent rail so the depth of a branch is readable
+   without counting pixels. */
+.tree .tree {
+  margin-left: 17px;
+  padding-left: 16px;
+  border-left: 1px solid var(--gridline);
+}
+
+.tree-item { position: relative; }
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 0;
+  border-radius: var(--radius-sm);
+}
+.tree-row:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
+
+/* A search hit is marked by a left rail plus a tint, so it survives a
+   monochrome screenshot. */
+.tree-hit {
+  background: var(--brand-soft);
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.tree-toggle {
+  width: 22px; height: 22px; flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  display: grid; place-items: center;
+}
+.tree-toggle:disabled { opacity: 0.4; cursor: default; border-style: dashed; }
+
+.tree-avatar {
+  width: 26px; height: 26px; flex: none;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700;
+}
+
+.tree-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.tree-name {
+  font-size: 13.5px; font-weight: 600; text-decoration: none; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-name:hover { text-decoration: underline; }
+.tree-meta {
+  font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.tree-tags { display: flex; gap: 6px; flex: none; align-items: center; }
+
+@media (max-width: 640px) {
+  .tree .tree { margin-left: 9px; padding-left: 10px; }
+  .tree-meta { display: none; }
+}
+
+/* ---------------------------------------------------- employee permissions -- */
+
+.perm-heading {
+  margin: 22px 0 10px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.perm-note {
+  text-transform: none; letter-spacing: 0; font-weight: 500;
+  font-size: 12px; color: var(--text-secondary);
+}
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 4px 20px;
+}
+/* Dimmed as a whole when the role makes them moot, so it reads as "not
+   applicable here" rather than four independently broken checkboxes. */
+.perm-grid[aria-disabled='true'] { opacity: 0.5; }
+.perm-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 2px;
+  cursor: pointer;
+}
+.perm-row:has(input:disabled) { cursor: default; }
+.perm-row input { margin-top: 2px; flex: none; }
+.perm-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.perm-label { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.perm-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+/* Toggle chips for page visibility. Chips rather than checkboxes because these
+   are a set you scan for what is missing, not a list you read line by line. */
+.page-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-chip {
+  height: 32px; padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px; font-weight: 550;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.page-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+/* On is the default, so "on" gets the confident treatment and "off" recedes —
+   an operator is scanning for the ones they switched off. */
+.page-chip-on {
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+  color: var(--brand-ink);
+}
+.page-chip:not(.page-chip-on) { text-decoration: line-through; opacity: 0.75; }
+
+/* --------------------------------------------------- hierarchy editing --- */
+
+/* Row actions. Always rendered and always visible — not revealed on hover.
+   Hover-only controls are undiscoverable: someone looking for "how do I change
+   this" has to already suspect the buttons exist before they can find them.
+   The cost is paid in restraint instead, so they read as quiet until wanted. */
+.tree-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  margin-left: 10px;
+}
+.tree-actions .btn {
+  border-color: transparent;
+  background: none;
+  color: var(--text-muted);
+  font-weight: 550;
+}
+.tree-actions .btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+/* The row already tints on hover, so the buttons need a border of their own to
+   stay legible as controls once it does. */
+.tree-row:hover .tree-actions .btn { border-color: var(--border); }
+
+/* ----------------------------------------------------- manager picker --- */
+
+.hx-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: color-mix(in srgb, #000 45%, transparent);
+  display: grid; place-items: center;
+  padding: 24px;
+}
+
+.hx-dialog {
+  width: min(520px, 100%);
+  max-height: min(640px, 85vh);
+  display: flex; flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.hx-dialog-head { padding: 18px 20px 12px; }
+.hx-dialog-title { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+
+.hx-search {
+  margin: 0 20px 12px;
+  width: calc(100% - 40px);
+}
+
+/* The list scrolls, not the dialog: the search box has to stay put while you
+   type, or every keystroke that shortens the list moves it under the cursor. */
+.hx-list {
+  flex: 1;
+  overflow-y: auto;
+  border-top: 1px solid var(--gridline);
+  padding: 6px 0;
+}
+
+.hx-option {
+  display: flex; flex-direction: column; gap: 2px;
+  width: 100%;
+  padding: 9px 20px;
+  border: none; background: none;
+  text-align: left; cursor: pointer;
+  font: inherit;
+}
+.hx-option:hover:not(:disabled) { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.hx-option:disabled { cursor: default; opacity: 0.65; }
+.hx-option-name {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13.5px; font-weight: 600; color: var(--text-primary);
+}
+.hx-option-meta { font-size: 12px; color: var(--text-muted); }
+
+/* "Nobody" is a different kind of answer from a person, so it is separated
+   rather than sorted in among the names where it would be missed. */
+.hx-option-clear { border-bottom: 1px solid var(--gridline); }
+.hx-option-current { background: var(--brand-soft); }
+
+.hx-dialog-foot {
+  display: flex; justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--gridline);
+}
+
+/* ------------------------------------------------------ employee editor --- */
+
+/* Wider than the manager picker it borrows its shell from. That dialog lists
+   one column of names; this one has fifteen fields, and at 520px the
+   two-column settings grid collapses to one and the form becomes a long
+   scroll for no reason. */
+.emp-dialog {
+  width: min(760px, 100%);
+  max-height: min(86vh, 900px);
+}
+
+.emp-body {
+  padding: 4px 20px 16px;
+}
+
+/* The grid inside a dialog gets a tighter minimum than the settings page uses,
+   so two columns survive at this width instead of falling back to one. */
+.emp-body .settings-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px 20px;
+}
+
+.emp-body .perm-heading:first-of-type { margin-top: 18px; }
+.emp-body .perm-grid { grid-template-columns: 1fr; }
+
+/* --------------------------------------------------------- agent install --- */
+
+/* Same shell as the employee editor, and the same reason for the width: this
+   is a download list, a set of facts to copy and six numbered steps, and at
+   520px the steps wrap to four lines each. */
+.agent-dialog {
+  width: min(720px, 100%);
+  max-height: min(88vh, 900px);
+}
+.agent-body { padding: 4px 20px 20px; }
+.agent-body .perm-heading:first-of-type { margin-top: 14px; }
+
+.agent-bundles { display: grid; gap: 10px; }
+.agent-bundle {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface-2, transparent);
+}
+.agent-bundle-body { min-width: 0; }
+.agent-bundle-name { font-size: 13.5px; font-weight: 650; margin-bottom: 3px; }
+
+/* Truncated, with the copy button beside it. Nobody reads a 64-character hex
+   string off a screen; they copy it and compare, or they read the first few
+   groups down a phone. */
+.agent-hash {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+.agent-hash code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The two values that have to be typed exactly. Given their own block above the
+   steps, because they are what gets copied and the steps are what gets read. */
+.agent-facts {
+  display: grid; gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+}
+.agent-fact { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.agent-fact-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-muted); min-width: 118px;
+}
+.agent-fact code { font-size: 12.5px; }
+
+.agent-steps {
+  margin: 0; padding-left: 22px;
+  font-size: 13px; line-height: 1.65; color: var(--text-secondary);
+}
+.agent-steps li { margin-bottom: 7px; }
+
+.agent-note {
+  margin-top: 14px; padding: 11px 13px;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--gridline);
+  font-size: 12.5px; line-height: 1.6; color: var(--text-secondary);
+}
+/* Reserved for the one that blocks enrolment outright, so it is not competing
+   with the SmartScreen note, which is expected and merely annoying. */
+.agent-note-warn {
+  border-color: color-mix(in srgb, var(--status-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--status-warn) 8%, transparent);
+}
+
+.agent-missing {
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md, 10px);
+  font-size: 13px; line-height: 1.6;
+}
+.agent-missing p { margin: 6px 0 0; color: var(--text-secondary); }
+
+.agent-dialog .hx-dialog-foot { gap: 8px; }
+
+/* ------------------------------------------------- plan / company editor --- */
+
+/* Lives here, not in platform.css, and that is load-bearing. It overrides
+   .hx-dialog and .hx-list, which are defined above — same specificity, so the
+   winner is whichever file the bundler happens to emit last. From platform.css
+   these rules silently lost, and the dialog rendered at the picker's 520px with
+   the picker's padding. Every variant of this shell belongs beside it.
+
+   Wider than the manager picker for the same reason .emp-dialog is: this form
+   is four sections of paired fields, and at 520px every pair collapses to one
+   column and the dialog becomes a long scroll for no reason. */
+.plan-dialog {
+  width: min(760px, 100%);
+  max-height: min(88vh, 900px);
+}
+.plan-body { padding: 16px 20px 20px; }
+.plan-features {
+  width: 100%; resize: vertical; min-height: 96px;
+  font: inherit; font-size: 13px; line-height: 1.6;
+}

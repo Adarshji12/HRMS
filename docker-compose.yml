@@ -1,0 +1,130 @@
+# MyDeskTime — full stack.
+#
+#   cp server/.env.example server/.env   # then set SECRET_KEY and POSTGRES_PASSWORD
+#   docker compose up -d --build
+#
+# Services:
+#   db        PostgreSQL
+#   migrate   runs alembic once, then exits; everything else waits for it
+#   api       the FastAPI application
+#   console   the built admin console behind nginx, proxying /api to api
+#   jobs      the scheduler for alerts and retention
+#   minio     S3-compatible storage, only with `--profile s3`
+
+# Pinned so this stack's containers and volumes are namespaced
+# hrdesktimesol_* regardless of the directory it is checked out into. A
+# MyDeskTime stack on the same host keeps its own mydesktime_* volumes; the two
+# never share a database.
+name: hrdesktimesol
+
+x-api-env: &api-env
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  DATABASE_URL: postgresql+psycopg://hrdesktimesol:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/hrdesktimesol
+  # No default on purpose. Compose refuses to start without it, which is the
+  # whole point — a signing key that falls back to a published default is not
+  # a signing key.
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY to a long random string}
+  BASE_DOMAIN: ${BASE_DOMAIN:-localhost}
+  PUBLIC_SCHEME: ${PUBLIC_SCHEME:-https}
+  PUBLIC_PORT: ${PUBLIC_PORT:-}
+  MARKETING_HOST: ${MARKETING_HOST:-app}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+  RAZORPAY_LIVE: ${RAZORPAY_LIVE:-false}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hrdesktimesol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: hrdesktimesol
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hrdesktimesol"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Not published. Nothing outside this network needs the database, and an
+    # exposed 5432 is how these get found.
+    expose:
+      - "5432"
+
+  # Migrations run once, in their own container, rather than on API start.
+  # With more than one API replica, start-time migrations race each other.
+  migrate:
+    build: ./server
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/data/storage
+      # Whatever scripts/build.ps1 last produced, served by the console's
+      # download. Read-only — the API only reads it.
+      - ./agent/dist:/data/agent:ro
+    expose:
+      - "8000"
+
+  console:
+    build: ./admin
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${CONSOLE_PORT:-8080}:80"
+
+  # The jobs that had no runner: notifications and retention. Both were
+  # complete and neither was ever invoked, so alerts never fired and nothing
+  # was ever deleted despite the retention window the console advertises.
+  jobs:
+    build: ./server
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage:/data/storage
+    entrypoint: ["python", "-m", "app.scheduler"]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-hrdesktimesol}
+      # A default rather than a required variable, even though this is storage.
+      # Compose interpolates the whole file regardless of profiles, so `:?`
+      # here refuses to start the *main* stack over a service nobody asked for.
+      # This profile is for local S3 testing; a real deployment points
+      # STORAGE_BACKEND at managed object storage and never starts this.
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-hrdesktimesol-local-only}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    profiles: ["s3"]
+
+volumes:
+  pgdata:
+  storage:
+  miniodata:
