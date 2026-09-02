@@ -110,9 +110,7 @@ export default function LeaveSettings() {
         <div>
           <h1 className="page-title">Leave Settings</h1>
           <p className="page-sub">
-            What leave exists, when the days are, and when the year turns over. Editing any of
-            this never re-prices leave already applied for — a duration is frozen the moment an
-            employee applies.
+            What leave exists, when the days are, and when the year turns over.
           </p>
         </div>
       </div>

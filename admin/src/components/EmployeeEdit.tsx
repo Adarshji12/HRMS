@@ -25,6 +25,14 @@ interface Draft {
   password: string
   can_view_screenshots: boolean
   can_approve_timesheets: boolean
+  can_punch_anywhere: boolean
+  can_approve_leave: boolean
+  can_approve_regularization: boolean
+  can_manage_assets: boolean
+  can_manage_onboarding: boolean
+  can_manage_helpdesk: boolean
+  can_manage_performance: boolean
+  can_manage_engagement: boolean
   can_export_data: boolean
   can_manage_projects: boolean
   // Every module that has landed since the original four adds a flag here. The
@@ -56,6 +64,14 @@ function draftFrom(user: User): Draft {
     password: '',
     can_view_screenshots: user.can_view_screenshots,
     can_approve_timesheets: user.can_approve_timesheets,
+    can_punch_anywhere: user.can_punch_anywhere,
+    can_approve_leave: user.can_approve_leave ?? true,
+    can_approve_regularization: user.can_approve_regularization ?? true,
+    can_manage_assets: user.can_manage_assets ?? true,
+    can_manage_onboarding: user.can_manage_onboarding ?? true,
+    can_manage_helpdesk: user.can_manage_helpdesk ?? true,
+    can_manage_performance: user.can_manage_performance ?? true,
+    can_manage_engagement: user.can_manage_engagement ?? true,
     can_export_data: user.can_export_data,
     can_manage_projects: user.can_manage_projects,
     can_manage_people: user.can_manage_people !== false,
@@ -285,18 +301,20 @@ export default function EmployeeEdit({
             What they can do
             {isEmployee && (
               <span className="perm-note">
-                An employee only ever sees their own work — these make no difference
-                until the role is Manager or Admin.
+                An employee only ever sees their own work — the greyed ones make no
+                difference until the role is Manager or Admin.
               </span>
             )}
           </h3>
-          <div className="perm-grid" aria-disabled={isEmployee}>
+          {/* Not aria-disabled on the grid: `selfScoped` permissions stay live
+              at every role, so the group as a whole is not disabled. */}
+          <div className="perm-grid">
             {PERMISSIONS.map((p) => (
               <label className="perm-row" key={p.key}>
                 <input
                   type="checkbox"
                   checked={draft[p.key]}
-                  disabled={isEmployee}
+                  disabled={isEmployee && !('selfScoped' in p && p.selfScoped)}
                   onChange={(e) => set(p.key, e.target.checked)}
                 />
                 <span className="perm-body">

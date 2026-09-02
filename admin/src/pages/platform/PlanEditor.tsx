@@ -334,7 +334,7 @@ export default function PlanEditor({
             <span className="pf-muted"> — one per line, shown on the pricing page</span>
           </div>
           <textarea
-            className="plan-features"
+            className="plan-features-input"
             rows={5}
             value={draft.features}
             onChange={(e) => set('features', e.target.value)}

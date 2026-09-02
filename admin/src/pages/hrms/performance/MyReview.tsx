@@ -59,13 +59,13 @@ export function RatingPicker({
   onPick: (value: number | null) => void
 }) {
   return (
-    <div className="pf-scale">
+    <div className="perf-scale">
       {Array.from({ length: max }, (_, i) => i + 1).map((point) => (
         <button
           key={point}
           type="button"
           disabled={disabled}
-          className={`pf-point${value === point ? ' is-on' : ''}`}
+          className={`perf-point${value === point ? ' is-on' : ''}`}
           title={ratingLabel(point, labels) ?? `${point}`}
           /* Clicking the chosen point clears it. There has to be a way back
              from a rating somebody set by accident, and "not rated" is a state
@@ -75,7 +75,7 @@ export function RatingPicker({
           {point}
         </button>
       ))}
-      <span className="pf-scale-label">
+      <span className="perf-scale-label">
         {value === null ? 'Not rated' : ratingLabel(value, labels) ?? ''}
       </span>
     </div>
@@ -196,8 +196,8 @@ function SelfReview({ cycleId, cycle }: { cycleId: string; cycle: ReviewCycle })
     <>
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <div className="pf-status">
-        <span className={`pf-pill pf-${review.status}`}>
+      <div className="perf-status">
+        <span className={`perf-pill perf-${review.status}`}>
           {STATUS_LABEL[review.status] ?? review.status}
         </span>
         {review.status === 'returned' && review.review_note && (
@@ -223,20 +223,20 @@ function SelfReview({ cycleId, cycle }: { cycleId: string; cycle: ReviewCycle })
       {!review.goals.length ? (
         <Empty>No goals have been set for you in this round yet.</Empty>
       ) : (
-        <div className="pf-goals">
+        <div className="perf-goals">
           {review.goals.map((goal) => (
-            <section className="card pf-goal" key={goal.id}>
-              <div className="pf-goal-head">
+            <section className="card perf-goal" key={goal.id}>
+              <div className="perf-goal-head">
                 <div>
-                  <div className="pf-goal-title">{goal.title}</div>
+                  <div className="perf-goal-title">{goal.title}</div>
                   {goal.description && (
                     <p className="muted">{goal.description}</p>
                   )}
                   {goal.target && (
-                    <p className="pf-target"><strong>Target:</strong> {goal.target}</p>
+                    <p className="perf-target"><strong>Target:</strong> {goal.target}</p>
                   )}
                 </div>
-                <span className="pf-weight">{weight(goal.weight_bps)}</span>
+                <span className="perf-weight">{weight(goal.weight_bps)}</span>
               </div>
 
               <RatingPicker
@@ -261,7 +261,7 @@ function SelfReview({ cycleId, cycle }: { cycleId: string; cycle: ReviewCycle })
               {/* Only ever populated once the rating has been shared — the
                   server removes it otherwise, so there is nothing to hide. */}
               {goal.manager_rating !== null && (
-                <div className="pf-manager-view">
+                <div className="perf-manager-view">
                   <strong>Manager: {goal.manager_rating}</strong>
                   {goal.manager_comment && <span> — {goal.manager_comment}</span>}
                 </div>
@@ -283,7 +283,7 @@ function SelfReview({ cycleId, cycle }: { cycleId: string; cycle: ReviewCycle })
       </section>
 
       {editable && (
-        <div className="pf-actions">
+        <div className="perf-actions">
           <button className="btn" disabled={busy} onClick={save}>Save</button>
           <button
             className="btn primary"
@@ -313,12 +313,12 @@ function SelfReview({ cycleId, cycle }: { cycleId: string; cycle: ReviewCycle })
       )}
 
       {review.status === 'finalised' && (
-        <section className="card pf-outcome">
+        <section className="card perf-outcome">
           <h2 className="card-title">Outcome</h2>
           {review.rating_visible ? (
             <>
-              <div className="pf-final">
-                <span className="pf-final-value">{review.overall_rating}</span>
+              <div className="perf-final">
+                <span className="perf-final-value">{review.overall_rating}</span>
                 <span className="muted">
                   of {review.rating_max ?? cycle.rating_max}
                   {ratingLabel(review.overall_rating, cycle.rating_labels)

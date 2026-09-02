@@ -2,6 +2,25 @@ import { getSlug } from './tenant'
 
 const TOKEN_KEY = 'hrdesktimesol.token'
 
+/**
+ * Where the API lives.
+ *
+ * Empty by default, which keeps every call same-origin — the shape the nginx
+ * image and the dev proxy both rely on, and the one that keeps the bearer token
+ * off any other host.
+ *
+ * Set `VITE_API_BASE` when the console and the API are served from different
+ * origins, which is every static-hosting deployment: Render Static Sites,
+ * Vercel, and a native mobile shell, none of which have an API to be relative
+ * to. Prefer a same-origin rewrite where the host offers one — a rewrite keeps
+ * the browser's own origin and sidesteps CORS entirely.
+ *
+ * Trailing slash stripped so `https://api.example.com/` and the same without
+ * do not produce `//api/v1`, which some proxies answer with a redirect the
+ * fetch then repeats as a GET.
+ */
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
+
 /** Every call names its tenant.
  *
  * Sent even when the subdomain already identifies the organisation: the dev
@@ -64,7 +83,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(`/api/v1${path}`, { ...init, headers })
+  const response = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers })
 
   if (response.status === 401) {
     setToken(null)
@@ -123,7 +142,11 @@ export const api = {
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T,>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-  del: (path: string) => request<void>(path, { method: 'DELETE' }),
+  /* Generic, because a DELETE is allowed to answer with something. Chat's
+     message removal is a soft delete and returns the tombstoned row, so the
+     caller can swap it into the thread rather than refetching the page. The
+     default stays `void` for the callers that ignore the body. */
+  del: <T = void,>(path: string) => request<T>(path, { method: 'DELETE' }),
   /**
    * Multipart upload.
    *
@@ -142,7 +165,12 @@ export async function fetchImage(path: string): Promise<string> {
   const token = getToken()
   const headers = withTenant(new Headers())
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(path, { headers })
+  // The server hands back a root-relative URL ("/api/v1/screenshots/x/thumb"),
+  // which needs the base like any other call once the console is on a different
+  // origin. Only root-relative ones: the s3 backend answers with a redirect to
+  // an absolute presigned URL, and prefixing that would corrupt it.
+  const target = path.startsWith('/') ? `${API_BASE}${path}` : path
+  const response = await fetch(target, { headers })
   if (!response.ok) throw new ApiError(response.status, 'Image unavailable')
   return URL.createObjectURL(await response.blob())
 }
@@ -152,7 +180,7 @@ export async function download(path: string, filename: string): Promise<void> {
   const token = getToken()
   const headers = withTenant(new Headers())
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(`/api/v1${path}`, { headers })
+  const response = await fetch(`${API_BASE}/api/v1${path}`, { headers })
   if (!response.ok) {
     const { message, reason, detail } = await readError(response)
     throw new ApiError(response.status, message, reason, detail)
@@ -181,7 +209,7 @@ export async function openPrintable(path: string): Promise<void> {
   const token = getToken()
   const headers = withTenant(new Headers())
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(`/api/v1${path}`, { headers })
+  const response = await fetch(`${API_BASE}/api/v1${path}`, { headers })
   if (!response.ok) {
     const { message, reason, detail } = await readError(response)
     throw new ApiError(response.status, message, reason, detail)
@@ -209,7 +237,7 @@ export async function downloadPost(path: string, filename: string): Promise<void
   const token = getToken()
   const headers = withTenant(new Headers())
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(`/api/v1${path}`, { method: 'POST', headers })
+  const response = await fetch(`${API_BASE}/api/v1${path}`, { method: 'POST', headers })
   if (!response.ok) {
     const { message, reason, detail } = await readError(response)
     throw new ApiError(response.status, message, reason, detail)

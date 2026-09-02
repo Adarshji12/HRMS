@@ -1,0 +1,115 @@
+/* Company profile — the company's own details, and the logo that brands the
+   console for everyone who signs in to it.
+
+   It is a long form, so the whole file is about making a long form readable:
+   three grouped cards rather than one wall of boxes, a save bar that follows
+   the reader down instead of waiting at the bottom, and a logo preview that
+   shows both themes at once because a logo that vanishes on the dark rail is
+   the failure this page exists to catch before anybody else sees it. */
+
+.co { display: flex; flex-direction: column; gap: var(--space-4); }
+.co > .page-head { margin-bottom: 0; }
+
+/* ----------------------------------------------------------------- logo --- */
+
+.co-logo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .co-logo { grid-template-columns: minmax(0, 1fr); }
+}
+.co-logo-body { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.co-logo-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.co-preview { display: flex; flex-direction: column; gap: var(--space-2); }
+.co-preview-label, .co-preview-hint {
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.co-preview-label {
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.co-preview-pair { display: flex; gap: var(--space-2); }
+
+/* The two tiles are the only place in this console that pins a colour rather
+   than taking a theme token, and they have to: the whole point is showing the
+   logo on BOTH grounds at once, so one of them is always the opposite of
+   whatever theme the reader is in. They are a swatch, not chrome. */
+.co-preview-tile {
+  display: grid; place-items: center;
+  width: 148px; height: 84px; padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.co-preview-tile img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.co-preview-light { background: #ffffff; }
+.co-preview-dark { background: #0f1c17; }
+.co-preview-none {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-sm); color: #8a9a92;
+}
+
+/* ---------------------------------------------------------------- groups --- */
+
+.co-group-head { margin-bottom: var(--space-4); }
+.co-group-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md); color: var(--text-secondary);
+  line-height: 1.55; max-width: 74ch;
+}
+
+.co-fields {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+}
+.co-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+/* An address line is one long string, not two short ones, and a 212px box for
+   it means reading a street address through a letterbox. */
+.co-field-wide { grid-column: 1 / -1; }
+.co-field-label {
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+.co-field input { width: 100%; }
+.co-field-hint { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* -------------------------------------------------------------- save bar --- */
+
+/* Sticks to the bottom of the viewport while the form scrolls past it. Three
+   cards is far enough that a save button at the end is one somebody has to go
+   looking for after every edit. */
+.co-bar {
+  position: sticky; bottom: var(--space-4); z-index: 5;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  box-shadow: var(--shadow-lg);
+}
+.co-bar-note { margin-right: auto; font-size: var(--text-md); color: var(--text-secondary); }
+
+/* ------------------------------------------------------------- read-only --- */
+
+.co-readonly { margin: 0; display: flex; flex-direction: column; }
+.co-readonly > div {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--gridline);
+}
+.co-readonly > div:last-child { border-bottom: none; }
+.co-readonly dt { font-size: var(--text-md); color: var(--text-secondary); }
+.co-readonly dd {
+  margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold);
+  color: var(--text-primary); text-align: right;
+}
+.co-readonly-note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm); color: var(--text-muted); line-height: 1.55;
+}

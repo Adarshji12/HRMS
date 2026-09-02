@@ -62,9 +62,7 @@ export default function SalaryStructures() {
         <div>
           <h1>Salary structures</h1>
           <p className="muted">
-            One person at a time. A change is a new revision effective from a
-            date — the old one stays, because payroll has to be able to
-            reproduce what it ran.
+            One person at a time. A change is a new revision, effective from a date.
           </p>
         </div>
         <select value={userId} onChange={(event) => setUserId(event.target.value)}

@@ -35,6 +35,7 @@ from app.api.tenancy import OptionalTenant
 from app.core.security import decode_access_token, token_digest
 from app.models import (
     AttendanceRecord,
+    AttendanceSettings,
     Device,
     GeofenceEnforcement,
     OfficeLocation,
@@ -287,6 +288,7 @@ def punch_in(
         accuracy_m=payload.accuracy_m,
         source=actor.source(payload.source),
         note=payload.note,
+        work_mode=payload.work_mode,
         ip=_client_ip(request),
     )
     audit(
@@ -302,6 +304,10 @@ def punch_in(
             "is_geo_verified": outcome.verdict.is_verified,
             "distance_m": outcome.verdict.distance_m,
             "source": outcome.record.check_in_source,
+            # In the audit trail because it is a claim the employee made, and
+            # the claim is what a later dispute turns on — not the fact that
+            # the fence was skipped, which is merely its consequence.
+            "work_mode": outcome.record.work_mode,
         },
     )
     result = _punch_result(db, actor, outcome)
@@ -510,9 +516,13 @@ def get_settings(viewer: CurrentUser, db: DbSession) -> AttendanceSettingsOut:
     configured attendance stays row-less, which is what keeps the Phase 0
     migration additive for every organisation that existed before it.
     """
+    row = db.get(AttendanceSettings, viewer.org_id)
     return AttendanceSettingsOut(
         geofence_enforcement=svc.enforcement_for(db, viewer.org_id),
         active_location_count=len(svc.active_locations(db, viewer.org_id)),
+        geofence_office=row.geofence_office if row else None,
+        geofence_work_from_home=row.geofence_work_from_home if row else None,
+        geofence_on_duty=row.geofence_on_duty if row else None,
     )
 
 
@@ -521,14 +531,31 @@ def put_settings(
     payload: AttendanceSettingsIn, admin: AdminUser, request: Request, db: DbSession
 ) -> AttendanceSettingsOut:
     """Set the geofence policy. Refuses ``required`` with no offices (D-014)."""
-    row = svc.update_settings(db, admin.org_id, payload.geofence_enforcement)
+    row = svc.update_settings(
+        db,
+        admin.org_id,
+        payload.geofence_enforcement,
+        per_mode={
+            "geofence_office": payload.geofence_office,
+            "geofence_work_from_home": payload.geofence_work_from_home,
+            "geofence_on_duty": payload.geofence_on_duty,
+        },
+    )
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.settings_updated",
           request=request, target_type="attendance_settings", target_id=str(admin.org_id),
-          detail={"geofence_enforcement": row.geofence_enforcement})
+          detail={
+              "geofence_enforcement": row.geofence_enforcement,
+              "geofence_office": row.geofence_office,
+              "geofence_work_from_home": row.geofence_work_from_home,
+              "geofence_on_duty": row.geofence_on_duty,
+          })
     db.commit()
     return AttendanceSettingsOut(
         geofence_enforcement=row.geofence_enforcement,
         active_location_count=len(svc.active_locations(db, admin.org_id)),
+        geofence_office=row.geofence_office,
+        geofence_work_from_home=row.geofence_work_from_home,
+        geofence_on_duty=row.geofence_on_duty,
     )
 
 

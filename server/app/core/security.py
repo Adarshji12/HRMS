@@ -43,12 +43,27 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
+def create_access_token(
+    subject: str,
+    extra: dict[str, Any] | None = None,
+    expires_minutes: float | None = None,
+) -> str:
+    """Mint a signed token.
+
+    ``expires_minutes`` overrides the configured session lifetime, and exists
+    for credentials that are not sessions: the chat socket ticket lives for one
+    minute because it travels in a URL, where a token with an eight-hour life
+    would be a session anybody could lift out of a proxy log. Callers minting an
+    ordinary login token leave it unset and get the configured value.
+    """
     now = datetime.now(timezone.utc)
+    lifetime = (
+        settings.access_token_expire_minutes if expires_minutes is None else expires_minutes
+    )
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.access_token_expire_minutes)).timestamp()),
+        "exp": int((now + timedelta(minutes=lifetime)).timestamp()),
         **(extra or {}),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)

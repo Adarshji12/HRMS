@@ -62,7 +62,7 @@
 .ex-addline input[type='date'] { flex: 0 1 140px; }
 .ex-addline select { flex: 1 1 150px; min-width: 0; }
 .ex-addline input:not([type='date']) { flex: 1 1 130px; min-width: 0; }
-.ex-addline input.is-bad { border-color: var(--danger-text, #b3261e); }
+.ex-addline input.is-bad { border-color: var(--danger-text); }
 
 .ex-actions {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
@@ -81,7 +81,7 @@
 .ex-pill-ok { color: var(--success-text); }
 .ex-pill-go { color: var(--brand); }
 .ex-pill-warn { color: var(--warn-ink); }
-.ex-pill-bad { color: var(--danger-text, #b3261e); }
+.ex-pill-bad { color: var(--danger-text); }
 .ex-pill-muted { color: var(--text-muted); border-color: var(--border-strong); }
 
 .ex-ok { color: var(--success-text); }
@@ -92,7 +92,8 @@
 
 /* The file input is hidden inside a label styled as a button — the native
    control cannot be styled and its text ("Choose File") is wrong here. */
-.btn.is-disabled { opacity: 0.5; pointer-events: none; }
+/* .btn.is-disabled moved to styles.css — it dresses a shared primitive, and
+   two modules were already reaching for it. */
 
 @media (max-width: 640px) {
   .ex-card-head { flex-wrap: wrap; }

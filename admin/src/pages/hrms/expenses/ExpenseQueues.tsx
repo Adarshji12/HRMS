@@ -65,8 +65,7 @@ export function ExpenseReview() {
         <div>
           <h1>Expense approvals</h1>
           <p className="muted">
-            Claims from your team awaiting a decision. Open one to see the lines
-            and receipts exactly as they were submitted.
+            Claims from your team awaiting a decision.
           </p>
         </div>
         {summaryQ.data && (
@@ -161,8 +160,7 @@ export function ExpensePayments() {
         <div>
           <h1>Expense payments</h1>
           <p className="muted">
-            Approved claims that have not been paid. Recording a payment is a
-            separate act from approving it — this list is what is outstanding.
+            Approved claims not yet paid.
           </p>
         </div>
         <div className="ex-headline">{money(owed)} outstanding</div>

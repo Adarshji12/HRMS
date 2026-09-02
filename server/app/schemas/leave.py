@@ -419,3 +419,77 @@ class CompOffCreditOut(ORMModel):
     #: not run cannot present a dead credit as spendable.
     is_expired: bool = False
     is_used: bool = False
+
+
+# --------------------------------------------------------------------------- #
+# Workforce overview — one company's leave, read across a year
+# --------------------------------------------------------------------------- #
+#
+# Everything below is a *tally*, not a record. These models carry no application
+# id, no reason and no approver: the overview page answers "how much leave, of
+# what kind, when" for a group of people, and a page that shipped the underlying
+# rows would be a second, unscoped way to read everybody's leave history.
+#
+# Durations are integer milli-days on the wire, as everywhere else in this
+# module (D-012). The console divides for display and never the other way.
+
+
+class LeaveTypeTallyOut(BaseModel):
+    """One leave type's usage in the selected month."""
+
+    leave_type_id: uuid.UUID
+    #: The stable handle payslips and reports key on. Null where the org never
+    #: set one, in which case the console falls back to the name.
+    code: str | None = None
+    name: str
+    milli_days: int
+
+
+class MonthTallyOut(BaseModel):
+    month: int = Field(ge=1, le=12)
+    milli_days: int
+
+
+class HolidayUptakeOut(BaseModel):
+    """An optional holiday and how many people in scope chose to take it.
+
+    Only optional holidays appear. A fixed holiday is a holiday for everybody,
+    so counting "who is off" for one would be counting the headcount.
+    """
+
+    holiday_id: uuid.UUID
+    name: str
+    holiday_date: date
+    employees: int
+
+
+class OnLeaveOut(BaseModel):
+    """One person away during the requested window."""
+
+    user_id: uuid.UUID
+    user_name: str
+    employee_code: str | None = None
+    leave_type_name: str
+    start_date: date
+    end_date: date
+    milli_days: int
+    is_half_day: bool
+
+
+class LeaveOverviewOut(BaseModel):
+    year: int
+    month: int
+    #: How many people this covers — the whole company for an administrator, a
+    #: reporting subtree for a manager. Stated rather than implied, because
+    #: "25 days of leave" means different things for a team of three and a
+    #: company of three hundred.
+    headcount: int
+    by_type: list[LeaveTypeTallyOut]
+    by_month: list[MonthTallyOut]
+    optional_holidays: list[HolidayUptakeOut]
+    on_leave: list[OnLeaveOut]
+    #: The window `on_leave` was computed over, echoed back so the console can
+    #: label the table with the dates the server actually used rather than the
+    #: ones it thinks it asked for.
+    window_start: date
+    window_end: date

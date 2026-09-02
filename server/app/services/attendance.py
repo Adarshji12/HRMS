@@ -162,8 +162,25 @@ def _local_dt(day: date, hhmm: str, tz: ZoneInfo) -> datetime:
 # --------------------------------------------------------------------------- #
 
 
-def enforcement_for(db: Session, org_id: uuid.UUID) -> str:
-    """The org's geofence mode, resolving a missing row to the config default.
+def enforcement_for(
+    db: Session,
+    org_id: uuid.UUID,
+    *,
+    work_mode: str | None = None,
+    user: User | None = None,
+) -> str:
+    """The geofence mode that applies to one punch.
+
+    Three things decide it, in order of authority:
+
+    1. **The employee.** ``can_punch_anywhere`` is an exemption, not a
+       preference — a field engineer is at a different site every day and the
+       fence has nothing true to say about them. It wins over any policy.
+    2. **The declared work mode.** Fencing somebody who has just told you they
+       are at a client's office asks a question whose answer you already have.
+    3. **The org policy**, which is what every punch got before work modes
+       existed and what the desktop agent still gets, since it observes a
+       session starting without knowing whose desk it is on.
 
     **Never inserts.** D-009: a missing ``attendance_settings`` row is a legal,
     permanent state meaning "this tenant has not decided", and lazily writing
@@ -171,9 +188,11 @@ def enforcement_for(db: Session, org_id: uuid.UUID) -> str:
     punches, and hand every existing tenant a row the additive migration
     deliberately did not create for them.
     """
+    if user is not None and user.can_punch_anywhere:
+        return GeofenceEnforcement.OFF.value
     row = db.get(AttendanceSettings, org_id)
     if row is not None:
-        return row.geofence_enforcement
+        return row.geofence_for(work_mode)
     return app_settings.geofence_enforcement_default
 
 
@@ -212,7 +231,13 @@ def fences_for(db: Session, org_id: uuid.UUID) -> list[geofence.Fence]:
     ]
 
 
-def update_settings(db: Session, org_id: uuid.UUID, enforcement: str | None) -> AttendanceSettings:
+def update_settings(
+    db: Session,
+    org_id: uuid.UUID,
+    enforcement: str | None,
+    *,
+    per_mode: dict[str, str | None] | None = None,
+) -> AttendanceSettings:
     """Write the org's attendance policy, refusing the one setting that bricks it.
 
     **D-014.** Switching to ``required`` with zero active office locations locks
@@ -246,6 +271,29 @@ def update_settings(db: Session, org_id: uuid.UUID, enforcement: str | None) -> 
         db.add(row)
     else:
         row.geofence_enforcement = target
+
+    # Per-mode overrides. "inherit" is how the API says NULL — see
+    # _MODE_POLICY_PATTERN — and a key absent from the dict means "leave it".
+    #
+    # D-014 is deliberately NOT re-checked per mode: `required` on Office with
+    # no offices is caught by the same guard above only when the org policy is
+    # also required, so it is checked explicitly here instead. Without it an
+    # administrator could lock the tenant out through the back door.
+    for field, value in (per_mode or {}).items():
+        if value is None:
+            continue
+        resolved = None if value == "inherit" else value
+        if resolved == GeofenceEnforcement.REQUIRED.value and not active_locations(db, org_id):
+            raise _refuse(
+                http_status.HTTP_409_CONFLICT,
+                "geofence_required_without_locations",
+                "Add at least one active office location before requiring geofenced "
+                "punches for a work mode — otherwise nobody using that mode can "
+                "punch in at all.",
+                active_location_count=0,
+            )
+        setattr(row, field, resolved)
+
     db.flush()
     return row
 
@@ -465,13 +513,14 @@ def punch_in(
     accuracy_m: int | None = None,
     source: str = PunchSource.WEB.value,
     note: str | None = None,
+    work_mode: str | None = None,
     ip: str | None = None,
     at: datetime | None = None,
 ) -> PunchOutcome:
     """Record a check-in for today, in the organisation's local calendar."""
     now = as_utc(at) or datetime.now(timezone.utc)
     day = local_day(org, now)
-    enforcement = enforcement_for(db, org.id)
+    enforcement = enforcement_for(db, org.id, work_mode=work_mode, user=user)
     verdict = _geo_for_punch(db, org.id, lat, lng, accuracy_m, enforcement)
 
     record = record_for(db, org.id, user.id, day)
@@ -516,6 +565,11 @@ def punch_in(
     record.check_in_source = source
     if note:
         record.note = note
+    # The declaration stands even when the fence is off for it — a manager
+    # reading the day back needs to know the person said "client site", not
+    # merely that nothing was measured.
+    if work_mode:
+        record.work_mode = work_mode
     # Re-stated rather than assumed: a row created by a previous nightly run as
     # `absent` and punched into afterwards (a late-running job, a backfilled
     # day) must not keep the absence.
@@ -540,8 +594,6 @@ def punch_out(
     """Close today's open check-in, or yesterday's if a night shift is running."""
     now = as_utc(at) or datetime.now(timezone.utc)
     day = local_day(org, now)
-    enforcement = enforcement_for(db, org.id)
-    verdict = _geo_for_punch(db, org.id, lat, lng, accuracy_m, enforcement)
 
     record = record_for(db, org.id, user.id, day)
     if record is None or record.check_in_at is None:
@@ -585,6 +637,14 @@ def punch_out(
             "You have already punched out for this day.",
             check_out_at=as_utc(record.check_out_at).isoformat(),
         )
+
+    # Resolved here rather than at the top of the function, because the rule
+    # depends on what this person declared *this morning* — punching out of a
+    # work-from-home day must not be fenced against the office just because the
+    # check-out body carries no mode of its own. That means the record has to be
+    # found first, so the geofence check moved below the lookup.
+    enforcement = enforcement_for(db, org.id, work_mode=record.work_mode, user=user)
+    verdict = _geo_for_punch(db, org.id, lat, lng, accuracy_m, enforcement)
 
     record.check_out_at = now
     record.check_out_lat = lat
@@ -669,6 +729,8 @@ def day_out(
         is_geo_verified_out=record.is_geo_verified_out,
         check_in_distance_m=record.check_in_distance_m,
         check_out_distance_m=record.check_out_distance_m,
+        work_mode=record.work_mode,
+        note=record.note,
         shift_id=shift.id if shift else None,
         shift_name=shift.name if shift else None,
         shift_start_time=shift.start_time if shift else None,

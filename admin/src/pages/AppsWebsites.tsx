@@ -98,8 +98,7 @@ export default function AppsWebsites() {
         <div>
           <h1 className="page-title">Apps &amp; Websites</h1>
           <p className="page-sub">
-            Every recorded usage with its start, end and duration. Idle stretches are shown but
-            marked, so they are never mistaken for work.
+            Every recorded usage, with idle stretches marked rather than hidden.
           </p>
         </div>
         <div className="head-actions">

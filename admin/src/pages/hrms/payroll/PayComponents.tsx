@@ -70,8 +70,7 @@ export default function PayComponents() {
         <div>
           <h1>Pay components</h1>
           <p className="muted">
-            The lines a payslip can carry. The three statutory flags on each are
-            what PF, ESI and tax will be computed from.
+            The lines a payslip can carry, and their statutory flags.
           </p>
         </div>
       </header>
@@ -92,6 +91,7 @@ export default function PayComponents() {
           allowance absorbing the balance.
         </Empty>
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -147,14 +147,11 @@ export default function PayComponents() {
               ))}
             </tbody>
           </table>
-          <p className="muted">
-            Editing a component changes the next structure built from it and
-            nothing about existing ones — every structure keeps its own snapshot,
-            so a payslip from last year still explains itself the way it did
-            then. A component that has ever been used cannot be deleted;
-            deactivating retires it.
-          </p>
         </div>
+        <p className="muted">
+            Editing a component changes the next structure built from it, never an existing one.
+          </p>
+        </>
       )}
     </div>
   )

@@ -256,6 +256,20 @@
 .pf-danger { color: var(--unprod); }
 .pf-ok { color: var(--success-text); font-size: 13px; }
 .pf-mono { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+/* A failed fetch. Matches the tenant console's `.error` so the two consoles
+   report a problem the same way, which is the one thing they should agree on. */
+.pf-error {
+  border-left: 3px solid var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 8%, transparent);
+  padding: 10px 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+}
+
+/* The audit log is the one wide table here; it scrolls rather than compressing
+   its timestamp column into something unreadable. */
+.pf-table-wrap { overflow-x: auto; }
+
 .pf-empty { padding: 26px 12px; text-align: center; color: var(--text-muted); font-size: 13px; }
 .pf-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; display: block; }
 
@@ -520,6 +534,11 @@
 .pf-module-desc {
   margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary);
 }
+
+/* The name/description column of a module row. The row is a 1fr/auto grid, so
+   without a min-width of 0 the 1fr track is sized by the longest unbroken
+   description and the toggle is pushed past the card's edge. */
+.pf-module-text { min-width: 0; }
 .pf-module-state {
   margin-top: 4px; font-size: 11.5px; color: var(--text-muted);
 }

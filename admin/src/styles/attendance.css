@@ -307,3 +307,144 @@
   .att-cell-time, .att-cell-label { display: none; }
   .att-cal-nav { width: 100%; }
 }
+
+/* ------------------------------------------------------- work mode picker -- */
+
+/* Where the employee says they are working, asked at check-in. Lives here
+   rather than in styles.css because it is attendance's question — and both
+   surfaces that ask it (the attendance page and the employee home card) already
+   import this file. */
+
+.wm-set { border: 0; padding: 0; margin: 0 0 var(--space-3); min-width: 0; }
+.wm-set[disabled] { opacity: 0.55; }
+
+.wm-legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+/* Three across where there is room, stacking below ~520px of container. auto-fit
+   rather than a fixed three: this renders inside the home card, which is
+   narrower than the attendance page's, and a hard grid-template would overflow
+   there. */
+.wm-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: var(--space-2);
+}
+
+.wm-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--space-2);
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+  transition: border-color var(--duration-normal) var(--ease-standard),
+              background var(--duration-normal) var(--ease-standard);
+}
+.wm-choice:hover { background: var(--surface-hover); }
+.wm-set[disabled] .wm-choice { cursor: default; }
+.wm-choice svg { grid-row: span 2; color: var(--text-muted); }
+
+/* Focus lands on the hidden radio, so the ring has to be drawn on the label —
+   otherwise keyboard users get no visible focus at all. */
+.wm-choice:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Visually hidden, not display:none — a display:none radio is removed from the
+   tab order and from the accessibility tree, which would cost exactly the
+   keyboard behaviour the real input was used for. */
+.wm-radio {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.wm-choice-label {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+.wm-choice-hint {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Border and fill together, not fill alone — the selected card has to survive
+   forced-colors mode, where the tint is not painted. */
+.wm-choice-on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+.wm-choice-on .wm-choice-label { color: var(--brand-ink); }
+.wm-choice-on svg { color: var(--brand-accent); }
+.wm-choice-on .wm-choice-hint { color: color-mix(in srgb, var(--brand-ink) 62%, var(--text-muted)); }
+
+/* ------------------------------------------------------- per-mode policy -- */
+
+/* The override table under the org-wide geofence choice. A list of rows rather
+   than three more radio cards: these are secondary to the choice above, and
+   nine more cards would bury it. */
+
+.att-modes {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.att-modes-head {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+.att-mode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gridline);
+}
+.att-mode-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.att-mode-name {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.att-mode-hint {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.att-mode-row select { min-width: 180px; }
+
+@media (max-width: 640px) {
+  /* Label above control, both full width. Side by side, the select was 180px of
+     a 350px screen and the hint wrapped to four lines beside it. */
+  .att-mode-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .att-mode-row select { min-width: 0; width: 100%; }
+}
+
+/* The declared work mode, as a day flag. Brand-tinted rather than amber or red:
+   it is context, not a problem — an unverified punch on a work-from-home day is
+   exactly what should happen, and colouring the declaration like a warning
+   would say the opposite. */
+.att-flag-mode {
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 24%, transparent);
+}

@@ -40,8 +40,7 @@ export default function OrgStructure() {
         <div>
           <h1 className="page-title">Organisation</h1>
           <p className="page-sub">
-            Departments and teams describe where people sit. The reporting line is separate — set a
-            manager on the employee, not on the team.
+            Where people sit. The reporting line is separate — set it on the employee.
           </p>
         </div>
       </div>

@@ -10,10 +10,14 @@ export interface TabDef<T extends string> {
 /**
  * Tab bar.
  *
- * A recessed track with one raised pill that slides between positions. The
- * slide is the point: an indicator that jumps gives you a new selected tab,
- * one that travels tells you which tab you came from, and that is what stops a
- * four-tab page feeling like four unrelated pages.
+ * A card holding a row of pills, one of them lit — the same object as the
+ * module navbar a level above it, so a page carrying both reads as two levels
+ * of one system rather than two components.
+ *
+ * The lit pill slides between positions. The slide is the point: an indicator
+ * that jumps gives you a new selected tab, one that travels tells you which
+ * tab you came from, and that is what stops a four-tab page feeling like four
+ * unrelated pages.
  *
  * The thumb is measured rather than derived from a percentage, because these
  * labels have wildly different widths ("Teams" against "Attribution rules") and
@@ -37,16 +41,21 @@ export default function Tabs<T extends string>({
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef(new Map<T, HTMLButtonElement>())
-  const [thumb, setThumb] = useState<{ x: number; w: number } | null>(null)
+  const [thumb, setThumb] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
   const measure = useCallback(() => {
     const list = listRef.current
     const active = tabRefs.current.get(value)
     if (!list || !active) return
-    // offsetLeft, not getBoundingClientRect: the track scrolls horizontally on
-    // a phone, and a viewport-relative x would slide the pill off its tab the
-    // moment the strip is scrolled.
-    setThumb({ x: active.offsetLeft, w: active.offsetWidth })
+    // Offsets, not getBoundingClientRect: these are relative to the track, so
+    // they survive the page scrolling under it. Both axes, because the strip
+    // wraps — a tab on the second row needs the pill to come down with it.
+    setThumb({
+      x: active.offsetLeft,
+      y: active.offsetTop,
+      w: active.offsetWidth,
+      h: active.offsetHeight,
+    })
   }, [value])
 
   useLayoutEffect(measure, [measure, items])
@@ -86,7 +95,11 @@ export default function Tabs<T extends string>({
         <span
           className="tab-thumb"
           aria-hidden="true"
-          style={{ transform: `translateX(${thumb.x}px)`, width: thumb.w }}
+          style={{
+            transform: `translate(${thumb.x}px, ${thumb.y}px)`,
+            width: thumb.w,
+            height: thumb.h,
+          }}
         />
       )}
       {items.map((item) => {

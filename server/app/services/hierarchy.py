@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Department, Designation, Role, Team, User
+from app.models import DataScope, Department, Designation, Team, User
 
 # Depth guard. A cycle should be impossible (see would_create_cycle), but a
 # corrupted row must not hang a request.
@@ -90,14 +90,52 @@ def would_create_cycle(db: Session, user_id: uuid.UUID, new_manager_id: uuid.UUI
 def visible_user_ids(db: Session, viewer: User) -> list[uuid.UUID] | None:
     """``None`` means "the whole organisation" — no filter needed.
 
-    * owner/admin  -> everything
-    * manager      -> their reporting subtree, plus any team they manage
-    * employee     -> themselves only
+    Driven by :attr:`User.data_scope`, which a named role sets explicitly and
+    which falls back to the old role-derived shape for anybody without one:
+
+    * ``company``     -> everything
+    * ``department``  -> everyone in their department
+    * ``team``        -> their reporting subtree, plus any team or department
+                         they head — the manager rule, now nameable
+    * ``self``        -> themselves only
+
+    ``department`` is the one that could not be expressed before. Scope used to
+    be inferred from the role level, so somebody who had to see the whole
+    company's expenses but manage nobody could only be given it by making them
+    an administrator — handing over payroll and settings to solve a reporting
+    problem.
+
+    This is the single place scope is resolved. Every list endpoint filters
+    through it, so a new scope is added here and nowhere else.
     """
-    if viewer.role_enum.can_administer:
+    scope = viewer.data_scope
+
+    if scope == DataScope.COMPANY.value:
         return None
 
-    if viewer.role_enum is Role.MANAGER:
+    if scope == DataScope.SELF.value:
+        return [viewer.id]
+
+    if scope == DataScope.DEPARTMENT.value:
+        # Their own department, not one they head — a role scoped to
+        # "department" is about where the person sits, and a head is already
+        # covered by the team rule below.
+        if viewer.department_id is None:
+            # No department and department scope is a configuration mistake, and
+            # the safe reading of it is the narrow one.
+            return [viewer.id]
+        ids = set(
+            db.scalars(
+                select(User.id).where(
+                    User.org_id == viewer.org_id,
+                    User.department_id == viewer.department_id,
+                )
+            ).all()
+        )
+        ids.add(viewer.id)
+        return sorted(ids)
+
+    if True:  # DataScope.TEAM — the former manager rule, unchanged below.
         ids = set(subtree_ids(db, viewer.org_id, viewer.id))
         # A team manager sees their team even where the reporting lines run
         # elsewhere — that is the whole point of naming them the manager.
@@ -127,8 +165,6 @@ def visible_user_ids(db: Session, viewer: User) -> list[uuid.UUID] | None:
             )
         return sorted(ids, key=str)
 
-    return [viewer.id]
-
 
 # --------------------------------------------------------------------------- #
 # Tree for the UI
@@ -145,6 +181,11 @@ class Node:
     team: str | None
     department: str | None
     is_active: bool
+    #: The code people actually call each other by on a chart card. Optional
+    #: because it is optional on the employee record — a company that does not
+    #: issue codes gets a card with a name and a title, which is the whole
+    #: point of it being nullable rather than defaulted to something invented.
+    employee_code: str | None = None
     reports: list["Node"] = field(default_factory=list)
 
     @property
@@ -161,6 +202,7 @@ class Node:
             "team": self.team,
             "department": self.department,
             "is_active": self.is_active,
+            "employee_code": self.employee_code,
             "headcount": self.headcount,
             "reports": [node.as_dict() for node in self.reports],
         }
@@ -193,6 +235,7 @@ def reporting_line(db: Session, user: User) -> list[dict]:
             team=teams.get(person.team_id),
             department=departments.get(person.department_id),
             is_active=person.is_active,
+            employee_code=person.employee_code,
         )
 
     chain: list[User] = [user]
@@ -237,6 +280,7 @@ def build_tree(db: Session, org_id: uuid.UUID, root_id: uuid.UUID | None = None)
             team=teams.get(user.team_id),
             department=departments.get(user.department_id),
             is_active=user.is_active,
+            employee_code=user.employee_code,
         )
         for user in users
     }

@@ -48,6 +48,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any, Callable
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
@@ -62,6 +64,7 @@ from app.models.workflowlevels import (
     ReviewerRule,
     StepStatus,
     WorkflowLevel,
+    WorkflowRule,
     WorkflowStep,
 )
 
@@ -99,6 +102,7 @@ def levels_for(
                 WorkflowLevel.org_id == org_id,
                 WorkflowLevel.kind == kind,
                 WorkflowLevel.department_id == department_id,
+                WorkflowLevel.rule_id.is_(None),
                 WorkflowLevel.is_active.is_(True),
             ).order_by(WorkflowLevel.level)
         ))
@@ -109,6 +113,7 @@ def levels_for(
             WorkflowLevel.org_id == org_id,
             WorkflowLevel.kind == kind,
             WorkflowLevel.department_id.is_(None),
+            WorkflowLevel.rule_id.is_(None),
             WorkflowLevel.is_active.is_(True),
         ).order_by(WorkflowLevel.level)
     ))
@@ -189,7 +194,13 @@ def levels_scoped(
     levels and believes they are editing them.
     """
     stmt = select(WorkflowLevel).where(
-        WorkflowLevel.org_id == org_id, WorkflowLevel.kind == kind
+        WorkflowLevel.org_id == org_id,
+        WorkflowLevel.kind == kind,
+        # Rule rungs carry `department_id = NULL` exactly like the company-wide
+        # chain, so without this they would be read as part of it — and, since
+        # `set_levels` deletes what this returns before writing, saving the
+        # company chain would delete every rule's levels.
+        WorkflowLevel.rule_id.is_(None),
     )
     stmt = stmt.where(
         WorkflowLevel.department_id == department_id if department_id is not None
@@ -248,7 +259,10 @@ def may_act(db: Session, step: WorkflowStep, viewer: User, *, capability: str | 
     if step.reviewer_user_id is not None and step.reviewer_user_id == viewer.id:
         return True
     if ReviewerRule(step.reviewer_rule) is ReviewerRule.CAPABILITY:
-        return capability is None or bool(getattr(viewer, capability, False))
+        # Through .has, not getattr: a capability-addressed chain level must
+        # find the people a named role granted it, not only those with the
+        # column set.
+        return capability is None or viewer.has(capability)
     return viewer.role_enum is Role.OWNER
 
 
@@ -272,12 +286,23 @@ def current_step(db: Session, record_id: uuid.UUID) -> WorkflowStep | None:
 
 def begin(
     db: Session, *, org_id: uuid.UUID, kind: str, record_id: uuid.UUID,
-    subject: User, capability: str | None = None,
+    subject: User, capability: str | None = None, record: Any = None,
 ) -> list[WorkflowStep]:
     """Write the chain onto a record entering the flow.
 
     Returns ``[]`` when the flow has no chain configured, which is the signal to
     the kernel that this is an ordinary single-step approval.
+
+    ``record`` is the thing being approved — the claim, the leave application.
+    It is what conditional rules read to decide the routing ("over ₹50,000 adds
+    finance"), and it is optional: without it only the rules about the requester
+    can match, and the rest fall through to the department chain. That is the
+    right failure, because it is the routing this product had before rules.
+
+    **The routing decision is made once, here, and then written down.** The
+    steps carry the resolved chain, so editing a rule tomorrow cannot rewrite
+    who approves a request submitted today — the same discipline the levels
+    already had, extended to the rule that chose them.
 
     Idempotent: a record that already has steps keeps them. Re-entering a flow —
     a returned performance review resubmitted, say — must not restart a chain
@@ -287,7 +312,7 @@ def begin(
     if existing:
         return existing
 
-    rungs = levels_for(db, org_id, kind, subject.department_id)
+    rungs, rule = resolve_chain(db, org_id, kind, subject, record)
     if not rungs:
         return []
 
@@ -303,7 +328,13 @@ def begin(
             subject_user_id=subject.id, level=rung.level,
             reviewer_rule=rung.reviewer_rule, reviewer_user_id=reviewer_id,
             status=StepStatus.SKIPPED.value if skipped else StepStatus.PENDING.value,
-            note="Resolved to the requester" if skipped else None,
+            note=(
+                "Resolved to the requester" if skipped
+                # Written on every rung rather than only the first: a step is
+                # read on its own in the approvals queue, and "which rule sent
+                # this to me" is the question the reviewer has.
+                else (f"Routed by rule: {rule.name}" if rule else None)
+            ),
             auto_forward_days=rung.auto_forward_days,
             escalate_after_days=rung.escalate_after_days,
             escalate_to_user_id=rung.escalate_to_user_id,
@@ -320,7 +351,7 @@ def begin(
 
 
 def start_for(
-    db: Session, *, kind: str, record_id: uuid.UUID, subject: User,
+    db: Session, *, kind: str, record_id: uuid.UUID, subject: User, record: Any = None,
 ) -> list[WorkflowStep]:
     """Begin the chain for a request that has just been submitted.
 
@@ -340,6 +371,7 @@ def start_for(
     return begin(
         db, org_id=subject.org_id, kind=kind, record_id=record_id,
         subject=subject, capability=policy.capability if policy else None,
+        record=record,
     )
 
 
@@ -491,3 +523,430 @@ def sweep(db: Session, org_id: uuid.UUID | None = None) -> dict:
             forwarded += 1
     db.commit()
     return {"escalated": escalated, "auto_forwarded": forwarded}
+
+
+# --------------------------------------------------------------------------- #
+# Conditional routing
+#
+# A rule is a condition plus a whole chain, and the first rule whose condition
+# holds supplies the chain. Everything in this section is about two questions:
+# what a condition may ask about, and what happens when it cannot be answered.
+#
+# The second question is the one that matters. A condition referring to a field
+# this flow does not have, an operator nobody implemented, a record that is not
+# loaded — every one of those resolves to **not matched**, never to matched and
+# never to an exception. A rule engine that throws takes down the submit button;
+# one that matches on failure routes a ₹9,00,000 claim through whichever chain
+# happened to be written first. Not matching is the only safe direction: the
+# record falls through to the next rule, and ultimately to the fallback or to
+# the plain department chain, which is where it went before rules existed.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Field:
+    """One thing a condition may ask about, for one flow.
+
+    ``read`` takes ``(record, subject)`` and returns a comparable value, or
+    ``None`` when it cannot be worked out — a missing record, an empty column, a
+    date arithmetic that needs a value nobody filled in. ``None`` never matches.
+    """
+
+    key: str
+    label: str
+    #: money | number | days | choice | id | text — what the console renders.
+    type: str
+    read: Callable[[Any, User], Any]
+    #: Where the console fetches options for `choice`/`id` fields, if anywhere.
+    options: str | None = None
+    help: str | None = None
+
+
+def _subject_department(_record: Any, subject: User) -> Any:
+    return subject.department_id
+
+
+def _subject_team(_record: Any, subject: User) -> Any:
+    return subject.team_id
+
+
+def _subject_designation(_record: Any, subject: User) -> Any:
+    return subject.designation_id
+
+
+def _subject_role(_record: Any, subject: User) -> Any:
+    return subject.role
+
+
+#: Fields every flow has, because they are about the person rather than the
+#: request. A rule can route on these alone — "everything from Sales goes to the
+#: sales director" is a legitimate chain with no amount in it.
+COMMON_FIELDS: tuple[Field, ...] = (
+    Field("department", "Department", "id", _subject_department, options="departments"),
+    Field("team", "Team", "id", _subject_team, options="teams"),
+    Field("designation", "Designation", "id", _subject_designation, options="designations"),
+    Field("role", "Role", "choice", _subject_role, options="roles"),
+)
+
+
+def _amount(attr: str) -> Callable[[Any, User], Any]:
+    """Read a money column off the record. Paise, like every amount here."""
+
+    def read(record: Any, _subject: User) -> Any:
+        return getattr(record, attr, None) if record is not None else None
+
+    return read
+
+
+def _attr(attr: str) -> Callable[[Any, User], Any]:
+    def read(record: Any, _subject: User) -> Any:
+        return getattr(record, attr, None) if record is not None else None
+
+    return read
+
+
+def _leave_days(record: Any, _subject: User) -> Any:
+    """Calendar days applied for, as a number the console can compare against.
+
+    Milli-days are the storage unit and a terrible thing to write a rule in:
+    nobody thinks "more than 3000". Divided here so a rule says 3.
+    """
+    if record is None or getattr(record, "duration_milli_days", None) is None:
+        return None
+    return record.duration_milli_days / 1000
+
+
+def _leave_notice(record: Any, _subject: User) -> Any:
+    """How many days' warning was given — applied-on to first day off.
+
+    Negative for leave applied for after it started, which is exactly the case
+    a company wants to route differently, so it is not clamped at zero.
+    """
+    if record is None:
+        return None
+    start = getattr(record, "start_date", None)
+    applied = getattr(record, "applied_at", None)
+    if start is None or applied is None:
+        return None
+    applied_day = applied.date() if hasattr(applied, "date") else applied
+    return (start - applied_day).days
+
+
+def _expense_categories(record: Any, _subject: User) -> Any:
+    """Every category on the claim, as a list.
+
+    A list rather than one value, because a claim holds many lines and may span
+    categories. It is compared with ``any_of`` / ``none_of``, which is why those
+    operators exist at all — see the note on OPERATORS.
+    """
+    if record is None:
+        return None
+    lines = getattr(record, "lines", None)
+    if lines is None:
+        return None
+    return [line.category_id for line in lines if line.category_id is not None]
+
+
+#: Per flow, on top of COMMON_FIELDS. A flow absent from here can still be
+#: routed on who the requester is, which is what the common fields are for.
+FLOW_FIELDS: dict[str, tuple[Field, ...]] = {
+    "expense": (
+        Field("amount", "Claim total", "money", _amount("total_amount"),
+              help="The whole claim, not one line."),
+        Field("category", "Expense category", "id", _expense_categories,
+              options="expense-categories",
+              help="A claim can hold several. Use “is any of” to catch a claim "
+                   "that contains one, and “is none of” to catch one that does not."),
+        Field("project", "Project", "id", _attr("project_id"), options="projects"),
+    ),
+    "leave": (
+        Field("leave_type", "Leave type", "id", _attr("leave_type_id"), options="leave-types"),
+        Field("days", "Days applied for", "days", _leave_days),
+        Field("notice_days", "Days of notice", "days", _leave_notice,
+              help="From the day it was applied for to the first day off. "
+                   "Negative when the leave had already started."),
+    ),
+    "loan": (
+        Field("amount", "Amount requested", "money", _amount("principal")),
+        Field("loan_type", "Loan type", "text", _attr("loan_type")),
+        Field("instalments", "Instalments", "number", _attr("instalment_count")),
+    ),
+}
+
+
+def fields_for(kind: str) -> tuple[Field, ...]:
+    """Everything a rule on this flow may ask about."""
+    return COMMON_FIELDS + FLOW_FIELDS.get(kind, ())
+
+
+#: The operators, and what each means for a *list* value like expense
+#: categories. `any_of` and `none_of` exist because a claim spanning Travel and
+#: Meals is genuinely both, and `eq` has no honest answer for it.
+OPERATORS: dict[str, str] = {
+    "eq": "is",
+    "ne": "is not",
+    "gt": "is more than",
+    "gte": "is at least",
+    "lt": "is less than",
+    "lte": "is at most",
+    "any_of": "is any of",
+    "none_of": "is none of",
+}
+
+
+def _as_number(value: Any) -> float | None:
+    """Coerce to a number, or None. Never raises — see the section note."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _same(left: Any, right: Any) -> bool:
+    """Equality across the string/UUID boundary.
+
+    Rule values arrive from JSON, so a department id is a string and the
+    subject's is a UUID. Comparing them directly is False for every rule
+    anybody writes, which would look exactly like "conditions do not work".
+    """
+    if left is None or right is None:
+        return False
+    return str(left) == str(right)
+
+
+def evaluate_clause(clause: Any, record: Any, subject: User, kind: str) -> bool:
+    """One clause, against one record. False for anything it cannot answer."""
+    if not isinstance(clause, dict):
+        return False
+
+    field_key = clause.get("field")
+    operator = clause.get("op")
+    wanted = clause.get("value")
+
+    field = next((f for f in fields_for(kind) if f.key == field_key), None)
+    if field is None or operator not in OPERATORS:
+        # An unknown field or operator — a rule written for a flow it was later
+        # moved off, or a hand-edited row. Not matched, never an exception.
+        return False
+
+    try:
+        actual = field.read(record, subject)
+    except Exception:  # noqa: BLE001 - a broken read must not break submission
+        return False
+    if actual is None:
+        return False
+
+    # Multi-valued fields: the only operators that mean anything are the set
+    # ones, and using another on them is a rule that cannot be satisfied.
+    if isinstance(actual, (list, tuple, set)):
+        values = {str(v) for v in actual}
+        if operator == "any_of":
+            return bool(values & {str(v) for v in (wanted or [])})
+        if operator == "none_of":
+            return not (values & {str(v) for v in (wanted or [])})
+        if operator == "eq":
+            return bool(values) and values == {str(wanted)}
+        return False
+
+    if operator in ("any_of", "none_of"):
+        contained = any(_same(actual, option) for option in (wanted or []))
+        return contained if operator == "any_of" else not contained
+
+    if operator == "eq":
+        return _same(actual, wanted)
+    if operator == "ne":
+        return not _same(actual, wanted)
+
+    left, right = _as_number(actual), _as_number(wanted)
+    if left is None or right is None:
+        return False
+    if operator == "gt":
+        return left > right
+    if operator == "gte":
+        return left >= right
+    if operator == "lt":
+        return left < right
+    if operator == "lte":
+        return left <= right
+    return False
+
+
+def matches(rule: WorkflowRule, record: Any, subject: User) -> bool:
+    """Whether a rule's conditions all hold.
+
+    ANDed, and an empty list matches everything — which is what makes a
+    fallback rule a rule rather than a special case in the resolver.
+    """
+    if rule.is_fallback:
+        return True
+    conditions = rule.conditions or []
+    if not isinstance(conditions, list):
+        return False
+    return all(evaluate_clause(clause, record, subject, rule.kind) for clause in conditions)
+
+
+def rules_for(db: Session, org_id: uuid.UUID, kind: str) -> list[WorkflowRule]:
+    """Active rules for a flow, in the order they are evaluated.
+
+    Fallback last whatever its priority says: a fallback that sorted first would
+    match everything and make every rule below it dead, which is a
+    misconfiguration nobody would spot from the screen.
+    """
+    rows = list(db.scalars(
+        select(WorkflowRule).where(
+            WorkflowRule.org_id == org_id,
+            WorkflowRule.kind == kind,
+            WorkflowRule.is_active.is_(True),
+        )
+    ))
+    rows.sort(key=lambda r: (r.is_fallback, r.priority, r.created_at))
+    return rows
+
+
+def match_rule(
+    db: Session, org_id: uuid.UUID, kind: str, record: Any, subject: User
+) -> WorkflowRule | None:
+    """The first rule that applies, or None when nothing does.
+
+    None is not a failure. It means this company either writes no rules for
+    this flow or wrote none that fit, and the caller falls back to the plain
+    department chain — the behaviour that existed before rules did.
+    """
+    for rule in rules_for(db, org_id, kind):
+        if matches(rule, record, subject):
+            return rule
+    return None
+
+
+def levels_of_rule(db: Session, rule: WorkflowRule) -> list[WorkflowLevel]:
+    return list(db.scalars(
+        select(WorkflowLevel)
+        .where(WorkflowLevel.rule_id == rule.id, WorkflowLevel.is_active.is_(True))
+        .order_by(WorkflowLevel.level)
+    ))
+
+
+def resolve_chain(
+    db: Session, org_id: uuid.UUID, kind: str, subject: User, record: Any = None
+) -> tuple[list[WorkflowLevel], WorkflowRule | None]:
+    """The chain to write onto this record, and the rule that chose it.
+
+    The single place routing is decided, so "why did this go to three people"
+    has one answer with one implementation behind it. Order:
+
+    1. The first matching rule's levels, if a rule matches **and has any**.
+    2. Otherwise the department chain, then the company-wide one.
+
+    A matching rule with no rungs falls through rather than producing an empty
+    chain. An empty chain means "no chain" to the kernel, which silently turns a
+    routed approval into a single-step one — so a half-built rule must not be
+    able to switch routing off for everybody it matches.
+    """
+    rule = match_rule(db, org_id, kind, record, subject)
+    if rule is not None:
+        rungs = levels_of_rule(db, rule)
+        if rungs:
+            return rungs, rule
+    return levels_for(db, org_id, kind, subject.department_id), None
+
+
+# --------------------------------------------------------------------------- #
+# Rule administration
+# --------------------------------------------------------------------------- #
+
+
+def set_rules(
+    db: Session, viewer: User, kind: str, payload, *, request: Request | None = None
+) -> list[WorkflowRule]:
+    """Replace every rule for one flow, in one write.
+
+    A replace rather than per-rule edits, for the same reason ``set_levels`` is:
+    the order of the rules *is* the routing, and a screen that saves one rule at
+    a time makes reordering three separate saves any of which can fail halfway.
+
+    Rules a company deletes take their rungs with them through the cascade.
+    """
+    existing = list(db.scalars(
+        select(WorkflowRule).where(
+            WorkflowRule.org_id == viewer.org_id, WorkflowRule.kind == kind
+        )
+    ))
+    for row in existing:
+        db.delete(row)
+    db.flush()
+
+    made: list[WorkflowRule] = []
+    seen_fallback = False
+    for index, spec in enumerate(payload):
+        if spec.is_fallback:
+            if seen_fallback:
+                raise ChainError(
+                    "two_fallbacks",
+                    "Only one rule can be the fallback — it is what everything "
+                    "unmatched falls to, and two of them means the second is dead.",
+                )
+            seen_fallback = True
+
+        if len(spec.levels) > MAX_LEVELS:
+            raise ChainError(
+                "too_many_levels",
+                f"“{spec.name}” has {len(spec.levels)} levels. A chain may have at "
+                f"most {MAX_LEVELS}.",
+            )
+        for position, rung in enumerate(spec.levels, start=1):
+            if ReviewerRule(rung.reviewer_rule) is ReviewerRule.NAMED_USER:
+                if rung.reviewer_user_id is None:
+                    raise ChainError(
+                        "reviewer_required",
+                        f"“{spec.name}” level {position} names a person but none was chosen.",
+                    )
+                person = db.get(User, rung.reviewer_user_id)
+                if person is None or person.org_id != viewer.org_id:
+                    raise ChainError("not_found", "No such colleague.", 404)
+            if rung.escalate_after_days and rung.escalate_to_user_id is None:
+                raise ChainError(
+                    "escalation_point_required",
+                    f"“{spec.name}” level {position} escalates after "
+                    f"{rung.escalate_after_days} days but has nobody to escalate to.",
+                )
+
+        rule = WorkflowRule(
+            org_id=viewer.org_id,
+            kind=kind,
+            name=spec.name.strip(),
+            priority=spec.priority if spec.priority is not None else (index + 1) * 10,
+            conditions=[] if spec.is_fallback else [c.model_dump() for c in spec.conditions],
+            is_fallback=spec.is_fallback,
+            is_active=spec.is_active,
+        )
+        db.add(rule)
+        db.flush()
+
+        for position, rung in enumerate(spec.levels, start=1):
+            db.add(WorkflowLevel(
+                org_id=viewer.org_id,
+                kind=kind,
+                department_id=None,
+                rule_id=rule.id,
+                level=position,
+                reviewer_rule=rung.reviewer_rule,
+                reviewer_user_id=rung.reviewer_user_id,
+                auto_forward_days=rung.auto_forward_days,
+                escalate_after_days=rung.escalate_after_days,
+                escalate_to_user_id=rung.escalate_to_user_id,
+                is_active=True,
+            ))
+        made.append(rule)
+
+    if request is not None:
+        audit(db, org_id=viewer.org_id, actor=viewer, action="workflow.rules_set",
+              request=request, target_type="workflow_rules", target_id=kind,
+              detail={"rules": len(made)})
+    db.commit()
+    return rules_for(db, viewer.org_id, kind)

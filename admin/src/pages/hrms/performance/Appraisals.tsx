@@ -76,7 +76,7 @@ export default function Appraisals() {
         <Empty>No appraisal cycles yet. Start one to set goals and collect reviews.</Empty>
       ) : (
         <>
-          <div className="pf-cycle-tabs">
+          <div className="perf-cycle-tabs">
             {cycles.map((c) => (
               <button
                 key={c.id}
@@ -84,7 +84,7 @@ export default function Appraisals() {
                 onClick={() => setCycleId(c.id)}
               >
                 {c.name}
-                <span className={`pf-pill pf-cycle-${c.status}`}>{c.status}</span>
+                <span className={`perf-pill perf-cycle-${c.status}`}>{c.status}</span>
               </button>
             ))}
           </div>
@@ -121,39 +121,39 @@ function NewCycle({
   const [busy, setBusy] = useState(false)
 
   return (
-    <section className="card pf-form">
+    <section className="card perf-form">
       <h2 className="card-title">New cycle</h2>
-      <div className="pf-row">
-        <label className="pf-field">
-          <span className="pf-field-label">Name</span>
+      <div className="perf-row">
+        <label className="perf-field">
+          <span className="perf-field-label">Name</span>
           <input
             value={form.name}
             placeholder="FY2025-26 Annual"
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
         </label>
-        <label className="pf-field">
-          <span className="pf-field-label">Period from</span>
+        <label className="perf-field">
+          <span className="perf-field-label">Period from</span>
           <input type="date" value={form.period_start}
                  onChange={(e) => setForm({ ...form, period_start: e.target.value })} />
-          <span className="pf-field-hint">
+          <span className="perf-field-hint">
             The period being appraised, not the window for doing the appraising.
           </span>
         </label>
-        <label className="pf-field">
-          <span className="pf-field-label">to</span>
+        <label className="perf-field">
+          <span className="perf-field-label">to</span>
           <input type="date" value={form.period_end}
                  onChange={(e) => setForm({ ...form, period_end: e.target.value })} />
         </label>
-        <label className="pf-field">
-          <span className="pf-field-label">Rating scale</span>
+        <label className="perf-field">
+          <span className="perf-field-label">Rating scale</span>
           <select value={form.rating_max}
                   onChange={(e) => setForm({ ...form, rating_max: Number(e.target.value) })}>
             {[3, 4, 5, 10].map((n) => <option key={n} value={n}>1 to {n}</option>)}
           </select>
         </label>
       </div>
-      <label className="pf-check">
+      <label className="perf-check">
         <input type="checkbox" checked={form.requires_self_review}
                onChange={(e) => setForm({ ...form, requires_self_review: e.target.checked })} />
         <span>
@@ -161,7 +161,7 @@ function NewCycle({
           common for probation reviews.
         </span>
       </label>
-      <label className="pf-check">
+      <label className="perf-check">
         <input type="checkbox" checked={form.weights_must_total}
                onChange={(e) => setForm({ ...form, weights_must_total: e.target.checked })} />
         <span>
@@ -169,7 +169,7 @@ function NewCycle({
           competencies, where goals are context rather than the score.
         </span>
       </label>
-      <div className="pf-actions">
+      <div className="perf-actions">
         <button
           className="btn primary"
           disabled={busy || !form.name || !form.period_start || !form.period_end}
@@ -230,7 +230,7 @@ function CycleBody({
   return (
     <>
       <section className="card">
-        <div className="pf-cycle-head">
+        <div className="perf-cycle-head">
           <div>
             <h2 className="card-title">{cycle.name}</h2>
             <p className="muted">
@@ -240,7 +240,7 @@ function CycleBody({
               finalised
             </p>
           </div>
-          <div className="pf-actions">
+          <div className="perf-actions">
             {cycle.status === 'draft' && (
               <button className="btn primary" disabled={busy}
                       onClick={() => act(() =>
@@ -304,7 +304,7 @@ function CycleBody({
                   <td>{review.user_name}</td>
                   <td className="muted">{review.manager_name ?? '—'}</td>
                   <td>
-                    <span className={`pf-pill pf-${review.status}`}>
+                    <span className={`perf-pill perf-${review.status}`}>
                       {STATUS_LABEL[review.status] ?? review.status}
                     </span>
                     {review.status === 'finalised' && !review.shared_at && (
@@ -443,23 +443,23 @@ function ManagerReview({
     })
 
   return (
-    <section className="card pf-manager">
+    <section className="card perf-manager">
       <h2 className="card-title">
         {review.user_name} — {review.cycle_name}
       </h2>
 
       {review.self_comment && (
-        <blockquote className="pf-quote">{review.self_comment}</blockquote>
+        <blockquote className="perf-quote">{review.self_comment}</blockquote>
       )}
 
       {review.goals.map((goal) => (
-        <div className="pf-goal" key={goal.id}>
-          <div className="pf-goal-head">
-            <div className="pf-goal-title">{goal.title}</div>
-            <span className="pf-weight">{weight(goal.weight_bps)}</span>
+        <div className="perf-goal" key={goal.id}>
+          <div className="perf-goal-head">
+            <div className="perf-goal-title">{goal.title}</div>
+            <span className="perf-weight">{weight(goal.weight_bps)}</span>
           </div>
           {goal.self_rating !== null && (
-            <div className="pf-self-view">
+            <div className="perf-self-view">
               Self: <strong>{goal.self_rating}</strong>
               {goal.self_comment && <span> — {goal.self_comment}</span>}
             </div>
@@ -481,14 +481,14 @@ function ManagerReview({
         </div>
       ))}
 
-      <div className="pf-overall">
+      <div className="perf-overall">
         <div>
-          <span className="pf-field-label">Weighted score</span>
-          <div className="pf-final-value">{rating(liveScore)}</div>
+          <span className="perf-field-label">Weighted score</span>
+          <div className="perf-final-value">{rating(liveScore)}</div>
           <span className="muted">Evidence, not the decision.</span>
         </div>
         <div>
-          <span className="pf-field-label">Overall rating</span>
+          <span className="perf-field-label">Overall rating</span>
           <RatingPicker
             value={overallRating}
             max={cycle.rating_max}
@@ -503,8 +503,8 @@ function ManagerReview({
           server refuses without a reason and the page makes complying the path
           of least resistance. */}
       {needsReason && !frozen && (
-        <label className="pf-field">
-          <span className="pf-field-label">
+        <label className="perf-field">
+          <span className="perf-field-label">
             Why the rating differs from the score
           </span>
           <textarea
@@ -516,14 +516,14 @@ function ManagerReview({
         </label>
       )}
 
-      <label className="pf-field">
-        <span className="pf-field-label">Closing comment</span>
+      <label className="perf-field">
+        <span className="perf-field-label">Closing comment</span>
         <textarea rows={3} disabled={frozen} value={finalComment}
                   onChange={(e) => setFinalComment(e.target.value)} />
       </label>
 
       {!frozen && (
-        <div className="pf-actions">
+        <div className="perf-actions">
           <button className="btn" disabled={busy} onClick={() => act(save)}>
             Save
           </button>
@@ -565,12 +565,9 @@ function Competencies({ onError }: { onError: (m: string | null) => void }) {
     <section className="card">
       <h2 className="card-title">Competencies</h2>
       <p className="muted">
-        What the company rates people on, beyond their goals. Company-wide and
-        not per-cycle — a framework that is re-entered every year drifts.
-        Deactivated rather than deleted, because a review that rated one has to
-        stay readable.
-      </p>
-      <div className="pf-row">
+            What the company rates people on, beyond their goals.
+          </p>
+      <div className="perf-row">
         <input
           value={name}
           placeholder="Ownership"
@@ -594,7 +591,7 @@ function Competencies({ onError }: { onError: (m: string | null) => void }) {
         </button>
       </div>
       {listQ.data?.length ? (
-        <ul className="pf-competencies">
+        <ul className="perf-competencies">
           {listQ.data.map((c) => (
             <li key={c.id} className={c.is_active ? undefined : 'is-off'}>
               {c.name}

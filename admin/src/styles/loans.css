@@ -23,7 +23,7 @@
 
 .ln-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ln-row input, .ln-row select { flex: 1 1 150px; min-width: 0; }
-.ln-row input.is-bad { border-color: var(--danger-text, #b3261e); }
+.ln-row input.is-bad { border-color: var(--danger-text); }
 .ln-request { margin-bottom: 16px; }
 
 .ln-list { display: flex; flex-direction: column; gap: 10px; }
@@ -54,7 +54,7 @@
    and a red wash behind a table row makes the figures on it harder to read
    rather than easier to spot. */
 .ln-schedule tr.is-overdue td:first-child {
-  box-shadow: inset 3px 0 0 var(--danger-text, #b3261e);
+  box-shadow: inset 3px 0 0 var(--danger-text);
 }
 .ln-total-row td { font-weight: 700; border-top: 2px solid var(--border-strong); }
 
@@ -76,12 +76,12 @@
 .ln-pill-ok { color: var(--success-text); }
 .ln-pill-go { color: var(--brand); }
 .ln-pill-warn { color: var(--warn-ink); }
-.ln-pill-bad { color: var(--danger-text, #b3261e); }
+.ln-pill-bad { color: var(--danger-text); }
 .ln-pill-muted { color: var(--text-muted); border-color: var(--border-strong); }
 
 .ln-ok { color: var(--success-text); }
 .ln-warn { color: var(--warn-ink); font-weight: 600; }
-.ln-bad { color: var(--danger-text, #b3261e); font-weight: 600; }
+.ln-bad { color: var(--danger-text); font-weight: 600; }
 
 @media (max-width: 640px) {
   .ln-card-head { flex-wrap: wrap; }

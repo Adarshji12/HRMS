@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.device import Device
     from app.models.org_structure import Department, Designation, Team, WorkSchedule
     from app.models.organization import Organization
+    from app.models.role import OrgRole
 
 
 class UserStatus(str, enum.Enum):
@@ -75,6 +76,23 @@ class User(UUIDMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(20), default=Role.EMPLOYEE.value, nullable=False)
+
+    #: The named role this person was given, if any.
+    #:
+    #: Nullable, permanently. Every user who existed before named roles has NULL
+    #: here and keeps answering from their own columns — see :meth:`has`. That is
+    #: not a migration to finish later; it is how a per-person exception is
+    #: expressed, and some people genuinely are exceptions.
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("org_roles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    #: Per-person exceptions to the assigned role, as ``{"can_export_data": true}``.
+    #:
+    #: Usually empty and meant to stay that way — the entire point of roles is
+    #: that permissions are answered once. But a company will always have the one
+    #: person who needs a single extra thing, and the alternative to an override
+    #: is a role with one member, which is worse: it looks like policy.
+    permission_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -115,6 +133,18 @@ class User(UUIDMixin, TimestampMixin, Base):
     # to give the other.
     can_approve_leave: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_approve_regularization: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Exempt from the geofence entirely, whatever work mode they pick.
+    #:
+    #: For the people the fence was never meant for — field sales, a driver, an
+    #: engineer who is at a different site every day, a permanently remote hire.
+    #: Defaults to False, unlike most flags on this model, because it *removes*
+    #: a control rather than granting a capability: an org that turns geofencing
+    #: on expects it to apply to everyone until somebody is deliberately excused.
+    #:
+    #: The punch is still recorded with its coordinates and its measured
+    #: distance — this only stops the fence refusing or flagging it. An exempt
+    #: employee is not an unmeasured one.
+    can_punch_anywhere: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     can_manage_assets: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_manage_onboarding: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_manage_helpdesk: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -234,6 +264,11 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="members", foreign_keys=[team_id]
     )
     department: Mapped["Department | None"] = relationship(foreign_keys=[department_id])
+    #: lazy="joined": every authenticated request resolves permissions, so this
+    #: would otherwise be one extra SELECT on literally every call.
+    org_role: Mapped["OrgRole | None"] = relationship(
+        foreign_keys=[role_id], lazy="joined"
+    )
     designation: Mapped["Designation | None"] = relationship(foreign_keys=[designation_id])
     schedule: Mapped["WorkSchedule | None"] = relationship(foreign_keys=[schedule_id])
     manager: Mapped["User | None"] = relationship(
@@ -245,7 +280,81 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     @property
     def role_enum(self) -> Role:
+        """The built-in level this person acts at.
+
+        A named role declares which of the four it stands in for, so the coarse
+        ``can_administer`` / ``can_view_team`` checks — load-bearing in about a
+        hundred places and older than named roles — keep working unchanged
+        against a role the product did not ship with.
+        """
+        if self.org_role is not None:
+            try:
+                return Role(self.org_role.base_role)
+            except ValueError:
+                # A base_role the enum does not know is corrupt data, not a
+                # reason to 500 on every request this person makes. Fall through
+                # to their own column, which is always one of the four.
+                pass
         return Role(self.role)
+
+    def has(self, flag: str) -> bool:
+        """Whether this person may do one thing, from the three sources in order.
+
+        1. **A personal override.** Rare and meant to be — the point of roles is
+           that permissions are answered once. But the alternative for the one
+           person who needs one extra thing is a role with a single member,
+           which is worse, because it reads as policy.
+        2. **Their named role.** The normal answer, and the one that changes for
+           everybody at once when the role is edited.
+        3. **Their own column.** Every user who predates named roles has no role
+           and answers from here — permanently, not until some migration
+           finishes. This is also what the owner falls back to.
+
+        Read through this rather than ``getattr(user, flag)``: the columns are no
+        longer the truth for anybody holding a role.
+        """
+        override = (self.permission_overrides or {}).get(flag)
+        if override is not None:
+            return bool(override)
+        if self.org_role is not None:
+            return self.org_role.allows(flag)
+        return bool(getattr(self, flag, False))
+
+    @property
+    def data_scope(self) -> str:
+        """How much of the company this person can see.
+
+        Falls back to the shape scope had before it was nameable: administrators
+        saw everything, managers their subtree, everyone else themselves.
+        """
+        if self.org_role is not None:
+            return self.org_role.data_scope
+        if self.role_enum.can_administer:
+            return "company"
+        if self.role_enum.can_view_team:
+            return "team"
+        return "self"
+
+    @property
+    def sees_others(self) -> bool:
+        """Whether this person's world is bigger than themselves.
+
+        The question ``require_team_viewer`` is really asking. It used to read
+        ``role_enum.can_view_team``, which forced anybody who had to see beyond
+        their own record into being a manager or an administrator — so a finance
+        hire who reviews the whole company's expenses and manages nobody could
+        not be expressed at all.
+
+        Scope answers it directly and keeps the old behaviour exactly: manager
+        resolves to ``team``, administrator to ``company``, employee to
+        ``self``.
+        """
+        return self.data_scope != "self"
+
+    @property
+    def role_name(self) -> str | None:
+        """The assigned role's name, for the console. None when they hold none."""
+        return self.org_role.name if self.org_role is not None else None
 
     @property
     def team_name(self) -> str | None:

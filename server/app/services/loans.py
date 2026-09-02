@@ -265,7 +265,7 @@ def request(
     # it: written lazily, its first rung would be consumed by whoever happened
     # to open the queue. Does nothing when this flow has no chain configured,
     # which is most companies.
-    chains.start_for(db, kind="loan", record_id=row.id, subject=subject)
+    chains.start_for(db, kind="loan", record_id=row.id, subject=subject, record=row)
     audit(db, org_id=viewer.org_id, actor=viewer, action="loans.requested",
           request=request_obj, target_type="loan", target_id=str(row.id),
           detail={"for": str(subject.id), "on_behalf": on_behalf,

@@ -437,9 +437,7 @@ export default function Onboarding() {
         <div>
           <h1 className="page-title">Onboarding</h1>
           <p className="page-sub">
-            Every hire's checklist, from the offer being accepted to the last compliance
-            signature. A checklist is copied from a template when it is started and belongs to
-            that hire from then on — editing the template later changes nothing on this page.
+            Every hire's checklist, from offer accepted to the last signature.
           </p>
         </div>
         <div className="head-actions">

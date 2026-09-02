@@ -94,11 +94,8 @@ export default function YearEnd() {
 
       {partial && (
         <p className="pr-warn">
-          Some of these cover fewer than twelve months. TDS is deducted against a
-          projection of the whole year, so a part-year reconciliation will show
-          more deducted than due — that is expected, not an over-deduction.
-          It only means what it says once the year is complete.
-        </p>
+            Some cover fewer than twelve months — a mid-year joiner’s certificate starts at their join date.
+          </p>
       )}
 
       {rowsQ.loading ? (
@@ -172,11 +169,8 @@ export default function YearEnd() {
               </tbody>
             </table>
             <p className="muted">
-              “To take” is what March payroll still has to deduct. “Ahead” means
-              more has been deducted than the months covered require — over a
-              complete year that is a refund the employee claims on their return,
-              because payroll cannot refund TDS.
-            </p>
+            “To take” is what March payroll still has to deduct; “ahead” means more was taken than due.
+          </p>
           </div>
         </>
       )}
@@ -248,8 +242,7 @@ export function MyForm16() {
         <div>
           <h1>My Form 16</h1>
           <p className="muted">
-            Your annual tax certificates. Part B — the salary and tax
-            computation. Part A comes from the income-tax portal.
+            Annual tax certificates — Part B, the salary and tax computation.
           </p>
         </div>
       </header>

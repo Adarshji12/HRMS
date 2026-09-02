@@ -120,11 +120,10 @@
   white-space: nowrap;
 }
 
-.link-btn {
-  background: none; border: none; padding: 0;
-  color: var(--brand-ink); font-weight: 600; cursor: pointer;
-  text-decoration: underline; font-size: inherit;
-}
+/* .link-btn lives in styles.css. It used to be redefined here too, with its own
+   size, weight and underline — dead code, because styles.css resolves last in
+   the module graph and won every same-specificity tie. Removed rather than
+   moved: one link button, one appearance. */
 
 /* --------------------------------------------------------------- plans --- */
 

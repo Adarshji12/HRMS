@@ -6,100 +6,100 @@
    conversation from two sides and a layout that changed between them would
    make the two halves feel like different documents. */
 
-.pf-status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.perf-status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 
-.pf-pill {
+.perf-pill {
   display: inline-block; font-size: 11.5px; font-weight: 600;
   padding: 2px 9px; border-radius: 11px; border: 1px solid currentColor;
   white-space: nowrap;
 }
-.pf-draft, .pf-cycle-draft { color: var(--text-muted); }
-.pf-self_submitted, .pf-cycle-open { color: var(--status-warn, #b26a00); }
-.pf-manager_submitted { color: var(--brand-ink, #2f5aa8); }
-.pf-returned { color: var(--status-bad, #b3261e); }
-.pf-finalised, .pf-cycle-closed { color: var(--status-ok, #2e7d32); }
+.perf-draft, .perf-cycle-draft { color: var(--text-muted); }
+.perf-self_submitted, .perf-cycle-open { color: var(--status-warn); }
+.perf-manager_submitted { color: var(--brand-ink); }
+.perf-returned { color: var(--status-bad); }
+.perf-finalised, .perf-cycle-closed { color: var(--status-ok); }
 
-.pf-cycle-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.pf-cycle-tabs .chip { display: inline-flex; gap: 8px; align-items: center; }
-.pf-cycle-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.perf-cycle-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.perf-cycle-tabs .chip { display: inline-flex; gap: 8px; align-items: center; }
+.perf-cycle-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
-.pf-goals { display: flex; flex-direction: column; gap: 12px; }
-.pf-goal { padding: 14px 16px; }
-.pf-goal + .pf-goal { border-top: 1px solid var(--gridline); }
-.pf-goal-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
-.pf-goal-title { font-weight: 600; }
-.pf-target { font-size: 12.5px; margin: 4px 0 0; }
+.perf-goals { display: flex; flex-direction: column; gap: 12px; }
+.perf-goal { padding: 14px 16px; }
+.perf-goal + .perf-goal { border-top: 1px solid var(--gridline); }
+.perf-goal-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+.perf-goal-title { font-weight: 600; }
+.perf-target { font-size: 12.5px; margin: 4px 0 0; }
 
 /* The weight is the second thing to read after the title: it is what makes one
    goal matter more than another, and a page that hid it would be showing a
    score nobody could derive. */
-.pf-weight {
+.perf-weight {
   flex: none; font-variant-numeric: tabular-nums; font-weight: 640;
   color: var(--text-secondary);
 }
 
 /* --- the scale ------------------------------------------------------------ */
 
-.pf-scale { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 10px 0 8px; }
-.pf-point {
+.perf-scale { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 10px 0 8px; }
+.perf-point {
   width: 34px; height: 34px; border-radius: 8px;
   border: 1px solid var(--border); background: transparent;
   font-weight: 620; font-variant-numeric: tabular-nums; cursor: pointer;
 }
-.pf-point:hover:not(:disabled) { border-color: var(--brand); }
-.pf-point.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
-.pf-point:disabled { cursor: default; opacity: 0.75; }
+.perf-point:hover:not(:disabled) { border-color: var(--brand); }
+.perf-point.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.perf-point:disabled { cursor: default; opacity: 0.75; }
 /* "Not rated" is a state, not an absence — it reads as text next to the scale
    rather than as an empty row, because the server keeps it distinct from
    "rated lowest" and so must the screen. */
-.pf-scale-label { font-size: 12.5px; color: var(--text-muted); margin-left: 4px; }
+.perf-scale-label { font-size: 12.5px; color: var(--text-muted); margin-left: 4px; }
 
 /* --- the other side's view ------------------------------------------------ */
 
-.pf-self-view, .pf-manager-view {
+.perf-self-view, .perf-manager-view {
   font-size: 12.5px; color: var(--text-secondary);
   padding: 6px 10px; border-radius: 8px; background: var(--surface-2, rgba(0,0,0,0.03));
   margin: 6px 0;
 }
-.pf-quote {
+.perf-quote {
   margin: 0 0 14px; padding: 10px 14px; border-left: 3px solid var(--border);
   color: var(--text-secondary); font-size: 13px;
 }
 
 /* --- the outcome ---------------------------------------------------------- */
 
-.pf-overall {
+.perf-overall {
   display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   margin: 14px 0; padding: 14px 0; border-top: 1px solid var(--gridline);
 }
-.pf-final { display: flex; align-items: baseline; gap: 10px; }
-.pf-final-value {
+.perf-final { display: flex; align-items: baseline; gap: 10px; }
+.perf-final-value {
   font-size: 30px; font-weight: 660; letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums; line-height: 1.1;
 }
-.pf-outcome { margin-top: 14px; }
+.perf-outcome { margin-top: 14px; }
 
 /* --- forms ---------------------------------------------------------------- */
 
-.pf-form { margin-bottom: 14px; }
-.pf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
-.pf-field { display: flex; flex-direction: column; gap: 4px; min-width: 180px; flex: 1; }
-.pf-field-label {
+.perf-form { margin-bottom: 14px; }
+.perf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+.perf-field { display: flex; flex-direction: column; gap: 4px; min-width: 180px; flex: 1; }
+.perf-field-label {
   font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--text-muted);
 }
-.pf-field-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
-.pf-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 6px 0; }
-.pf-check input { margin-top: 2px; flex: none; }
-.pf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.perf-field-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+.perf-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 6px 0; }
+.perf-check input { margin-top: 2px; flex: none; }
+.perf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
 
-.pf-manager { margin-top: 14px; }
-.pf-manager textarea, .pf-goal textarea { width: 100%; }
+.perf-manager { margin-top: 14px; }
+.perf-manager textarea, .perf-goal textarea { width: 100%; }
 
-.pf-competencies { list-style: none; padding: 0; margin: 12px 0 0; }
-.pf-competencies li {
+.perf-competencies { list-style: none; padding: 0; margin: 12px 0 0; }
+.perf-competencies li {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 7px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
 }
-.pf-competencies li:last-child { border-bottom: none; }
-.pf-competencies li.is-off { color: var(--text-muted); text-decoration: line-through; }
+.perf-competencies li:last-child { border-bottom: none; }
+.perf-competencies li.is-off { color: var(--text-muted); text-decoration: line-through; }

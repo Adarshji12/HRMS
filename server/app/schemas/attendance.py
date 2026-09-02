@@ -64,10 +64,26 @@ class OfficeLocationOut(ORMModel):
 # --- per-org policy ----------------------------------------------------------
 
 
+#: Per-mode overrides accept the three enforcement levels plus ``inherit``.
+#:
+#: ``inherit`` rather than ``null`` because this is a PATCH body where ``None``
+#: already means "leave this field alone". Without a distinct token there would
+#: be no way to say "stop overriding Office and follow the org policy again" —
+#: the field would be write-once, which is exactly the kind of setting people
+#: change their mind about.
+_MODE_POLICY_PATTERN = r"^(inherit|off|flag_only|required)$"
+
+
 class AttendanceSettingsIn(BaseModel):
     """PATCH semantics — None means "leave unchanged", as in OrgSettingsUpdate."""
 
     geofence_enforcement: str | None = Field(default=None, pattern=r"^(off|flag_only|required)$")
+
+    # Per-work-mode overrides of the policy above. See _MODE_POLICY_PATTERN for
+    # why "inherit" is a value rather than null.
+    geofence_office: str | None = Field(default=None, pattern=_MODE_POLICY_PATTERN)
+    geofence_work_from_home: str | None = Field(default=None, pattern=_MODE_POLICY_PATTERN)
+    geofence_on_duty: str | None = Field(default=None, pattern=_MODE_POLICY_PATTERN)
 
 
 class AttendanceSettingsOut(ORMModel):
@@ -76,6 +92,13 @@ class AttendanceSettingsOut(ORMModel):
     # that switches it on before adding an office would lock every employee out
     # of punching. The console needs this to warn them, in the same payload.
     active_location_count: int = 0
+
+    # None on the wire means "following geofence_enforcement". The console
+    # renders that as a real choice rather than a blank, so an administrator can
+    # see which modes have been decided and which are riding the default.
+    geofence_office: str | None = None
+    geofence_work_from_home: str | None = None
+    geofence_on_duty: str | None = None
 
 
 # --- shifts ------------------------------------------------------------------
@@ -159,6 +182,14 @@ class PunchIn(BaseModel):
     # Why this punch looks odd, typed by the employee at the time — "at the
     # client's office today". Cheaper for everyone than a regularisation.
     note: str | None = Field(default=None, max_length=500)
+    # Where they say they are working. Optional, and absent is not an error: the
+    # desktop agent fills attendance from a work session and has no idea whether
+    # the desk is at home, and a punch from an older client predates the field.
+    # Both fall back to the org-wide geofence policy, which is what they got
+    # before this existed.
+    work_mode: str | None = Field(
+        default=None, pattern=r"^(office|work_from_home|on_duty)$"
+    )
 
 
 class PunchResultOut(ORMModel):
@@ -257,6 +288,15 @@ class AttendanceDayOut(ORMModel):
     is_geo_verified_out: bool = False
     check_in_distance_m: int | None = None
     check_out_distance_m: int | None = None
+
+    #: What the employee declared at check-in — office / work_from_home /
+    #: on_duty. Served alongside the geofence verdict rather than instead of it:
+    #: "work from home" on a row measured 400 m from the office is a
+    #: contradiction a manager should be able to see.
+    work_mode: str | None = None
+    #: Typed by the employee at the punch. Often the only record of *which*
+    #: client site an on-duty day was at.
+    note: str | None = None
 
     # --- the shift this day was judged against -------------------------------
     # Carried per-day, not per-response: a month can legitimately span a shift

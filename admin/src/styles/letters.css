@@ -33,7 +33,7 @@
 }
 .lt-pill-ok { color: var(--success-text); }
 .lt-pill-warn { color: var(--warn-ink); }
-.lt-pill-bad { color: var(--danger-text, #b3261e); }
+.lt-pill-bad { color: var(--danger-text); }
 
 .lt-ok { color: var(--success-text); }
 .lt-warn { color: var(--warn-ink); font-size: 12px; font-weight: 600; }
@@ -69,6 +69,9 @@
   align-items: start;
 }
 .lt-editor-main { min-width: 0; }
+/* The card wrapping the two editor columns. Same reason as .hr-section: a
+   grid/flex child holding a <textarea> will not shrink without this. */
+.lt-editor { min-width: 0; }
 .lt-fields {
   padding: 14px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface-2);

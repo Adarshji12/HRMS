@@ -1,0 +1,432 @@
+/* The reporting chart.
+
+   Two halves: a stage that holds the chart, and a side panel of people nobody
+   has placed yet. The panel is not decoration — "who has no manager" is the
+   question this screen is opened to answer, and it cannot be answered by a
+   chart that only draws the lines that already exist.
+
+   The connectors are pure CSS on nested flex boxes: a vertical stub down from
+   each card, a horizontal bar across each rank of siblings, trimmed to half
+   width at the two ends so the bar starts and stops over a card rather than
+   running out into space. There is no canvas, no measuring, and no library —
+   which is what makes the same markup work rotated, at any zoom, and inside a
+   container that scrolls.
+
+   Everything is a token. The one colour with any weight in it is --baseline,
+   the same hairline the charts elsewhere in the console draw their axes with,
+   because a connector is exactly that kind of line: structure, not data. */
+
+.hier { display: flex; flex-direction: column; }
+
+.hier-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.hier-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  /* The panel goes under the chart rather than beside it. It stays above the
+     fold on a phone because it is short — a list of the unplaced, which in a
+     healthy company is empty. */
+  .hier-work { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------------------------------------------------------------- stage --- */
+
+.hier-stage { position: relative; padding: 0; overflow: hidden; }
+
+.hier-toolbar {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--gridline);
+}
+.hier-tools { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+
+/* A real field with the glyph inside it, unlike the topbar's search — that one
+   is a button dressed as a field because the palette owns the input; this one
+   filters in place and has nowhere else to send you. */
+.hier-search {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  min-width: 240px;
+}
+.hier-search input {
+  border: 0; background: none; padding: 0; height: auto;
+  font-size: var(--text-md); min-width: 0; flex: 1;
+}
+.hier-search input:focus { outline: none; }
+.hier-search:focus-within { border-color: var(--brand); background: var(--surface-1); }
+
+.hier-seg {
+  display: flex; gap: 2px; padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--track);
+}
+.hier-seg-btn {
+  display: grid; place-items: center;
+  width: 30px; height: 28px;
+  border: 1px solid transparent; border-radius: var(--radius-xs);
+  background: none; color: var(--text-secondary);
+  cursor: pointer;
+}
+.hier-seg-btn:hover { color: var(--text-primary); }
+.hier-seg-btn.is-on {
+  background: var(--track-thumb);
+  border-color: var(--border);
+  color: var(--brand-ink);
+  box-shadow: var(--shadow-sm);
+}
+.hier-seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* Same glyph, turned a quarter — the two directions are one idea rotated, and
+   a second drawing would imply they were two. */
+.hier-rotate { transform: rotate(-90deg); }
+
+/* The chart's own viewport. It scrolls in both directions because a real chart
+   is wider than any screen, and the faint grid gives the panning something to
+   move against — without it, dragging a big chart feels like nothing moved. */
+.hier-canvas {
+  position: relative;
+  overflow: auto;
+  padding: var(--space-7) var(--space-5) var(--space-9);
+  /* Enough to look like a stage on a two-level chart, not so much that a small
+     company gets a screen of empty grid. It grows with the chart to the cap. */
+  min-height: 300px;
+  max-height: 72vh;
+  background-color: var(--surface-2);
+  background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* Pinned to the stage, not to the canvas — it must not pan away with the
+   chart. Absolute against .hier-stage, which is the positioned ancestor. */
+.hier-zoom {
+  position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2;
+  display: flex; align-items: center; gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+.hier-zoom button {
+  display: grid; place-items: center;
+  height: 28px; min-width: 28px; padding: 0 var(--space-2);
+  border: 0; border-radius: var(--radius-pill);
+  background: none; color: var(--text-secondary);
+  font: inherit; font-size: var(--text-sm); font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.hier-zoom button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); }
+.hier-zoom button:disabled { opacity: 0.4; cursor: default; }
+.hier-zoom button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.hier-zoom-value { font-variant-numeric: tabular-nums; }
+/* Drawn rather than typed: a hyphen sits on the text baseline and reads as
+   punctuation next to a plus sign that is centred. */
+.hier-minus { display: block; width: 11px; height: 1.7px; border-radius: 1px; background: currentColor; }
+
+/* ---------------------------------------------------------------- chart --- */
+
+/* `zoom`, not `transform: scale()`. A transform leaves the scroll area the size
+   of the unscaled chart, so zooming in gives you a chart you cannot scroll to
+   the edge of; zoom reflows, and the scrollbars stay honest. */
+.oc {
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: var(--space-6);
+  width: max-content; min-width: 100%;
+  zoom: var(--oc-zoom, 1);
+}
+
+.oc-branch { display: flex; flex-direction: column; align-items: center; position: relative; }
+.oc-children { display: flex; align-items: flex-start; position: relative; }
+
+/* The stub from a card (or its count chip) down to the sibling bar. */
+.oc-children::before {
+  content: ''; position: absolute; z-index: 0;
+  top: -10px; left: 50%; width: 1px; height: 10px;
+  background: var(--baseline);
+}
+
+/* Every child carries its own half of the rank's horizontal bar plus the stub
+   that drops from it. Trimming the two ends to half width is what stops the bar
+   overhanging the outermost cards. */
+.oc-children > .oc-branch { padding: 22px var(--space-2) 0; }
+.oc-children > .oc-branch::before {
+  content: ''; position: absolute;
+  top: 0; left: 50%; width: 1px; height: 22px;
+  background: var(--baseline);
+}
+.oc-children > .oc-branch::after {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: var(--baseline);
+}
+.oc-children > .oc-branch:first-child::after { left: 50%; }
+.oc-children > .oc-branch:last-child::after { right: 50%; }
+.oc-children > .oc-branch:only-child::after { display: none; }
+
+/* ------------------------------------------------------ horizontal mode --- */
+
+/* The same three lines, turned. Nothing about the markup changes — which is the
+   test of whether the connectors were built out of the layout or painted on. */
+.oc-horizontal { flex-direction: column; align-items: center; }
+.oc-horizontal .oc-branch { flex-direction: row; align-items: center; }
+.oc-horizontal .oc-children { flex-direction: column; align-items: flex-start; }
+.oc-horizontal .oc-children::before {
+  top: 50%; left: -10px; width: 10px; height: 1px;
+}
+.oc-horizontal .oc-children > .oc-branch { padding: var(--space-2) 0 var(--space-2) 22px; }
+.oc-horizontal .oc-children > .oc-branch::before {
+  top: 50%; left: 0; width: 22px; height: 1px;
+}
+.oc-horizontal .oc-children > .oc-branch::after {
+  top: 0; bottom: 0; left: 0; right: auto; width: 1px; height: auto;
+}
+.oc-horizontal .oc-children > .oc-branch:first-child::after { top: 50%; left: 0; }
+.oc-horizontal .oc-children > .oc-branch:last-child::after { bottom: 50%; }
+
+/* ----------------------------------------------------------------- card --- */
+
+.oc-card {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 198px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  /* The left rail is the card's one piece of colour and it means "this is a
+     person in the chart", nothing more — it is not a status and never varies
+     by one. */
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+.oc-card:active { cursor: grabbing; }
+.oc-card:hover { box-shadow: var(--shadow); }
+
+.oc-body { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.oc-name {
+  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  color: var(--text-primary); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.oc-name:hover { text-decoration: underline; }
+.oc-role, .oc-code {
+  font-size: var(--text-xs); color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* A word, not a tint. "Inactive" is a fact about the person and the card is
+   already carrying a colour that means something else. */
+.oc-flag {
+  position: absolute; top: -7px; right: 8px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.oc-card.is-inactive { opacity: 0.72; }
+
+/* Search: the hit is lifted, everything off the path recedes. Both, rather than
+   only the highlight — on a chart of two hundred cards a single tinted card is
+   still a needle in a haystack unless the haystack steps back. */
+.oc-card.is-hit {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: var(--shadow-brand);
+}
+.oc-card.is-dim { opacity: 0.35; }
+
+.oc-card.is-dragging { opacity: 0.4; }
+/* The live drop target. Dashed, because the card is not yet the manager — it is
+   the place the card would land. */
+.oc-card.is-target {
+  border-style: dashed;
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.oc-menu-btn {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 22px;
+  border: 0; border-radius: var(--radius-xs);
+  background: none; color: var(--text-muted);
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+}
+.oc-menu-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+.oc-menu-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+
+.oc-menu {
+  position: absolute; top: 26px; right: 4px; z-index: 20;
+  display: flex; flex-direction: column;
+  min-width: 168px; padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg);
+}
+.oc-menu > * {
+  padding: var(--space-2);
+  border: 0; border-radius: var(--radius-xs);
+  background: none; color: var(--text-primary);
+  font: inherit; font-size: var(--text-md);
+  text-align: left; text-decoration: none;
+  cursor: pointer;
+}
+.oc-menu > *:hover { background: var(--surface-hover); }
+.oc-menu > *:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* The count of everyone beneath, and the control that hides them. One chip for
+   both, because they are one idea. */
+.oc-count {
+  position: relative; z-index: 1;
+  margin-top: var(--space-2);
+  min-width: 22px; height: 20px; padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font: inherit; font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.oc-count::before {
+  content: ''; position: absolute;
+  top: -9px; left: 50%; width: 1px; height: 9px;
+  background: var(--baseline);
+}
+.oc-count:hover { border-color: var(--brand); color: var(--brand-ink); }
+.oc-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Collapsed reads as full, because the people are still there — the chart is
+   just not drawing them. */
+.oc-count.is-closed {
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 34%, transparent);
+  color: var(--brand-ink);
+}
+.oc-horizontal .oc-count { margin: 0 0 0 var(--space-2); }
+.oc-horizontal .oc-count::before { top: 50%; left: -9px; width: 9px; height: 1px; }
+
+/* ----------------------------------------------------------- side panel --- */
+
+.hier-side { display: flex; flex-direction: column; gap: var(--space-3); }
+.hier-side-head { display: flex; align-items: center; justify-content: space-between; }
+
+.hier-hint {
+  margin: 0; padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: var(--text-sm); line-height: 1.5;
+}
+.hier-search-side { min-width: 0; width: 100%; }
+
+.hier-side-empty {
+  margin: 0; font-size: var(--text-sm); color: var(--text-muted); line-height: 1.55;
+}
+.hier-side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); max-height: 52vh; overflow-y: auto; }
+
+.hier-person {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: grab;
+}
+.hier-person:hover { border-color: var(--border-strong); }
+.hier-person:active { cursor: grabbing; }
+.hier-person.is-dragging { opacity: 0.4; }
+.hier-person-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.hier-person-name {
+  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  color: var(--text-primary); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hier-person-name:hover { text-decoration: underline; }
+.hier-person-meta { font-size: var(--text-xs); color: var(--text-muted); }
+/* The keyboard's way in. Drag is the fast path and this is the one that works
+   without a mouse — see the note at the top of Hierarchy.tsx. */
+.hier-person-assign {
+  flex: none;
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-secondary);
+  cursor: pointer;
+}
+.hier-person-assign:hover { background: var(--brand-soft); color: var(--brand-ink); border-color: var(--brand); }
+.hier-person-assign:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* --------------------------------------------------------- assign dialog -- */
+
+/* Wider than the picker shell it borrows from: this dialog is two lists side by
+   side, and at 520px they stack into one long scroll where the whole point is
+   seeing the selection and its destination at the same time. */
+.asg-dialog { width: min(860px, 100%); max-height: min(88vh, 860px); }
+
+.asg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.asg-sub { margin: 4px 0 0; font-size: var(--text-md); color: var(--text-secondary); line-height: 1.5; }
+
+.asg-panes {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--gridline);
+}
+.asg-pane {
+  display: flex; flex-direction: column; min-height: 0;
+  padding: var(--space-3) var(--space-4);
+}
+.asg-pane + .asg-pane { border-left: 1px solid var(--gridline); }
+.asg-pane-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.asg-pane-title {
+  font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+}
+.asg-pane-count { font-size: var(--text-sm); color: var(--brand-ink); font-weight: var(--weight-semibold); }
+.asg-source, .asg-search { width: 100%; margin-top: var(--space-2); }
+
+.asg-list { flex: 1; min-height: 160px; overflow-y: auto; margin-top: var(--space-2); }
+.asg-empty { margin: var(--space-4) 0; font-size: var(--text-sm); color: var(--text-muted); }
+
+.asg-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.asg-row:hover { background: var(--surface-hover); }
+.asg-row:has(input:disabled) { cursor: default; opacity: 0.5; }
+.asg-row.is-on { background: var(--brand-soft); }
+.asg-row-clear { border-bottom: 1px solid var(--gridline); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.asg-row-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.asg-row-name {
+  font-size: var(--text-md); font-weight: var(--weight-medium);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.asg-row-meta { font-size: var(--text-xs); color: var(--text-muted); }
+
+.asg-foot { align-items: center; gap: var(--space-2); }
+.asg-summary { margin: 0 auto 0 0; font-size: var(--text-sm); color: var(--text-secondary); }
+
+@media (max-width: 720px) {
+  .asg-panes { grid-template-columns: minmax(0, 1fr); }
+  .asg-pane + .asg-pane { border-left: 0; border-top: 1px solid var(--gridline); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-card { transition: none; }
+}

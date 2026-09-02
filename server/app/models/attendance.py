@@ -86,6 +86,28 @@ class PunchSource(str, enum.Enum):
     REGULARIZED = "regularized"
 
 
+class WorkMode(str, enum.Enum):
+    """Where the employee says they are working, chosen at check-in.
+
+    A declaration, not an observation — which is exactly why it is stored beside
+    the geofence verdict rather than instead of it. "Work from home" plus a
+    punch 400 m from the office is a contradiction a manager should be able to
+    see; collapsing the two into one field would hide it.
+
+    It also decides which geofence rule applies (see
+    ``AttendanceSettings.geofence_for``): fencing somebody who has just told you
+    they are at a client's site is asking a question whose answer you already
+    have.
+
+    ``ON_DUTY`` covers a client visit, a site inspection, travel — anything that
+    is work, is not home, and is not one of the org's own offices.
+    """
+
+    OFFICE = "office"
+    WORK_FROM_HOME = "work_from_home"
+    ON_DUTY = "on_duty"
+
+
 class GeofenceEnforcement(str, enum.Enum):
     """Per-org geofence policy.
 
@@ -170,6 +192,32 @@ class AttendanceSettings(TimestampMixin, Base):
     geofence_enforcement: Mapped[str] = mapped_column(
         String(16), default=GeofenceEnforcement.FLAG_ONLY.value, nullable=False
     )
+
+    # Per-work-mode overrides. NULL means "follow geofence_enforcement", which
+    # is what every existing row gets on migration — so a tenant that never
+    # opens this screen keeps exactly the behaviour it has today.
+    #
+    # Nullable rather than three copies of the default, because "inherit" is a
+    # real answer an administrator wants to give: a company that later tightens
+    # the org policy to `required` expects Office to tighten with it, and would
+    # not think to revisit a per-mode row it never set.
+    geofence_office: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    geofence_work_from_home: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    geofence_on_duty: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    def geofence_for(self, work_mode: str | None) -> str:
+        """The enforcement level that applies to one punch.
+
+        Falls back to the org-wide policy on an unknown or absent mode, which is
+        the pre-work-mode behaviour and therefore what a punch from an older
+        client — or the agent, which never sends a mode — must still get.
+        """
+        override = {
+            WorkMode.OFFICE.value: self.geofence_office,
+            WorkMode.WORK_FROM_HOME.value: self.geofence_work_from_home,
+            WorkMode.ON_DUTY.value: self.geofence_on_duty,
+        }.get(work_mode or "")
+        return override or self.geofence_enforcement
 
 
 class Shift(UUIDMixin, TimestampMixin, Base):
@@ -422,3 +470,9 @@ class AttendanceRecord(UUIDMixin, TimestampMixin, Base):
     # looks odd — "client site visit", or the approver's note on a
     # regularisation — so a flagged row is explainable without opening it.
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # What the employee declared at check-in. Nullable for every row written
+    # before this column existed, and for every punch the desktop agent fills in
+    # — the agent observes a session starting, it does not know whether the desk
+    # it is running on is at home or in the office.
+    work_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)

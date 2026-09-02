@@ -3,6 +3,7 @@ from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus
 from app.models.attendance import (
     AttendanceRecord,
     AttendanceSettings,
+    WorkMode,
     AttendanceStatus,
     GeofenceEnforcement,
     OfficeLocation,
@@ -49,6 +50,7 @@ from app.models.workflowlevels import (
     ReviewerRule,
     StepStatus,
     WorkflowLevel,
+    WorkflowRule,
     WorkflowStep,
 )
 from app.models.engagement import (
@@ -141,6 +143,51 @@ from app.models.onboarding import (
     OnboardingTemplate,
     OnboardingTemplateTask,
 )
+from app.models.chat import (
+    ChannelKind,
+    ChatChannel,
+    ChatChannelMember,
+    ChatMessage,
+    ChatRead,
+)
+from app.models.crm import (
+    CrmActivity,
+    CrmCity,
+    CrmCountry,
+    CrmCounter,
+    CrmCustomer,
+    CrmCustomerPlan,
+    CrmDisposition,
+    CrmFollowUp,
+    CrmIndustry,
+    CrmInteraction,
+    CrmLead,
+    CrmLeadSource,
+    CrmLeadStatus,
+    CrmPlan,
+    CrmProduct,
+    CrmQuotation,
+    CrmQuotationLine,
+    CrmReminder,
+    CrmReminderRecipient,
+    CrmReminderRun,
+    CrmSettings,
+    CrmState,
+    CrmVisit,
+    CrmVisitType,
+    CustomerStatus,
+    FollowUpStatus,
+    InteractionDirection,
+    InteractionStatus,
+    PaymentStatus,
+    PlanStatus,
+    Priority,
+    QuotationStatus,
+    ReminderAudience,
+    StatusBehaviour,
+    VisitStatus,
+)
+from app.models.meetings import Meeting, MeetingInvitee, MeetingStatus
 from app.models.org_structure import Department, Designation, Team, WorkSchedule
 from app.models.organization import Organization, OrgSettings
 from app.models.plan import PlanRecord
@@ -159,6 +206,7 @@ from app.models.project import (
 from app.models.regularization import RegularizationRequest, RegularizationStatus
 from app.models.screenshot import Screenshot
 from app.models.timesheet import ApprovalStatus, EntrySource, TimeEntry, TimesheetApproval
+from app.models.role import DataScope, OrgRole, PERMISSION_KEYS
 from app.models.user import Role, User, UserStatus
 
 # Classes only, deliberately. Module-level data constants — onboarding's
@@ -167,6 +215,41 @@ from app.models.user import Role, User, UserStatus
 # make this file the place people look for seed content, which is not what it is
 # for, and the two modules disagreed about whether to do it.
 __all__ = [
+    "CrmActivity",
+    "CrmCity",
+    "CrmCountry",
+    "CrmCounter",
+    "CrmCustomer",
+    "CrmCustomerPlan",
+    "CrmDisposition",
+    "CrmFollowUp",
+    "CrmIndustry",
+    "CrmInteraction",
+    "CrmLead",
+    "CrmLeadSource",
+    "CrmLeadStatus",
+    "CrmPlan",
+    "CrmProduct",
+    "CrmQuotation",
+    "CrmQuotationLine",
+    "CrmReminder",
+    "CrmReminderRecipient",
+    "CrmReminderRun",
+    "CrmSettings",
+    "CrmState",
+    "CrmVisit",
+    "CrmVisitType",
+    "CustomerStatus",
+    "FollowUpStatus",
+    "InteractionDirection",
+    "InteractionStatus",
+    "PaymentStatus",
+    "PlanStatus",
+    "Priority",
+    "QuotationStatus",
+    "ReminderAudience",
+    "StatusBehaviour",
+    "VisitStatus",
     "AccrualType",
     "ActivitySegment",
     "ApprovalStatus",
@@ -176,6 +259,15 @@ __all__ = [
     "AssetStatus",
     "AttendanceRecord",
     "AttendanceSettings",
+    "ChannelKind",
+    "ChatChannel",
+    "ChatChannelMember",
+    "ChatMessage",
+    "ChatRead",
+    "DataScope",
+    "OrgRole",
+    "PERMISSION_KEYS",
+    "WorkMode",
     "AttendanceStatus",
     "AuditLog",
     "Calculation",
@@ -259,6 +351,7 @@ __all__ = [
     "ReviewerRule",
     "StepStatus",
     "WorkflowLevel",
+    "WorkflowRule",
     "WorkflowStep",
     "OfficeLocation",
     "OnboardingCategory",
@@ -271,6 +364,9 @@ __all__ = [
     "OnboardingTemplate",
     "OnboardingTemplateTask",
     "OptionalHolidayOptIn",
+    "Meeting",
+    "MeetingInvitee",
+    "MeetingStatus",
     "Organization",
     "OrgSettings",
     "PayComponent",

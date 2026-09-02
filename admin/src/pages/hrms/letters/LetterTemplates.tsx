@@ -113,6 +113,7 @@ export default function LetterTemplates() {
           confirmation, experience, address-proof and relieving letters.
         </Empty>
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -151,11 +152,12 @@ export default function LetterTemplates() {
               ))}
             </tbody>
           </table>
-          <p className="muted">
-            Deleting a template leaves every letter already issued from it intact
-            and readable — those are records of what the company told somebody.
-          </p>
         </div>
+        <p className="muted">
+          Deleting a template leaves every letter already issued from it intact
+          and readable — those are records of what the company told somebody.
+        </p>
+        </>
       )}
     </div>
   )

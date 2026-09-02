@@ -35,6 +35,80 @@ export const PAGES = [
 ]
 
 export const PERMISSIONS = [
+  /* The seven below were on the server and enforced from day one, but were
+     never listed here — so the roles screen offered twelve of the nineteen
+     permissions the product actually has, and the other seven could only be
+     changed by editing the database. Approving leave was one of them. */
+  {
+    key: 'can_approve_leave' as const,
+    label: 'Approve leave',
+    description:
+      'Decide leave applications from the people this role can see. Separate ' +
+      'from managing the leave policy, which is an administrator’s job.',
+  },
+  {
+    key: 'can_approve_regularization' as const,
+    label: 'Approve attendance corrections',
+    description:
+      'Decide a request to fix a missed or wrong punch. Kept apart from ' +
+      'approving leave: one spends a balance, the other corrects a record.',
+  },
+  {
+    key: 'can_manage_assets' as const,
+    label: 'Manage the asset register',
+    description:
+      'Issue, return and retire company kit. Everyone can always see what is ' +
+      'assigned to them.',
+  },
+  {
+    key: 'can_manage_onboarding' as const,
+    label: 'Run onboarding and offboarding',
+    description:
+      'The joiner and leaver checklists, their templates, and the exit ' +
+      'clearance that gates a final settlement.',
+  },
+  {
+    key: 'can_manage_helpdesk' as const,
+    label: 'Work the helpdesk queue',
+    description:
+      'See and answer tickets raised by others. Raising one needs no ' +
+      'permission at all.',
+  },
+  {
+    key: 'can_manage_performance' as const,
+    label: 'Run appraisal cycles',
+    description:
+      'Open and close review cycles and see everybody’s ratings. An ' +
+      'employee always has their own review without this.',
+  },
+  {
+    key: 'can_manage_engagement' as const,
+    label: 'Publish announcements and surveys',
+    description:
+      'Post to the noticeboard and run pulse surveys. Reading them, and ' +
+      'thanking a colleague, needs nothing.',
+  },
+  {
+    key: 'can_punch_anywhere' as const,
+    /**
+     * The one permission here that acts on the HOLDER rather than on other
+     * people, which is why it stays enabled at every role.
+     *
+     * The rest govern somebody else's data, so an employee — whose scope is
+     * themselves — gains nothing from them and the form greys them out. This
+     * one exempts the holder's own punch from the geofence, and the people who
+     * need it are field staff and remote hires, who are almost always plain
+     * employees. Greying it out for them removed it from its entire audience.
+     */
+    selfScoped: true,
+    label: 'Can punch from anywhere',
+    description:
+      'Exempt from the geofence, whatever work mode they choose — for field ' +
+      'staff, drivers, and permanently remote hires the fence was never meant ' +
+      'for. Starts OFF: it removes a control rather than granting one. The ' +
+      'punch is still recorded with its coordinates and its distance, so an ' +
+      'exempt employee is not an unmeasured one.',
+  },
   {
     key: 'can_manage_payroll' as const,
     label: 'See and set salaries',

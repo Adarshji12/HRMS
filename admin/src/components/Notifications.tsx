@@ -212,7 +212,7 @@ export default function Notifications({ isAdmin }: { isAdmin: boolean }) {
       </button>
 
       {open && (
-        <div className="popover notes" role="dialog" aria-label="Notifications">
+        <div className="popover" role="dialog" aria-label="Notifications">
           <div className="popover-head">
             <span className="popover-title">Notifications</span>
             {unread.length > 0 && (

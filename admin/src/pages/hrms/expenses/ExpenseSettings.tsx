@@ -64,6 +64,7 @@ export default function ExpenseSettings() {
       ) : !listQ.data?.length ? (
         <Empty>No categories yet. Add the first one above.</Empty>
       ) : (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -117,12 +118,13 @@ export default function ExpenseSettings() {
               ))}
             </tbody>
           </table>
-          <p className="muted">
-            Categories are deactivated rather than deleted — a claim line without
-            a category cannot be reported on, so a category that has ever been
-            claimed against stays for the record.
-          </p>
         </div>
+        <p className="muted">
+          Categories are deactivated rather than deleted — a claim line without
+          a category cannot be reported on, so a category that has ever been
+          claimed against stays for the record.
+        </p>
+        </>
       )}
     </div>
   )

@@ -3,14 +3,17 @@ from fastapi import APIRouter, Depends
 from app.api.deps import require_module
 
 from app.api.v1 import (
+    roles,
     admin,
     agent,
     approvals,
     assets,
     attendance,
     chains,
+    chat,
     auth,
     corehr,
+    crm,
     engagement,
     expenses,
     form16,
@@ -19,6 +22,7 @@ from app.api.v1 import (
     leave,
     letters,
     loans,
+    meetings,
     notifications,
     offboarding,
     onboarding,
@@ -41,9 +45,21 @@ api_router.include_router(auth.router)
 api_router.include_router(agent.router)
 api_router.include_router(admin.router)
 api_router.include_router(org.router)
+# Roles are the permission model itself, so they sit beside org rather than
+# behind any module gate — a company without the payroll module still needs
+# somewhere to define who administers what.
+api_router.include_router(roles.router)
 api_router.include_router(projects.router)
 api_router.include_router(timesheets.router)
 api_router.include_router(notifications.router)
+# Chat is not plan-gated. It is not a module anyone buys — it is how the people
+# in a workspace talk to each other, and a plan that switched it off would leave
+# a team channel visible in the rail with a 403 behind it. If it ever becomes
+# sellable, gate it here with the others rather than inside the router.
+api_router.include_router(chat.router)
+# Meetings sit with chat and for the same reason: they are how a workspace runs
+# itself, not a module anyone buys. Ungated.
+api_router.include_router(meetings.router)
 # HRMS modules. Each is self-contained behind its own prefix; ordering among
 # them is not load-bearing because no two share a path.
 #
@@ -92,6 +108,15 @@ api_router.include_router(
 api_router.include_router(
     engagement.router, dependencies=[Depends(require_module("engagement"))]
 )
+# CRM. Its own module gate like the HRMS ones above: a workspace that bought
+# workforce management alone has no use for a lead pipeline, and the gate is
+# attached here rather than in the router so no handler can forget it.
+#
+# The public intake webhook lives inside crm.router and is therefore gated too,
+# which is correct: capture is part of the module somebody is paying for, and an
+# ungated capture URL would be a way to write rows into a workspace whose plan
+# does not include the screens that would show them.
+api_router.include_router(crm.router, dependencies=[Depends(require_module("crm"))])
 # Mounted after admin: /admin/reports/summary is a different, older endpoint and
 # must keep working for the existing Reports page while this one takes over.
 api_router.include_router(reports.router)

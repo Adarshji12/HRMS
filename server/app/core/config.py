@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     marketing_host: str = "app"
     # Scheme + host used when building links in emails.
     public_scheme: str = "http"
+
+    #: Default Jitsi deployment for video meetings, when a company has not named
+    #: its own in ``organizations.meeting_domain``.
+    #:
+    #: meet.jit.si is the public instance: free, no account, and **the media
+    #: goes through servers this project does not run**. That is fine for a
+    #: trial and wrong for anybody with a confidentiality obligation, which is
+    #: why the per-tenant override exists and why this is a setting rather than
+    #: a constant. Point it at a self-hosted Jitsi and nothing else changes.
+    meeting_domain: str = "meet.jit.si"
     public_port: str = "5173"
 
     cors_origins: str = ""
@@ -67,6 +77,15 @@ class Settings(BaseSettings):
     cors_allow_subdomains: bool = True
 
     # --- storage -------------------------------------------------------------
+    #: Run the periodic jobs on a thread inside the API process.
+    #:
+    #: Off by default: the separate `jobs` container is the right answer, and
+    #: this is only safe under a SINGLE uvicorn worker (see
+    #: `scheduler.start_in_process`). It exists for hosts with no background
+    #: worker and no cron — Render's free tier — where the alternative is
+    #: retention and alerts never running at all.
+    run_jobs_in_process: bool = False
+
     storage_backend: str = "local"  # local | s3
     storage_dir: Path = SERVER_ROOT / "storage"
     s3_bucket: str = ""

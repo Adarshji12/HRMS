@@ -50,6 +50,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -109,14 +110,85 @@ class StepStatus(str, enum.Enum):
     ESCALATED = "escalated"
 
 
+class WorkflowRule(UUIDMixin, TimestampMixin, Base):
+    """A condition, and the chain to use when it holds.
+
+    The thing that turns "expenses go manager → department head" into "expenses
+    **over ₹50,000** go manager → department head → finance". Without it a flow
+    has exactly one chain per department, and every company that routes by
+    amount — which is most of them — has to route the largest claim the same way
+    as the smallest.
+
+    **First match wins, top to bottom.** Rules are ordered by ``priority`` and
+    the first whose conditions hold supplies the whole chain; nothing merges,
+    and no rule adds a rung to another rule's chain. That is the shape a person
+    can read off one screen and predict: a chain assembled from three partial
+    matches is one nobody can answer "who approves this" about without running
+    the code.
+
+    ``conditions`` is a list of clauses, ANDed:
+
+    ``[{"field": "amount", "op": "gt", "value": 5000000}]``
+
+    An **empty** list matches everything, which is what makes the fallback rule
+    work. Exactly one rule per flow should carry ``is_fallback`` — it is forced
+    to sort last whatever its priority says, and it is what a record falls to
+    when nothing else matched. Without one, an unmatched record uses the plain
+    department chain, which is the behaviour that existed before rules did.
+
+    The vocabulary of fields and operators lives in ``services.chains``, not
+    here: it is per flow (a leave application has no amount), and a column
+    cannot express that. Storing an unknown field is therefore possible and is
+    treated as **not matching** rather than as an error — a rule that cannot be
+    evaluated must not silently approve things by matching everything.
+    """
+
+    __tablename__ = "workflow_rules"
+    __table_args__ = (
+        Index("ix_workflow_rules_org_kind", "org_id", "kind", "priority"),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    #: Which flow, from ``services.workflow.POLICIES`` — "leave", "expense".
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: What an administrator called it. Shown on the record's chain so somebody
+    #: reading an approval can see *why* it routed the way it did.
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Lower runs first. Ties broken by creation order, so two rules added with
+    #: the same priority still evaluate in a defined sequence rather than
+    #: whichever the database returns first.
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    #: Clauses, ANDed. See the class docstring.
+    conditions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    #: The "otherwise" row. Sorted last regardless of priority and matched
+    #: unconditionally, so a flow with one of these can never route nowhere.
+    is_fallback: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    #: delete-orphan: a rung has no meaning without the rule it belongs to.
+    levels: Mapped[list["WorkflowLevel"]] = relationship(
+        back_populates="rule",
+        cascade="all, delete-orphan",
+        order_by="WorkflowLevel.level",
+    )
+
+
 class WorkflowLevel(UUIDMixin, TimestampMixin, Base):
     """One rung of a configured chain. Configuration, not history."""
 
     __tablename__ = "workflow_levels"
     __table_args__ = (
-        # One rung per position, per flow, per scope. A second level 2 for the
-        # same flow is not a richer chain, it is an ambiguous one.
-        UniqueConstraint("org_id", "kind", "department_id", "level",
+        # One rung per position, per flow, per scope — and `rule_id` is part of
+        # the scope. Two rules for one flow both having a level 1 is the whole
+        # point of rules; without this column in the constraint the second rule
+        # could not be saved at all.
+        #
+        # NULLs repeat in a unique index on both backends, so the pre-rules
+        # rows (rule_id NULL) keep exactly the uniqueness they had.
+        UniqueConstraint("org_id", "kind", "department_id", "level", "rule_id",
                          name="uq_workflow_levels_scope_level"),
         Index("ix_workflow_levels_org_kind", "org_id", "kind"),
     )
@@ -132,6 +204,18 @@ class WorkflowLevel(UUIDMixin, TimestampMixin, Base):
     #: inherited and half local is one nobody can read off the screen.
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("departments.id", ondelete="CASCADE"), nullable=True
+    )
+
+    #: The rule this rung belongs to, or NULL for the plain department chain.
+    #:
+    #: Nullable is what makes rules additive rather than a migration: every
+    #: level written before rules existed has NULL here and keeps working
+    #: exactly as it did, and a company that never writes a rule sees no change
+    #: whatever. CASCADE because a rung without its rule is a chain fragment
+    #: belonging to no condition.
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("workflow_rules.id", ondelete="CASCADE"),
+        nullable=True, index=True,
     )
 
     #: 1-based position in the chain.
@@ -156,6 +240,8 @@ class WorkflowLevel(UUIDMixin, TimestampMixin, Base):
     )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    rule: Mapped["WorkflowRule | None"] = relationship(back_populates="levels")
 
 
 class WorkflowStep(UUIDMixin, TimestampMixin, Base):

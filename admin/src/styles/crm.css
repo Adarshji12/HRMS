@@ -1,0 +1,1489 @@
+/* CRM — the module's visual system.
+ *
+ * Everything here is scoped under `.crm`, which the `CrmPage` wrapper puts on
+ * every CRM screen. That scoping is the whole design decision: the CRM is nine
+ * dense, outward-facing screens with tables, boards and documents on them, and
+ * it needs a tighter, quieter treatment than the HRMS pages — but it must not
+ * restyle the rest of the console on its way past. Nothing in this file
+ * addresses a bare element outside `.crm`.
+ *
+ * ── The three rules ────────────────────────────────────────────────────────
+ *
+ * 1. **Hairlines and lift, not boxes.** Surfaces separate by a near-invisible
+ *    border plus a soft shadow rather than by a drawn line. That is what makes
+ *    a table of forty rows read as one object instead of forty.
+ * 2. **Colour is reserved for meaning.** Exactly two things are coloured: the
+ *    accent (one action per screen) and status (overdue, won, lost, paid). A
+ *    lead's stage colour comes from the customer's own master data as an inline
+ *    style — never from here — so twelve stages cannot turn a table into a
+ *    paint chart.
+ * 3. **Every colour is a token or a `color-mix` of one.** No literal hex below
+ *    this comment except the WhatsApp green, which is somebody else's brand.
+ *    That is what makes dark mode work without a second copy of this file.
+ *
+ * ── The accent ─────────────────────────────────────────────────────────────
+ *
+ * `--crm-accent` defaults to the workspace brand, so the CRM matches the rest
+ * of the console and inherits its dark-mode value. It is a single token on
+ * purpose: setting it to a rose (`#f43f5e`) in the `.crm` block below is the
+ * entire change needed to give the CRM its own identity, and no other rule has
+ * to move.
+ */
+
+.crm {
+  /* One accent, one place. See the note above. */
+  --crm-accent: var(--brand);
+  --crm-accent-strong: var(--brand-strong);
+  --crm-on-accent: var(--brand-on);
+
+  /* Tints, mixed rather than declared, so they follow the accent and the
+     surface into dark mode without a second definition. */
+  --crm-accent-wash: color-mix(in srgb, var(--crm-accent) 10%, var(--surface-1));
+  --crm-accent-edge: color-mix(in srgb, var(--crm-accent) 28%, transparent);
+  --crm-accent-ink: color-mix(in srgb, var(--crm-accent) 76%, var(--text-primary));
+
+  /* A border you can barely see is the point — it exists to stop two white
+     surfaces melting into each other, not to draw a box. */
+  --crm-hair: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  --crm-hair-soft: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --crm-hover: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  --crm-sunken: color-mix(in srgb, var(--text-primary) 3%, var(--surface-1));
+
+  --crm-radius: 14px;
+  --crm-radius-sm: 10px;
+  --crm-radius-xs: 8px;
+
+  /* Two shadows: one for things that sit on the page, one for things that sit
+     above it. A third would be a decision nobody could make consistently. */
+  --crm-lift: 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent),
+              0 8px 20px -12px color-mix(in srgb, var(--text-primary) 22%, transparent);
+  --crm-lift-high: 0 2px 6px color-mix(in srgb, var(--text-primary) 8%, transparent),
+                   0 24px 48px -20px color-mix(in srgb, var(--text-primary) 34%, transparent);
+
+  --crm-control-h: 36px;
+  --crm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  color: var(--text-primary);
+}
+
+/* Every hover and lift in here is decoration on top of a working page, so it
+   all goes when the reader has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .crm *,
+  .crm *::before,
+  .crm *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════ page header ═══ */
+
+.crm-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.crm-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.crm-subtitle {
+  margin: 4px 0 0;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.crm-head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════ surfaces ═══ */
+
+/* The console's own `.card` inside the CRM: rounder, lighter, lifted. */
+.crm .card {
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius);
+  box-shadow: var(--crm-lift);
+  overflow: hidden;
+}
+
+.crm-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--crm-hair-soft);
+}
+
+.crm-panel-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.crm-panel-link {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+}
+
+/* ═══════════════════════════════════════════════════════════════════ stats ═══ */
+
+.crm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.crm-stat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius);
+  box-shadow: var(--crm-lift);
+  transition: transform 140ms var(--crm-ease), box-shadow 140ms var(--crm-ease);
+}
+
+/* Only the ones that go somewhere lift. A tile that rises under the cursor and
+   then does nothing when clicked is a promise the page does not keep. */
+a.crm-stat:hover,
+button.crm-stat:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--crm-lift-high);
+}
+
+a.crm-stat,
+button.crm-stat {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  /* A tile is a target, not a sentence. The underline a link would otherwise
+     draw lands under the label and reads as an error. */
+  text-decoration: none;
+}
+
+/* The icon chip. `--stat-tone` is set inline per tile and defaults to the
+   accent, so a tile that carries no meaning of its own still looks deliberate. */
+.crm-stat-chip {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--crm-radius-sm);
+  background: color-mix(in srgb, var(--stat-tone, var(--crm-accent)) 14%, transparent);
+  color: var(--stat-tone, var(--crm-accent));
+  flex-shrink: 0;
+}
+
+.crm-stat-body { min-width: 0; display: block; }
+
+.crm-stat-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crm-stat-value {
+  display: block;
+  font-size: 24px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  color: var(--text-primary);
+}
+
+/* Tinted only when the number means something — a red overdue count, a green
+   converted one. An all-tinted row of tiles says nothing. */
+.crm-stat-toned .crm-stat-value { color: var(--stat-tone); }
+
+.crm-stat-meta {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ════════════════════════════════════════════════════════════════ controls ═══ */
+
+/* Wrapped in `:where()` so this base layer carries almost no specificity. The
+   three `:not()`s would otherwise out-weigh every later override in this file —
+   `.crm-search input { padding-left }` lost to it, and the magnifier ended up
+   sitting on top of the placeholder. A base layer must be the easiest thing on
+   the page to override, not the hardest. */
+.crm :where(input:not([type='checkbox']):not([type='radio']):not([type='color'])),
+.crm :where(select),
+.crm :where(textarea) {
+  min-height: var(--crm-control-h);
+  padding: 7px 11px;
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  transition: border-color 120ms var(--crm-ease), box-shadow 120ms var(--crm-ease);
+}
+
+.crm textarea { line-height: 1.55; resize: vertical; }
+
+.crm input:hover:not(:disabled),
+.crm select:hover:not(:disabled),
+.crm textarea:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text-primary) 16%, transparent);
+}
+
+/* One focus treatment for every control on every CRM screen. A ring rather
+   than a colour change, so it is visible on a field that is already tinted. */
+.crm input:focus-visible,
+.crm select:focus-visible,
+.crm textarea:focus-visible,
+.crm button:focus-visible,
+.crm a:focus-visible,
+.crm [tabindex]:focus-visible {
+  outline: none;
+  border-color: var(--crm-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--crm-accent) 22%, transparent);
+}
+
+.crm input:disabled,
+.crm select:disabled,
+.crm textarea:disabled {
+  background: var(--crm-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.crm input::placeholder,
+.crm textarea::placeholder { color: var(--text-muted); }
+
+.crm .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--crm-control-h);
+  padding: 0 14px;
+  border-radius: var(--crm-radius-sm);
+  border: 1px solid var(--crm-hair);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-base);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms var(--crm-ease), border-color 120ms var(--crm-ease),
+              box-shadow 120ms var(--crm-ease), transform 120ms var(--crm-ease);
+}
+
+.crm .btn:hover:not(:disabled) {
+  background: var(--crm-hover);
+  border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
+}
+
+.crm .btn:active:not(:disabled) { transform: translateY(1px); }
+
+.crm .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.crm .btn-primary {
+  background: var(--crm-accent);
+  border-color: var(--crm-accent);
+  color: var(--crm-on-accent);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--crm-accent) 30%, transparent),
+              0 6px 14px -8px color-mix(in srgb, var(--crm-accent) 60%, transparent);
+}
+
+.crm .btn-primary:hover:not(:disabled) {
+  background: var(--crm-accent-strong);
+  border-color: var(--crm-accent-strong);
+}
+
+.crm .btn-sm { height: 30px; padding: 0 11px; font-size: var(--text-md); }
+
+.crm .link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--crm-accent-ink);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.crm .link-btn:hover { text-decoration: underline; }
+
+.crm-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--crm-radius-xs);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 120ms var(--crm-ease), color 120ms var(--crm-ease);
+}
+
+.crm-icon-btn:hover { background: var(--crm-hover); color: var(--text-primary); }
+.crm-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Somebody else's brand colour, and the one literal hex in this file. */
+.crm-icon-wa:hover { color: #25d366; background: color-mix(in srgb, #25d366 12%, transparent); }
+
+.crm-check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--text-md);
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.crm-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--crm-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ═════════════════════════════════════════════════════════════════ toolbar ═══ */
+
+.crm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius);
+  box-shadow: var(--crm-lift);
+}
+
+.crm-bar > .crm-search { flex: 1 1 260px; min-width: 200px; }
+.crm-bar .crm-push { margin-left: auto; }
+
+.crm-search { position: relative; display: flex; align-items: center; }
+
+.crm-search svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.crm-search input { width: 100%; padding-left: 34px; }
+
+.crm .filter-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--crm-control-h);
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+  border-radius: var(--crm-radius-xs);
+}
+
+.crm .filter-reset:hover { background: var(--crm-hover); color: var(--text-primary); }
+
+/* Segmented control — Table/Kanban, the status filters, Reminders/History.
+   One inset track with a lifted active pill: the point is that these are views
+   of one thing, not a row of separate buttons. */
+.crm-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-sunken);
+  border: 1px solid var(--crm-hair-soft);
+}
+
+.crm-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--crm-radius-xs);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms var(--crm-ease), color 120ms var(--crm-ease);
+}
+
+.crm-seg button:hover { color: var(--text-primary); }
+
+.crm-seg .crm-seg-on {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.crm-seg-count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.crm-seg .crm-seg-on .crm-seg-count { color: var(--crm-accent-ink); }
+
+/* ══════════════════════════════════════════════════════════════════ tables ═══ */
+
+.crm .table-wrap { overflow-x: auto; }
+
+.crm table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.crm thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 11px var(--space-4);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--crm-hair);
+  white-space: nowrap;
+}
+
+.crm tbody td {
+  padding: 12px var(--space-4);
+  border-bottom: 1px solid var(--crm-hair-soft);
+  vertical-align: middle;
+  font-size: var(--text-base);
+}
+
+.crm tbody tr { transition: background 100ms var(--crm-ease); }
+.crm tbody tr:hover { background: var(--crm-hover); }
+.crm tbody tr:last-child td { border-bottom: 0; }
+
+/* A cell whose first line is a name and second a detail. The console's own
+   `.link-btn` is an inline-flex row, which laid those two out side by side —
+   "Advotalk  Advotalk Legal Services" on one line. Inside a table it has to
+   behave like the block it wraps. */
+.crm td .link-btn {
+  display: block;
+  text-align: left;
+  padding: 0;
+}
+
+/* A right-aligned column needs its heading right-aligned too, and
+   `.crm thead th` out-weighs `.crm-num` on its own. */
+.crm thead th.crm-num { text-align: right; }
+
+/* The wide lists — leads and customers — carry a dozen columns and were
+   wrapping every name onto two lines to fit, which made a table of seven rows
+   as tall as one of twenty. They scroll sideways instead, and the actions
+   column stays pinned so the row's controls never scroll out of reach. */
+.crm-table-wide th,
+.crm-table-wide td { white-space: nowrap; }
+
+.crm-table-wide th:last-child,
+.crm-table-wide td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--surface-1);
+  box-shadow: -10px 0 12px -12px color-mix(in srgb, var(--text-primary) 45%, transparent);
+  /* Wide enough for three icon buttons in a row. Without it the column
+     collapses to its narrowest possible width and the actions stack
+     vertically, which triples the height of every row. */
+  min-width: 118px;
+}
+
+
+.crm-table-wide tbody tr:hover td:last-child {
+  background: color-mix(in srgb, var(--text-primary) 4%, var(--surface-1));
+}
+
+.crm-code {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
+
+.crm-strong { font-weight: var(--weight-semibold); color: var(--text-primary); }
+.crm-sub { font-size: var(--text-sm); color: var(--text-muted); line-height: 1.45; }
+.crm-muted { color: var(--text-muted); }
+.crm-num { font-variant-numeric: tabular-nums; text-align: right; }
+.crm-nowrap { white-space: nowrap; }
+
+.crm-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+/* Icons sit tight together; words do not. Without this, "Cancel Edit" reads as
+   one word. Scoped through `td` so it out-weighs the `.crm td .link-btn` rule
+   below, which zeroes padding for the name-and-detail cells. */
+.crm td .crm-row-actions .link-btn { padding: 4px 6px; }
+
+/* Row actions appear on hover on a pointer device and stay put everywhere
+   else — hiding them on touch would make them unreachable. */
+@media (hover: hover) and (pointer: fine) {
+  /* Icons only. Fading the whole cell dimmed the "Complete" button too, and a
+     primary action at 55% opacity reads as disabled — which is the one thing a
+     button must never do while it still works. */
+  .crm tbody .crm-row-actions .crm-icon-btn {
+    opacity: 0.55;
+    transition: opacity 120ms var(--crm-ease);
+  }
+  .crm tbody tr:hover .crm-row-actions .crm-icon-btn,
+  .crm tbody .crm-row-actions:focus-within .crm-icon-btn { opacity: 1; }
+}
+
+.crm-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--crm-hair-soft);
+  background: var(--crm-sunken);
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
+.crm-pager { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+.crm-pager button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--crm-hair);
+  background: var(--surface-1);
+  border-radius: var(--crm-radius-xs);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.crm-pager button:hover:not(:disabled) { background: var(--crm-hover); color: var(--text-primary); }
+.crm-pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.crm-pager .crm-page-on {
+  background: var(--crm-accent);
+  color: var(--crm-on-accent);
+  border-color: var(--crm-accent);
+  font-weight: var(--weight-semibold);
+}
+
+/* Only shown while rows are ticked, so it costs nothing the rest of the time. */
+.crm-selection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--crm-accent-wash);
+  border: 1px solid var(--crm-accent-edge);
+  border-radius: var(--crm-radius);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-md);
+}
+
+/* ══════════════════════════════════════════════════════════ pills & states ═══ */
+
+.crm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--crm-sunken);
+  border: 1px solid var(--crm-hair);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.crm-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* A fixed, product-defined state. Tinted from its own tone so the four states
+   are legible at a glance without reading the word. */
+.crm-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--state-tone, var(--text-muted)) 13%, transparent);
+  color: color-mix(in srgb, var(--state-tone, var(--text-muted)) 72%, var(--text-primary));
+}
+
+.crm-state-good { --state-tone: var(--status-good); }
+.crm-state-warn { --state-tone: var(--status-warn); }
+.crm-state-bad { --state-tone: var(--status-critical); }
+.crm-state-idle { --state-tone: var(--text-muted); }
+
+/* Overdue is the one condition in this module allowed to shout. */
+.crm-due-over { color: var(--status-critical); font-weight: var(--weight-semibold); }
+.crm-due-today { color: var(--status-warn); font-weight: var(--weight-semibold); }
+
+/* ═══════════════════════════════════════════════════════════════════ board ═══ */
+
+.crm-board {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: var(--space-3);
+}
+
+.crm-col {
+  flex: 0 0 282px;
+  display: flex;
+  flex-direction: column;
+  background: var(--crm-sunken);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius);
+  max-height: 68vh;
+  transition: border-color 120ms var(--crm-ease), background 120ms var(--crm-ease);
+}
+
+.crm-col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--crm-hair-soft);
+  position: sticky;
+  top: 0;
+  background: inherit;
+  border-radius: var(--crm-radius) var(--crm-radius) 0 0;
+}
+
+.crm-col-name {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+  letter-spacing: -0.005em;
+}
+
+.crm-col-count {
+  margin-left: auto;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+.crm-col-body {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  overflow-y: auto;
+}
+
+/* The drop target, only while something is being dragged over it. */
+.crm-col-over {
+  border-color: var(--crm-accent);
+  background: var(--crm-accent-wash);
+}
+
+.crm-card {
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius-sm);
+  padding: 11px 12px;
+  cursor: grab;
+  display: grid;
+  gap: 5px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 5%, transparent);
+  transition: box-shadow 130ms var(--crm-ease), transform 130ms var(--crm-ease);
+}
+
+.crm-card:hover {
+  box-shadow: var(--crm-lift);
+  transform: translateY(-1px);
+}
+
+.crm-card:active { cursor: grabbing; transform: none; }
+
+.crm-card-name {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+  line-height: 1.35;
+}
+
+.crm-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.crm-card-meta .crm-push { margin-left: auto; }
+
+/* ═══════════════════════════════════════════════════════════════ dashboard ═══ */
+
+.crm-funnel { display: grid; gap: 12px; padding: var(--space-5); }
+
+.crm-funnel-row {
+  display: grid;
+  grid-template-columns: 128px 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-funnel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-funnel-track {
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  overflow: hidden;
+}
+
+.crm-funnel-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 320ms var(--crm-ease);
+}
+
+.crm-funnel-value {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.crm-trend { padding: var(--space-4) var(--space-5) var(--space-5); }
+
+.crm .legend { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+
+.crm .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.crm .legend-swatch { width: 9px; height: 9px; border-radius: 50%; }
+
+/* ═════════════════════════════════════════════════════════════ support desk ═══ */
+
+.crm-desk {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 1100px) { .crm-desk { grid-template-columns: 1fr; } }
+
+.crm-ident {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--crm-hair-soft);
+}
+
+.crm-ident-name {
+  font-size: 18px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.crm-ident-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.crm-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.crm-fact-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.crm-fact-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-base);
+  flex-wrap: wrap;
+}
+
+.crm-log { display: grid; gap: var(--space-4); padding: var(--space-5); }
+.crm-log-row { display: grid; gap: 6px; }
+
+.crm-log-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+}
+
+.crm-choice { display: flex; gap: 8px; }
+
+.crm-choice button {
+  flex: 1;
+  height: var(--crm-control-h);
+  border-radius: var(--crm-radius-sm);
+  border: 1px solid var(--crm-hair);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 120ms var(--crm-ease);
+}
+
+.crm-choice button:hover { background: var(--crm-hover); }
+
+.crm-choice .crm-choice-on {
+  border-color: var(--crm-accent);
+  background: var(--crm-accent-wash);
+  color: var(--crm-accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+/* Type-ahead used by the desk and by anywhere that picks a customer. */
+.crm-suggest { position: relative; }
+
+.crm-suggest-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius-sm);
+  box-shadow: var(--crm-lift-high);
+}
+
+.crm-suggest-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: var(--crm-radius-xs);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-primary);
+}
+
+.crm-suggest-item:hover,
+.crm-suggest-item[aria-selected='true'] { background: var(--crm-hover); }
+
+.crm-suggest-empty { padding: 12px; color: var(--text-muted); font-size: var(--text-md); }
+
+/* ══════════════════════════════════════════════════════════════ documents ═══ */
+
+.crm-doc-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-5);
+}
+
+.crm-doc-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.crm-doc-dates {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.crm-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.crm-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-4);
+}
+
+.crm-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+.crm-field-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+}
+
+.crm-field input,
+.crm-field select,
+.crm-field textarea { width: 100%; }
+
+.crm-field-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; }
+.crm-field-warn { font-size: var(--text-xs); color: var(--warn-ink); line-height: 1.5; }
+
+/* The line editor. A table, not cards: the columns have to align vertically or
+   the arithmetic cannot be checked by eye. */
+.crm-lines { width: 100%; }
+
+.crm-lines thead th {
+  padding: 10px var(--space-3);
+  background: var(--crm-sunken);
+}
+
+.crm-lines tbody td {
+  padding: 8px var(--space-3);
+  vertical-align: top;
+}
+
+.crm-lines tbody tr:hover { background: transparent; }
+.crm-lines input, .crm-lines select { width: 100%; }
+.crm-lines .crm-line-qty { width: 74px; }
+.crm-lines .crm-line-rate { width: 116px; }
+.crm-lines .crm-line-disc { width: 84px; }
+.crm-lines .crm-line-gst { width: 84px; }
+.crm-line-name-cell { min-width: 220px; display: grid; gap: 5px; }
+
+.crm-totals {
+  margin-left: auto;
+  width: min(360px, 100%);
+  display: grid;
+  gap: 7px;
+  padding: var(--space-5);
+}
+
+.crm-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-total-grand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-accent);
+  color: var(--crm-on-accent);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--crm-accent) 70%, transparent);
+}
+
+/* ═════════════════════════════════════════════════════════════════ drawer ═══ */
+
+/* A right-hand sheet rather than a route: the list behind it is the context,
+   and closing must put the reader back exactly where they were. */
+.crm-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: color-mix(in srgb, #000 40%, transparent);
+  backdrop-filter: blur(2px);
+  animation: crm-fade 160ms var(--crm-ease);
+}
+
+.crm-drawer {
+  position: fixed;
+  z-index: 56;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border-left: 1px solid var(--crm-hair);
+  box-shadow: -24px 0 60px -20px color-mix(in srgb, var(--text-primary) 45%, transparent);
+  animation: crm-slide 200ms var(--crm-ease);
+}
+
+@keyframes crm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crm-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.crm-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--crm-hair-soft);
+}
+
+.crm-drawer-body textarea,
+.crm-drawer-body input:not([type='checkbox']) { width: 100%; }
+
+.crm-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.crm-drawer-foot {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--crm-hair-soft);
+  background: var(--crm-sunken);
+}
+
+.crm-timeline { display: grid; gap: var(--space-4); position: relative; }
+
+.crm-event { display: grid; grid-template-columns: 10px 1fr; gap: 12px; position: relative; }
+
+/* The connector, drawn from each dot to the next. Not on the last one — a line
+   that runs off the end suggests there is more below when there is not. */
+.crm-event:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  bottom: calc(-1 * var(--space-4) - 2px);
+  width: 1px;
+  background: var(--crm-hair);
+}
+
+.crm-event-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 5px;
+  background: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--surface-1);
+  z-index: 1;
+}
+
+.crm-event-status .crm-event-dot { background: var(--crm-accent); }
+.crm-event-converted .crm-event-dot { background: var(--status-good); }
+.crm-event-body { font-size: var(--text-md); line-height: 1.5; }
+.crm-event-when { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+
+/* ══════════════════════════════════════════════════════════════ reminders ═══ */
+
+.crm-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+.crm-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition: all 120ms var(--crm-ease);
+}
+
+.crm-step:hover { background: var(--crm-hover); color: var(--text-primary); }
+
+.crm-step-on {
+  background: var(--crm-accent-wash);
+  border-color: var(--crm-accent-edge);
+  color: var(--crm-accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.crm-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.crm-step-on .crm-step-num { background: var(--crm-accent); color: var(--crm-on-accent); }
+
+.crm-days { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.crm-day {
+  width: 38px;
+  height: 34px;
+  border-radius: var(--crm-radius-xs);
+  border: 1px solid var(--crm-hair);
+  background: var(--surface-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  transition: all 120ms var(--crm-ease);
+}
+
+.crm-day:hover { background: var(--crm-hover); }
+
+.crm-day-on {
+  background: var(--crm-accent);
+  border-color: var(--crm-accent);
+  color: var(--crm-on-accent);
+  font-weight: var(--weight-semibold);
+}
+
+.crm-wizard-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
+
+.crm-wizard-foot > span { display: inline-flex; align-items: center; gap: 6px; }
+.crm-wizard-foot .crm-push { margin-left: auto; display: flex; gap: 8px; }
+
+/* ═══════════════════════════════════════════════════════════════ settings ═══ */
+
+.crm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--space-4); }
+
+.crm-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--crm-control-h);
+  padding: 0 14px;
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  transition: all 120ms var(--crm-ease);
+}
+
+.crm-tab:hover { background: var(--crm-hover); color: var(--text-primary); }
+
+.crm-tab-on {
+  background: var(--crm-accent);
+  border-color: var(--crm-accent);
+  color: var(--crm-on-accent);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--crm-accent) 70%, transparent);
+}
+
+/* The second row of tabs sits under the first and is quieter, because it is a
+   choice *within* the tab above rather than a peer of it. */
+.crm-subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: var(--space-4); }
+
+.crm-subtabs .crm-tab {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--text-md);
+  border-color: transparent;
+  background: var(--crm-sunken);
+}
+
+.crm-subtabs .crm-tab-on {
+  background: var(--crm-accent-wash);
+  border-color: var(--crm-accent-edge);
+  color: var(--crm-accent-ink);
+  box-shadow: none;
+}
+
+.crm-swatch {
+  width: 40px;
+  height: var(--crm-control-h);
+  padding: 3px;
+  border: 1px solid var(--crm-hair);
+  border-radius: var(--crm-radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+}
+
+/* The intake URL. Monospace and wrapping, because the only thing anybody does
+   with it is copy it into somebody else's console. */
+.crm-token {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-sunken);
+  border: 1px solid var(--crm-hair);
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════════════════════════ dialogs ═══ */
+
+.crm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in srgb, #000 42%, transparent);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  animation: crm-fade 150ms var(--crm-ease);
+}
+
+.crm-dialog {
+  width: min(760px, 100%);
+  max-height: min(90vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--crm-hair);
+  border-radius: 18px;
+  box-shadow: var(--crm-lift-high);
+  overflow: hidden;
+  animation: crm-pop 180ms var(--crm-ease);
+}
+
+@keyframes crm-pop {
+  from { transform: translateY(8px) scale(0.99); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.crm-dialog-wide { width: min(940px, 100%); }
+
+.crm-dialog-head {
+  position: relative;
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--crm-hair-soft);
+}
+
+.crm-dialog-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  padding-right: 36px;
+}
+
+.crm-dialog-sub { margin-top: 4px; font-size: var(--text-md); color: var(--text-muted); max-width: 68ch; }
+
+.crm-dialog-close { position: absolute; top: var(--space-4); right: var(--space-4); }
+
+.crm-dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--crm-hair-soft);
+  background: var(--crm-sunken);
+}
+
+/* The default footer puts its buttons on the right; a footer that carries its
+   own layout (the reminder wizard) opts out by supplying one child. */
+.crm-dialog-foot > .btn:first-of-type { margin-left: auto; }
+
+.crm-form {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+.crm-form-wide { grid-column: 1 / -1; }
+
+@media (max-width: 640px) { .crm-form { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════════════════════ notes & empties ═══ */
+
+.crm .notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: var(--crm-radius-sm);
+  font-size: var(--text-md);
+  line-height: 1.55;
+  border: 1px solid var(--crm-hair);
+  background: var(--crm-sunken);
+  color: var(--text-secondary);
+}
+
+.crm .notice-ok {
+  background: color-mix(in srgb, var(--status-good) 10%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--status-good) 26%, transparent);
+  color: color-mix(in srgb, var(--status-good) 62%, var(--text-primary));
+}
+
+.crm .notice-warn {
+  background: color-mix(in srgb, var(--status-warn) 12%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
+  color: var(--warn-ink);
+}
+
+.crm .error {
+  padding: 11px 14px;
+  border-radius: var(--crm-radius-sm);
+  font-size: var(--text-md);
+  background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--status-critical) 28%, transparent);
+  color: color-mix(in srgb, var(--status-critical) 70%, var(--text-primary));
+}
+
+.crm .empty-state { padding: var(--space-9) var(--space-6); }
+
+.crm .empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-3);
+  border-radius: 50%;
+  background: var(--crm-accent-wash);
+  color: var(--crm-accent);
+}
+
+.crm .empty-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.crm .empty-body { max-width: 56ch; margin: 6px auto 0; color: var(--text-muted); line-height: 1.6; }
+.crm .empty-action { margin-top: var(--space-4); }
+.crm .empty { padding: var(--space-7); text-align: center; color: var(--text-muted); font-size: var(--text-md); }
+
+.crm .loading { padding: var(--space-8); justify-content: center; color: var(--text-muted); }
+
+/* ══════════════════════════════════════════════════════════════ responsive ═══ */
+
+@media (max-width: 720px) {
+  .crm-title { font-size: 19px; }
+  .crm-stats { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .crm-stat { padding: var(--space-3); gap: var(--space-2); }
+  .crm-stat-chip { width: 32px; height: 32px; }
+  .crm-stat-value { font-size: 20px; }
+  .crm-funnel-row { grid-template-columns: 96px 1fr auto; }
+  .crm-doc-dates { margin-left: 0; width: 100%; }
+}

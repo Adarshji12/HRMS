@@ -19,7 +19,10 @@ export default defineConfig({
     // header. The client also sends X-Org-Slug, so tenancy does not depend on
     // this alone — but leaving Host intact keeps dev matching production.
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false },
+      // ws:true is what carries the chat socket (/api/v1/chat/ws) through the
+      // dev proxy. Without it the handshake is proxied as plain HTTP and chat
+      // sits on "Reconnecting" while every other call works.
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false, ws: true },
     },
   },
 })

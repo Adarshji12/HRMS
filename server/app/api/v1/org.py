@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, select
 
 from app.api.deps import deny_page, AdminUser, CurrentUser, DbSession, TeamViewer, audit, visible_user_ids
 from app.models import Department, Designation, Organization, Team, User, WorkSchedule
+from app.schemas.common import CompanyProfileIn, CompanyProfileOut
+from app.services import branding
 from app.schemas.org_structure import (
     AssignRequest,
     DepartmentIn,
@@ -456,3 +468,138 @@ def _validate_owned(db, org_id: uuid.UUID, model, record_id: uuid.UUID | None) -
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, f"{model.__name__} not found in this organisation"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Company profile — who this company is, and the logo that brands its console
+# --------------------------------------------------------------------------- #
+
+
+def _company_out(org: Organization) -> CompanyProfileOut:
+    """One place that turns the row into the response.
+
+    ``has_logo`` is computed from the key and the key never leaves the server —
+    it is an internal storage path, and putting it in a response body invites
+    somebody to try fetching it directly.
+    """
+    out = CompanyProfileOut.model_validate(org)
+    out.has_logo = bool(org.logo_key)
+    return out
+
+
+def _org_of(db, viewer: User) -> Organization:
+    org = db.get(Organization, viewer.org_id)
+    if org is None:
+        # Only reachable if the tenant row was deleted under a live session.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found")
+    return org
+
+
+@router.get("/company", response_model=CompanyProfileOut)
+def company_profile(viewer: CurrentUser, db: DbSession) -> CompanyProfileOut:
+    """Readable by everyone who works here.
+
+    Not gated to administrators: this is the company's own name, address and
+    contact details, which are already printed on the reader's payslip and offer
+    letter. Editing it is a different question — see below.
+    """
+    return _company_out(_org_of(db, viewer))
+
+
+@router.put("/company", response_model=CompanyProfileOut)
+def update_company_profile(
+    payload: CompanyProfileIn, admin: AdminUser, request: Request, db: DbSession
+) -> CompanyProfileOut:
+    """A partial update: only the fields present in the body are written.
+
+    That is what makes two administrators editing different halves of the page
+    safe, and it is why every field on ``CompanyProfileIn`` is optional. An
+    emptied text box arrives as ``""`` and is stored as NULL — the schema does
+    that, and the reason is on it: ``legal_name or name`` is what letters and
+    payslips print, and an empty string would win that fallback and put a blank
+    company on a legal document.
+    """
+    org = _org_of(db, admin)
+
+    changed: list[str] = []
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if getattr(org, field) != value:
+            setattr(org, field, value)
+            changed.append(field)
+
+    if changed:
+        audit(db, org_id=org.id, actor=admin, action="org.profile_updated", request=request,
+              detail={"fields": sorted(changed)})
+    db.commit()
+    db.refresh(org)
+    return _company_out(org)
+
+
+@router.post("/company/logo", response_model=CompanyProfileOut)
+async def upload_company_logo(
+    admin: AdminUser,
+    request: Request,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> CompanyProfileOut:
+    """Replace the console's product mark with this company's own.
+
+    Whatever arrives is decoded, downscaled and re-encoded as a PNG the server
+    produced — the uploaded bytes are never stored and never served. See
+    ``services/branding.py`` for why that is not optional.
+    """
+    org = _org_of(db, admin)
+    # One byte past the ceiling, so an oversize upload is refused on its size
+    # rather than after the whole thing has been buffered.
+    raw = await file.read(branding.MAX_LOGO_BYTES + 1)
+    try:
+        branding.store_logo(db, org, raw)
+    except branding.BrandingError as error:
+        raise HTTPException(
+            error.status_code, detail={"reason": error.code, "message": error.message}
+        ) from error
+
+    audit(db, org_id=org.id, actor=admin, action="org.logo_updated", request=request)
+    db.commit()
+    db.refresh(org)
+    return _company_out(org)
+
+
+@router.delete("/company/logo", response_model=CompanyProfileOut)
+def delete_company_logo(
+    admin: AdminUser, request: Request, db: DbSession
+) -> CompanyProfileOut:
+    """Back to the product mark. Clearing a logo nobody set is not an error."""
+    org = _org_of(db, admin)
+    had = bool(org.logo_key)
+    branding.clear_logo(db, org)
+    if had:
+        audit(db, org_id=org.id, actor=admin, action="org.logo_cleared", request=request)
+    db.commit()
+    db.refresh(org)
+    return _company_out(org)
+
+
+@router.get("/company/logo")
+def company_logo(viewer: CurrentUser, db: DbSession) -> Response:
+    """The image itself, for the console chrome.
+
+    Authenticated, like every other stored object: the permission check runs
+    here on each request, which is exactly what handing out a storage key would
+    have thrown away. It is a per-tenant singleton, so it needs no id in the
+    path — the caller's own token says which company is being asked about, and
+    there is no way to spell another one.
+    """
+    org = _org_of(db, viewer)
+    try:
+        served = branding.serve_logo(org)
+    except branding.BrandingError as error:
+        raise HTTPException(
+            error.status_code, detail={"reason": error.code, "message": error.message}
+        ) from error
+
+    if served.url:
+        # 307 keeps the method and is not cached, which matters because the URL
+        # behind it expires.
+        return RedirectResponse(served.url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    return FileResponse(served.path, media_type=branding.STORED_CONTENT_TYPE)

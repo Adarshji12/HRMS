@@ -48,6 +48,7 @@ in ``models/incometax`` so their absence is visible rather than assumed.
 from __future__ import annotations
 
 import calendar
+from dataclasses import dataclass
 import logging
 import uuid
 from datetime import date, datetime, timezone
@@ -62,17 +63,21 @@ from app.models import (
     ExpenseClaim,
     InstalmentStatus,
     LeaveApplication,
+    LeaveStatus,
     LeaveType,
     EmployeeProfile,
     LineSource,
     Loan,
     LoanInstalment,
     LoanStatus,
+    OffboardingRequest,
     PayRun,
     PayRunStatus,
     Payslip,
     PayslipLine,
     ProfessionalTaxSlab,
+    RegularizationRequest,
+    RegularizationStatus,
     Role,
     StatutoryConfig,
     TaxDeclaration,
@@ -949,3 +954,381 @@ def my_payslips(db: Session, viewer: User) -> list[Payslip]:
             .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
         )
     )
+
+
+# --------------------------------------------------------------------------- #
+# Pre-payroll readiness
+#
+# Everything that has to be true *before* a month is computed. The exceptions
+# the console already shows are found by computing; these are found instead of
+# computing, which is the whole point: a missing bank account discovered on the
+# 30th is a fix, and the same one discovered on payday is somebody not paid.
+#
+# Nothing here blocks anything. A check reports, the console shows it, and a
+# payroll manager decides — because every one of these has a legitimate "yes,
+# I know" (a consultant with no bank row, an employee who genuinely earned
+# nothing this month). A hard gate on any of them would be a gate somebody
+# learns to work around.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Check:
+    """One pre-payroll question, and who it is about.
+
+    ``severity`` is advice about attention, never about permission:
+
+    * ``blocking``  — this person will not be paid correctly if it stands.
+    * ``warning``   — probably fine, worth a look.
+    * ``info``      — a fact about the month, needing no action at all.
+    """
+
+    key: str
+    title: str
+    severity: str
+    detail: str
+    #: Who it concerns, as "name · what about them". Capped by the caller.
+    names: list[str]
+
+    @property
+    def count(self) -> int:
+        return len(self.names)
+
+
+def readiness(db: Session, viewer: User, run_id: uuid.UUID) -> list[Check]:
+    """The pre-payroll checklist for one open month.
+
+    Read-only and side-effect free — it may be called as often as the console
+    likes, including while somebody is still fixing what it reported.
+    """
+    _require_manager(viewer)
+    run = get_run(db, viewer, run_id)
+
+    year, month = run.period_year, run.period_month
+    month_days = calendar.monthrange(year, month)[1]
+    period_start = date(year, month, 1)
+    period_end = date(year, month, month_days)
+
+    employees = _employees_for(db, viewer.org_id, period_end)
+    checks: list[Check] = []
+
+    # --- who has no salary to pay ------------------------------------------ #
+    no_structure = [
+        person for person in employees
+        if structure_svc.structure_on(db, viewer.org_id, person.id, period_end) is None
+    ]
+    checks.append(Check(
+        key="no_structure",
+        title="No salary structure",
+        severity="blocking",
+        detail=(
+            "These people are active this month but have no salary covering it, so the run "
+            "will skip them entirely. Set a structure, then compute."
+        ),
+        names=[person.full_name for person in no_structure],
+    ))
+
+    # --- who cannot be paid even once the amount is known ------------------- #
+    profiles = {
+        row.user_id: row
+        for row in db.scalars(
+            select(EmployeeProfile).where(
+                EmployeeProfile.org_id == viewer.org_id,
+                EmployeeProfile.user_id.in_([person.id for person in employees] or [None]),
+            )
+        )
+    }
+    no_bank = [
+        person for person in employees
+        if not (
+            (profile := profiles.get(person.id))
+            and profile.bank_account_enc
+            and profile.bank_ifsc
+        )
+    ]
+    checks.append(Check(
+        key="no_bank",
+        title="No bank account on file",
+        severity="blocking",
+        detail=(
+            "The bank file refuses to leave anybody out, so it will not generate until every "
+            "person being paid has an account and an IFSC on their record."
+        ),
+        names=[person.full_name for person in no_bank],
+    ))
+
+    # --- decisions still owed on things that change the payslip ------------- #
+    pending_leave = db.scalars(
+        select(LeaveApplication)
+        .where(
+            LeaveApplication.org_id == viewer.org_id,
+            LeaveApplication.status == LeaveStatus.PENDING.value,
+            LeaveApplication.start_date <= period_end,
+            LeaveApplication.end_date >= period_start,
+        )
+        .order_by(LeaveApplication.start_date)
+    ).all()
+    names = {person.id: person.full_name for person in employees}
+    checks.append(Check(
+        key="pending_leave",
+        title="Leave still awaiting a decision",
+        severity="warning",
+        detail=(
+            "Leave overlapping this month that nobody has approved or rejected. Approving it "
+            "after the run is computed changes the loss of pay, and the run has to be "
+            "computed again."
+        ),
+        names=[
+            f"{names.get(row.user_id, 'Somebody')} · "
+            f"{row.start_date:%d %b}–{row.end_date:%d %b}"
+            for row in pending_leave
+        ],
+    ))
+
+    pending_reg = db.scalars(
+        select(RegularizationRequest).where(
+            RegularizationRequest.org_id == viewer.org_id,
+            RegularizationRequest.status == RegularizationStatus.PENDING.value,
+            RegularizationRequest.date.between(period_start, period_end),
+        )
+    ).all()
+    checks.append(Check(
+        key="pending_regularization",
+        title="Attendance corrections awaiting a decision",
+        severity="warning",
+        detail=(
+            "A missed punch that is corrected later can turn a loss-of-pay day back into a "
+            "paid one. Decide these before computing."
+        ),
+        names=[
+            f"{names.get(row.user_id, 'Somebody')} · {row.date:%d %b}"
+            for row in pending_reg
+        ],
+    ))
+
+    # --- reimbursements that would otherwise miss this payroll -------------- #
+    ready_claims = db.scalars(
+        select(ExpenseClaim).where(
+            ExpenseClaim.org_id == viewer.org_id,
+            ExpenseClaim.status == "submitted",
+        )
+    ).all()
+    checks.append(Check(
+        key="pending_expenses",
+        title="Expense claims awaiting approval",
+        severity="info",
+        detail=(
+            "Approved claims ride along with this payroll as a reimbursement. Ones still "
+            "waiting will wait for next month instead."
+        ),
+        names=[
+            f"{names.get(row.user_id, 'Somebody')} · {row.title}"
+            for row in ready_claims
+            if row.user_id in names
+        ],
+    ))
+
+    # --- who is new, and who is going -------------------------------------- #
+    joiners = [
+        person for person in employees
+        if person.joined_on and period_start <= person.joined_on <= period_end
+    ]
+    checks.append(Check(
+        key="joiners",
+        title="Joined this month",
+        severity="info",
+        detail=(
+            "Paid from their joining date, prorated across the month. Worth confirming the "
+            "date is right — it is the one input nobody can correct afterwards without a "
+            "second run."
+        ),
+        names=[
+            f"{person.full_name} · joined {person.joined_on:%d %b}"
+            for person in joiners
+        ],
+    ))
+
+    exits = db.scalars(
+        select(OffboardingRequest).where(
+            OffboardingRequest.org_id == viewer.org_id,
+            OffboardingRequest.last_working_day.between(period_start, period_end),
+        )
+    ).all()
+    checks.append(Check(
+        key="leavers",
+        title="Leaving this month",
+        severity="warning",
+        detail=(
+            "Their last month of ordinary payroll. Anything owed beyond it — notice pay, "
+            "leave encashment, gratuity — belongs on the full and final settlement, not here."
+        ),
+        names=[
+            f"{names.get(row.user_id, 'Somebody')} · last day {row.last_working_day:%d %b}"
+            for row in exits
+        ],
+    ))
+
+    # --- tax that will be estimated rather than declared -------------------- #
+    financial_year = taxslabs.financial_year_of(year, month)
+    declared = {
+        row.user_id
+        for row in db.scalars(
+            select(TaxDeclaration).where(
+                TaxDeclaration.org_id == viewer.org_id,
+                TaxDeclaration.financial_year == financial_year,
+            )
+        )
+    }
+    checks.append(Check(
+        key="no_declaration",
+        title="No tax declaration this year",
+        severity="info",
+        detail=(
+            f"Nobody has declared investments for {financial_year}, so their tax is computed "
+            "on the default regime with no deductions. That is correct until they declare, "
+            "and over-deducts if they were going to."
+        ),
+        names=[
+            person.full_name for person in employees if person.id not in declared
+        ],
+    ))
+
+    return checks
+
+
+# --------------------------------------------------------------------------- #
+# Variance
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class VarianceRow:
+    user_id: uuid.UUID
+    name: str
+    previous_net: int
+    current_net: int
+    previous_gross: int
+    current_gross: int
+    #: Why it moved, in words, from what the two payslips actually differ on.
+    reasons: list[str]
+
+    @property
+    def delta(self) -> int:
+        return self.current_net - self.previous_net
+
+    @property
+    def percent(self) -> float:
+        if self.previous_net == 0:
+            return 100.0 if self.current_net else 0.0
+        return round(abs(self.delta) * 100 / self.previous_net, 1)
+
+
+def variance(
+    db: Session, viewer: User, run_id: uuid.UUID, *, threshold_percent: float = 10.0
+) -> tuple[list[VarianceRow], list[VarianceRow]]:
+    """Compare this run against the previous month, per employee.
+
+    Returns ``(moved, unchanged_count_rows)`` — everybody whose net moved by
+    more than ``threshold_percent``, and everybody else.
+
+    This is the check a payroll manager actually runs before approving, and it
+    is the one this product did not have: the exceptions list answers "is
+    anything wrong with this run", and variance answers the different and more
+    useful question, "is anything *different* from last month, and do I know
+    why". A salary revision, a joiner, a month of unpaid leave and a fat-
+    fingered override all look identical in a register and obvious here.
+
+    Reasons are derived from the two payslips rather than guessed: a changed
+    structure id is a revision, a changed LOP is unpaid leave, a manual line is
+    somebody's decision, and the absence of a previous payslip is a joiner.
+    """
+    _require_manager(viewer)
+    run = get_run(db, viewer, run_id)
+
+    previous = db.scalar(
+        select(PayRun)
+        .where(
+            PayRun.org_id == viewer.org_id,
+            PayRun.id != run.id,
+            PayRun.status != PayRunStatus.CANCELLED.value,
+            # The most recent run that starts before this one, by period rather
+            # than by creation: months can be opened out of order.
+            (PayRun.period_year * 12 + PayRun.period_month)
+            < (run.period_year * 12 + run.period_month),
+        )
+        .order_by((PayRun.period_year * 12 + PayRun.period_month).desc())
+        .limit(1)
+    )
+
+    before = {slip.user_id: slip for slip in (previous.payslips if previous else [])}
+    names = {
+        row.id: row.full_name
+        for row in db.scalars(select(User).where(User.org_id == viewer.org_id))
+    }
+
+    moved: list[VarianceRow] = []
+    steady: list[VarianceRow] = []
+
+    for slip in run.payslips:
+        old = before.get(slip.user_id)
+        reasons: list[str] = []
+
+        if old is None:
+            reasons.append("First payslip — no previous month to compare")
+        else:
+            if old.structure_id != slip.structure_id:
+                reasons.append("Salary structure changed")
+            if old.lop_milli_days != slip.lop_milli_days:
+                reasons.append(
+                    f"Loss of pay {old.lop_milli_days / 1000:.1f}d → "
+                    f"{slip.lop_milli_days / 1000:.1f}d"
+                )
+            if old.payable_days != slip.payable_days:
+                reasons.append(f"Payable days {old.payable_days} → {slip.payable_days}")
+
+            manual_now = sum(
+                line.amount for line in slip.lines if line.source == LineSource.MANUAL.value
+            )
+            manual_before = sum(
+                line.amount for line in old.lines if line.source == LineSource.MANUAL.value
+            )
+            if manual_now != manual_before:
+                reasons.append("One-off line added or changed by hand")
+
+            loan_now = sum(
+                line.amount for line in slip.lines if line.source == LineSource.LOAN.value
+            )
+            loan_before = sum(
+                line.amount for line in old.lines if line.source == LineSource.LOAN.value
+            )
+            if loan_now != loan_before:
+                reasons.append("Loan instalment started, changed or finished")
+
+            expense_now = sum(
+                line.amount for line in slip.lines if line.source == LineSource.EXPENSE.value
+            )
+            expense_before = sum(
+                line.amount for line in old.lines if line.source == LineSource.EXPENSE.value
+            )
+            if expense_now != expense_before:
+                reasons.append("Expense reimbursement differs")
+
+        row = VarianceRow(
+            user_id=slip.user_id,
+            name=names.get(slip.user_id, "Somebody"),
+            previous_net=old.net if old else 0,
+            current_net=slip.net,
+            previous_gross=old.gross if old else 0,
+            current_gross=slip.gross,
+            reasons=reasons or ["No reason found in the payslips — worth opening"],
+        )
+        # A first payslip always counts as movement: it is exactly the row
+        # somebody should look at, and comparing it against a zero it never had
+        # would bury it under a percentage.
+        if old is None or row.percent >= threshold_percent:
+            moved.append(row)
+        else:
+            steady.append(row)
+
+    moved.sort(key=lambda r: abs(r.delta), reverse=True)
+    return moved, steady

@@ -2,8 +2,8 @@
   <title>MyDeskTime</title>
   <defs>
     <linearGradient id="md-badge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6C2BF0"/>
-      <stop offset="1" stop-color="#4A0FC0"/>
+      <stop offset="0" stop-color="#14A97A"/>
+      <stop offset="1" stop-color="#0A6146"/>
     </linearGradient>
     <clipPath id="md-tile">
       <rect x="79" y="63" width="340" height="372" rx="64"/>
@@ -11,13 +11,13 @@
   </defs>
 
   <!-- offset slab: the mark reads as a raised tile, not a flat sticker -->
-  <rect x="93" y="77" width="340" height="372" rx="64" fill="#14004A"/>
+  <rect x="93" y="77" width="340" height="372" rx="64" fill="#04231A"/>
   <rect x="79" y="63" width="340" height="372" rx="64" fill="url(#md-badge)"/>
 
   <!-- Clock face whose hands spell a T. The ring breaks at 1-4 o'clock so the
        upper hand reads as running past the dial rather than stopping at it. -->
   <g fill="none" stroke-linecap="round">
-    <g stroke="#14004A" transform="translate(8 8)" clip-path="url(#md-tile)">
+    <g stroke="#04231A" transform="translate(8 8)" clip-path="url(#md-tile)">
       <path d="M328.2 328.2A112 112 0 1 1 305 152" stroke-width="14"/>
       <path d="M156 249H249" stroke-width="18"/>
       <path d="M249 249V342" stroke-width="18"/>

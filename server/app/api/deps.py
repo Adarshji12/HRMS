@@ -60,7 +60,14 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def require_team_viewer(user: CurrentUser) -> User:
-    if not user.role_enum.can_view_team:
+    """Sees somebody other than themselves.
+
+    Reads the data scope rather than the role level. Identical outcome for the
+    four built-in roles — manager is `team`, administrator is `company`,
+    employee is `self` — but it also admits a named role that sees widely
+    without managing anybody, which is the whole reason scope became a field.
+    """
+    if not user.sees_others:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient role")
     return user
 
@@ -117,13 +124,18 @@ def deny_page(user: User, page: str) -> None:
 
 
 def deny_unless(user: User, flag: str, what: str) -> None:
-    """Refuse when a per-employee permission is switched off.
+    """Refuse when a permission is switched off.
 
     These flags only ever restrict — the role check has already run by the time
     this is called, so an employee cannot reach someone else's data by having a
-    flag left on. See the note on the columns in app.models.user.
+    flag left on.
+
+    Reads through :meth:`User.has`, not ``getattr``. That is the whole seam
+    between named roles and the forty-four places that ask this question: the
+    ``users`` columns stopped being the truth for anybody holding a role, and
+    changing it here meant not changing it in forty-four handlers.
     """
-    if not getattr(user, flag, True):
+    if not user.has(flag):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail={

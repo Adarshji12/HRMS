@@ -26,12 +26,13 @@ import uuid
 from datetime import date
 from typing import NoReturn
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.models import PayRun, Payslip, PayslipLine, SalaryStructure, User
 from app.schemas.payrun import (
+    CheckOut,
     ComputeIn,
     PaidIn,
     PayslipLineOut,
@@ -39,6 +40,8 @@ from app.schemas.payrun import (
     RunDetailOut,
     RunIn,
     RunOut,
+    VarianceOut,
+    VarianceReport,
 )
 from app.services import payrun as svc
 from app.services import payroll as structure_svc
@@ -265,3 +268,87 @@ def cancel(
     except svc.PayRunError as error:
         _fail(error)
     return _run_out(run, viewer, {})
+
+
+# --------------------------------------------------------------------------- #
+# Before and after computing
+#
+# Two read-only reports either side of the compute step. Neither writes
+# anything, and neither gates anything: a payroll manager decides, and these
+# exist so the decision is made with the facts rather than after payday.
+# --------------------------------------------------------------------------- #
+
+#: How many names one check carries back. The count is exact; the list is a
+#: sample, because a check naming four hundred people is a wall nobody reads.
+MAX_CHECK_NAMES = 40
+
+
+@router.get("/{run_id}/readiness", response_model=list[CheckOut])
+def readiness(run_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> list[CheckOut]:
+    """The pre-payroll checklist: what to fix before computing this month."""
+    try:
+        checks = svc.readiness(db, viewer, run_id)
+    except svc.PayRunError as error:
+        _fail(error)
+    return [
+        CheckOut(
+            key=check.key,
+            title=check.title,
+            severity=check.severity,
+            detail=check.detail,
+            count=check.count,
+            names=check.names[:MAX_CHECK_NAMES],
+        )
+        for check in checks
+    ]
+
+
+@router.get("/{run_id}/variance", response_model=VarianceReport)
+def variance(
+    run_id: uuid.UUID,
+    viewer: CurrentUser,
+    db: DbSession,
+    threshold_percent: float = Query(default=10.0, ge=0, le=100),
+) -> VarianceReport:
+    """What moved since last month, per employee, and why.
+
+    The check a payroll manager runs before approving. The exceptions list
+    answers "is anything wrong"; this answers "is anything *different*, and do
+    I know why" — which is the question that catches a fat-fingered override.
+    """
+    try:
+        moved, steady = svc.variance(db, viewer, run_id, threshold_percent=threshold_percent)
+        run = svc.get_run(db, viewer, run_id)
+    except svc.PayRunError as error:
+        _fail(error)
+
+    previous = db.scalar(
+        select(PayRun)
+        .where(
+            PayRun.org_id == viewer.org_id,
+            PayRun.id != run.id,
+            PayRun.status != "cancelled",
+            (PayRun.period_year * 12 + PayRun.period_month)
+            < (run.period_year * 12 + run.period_month),
+        )
+        .order_by((PayRun.period_year * 12 + PayRun.period_month).desc())
+        .limit(1)
+    )
+
+    return VarianceReport(
+        previous_period=(
+            f"{previous.period_year}-{previous.period_month:02d}" if previous else None
+        ),
+        threshold_percent=threshold_percent,
+        moved=[
+            VarianceOut(
+                user_id=row.user_id, name=row.name,
+                previous_net=row.previous_net, current_net=row.current_net,
+                previous_gross=row.previous_gross, current_gross=row.current_gross,
+                delta=row.delta, percent=row.percent, reasons=row.reasons,
+            )
+            for row in moved
+        ],
+        unchanged=len(steady),
+        total_delta=sum(row.delta for row in moved) + sum(row.delta for row in steady),
+    )

@@ -138,3 +138,48 @@ class RunDetailOut(RunOut):
     #: silently omit them. Skipping is correct — a ₹0 payslip reads as a
     #: decision — but silence about it is not.
     skipped: list[dict] = []
+
+
+class CheckOut(BaseModel):
+    """One pre-payroll question and who it is about.
+
+    ``severity`` is advice about attention, never about permission — nothing in
+    this list blocks a computation. See ``services.payrun.readiness`` for why
+    every check has a legitimate "yes, I know".
+    """
+
+    key: str
+    title: str
+    #: blocking | warning | info
+    severity: str
+    detail: str
+    count: int
+    #: Capped by the API, with `count` carrying the true number: a check that
+    #: names four hundred people would be a wall nobody reads, and the number is
+    #: the part that decides whether to look.
+    names: list[str] = []
+
+
+class VarianceOut(BaseModel):
+    user_id: uuid.UUID
+    name: str
+    previous_net: int
+    current_net: int
+    previous_gross: int
+    current_gross: int
+    delta: int
+    percent: float
+    reasons: list[str] = []
+
+
+class VarianceReport(BaseModel):
+    """What moved since last month, and what did not."""
+
+    #: The month being compared against, or null when this is the first run.
+    previous_period: str | None = None
+    threshold_percent: float
+    moved: list[VarianceOut] = []
+    #: Not the rows — just how many were within the threshold. A list of
+    #: everybody who is unchanged is a list nobody opens.
+    unchanged: int = 0
+    total_delta: int = 0

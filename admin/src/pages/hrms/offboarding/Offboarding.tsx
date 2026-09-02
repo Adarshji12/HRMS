@@ -340,8 +340,8 @@ function blockersOf(detail: ExitDetail): Array<{ id: string; title: string; cate
 
 function StatusPill({ value }: { value: string }) {
   return (
-    <span className={`ex-pill ex-${value}`}>
-      <span className="ex-pill-dot" style={{ background: 'currentColor' }} />
+    <span className={`offboard-pill offboard-${value}`}>
+      <span className="offboard-pill-dot" style={{ background: 'currentColor' }} />
       {REQUEST_STATUS_LABEL[value] ?? value}
     </span>
   )
@@ -349,7 +349,7 @@ function StatusPill({ value }: { value: string }) {
 
 function ReasonTag({ value }: { value: string }) {
   return (
-    <span className={`ex-reason${value === 'termination' ? ' ex-reason-termination' : ''}`}>
+    <span className={`offboard-reason${value === 'termination' ? ' offboard-reason-termination' : ''}`}>
       {REASON_LABEL[value] ?? value}
     </span>
   )
@@ -358,12 +358,12 @@ function ReasonTag({ value }: { value: string }) {
 function TaskTick({ status }: { status: string }) {
   const cls =
     status === 'done'
-      ? 'ex-tick ex-tick-done'
+      ? 'offboard-tick offboard-tick-done'
       : status === 'skipped'
-        ? 'ex-tick ex-tick-skipped'
+        ? 'offboard-tick offboard-tick-skipped'
         : status === 'in_progress'
-          ? 'ex-tick ex-tick-progress'
-          : 'ex-tick'
+          ? 'offboard-tick offboard-tick-progress'
+          : 'offboard-tick'
   return (
     <span className={cls} aria-hidden="true">
       {status === 'done' && <IconCheck size={11} />}
@@ -450,9 +450,7 @@ export default function Offboarding() {
         <div>
           <h1 className="page-title">Offboarding</h1>
           <p className="page-sub">
-            Exits in flight, the clearance each one is waiting on, and the settlement at the end
-            of it. An exit cannot be closed while a mandatory clearance item is still open — and
-            closing it revokes the person's devices and switches their account off.
+            Exits in flight, their clearance, and the settlement at the end.
           </p>
         </div>
         <div className="head-actions">
@@ -518,7 +516,7 @@ export default function Offboarding() {
             </option>
           ))}
         </select>
-        <label className="ex-muted" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <label className="offboard-muted" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
           <input
             type="checkbox"
             checked={openOnly}
@@ -588,7 +586,7 @@ export default function Offboarding() {
                 {rows.map((row) => (
                   <tr
                     key={row.id}
-                    className={`ex-row-click${openId === row.id ? ' ex-row-open' : ''}`}
+                    className={`offboard-row-click${openId === row.id ? ' offboard-row-open' : ''}`}
                     onClick={() => setOpenId(openId === row.id ? null : row.id)}
                   >
                     <td>
@@ -609,17 +607,17 @@ export default function Offboarding() {
                     <td>
                       <StatusPill value={row.status} />
                     </td>
-                    <td className="ex-when">
+                    <td className="offboard-when">
                       {row.last_working_day ? (
                         shortDate(row.last_working_day)
                       ) : (
-                        <span className="ex-blocking">not set</span>
+                        <span className="offboard-blocking">not set</span>
                       )}
                     </td>
                     <td>
-                      <div className="ex-progress">
+                      <div className="offboard-progress">
                         <Meter value={row.task_settled} max={row.task_total} />
-                        <span className="ex-progress-pct">
+                        <span className="offboard-progress-pct">
                           {row.task_total
                             ? Math.round((row.task_settled * 100) / row.task_total)
                             : 0}
@@ -628,19 +626,19 @@ export default function Offboarding() {
                       </div>
                       <div style={{ marginTop: 4 }}>
                         {row.blocking_task_count > 0 ? (
-                          <span className="ex-blocking">
+                          <span className="offboard-blocking">
                             <IconAlert size={11} /> {row.blocking_task_count} blocking
                           </span>
                         ) : (
-                          <span className="ex-clear">nothing blocking</span>
+                          <span className="offboard-clear">nothing blocking</span>
                         )}
                       </div>
                     </td>
-                    <td className="ex-muted">
+                    <td className="offboard-muted">
                       {row.fnf_status ? FNF_STATUS_LABEL[row.fnf_status] ?? row.fnf_status : '—'}
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      <div className="ex-actions">
+                      <div className="offboard-actions">
                         <button
                           className="btn btn-sm"
                           onClick={() => setOpenId(openId === row.id ? null : row.id)}
@@ -710,11 +708,11 @@ function InitiateForm({
   }
 
   return (
-    <form className="ex-panel" onSubmit={submit}>
-      <div className="ex-panel-head">
+    <form className="offboard-panel" onSubmit={submit}>
+      <div className="offboard-panel-head">
         <div>
-          <h2 className="ex-panel-title">Raise an exit</h2>
-          <p className="ex-panel-sub">
+          <h2 className="offboard-panel-title">Raise an exit</h2>
+          <p className="offboard-panel-sub">
             The clearance checklist is laid out at the same moment, never afterwards. Nothing is
             revoked and nobody is deactivated by raising an exit — that happens only when you
             complete it.
@@ -848,7 +846,7 @@ function ExitDetailPanel({
       <div className="card-head">
         <div>
           <h2 className="card-title">{d.user_name ?? 'Exit'}</h2>
-          <div className="ex-muted" style={{ marginTop: 3 }}>
+          <div className="offboard-muted" style={{ marginTop: 3 }}>
             {d.employee_code ? `${d.employee_code} · ` : ''}
             {d.designation_name ? `${d.designation_name} · ` : ''}
             {d.department_name ?? d.user_email}
@@ -857,7 +855,7 @@ function ExitDetailPanel({
           <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusPill value={d.status} />
             <ReasonTag value={d.reason} />
-            <span className="ex-muted">
+            <span className="offboard-muted">
               Notice {shortDate(d.notice_date)}
               {' · '}
               {d.last_working_day ? (
@@ -878,7 +876,7 @@ function ExitDetailPanel({
                 Withdraw
               </button>
               <button
-                className="btn btn-sm ex-danger-btn"
+                className="btn btn-sm offboard-danger-btn"
                 onClick={() => {
                   setRefusal(null)
                   setCompleting((v) => !v)
@@ -895,21 +893,21 @@ function ExitDetailPanel({
       </div>
 
       {d.reason_note && (
-        <div className="ex-task-note" style={{ marginBottom: 14 }}>
-          <span className="ex-task-note-label">Note on the reason</span>
+        <div className="offboard-task-note" style={{ marginBottom: 14 }}>
+          <span className="offboard-task-note-label">Note on the reason</span>
           {d.reason_note}
         </div>
       )}
 
       {d.status === 'cancelled' && (
-        <div className="ex-note" style={{ marginBottom: 14 }}>
+        <div className="offboard-note" style={{ marginBottom: 14 }}>
           <b>Withdrawn {d.cancelled_at ? dateTime(d.cancelled_at) : ''}.</b>{' '}
           {d.cancellation_reason}
         </div>
       )}
 
       {d.status === 'completed' && (
-        <div className="ex-note" style={{ marginBottom: 14 }}>
+        <div className="offboard-note" style={{ marginBottom: 14 }}>
           <b>Exit completed {d.completed_at ? dateTime(d.completed_at) : ''}.</b>
           <ul>
             <li>
@@ -968,7 +966,7 @@ function ExitDetailPanel({
         />
       )}
 
-      <div className="ex-groups" style={{ marginTop: 4 }}>
+      <div className="offboard-groups" style={{ marginTop: 4 }}>
         {d.clearance.map((group) => (
           <ClearanceSection
             key={group.category}
@@ -1041,7 +1039,7 @@ function EditForm({
   }
 
   return (
-    <form className="ex-panel" onSubmit={submit}>
+    <form className="offboard-panel" onSubmit={submit}>
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>{error}</ErrorNote>
@@ -1081,7 +1079,7 @@ function EditForm({
       </div>
 
       {lwdMoved && (
-        <div className="ex-note ex-note-warn" style={{ marginTop: 12 }}>
+        <div className="offboard-note offboard-note-warn" style={{ marginTop: 12 }}>
           <b>Saving this moves the whole clearance checklist.</b> All {allTasks.length} item
           {allTasks.length === 1 ? '' : 's'} get a new due date, recomputed from their own offset
           against{' '}
@@ -1150,11 +1148,11 @@ function CancelForm({
   }
 
   return (
-    <form className="ex-panel" onSubmit={submit}>
-      <div className="ex-panel-head">
+    <form className="offboard-panel" onSubmit={submit}>
+      <div className="offboard-panel-head">
         <div>
-          <h2 className="ex-panel-title">Withdraw {name}'s exit</h2>
-          <p className="ex-panel-sub">
+          <h2 className="offboard-panel-title">Withdraw {name}'s exit</h2>
+          <p className="offboard-panel-sub">
             The record is kept, not deleted — a withdrawn resignation is history somebody may need
             six months from now. Nothing is revoked and nobody is deactivated.
           </p>
@@ -1252,14 +1250,14 @@ function CompletePanel({
   }
 
   return (
-    <div className="ex-panel">
-      <div className="ex-panel-head">
+    <div className="offboard-panel">
+      <div className="offboard-panel-head">
         <div>
-          <h2 className="ex-panel-title">Complete {detail.user_name ?? 'this'} exit</h2>
+          <h2 className="offboard-panel-title">Complete {detail.user_name ?? 'this'} exit</h2>
         </div>
       </div>
 
-      <div className="ex-note ex-note-danger">
+      <div className="offboard-note offboard-note-danger">
         <b>This does two things that cannot be undone from this screen.</b>
         <ul>
           <li>
@@ -1274,7 +1272,7 @@ function CompletePanel({
       </div>
 
       {missingLwd && (
-        <div className="ex-note ex-note-warn" style={{ marginTop: 12 }}>
+        <div className="offboard-note offboard-note-warn" style={{ marginTop: 12 }}>
           <b>No last working day is set.</b> Completion is refused without it: a completed exit
           with no leaving date cannot produce a relieving letter, and a guessed date on that
           letter is worse than none. Set it under Edit first.
@@ -1282,17 +1280,17 @@ function CompletePanel({
       )}
 
       {blockers.length > 0 && (
-        <div className="ex-note ex-note-warn" style={{ marginTop: 12 }}>
+        <div className="offboard-note offboard-note-warn" style={{ marginTop: 12 }}>
           <b>
             {blockers.length} mandatory clearance item{blockers.length === 1 ? '' : 's'} still
             open.
           </b>{' '}
           Complete or waive each of these first — waiving is a legitimate answer and needs a
           reason on file.
-          <div className="ex-blockers">
+          <div className="offboard-blockers">
             {blockers.map((t) => (
-              <div className="ex-blocker" key={t.id}>
-                <span className="ex-blocker-cat">
+              <div className="offboard-blocker" key={t.id}>
+                <span className="offboard-blocker-cat">
                   {CLEARANCE_LABEL[t.category] ?? t.category}
                 </span>
                 <span>{t.title}</span>
@@ -1303,13 +1301,13 @@ function CompletePanel({
       )}
 
       {refusal && (
-        <div className="ex-note ex-note-danger" style={{ marginTop: 12 }}>
+        <div className="offboard-note offboard-note-danger" style={{ marginTop: 12 }}>
           <b>Refused.</b> {refusal.message}
           {refusal.reason === 'clearance_incomplete' && refusal.blockers.length > 0 && (
-            <div className="ex-blockers">
+            <div className="offboard-blockers">
               {refusal.blockers.map((t) => (
-                <div className="ex-blocker" key={t.id}>
-                  <span className="ex-blocker-cat">
+                <div className="offboard-blocker" key={t.id}>
+                  <span className="offboard-blocker-cat">
                     {CLEARANCE_LABEL[t.category] ?? t.category}
                   </span>
                   <span>{t.title}</span>
@@ -1328,7 +1326,7 @@ function CompletePanel({
 
       <div className="btn-group" style={{ marginTop: 14 }}>
         <button
-          className="btn ex-danger-btn"
+          className="btn offboard-danger-btn"
           disabled={busy || willRefuse}
           onClick={() => void submit()}
         >
@@ -1366,16 +1364,16 @@ function ClearanceSection({
   const [editing, setEditing] = useState<ExitTask | null>(null)
 
   return (
-    <div className="ex-group">
-      <div className="ex-group-head">
+    <div className="offboard-group">
+      <div className="offboard-group-head">
         <div>
-          <div className="ex-group-name">{CLEARANCE_LABEL[group.category] ?? group.category}</div>
-          <div className="ex-muted" style={{ marginTop: 2 }}>
+          <div className="offboard-group-name">{CLEARANCE_LABEL[group.category] ?? group.category}</div>
+          <div className="offboard-muted" style={{ marginTop: 2 }}>
             {CLEARANCE_HINT[group.category]}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className="ex-group-counts">
+          <span className="offboard-group-counts">
             {group.task_settled} of {group.task_total} settled
             {group.blocking_task_count > 0 ? ` · ${group.blocking_task_count} blocking` : ''}
           </span>
@@ -1484,22 +1482,22 @@ function ClearanceTaskRow({
 
   const rowClass =
     task.status === 'done'
-      ? 'ex-task ex-task-settled'
+      ? 'offboard-task offboard-task-settled'
       : task.status === 'skipped'
-        ? 'ex-task ex-task-skipped'
-        : 'ex-task'
+        ? 'offboard-task offboard-task-skipped'
+        : 'offboard-task'
   const handSet = isHandSet(task, detail.last_working_day)
 
   return (
     <div className={rowClass}>
       <TaskTick status={task.status} />
 
-      <div className="ex-task-body">
-        <div className="ex-task-title">{task.title}</div>
-        {task.description && <div className="ex-task-desc">{task.description}</div>}
+      <div className="offboard-task-body">
+        <div className="offboard-task-title">{task.title}</div>
+        {task.description && <div className="offboard-task-desc">{task.description}</div>}
 
-        <div className="ex-task-meta">
-          <span className={`ex-tag ${task.is_mandatory ? 'ex-tag-mandatory' : 'ex-tag-optional'}`}>
+        <div className="offboard-task-meta">
+          <span className={`offboard-tag ${task.is_mandatory ? 'offboard-tag-mandatory' : 'offboard-tag-optional'}`}>
             {task.is_mandatory ? 'Mandatory' : 'Optional'}
           </span>
           <span>
@@ -1513,7 +1511,7 @@ function ClearanceTaskRow({
           {task.due_on ? (
             <span>
               Due {shortDate(task.due_on)}{' '}
-              <span className="ex-muted">
+              <span className="offboard-muted">
                 ({task.due_offset_days === 0
                   ? 'on the last day'
                   : task.due_offset_days < 0
@@ -1523,10 +1521,10 @@ function ClearanceTaskRow({
               </span>
             </span>
           ) : (
-            <span className="ex-muted">No due date — the last working day is not set</span>
+            <span className="offboard-muted">No due date — the last working day is not set</span>
           )}
           {handSet && (
-            <span className="ex-tag ex-tag-override" title="Moving the last working day will overwrite this date">
+            <span className="offboard-tag offboard-tag-override" title="Moving the last working day will overwrite this date">
               date set by hand
             </span>
           )}
@@ -1539,8 +1537,8 @@ function ClearanceTaskRow({
         </div>
 
         {task.notes && (
-          <div className="ex-task-note">
-            <span className="ex-task-note-label">
+          <div className="offboard-task-note">
+            <span className="offboard-task-note-label">
               {task.status === 'skipped' ? 'Why this was waived' : 'Note'}
             </span>
             {task.notes}
@@ -1548,7 +1546,7 @@ function ClearanceTaskRow({
         )}
 
         {waiving && (
-          <div className="ex-inline-form">
+          <div className="offboard-inline-form">
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -1571,11 +1569,11 @@ function ClearanceTaskRow({
         )}
       </div>
 
-      <div className="ex-task-side">
+      <div className="offboard-task-side">
         {readOnly ? (
-          <span className="ex-tag">{TASK_STATUS_LABEL[task.status] ?? task.status}</span>
+          <span className="offboard-tag">{TASK_STATUS_LABEL[task.status] ?? task.status}</span>
         ) : (
-          <div className="ex-task-controls">
+          <div className="offboard-task-controls">
             <select
               value={task.status}
               disabled={busy}
@@ -1685,7 +1683,7 @@ function ClearanceTaskForm({
   }
 
   return (
-    <form className="ex-panel" style={{ marginBottom: 0 }} onSubmit={submit}>
+    <form className="offboard-panel" style={{ marginBottom: 0 }} onSubmit={submit}>
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>{error}</ErrorNote>
@@ -1844,10 +1842,10 @@ function OutstandingAssets({
 
   return (
     <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--gridline)', paddingTop: 12 }}>
-      <div className="ex-panel-head" style={{ marginBottom: 8 }}>
+      <div className="offboard-panel-head" style={{ marginBottom: 8 }}>
         <div>
-          <h3 className="ex-panel-title">Still on the register under this name</h3>
-          <p className="ex-panel-sub">
+          <h3 className="offboard-panel-title">Still on the register under this name</h3>
+          <p className="offboard-panel-sub">
             Taking an asset back here closes the clearance item and the custody row in one go — no
             second trip to the Assets page.
           </p>
@@ -1855,12 +1853,12 @@ function OutstandingAssets({
       </div>
 
       {rows.length === 0 ? (
-        <div className="ex-clear">
+        <div className="offboard-clear">
           <IconCheck size={12} /> Nothing outstanding. The register shows no open custody for this
           person.
         </div>
       ) : (
-        <div className="ex-assets">
+        <div className="offboard-assets">
           {rows.map((asset) =>
             returning?.id === asset.id ? (
               <ReturnAssetForm
@@ -1877,10 +1875,10 @@ function OutstandingAssets({
                 onError={onError}
               />
             ) : (
-              <div className="ex-asset" key={asset.id}>
-                <div className="ex-asset-body">
-                  <div className="ex-asset-tag">{asset.asset_tag}</div>
-                  <div className="ex-asset-meta">
+              <div className="offboard-asset" key={asset.id}>
+                <div className="offboard-asset-body">
+                  <div className="offboard-asset-tag">{asset.asset_tag}</div>
+                  <div className="offboard-asset-meta">
                     {ASSET_CATEGORY_LABEL[asset.category] ?? asset.category}
                     {asset.serial_number ? ` · ${asset.serial_number}` : ''}
                     {asset.assigned_at ? ` · issued ${dateTime(asset.assigned_at)}` : ''}
@@ -1947,11 +1945,11 @@ function ReturnAssetForm({
   }
 
   return (
-    <form className="ex-panel" style={{ marginBottom: 0 }} onSubmit={submit}>
-      <div className="ex-panel-head">
+    <form className="offboard-panel" style={{ marginBottom: 0 }} onSubmit={submit}>
+      <div className="offboard-panel-head">
         <div>
-          <h3 className="ex-panel-title">Take back {asset.asset_tag}</h3>
-          <p className="ex-panel-sub">
+          <h3 className="offboard-panel-title">Take back {asset.asset_tag}</h3>
+          <p className="offboard-panel-sub">
             “Returned” and “available again” are not the same event. A laptop handed back with a
             cracked screen belongs in the repair queue, not on the next joiner's desk.
           </p>
@@ -2015,17 +2013,17 @@ function ProposalReview({
   onDismiss: () => void
 }) {
   return (
-    <div className="ex-proposal">
-      <div className="ex-panel-head">
+    <div className="offboard-proposal">
+      <div className="offboard-panel-head">
         <div>
-          <h4 className="ex-panel-title">Proposed settlement</h4>
-          <p className="ex-panel-sub">
+          <h4 className="offboard-panel-title">Proposed settlement</h4>
+          <p className="offboard-panel-sub">
             Computed from data as it stands now, and saved nowhere until you accept it.
             Accepting recomputes — so a figure that moves in between is the current one, not
             this one.
           </p>
         </div>
-        <div className="ex-panel-actions">
+        <div className="offboard-panel-actions">
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={onAccept}>
             Accept and save
           </button>
@@ -2034,34 +2032,34 @@ function ProposalReview({
       </div>
 
       {proposal.warnings.length > 0 && (
-        <ul className="ex-warnings">
+        <ul className="offboard-warnings">
           {proposal.warnings.map((warning, i) => <li key={i}>{warning}</li>)}
         </ul>
       )}
 
       <FnfLines lines={proposal.lines} currency={proposal.currency} />
 
-      <div className="ex-fnf-figures">
-        <div className="ex-figure">
-          <div className="ex-figure-label">Gross dues</div>
-          <div className="ex-figure-value">
+      <div className="offboard-fnf-figures">
+        <div className="offboard-figure">
+          <div className="offboard-figure-label">Gross dues</div>
+          <div className="offboard-figure-value">
             {formatPaise(proposal.gross_dues_paise, proposal.currency)}
           </div>
         </div>
-        <div className="ex-figure">
-          <div className="ex-figure-label">Deductions</div>
-          <div className="ex-figure-value">
+        <div className="offboard-figure">
+          <div className="offboard-figure-label">Deductions</div>
+          <div className="offboard-figure-value">
             {formatPaise(proposal.deductions_paise, proposal.currency)}
           </div>
         </div>
-        <div className="ex-figure">
-          <div className="ex-figure-label">Net payable</div>
-          <div className={`ex-figure-value ${
-            proposal.net_payable_paise < 0 ? 'ex-figure-negative' : 'ex-figure-net'}`}>
+        <div className="offboard-figure">
+          <div className="offboard-figure-label">Net payable</div>
+          <div className={`offboard-figure-value ${
+            proposal.net_payable_paise < 0 ? 'offboard-figure-negative' : 'offboard-figure-net'}`}>
             {formatPaise(proposal.net_payable_paise, proposal.currency)}
           </div>
           {proposal.net_payable_paise < 0 && (
-            <div className="ex-hand-entered" style={{ marginTop: 4 }}>
+            <div className="offboard-hand-entered" style={{ marginTop: 4 }}>
               Negative — the leaver owes the company.
             </div>
           )}
@@ -2069,7 +2067,7 @@ function ProposalReview({
       </div>
 
       {proposal.tax_deducted_ytd > 0 && (
-        <p className="ex-panel-sub">
+        <p className="offboard-panel-sub">
           Tax context: {formatPaise(proposal.tax_paid_ytd, proposal.currency)} paid this
           financial year, {formatPaise(proposal.tax_deducted_ytd, proposal.currency)} deducted.
           Neither figure is applied above.
@@ -2093,14 +2091,14 @@ function FnfLines({
 }) {
   return (
     <div className="table-wrap">
-      <table className="table ex-fnf-lines">
+      <table className="table offboard-fnf-lines">
         <tbody>
           {lines.map((line, i) => (
             <tr key={`${line.code}-${i}`}
                 className={line.kind === 'deduction' ? 'is-deduction' : undefined}>
               <td>
                 <div>{line.label}</div>
-                {line.detail && <div className="ex-line-detail">{line.detail}</div>}
+                {line.detail && <div className="offboard-line-detail">{line.detail}</div>}
               </td>
               <td className="num">
                 {line.kind === 'deduction' ? '−' : ''}
@@ -2198,16 +2196,16 @@ function FnfPanel({
 
   return (
     <div style={{ marginTop: 18 }}>
-      <div className="ex-panel-head">
+      <div className="offboard-panel-head">
         <div>
-          <h3 className="ex-panel-title">Full and final settlement</h3>
-          <p className="ex-panel-sub">
+          <h3 className="offboard-panel-title">Full and final settlement</h3>
+          <p className="offboard-panel-sub">
             Compute one from payroll, leave, loans and unpaid claims — or record a figure worked
             out elsewhere. Either way the numbers are stored as they stand and never
             re-derived.
           </p>
         </div>
-        <div className="ex-panel-actions">
+        <div className="offboard-panel-actions">
           {(!fnf || fnf.status === 'draft') && (
             <button className="btn btn-sm btn-primary" disabled={busy}
                     onClick={() => void compute()}>
@@ -2250,28 +2248,28 @@ function FnfPanel({
         )
       ) : (
         <>
-          <div className="ex-fnf-figures">
-            <div className="ex-figure">
-              <div className="ex-figure-label">Gross dues</div>
-              <div className="ex-figure-value">
+          <div className="offboard-fnf-figures">
+            <div className="offboard-figure">
+              <div className="offboard-figure-label">Gross dues</div>
+              <div className="offboard-figure-value">
                 {formatPaise(fnf.gross_dues_paise, fnf.currency)}
               </div>
             </div>
-            <div className="ex-figure">
-              <div className="ex-figure-label">Deductions</div>
-              <div className="ex-figure-value">
+            <div className="offboard-figure">
+              <div className="offboard-figure-label">Deductions</div>
+              <div className="offboard-figure-value">
                 {formatPaise(fnf.deductions_paise, fnf.currency)}
               </div>
             </div>
-            <div className="ex-figure">
-              <div className="ex-figure-label">Net payable</div>
+            <div className="offboard-figure">
+              <div className="offboard-figure-label">Net payable</div>
               <div
-                className={`ex-figure-value ${fnf.net_payable_paise < 0 ? 'ex-figure-negative' : 'ex-figure-net'}`}
+                className={`offboard-figure-value ${fnf.net_payable_paise < 0 ? 'offboard-figure-negative' : 'offboard-figure-net'}`}
               >
                 {formatPaise(fnf.net_payable_paise, fnf.currency)}
               </div>
               {fnf.net_payable_paise < 0 && (
-                <div className="ex-hand-entered" style={{ marginTop: 4 }}>
+                <div className="offboard-hand-entered" style={{ marginTop: 4 }}>
                   Negative — the leaver owes the company.
                 </div>
               )}
@@ -2283,13 +2281,13 @@ function FnfPanel({
           )}
 
           {fnf.is_manually_entered && (
-            <div className="ex-hand-entered" style={{ marginBottom: 12 }}>
+            <div className="offboard-hand-entered" style={{ marginBottom: 12 }}>
               Entered by hand — there is no itemisation on file for this settlement.
             </div>
           )}
 
           {!fnf.is_consistent && (
-            <div className="ex-note ex-note-warn" style={{ marginBottom: 12 }}>
+            <div className="offboard-note offboard-note-warn" style={{ marginBottom: 12 }}>
               <b>Net does not equal gross minus deductions.</b> That is allowed — an ex-gratia
               payment or a negotiated write-off looks exactly like this — but nobody should save
               it by accident. Gross minus deductions would be{' '}
@@ -2299,9 +2297,9 @@ function FnfPanel({
             </div>
           )}
 
-          <div className="ex-fnf-status">
-            <span className={`ex-pill ex-fnf-${fnf.status}`}>
-              <span className="ex-pill-dot" style={{ background: 'currentColor' }} />
+          <div className="offboard-fnf-status">
+            <span className={`offboard-pill offboard-fnf-${fnf.status}`}>
+              <span className="offboard-pill-dot" style={{ background: 'currentColor' }} />
               {FNF_STATUS_LABEL[fnf.status] ?? fnf.status}
             </span>
             {fnf.status !== 'paid' && fnf.status !== 'cancelled' && (
@@ -2327,7 +2325,7 @@ function FnfPanel({
           </div>
 
           {fnf.status === 'paid' && editing && (
-            <div className="ex-note ex-note-warn" style={{ marginBottom: 12 }}>
+            <div className="offboard-note offboard-note-warn" style={{ marginBottom: 12 }}>
               <b>This settlement has already been paid.</b> An amendment is recorded under its own
               audit action so it can be found later — this table has no “last modified” column and
               the audit trail is the only thing that will say the number changed.
@@ -2357,39 +2355,39 @@ function FnfPanel({
             />
           )}
 
-          <div className="ex-record" style={{ marginTop: 12 }}>
-            <div className="ex-record-row">
+          <div className="offboard-record" style={{ marginTop: 12 }}>
+            <div className="offboard-record-row">
               <span>Prepared by</span>
               <b>{fnf.prepared_by_name ?? '—'}</b>
             </div>
-            <div className="ex-record-row">
+            <div className="offboard-record-row">
               <span>Approved by</span>
               <b>
                 {fnf.approved_by_name ?? '—'}
                 {fnf.approved_at ? ` · ${dateTime(fnf.approved_at)}` : ''}
               </b>
             </div>
-            <div className="ex-record-row">
+            <div className="offboard-record-row">
               <span>Paid</span>
               <b>
                 {fnf.paid_on ? shortDate(fnf.paid_on) : '—'}
                 {fnf.paid_by_name ? ` · ${fnf.paid_by_name}` : ''}
               </b>
             </div>
-            <div className="ex-record-row">
+            <div className="offboard-record-row">
               <span>Reference</span>
               <b>{fnf.payment_reference ?? '—'}</b>
             </div>
           </div>
 
           {fnf.notes && (
-            <div className="ex-task-note" style={{ marginTop: 10 }}>
-              <span className="ex-task-note-label">Notes</span>
+            <div className="offboard-task-note" style={{ marginTop: 10 }}>
+              <span className="offboard-task-note-label">Notes</span>
               {fnf.notes}
             </div>
           )}
 
-          <div className="ex-hand-entered" style={{ marginTop: 10 }}>
+          <div className="offboard-hand-entered" style={{ marginTop: 10 }}>
             Entered by hand — no system calculated these figures.
           </div>
         </>
@@ -2451,7 +2449,7 @@ function FnfForm({
   }
 
   return (
-    <form className="ex-panel" onSubmit={submit}>
+    <form className="offboard-panel" onSubmit={submit}>
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>{error}</ErrorNote>
@@ -2462,7 +2460,7 @@ function FnfForm({
         <label className="setting">
           Gross dues
           <input
-            className="ex-money-input"
+            className="offboard-money-input"
             inputMode="decimal"
             value={gross}
             onChange={(e) => setGross(e.target.value)}
@@ -2474,7 +2472,7 @@ function FnfForm({
         <label className="setting">
           Deductions
           <input
-            className="ex-money-input"
+            className="offboard-money-input"
             inputMode="decimal"
             value={deductions}
             onChange={(e) => setDeductions(e.target.value)}
@@ -2485,7 +2483,7 @@ function FnfForm({
         <label className="setting">
           Net payable
           <input
-            className="ex-money-input"
+            className="offboard-money-input"
             inputMode="decimal"
             value={net}
             onChange={(e) => setNet(e.target.value)}
@@ -2516,7 +2514,7 @@ function FnfForm({
       </div>
 
       {mismatch && parseable && (
-        <div className="ex-note ex-note-warn" style={{ marginTop: 12 }}>
+        <div className="offboard-note offboard-note-warn" style={{ marginTop: 12 }}>
           <b>Heads up:</b> gross minus deductions is{' '}
           {formatPaise(grossP - dedP, currency)}, and you have entered a net of{' '}
           {formatPaise(netP, currency)}. That is a legitimate settlement if it is deliberate —
@@ -2572,7 +2570,7 @@ function MarkPaidForm({
   }
 
   return (
-    <form className="ex-panel" onSubmit={submit}>
+    <form className="offboard-panel" onSubmit={submit}>
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>{error}</ErrorNote>

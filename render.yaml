@@ -1,0 +1,115 @@
+# Render blueprint — the free-tier shape of this application.
+#
+# Three services instead of the five in docker-compose.deploy.yml, because
+# Render's free plan has no background workers, no cron jobs and no persistent
+# disks. What that costs, and how each gap is closed:
+#
+#   compose service   free-tier answer
+#   ---------------   ----------------------------------------------------
+#   db                Render PostgreSQL (free, 1 GB)
+#   migrate           preDeployCommand on the API service
+#   api               Web Service, Docker, one uvicorn worker
+#   console           Static Site — free, no spin-down, on a CDN
+#   jobs              RUN_JOBS_IN_PROCESS=true, a thread inside the API
+#   storage (volume)  S3-compatible object storage; Cloudflare R2 has a free tier
+#
+# The two substitutions worth understanding before shipping this:
+#
+# **The jobs thread is only correct under one worker.** The API here runs
+# uvicorn with no --workers, which is the precondition. Adding workers without
+# also moving the scheduler back out means duplicate alert mail — see
+# app/scheduler.py:start_in_process.
+#
+# **Screenshots MUST go to object storage.** A free web service has no disk,
+# and the local backend would write captures into a container filesystem that
+# is discarded on every deploy and every wake from sleep. STORAGE_BACKEND is
+# set to s3 here on purpose; the bucket credentials are the one thing this file
+# cannot supply for you.
+#
+# Free-tier behaviour to expect: the API sleeps after 15 minutes idle and takes
+# roughly a minute to wake. No data is lost when it does — the desktop agent
+# spools locally and drains on the next successful sync.
+
+databases:
+  - name: hrdesktimesol-db
+    databaseName: hrdesktimesol
+    user: hrdesktimesol
+    plan: free
+
+services:
+  # --------------------------------------------------------------- API ---
+  - type: web
+    name: hrdesktimesol-api
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    # The schema is owned by Alembic, and main.py refuses to boot when the
+    # database is behind the code. Running it here rather than in the image's
+    # CMD keeps the "N replicas must not race each other" rule from the
+    # Dockerfile true if this ever leaves the free plan.
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      # Generated once by Render and then held. Rotating it invalidates every
+      # session AND makes every stored SMTP password undecryptable, since the
+      # same key derives the Fernet key — see the lifespan check in main.py.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hrdesktimesol-db
+          property: connectionString
+      # No background worker on this plan. Safe here and only here; see the
+      # note at the top of this file.
+      - key: RUN_JOBS_IN_PROCESS
+        value: "true"
+      # --- object storage: the one section you must fill in -----------------
+      # Cloudflare R2 is the natural pairing (10 GB free). Set the four values
+      # below in the Render dashboard rather than committing them.
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # Browsers reach the API from the console's origin. Set this to the
+      # static site's URL once Render has assigned it.
+      - key: CORS_ORIGINS
+        sync: false
+
+  # ----------------------------------------------------------- console ---
+  - type: web
+    name: hrdesktimesol-console
+    runtime: static
+    rootDir: admin
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Deliberately NOT set to the API's URL.
+      #
+      # The rewrite below keeps every call same-origin, which is what the
+      # console was written for and what keeps the bearer token off a second
+      # host — no CORS preflight, no third-party-cookie questions. VITE_API_BASE
+      # exists for hosts that cannot rewrite; Render can, so it stays empty.
+      - key: VITE_API_BASE
+        value: ""
+    routes:
+      # Same-origin proxy to the API. Must come before the SPA fallback:
+      # routes match in order, and a catch-all above this would swallow /api.
+      - type: rewrite
+        source: /api/*
+        destination: https://hrdesktimesol-api.onrender.com/api/*
+      # Client-side routing. Every unmatched path is the app, not a 404 — the
+      # router owns /leave, /payroll and the rest, and the server has no such
+      # files to serve.
+      - type: rewrite
+        source: /*
+        destination: /index.html

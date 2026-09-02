@@ -27,10 +27,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
-import { ErrorNote, Loading } from '../../../components/ui'
+import { Avatar, ErrorNote, Loading, Meter } from '../../../components/ui'
 import type { EmployeeProfile } from '../../../lib/types'
 import EmployeeDocuments from './EmployeeDocuments'
 import '../../../styles/people.css'
+
+/* What "complete" means, stated rather than inferred.
+ *
+ * Counting keys on the payload would count `can_edit_personal`, `user_id` and
+ * the masks as fields, so the figure would move whenever the server grew a
+ * flag. These are the ones a person can actually fill in.
+ *
+ * Six of these were guessed wrong on the first pass — `current_pincode` for
+ * `current_postal_code`, `emergency_contact_name` for `emergency_name`. A name
+ * that does not exist on the payload never counts, so the meter would have
+ * capped at 79% with nothing on screen to say why. Checked against the live
+ * response; check again if the schema moves. */
+const PROFILE_FIELDS = [
+  'date_of_birth', 'gender', 'marital_status', 'blood_group', 'nationality',
+  'personal_email', 'alternate_phone',
+  'current_address', 'current_city', 'current_state', 'current_postal_code',
+  'permanent_address', 'permanent_city', 'permanent_state', 'permanent_postal_code',
+  'emergency_name', 'emergency_relationship', 'emergency_phone',
+  'uan', 'pf_number', 'esi_number', 'bank_name', 'bank_branch', 'bank_ifsc',
+  'bank_account_name',
+  'employment_type', 'work_location', 'probation_months', 'notice_period_days',
+] as const
 
 const GENDERS = ['female', 'male', 'other', 'undisclosed'] as const
 const MARITAL = ['single', 'married', 'divorced', 'widowed', 'other'] as const
@@ -64,21 +86,62 @@ function ProfileBody({
   profile: EmployeeProfile
   onSaved: () => void
 }) {
+  /* How much of the record is actually on file.
+   *
+   * A profile is thirty-odd fields and most of them start empty, so the page
+   * opened as a wall of blank boxes with nothing to say which mattered. This is
+   * the one number that makes it a task rather than a form: it tells somebody
+   * whether they are done, and payroll and statutory filing both depend on the
+   * answer being high. */
+  const filled = PROFILE_FIELDS.filter((k) => {
+    const v = (profile as unknown as Record<string, unknown>)[k]
+    return v !== null && v !== undefined && v !== ''
+  }).length
+  const pct = Math.round((filled / PROFILE_FIELDS.length) * 100)
+  const displayName = profile.full_name || profile.email || 'Unnamed record'
+
   return (
     <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>{profile.full_name}</h1>
-          <p className="muted">
+      {/* An identity header, not a page title. This is a record ABOUT a person
+          and it opened with their name in the same 25px type every list page
+          uses — no face, no role, no sense of whose record you were editing. */}
+      <header className="hr-hero card">
+        {/* Both full_name AND email are nullable on the wire — a pre-boarding
+            hire is created before either is known, which is why the chain needs
+            a third rung rather than the two I first wrote. Without it Avatar's
+            initials() renders a bare "?" beside an empty <h1>. */}
+        <Avatar name={displayName} />
+        <div className="hr-hero-id">
+          <h1 className="hr-hero-name">{displayName}</h1>
+          <p className="hr-hero-meta">
             {[profile.designation, profile.department, profile.employee_code]
               .filter(Boolean)
               .join(' · ') || profile.email}
           </p>
+          <div className="hr-hero-tags">
+            <ConfirmationPill profile={profile} />
+            {profile.joined_on && (
+              <span className="hr-hero-since">Joined {profile.joined_on.slice(0, 10)}</span>
+            )}
+          </div>
         </div>
-        <ConfirmationPill profile={profile} />
+
+        <div className="hr-hero-done">
+          <div className="hr-hero-done-top">
+            <span className="hr-hero-done-label">Record complete</span>
+            <b className="hr-hero-done-pct">{pct}%</b>
+          </div>
+          <Meter value={filled} max={PROFILE_FIELDS.length} />
+          <span className="hr-hero-done-meta">
+            {filled} of {PROFILE_FIELDS.length} fields on file
+          </span>
+        </div>
       </header>
 
       <div className="hr-profile-grid">
+        {/* Personal carries twice the fields of the other two, so it takes the
+            full width rather than a third of it. Side by side they left two
+            columns of dead space six hundred pixels tall. */}
         <PersonalSection profile={profile} onSaved={onSaved} />
         <StatutorySection profile={profile} onSaved={onSaved} />
         <EmploymentSection profile={profile} onSaved={onSaved} />

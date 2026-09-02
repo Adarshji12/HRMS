@@ -1,0 +1,122 @@
+/* Module navbar — the horizontal strip of a module's pages, and the pane below.
+ *
+ * One stylesheet for all eleven modules. Prefix is .pnl-*, deliberately not
+ * .set-*: styles.css already owns .set-row / .set-hero / .settings-grid, which
+ * are the CONTENTS of a settings page. This is the frame around them, and two
+ * prefixes one letter apart would be a collision waiting to happen the next
+ * time someone greps.
+ *
+ * The bar is a card, like everything else here — the sidebar is a card, the app
+ * bar is a card, every panel is a card. A bare row of links sitting directly on
+ * the page wash was the one surface that looked unfinished rather than
+ * deliberate, and it had no edge, so the eye had nothing to tell it where
+ * navigation stopped and content began.
+ *
+ * Everything uses the shared scales (--space-*, --text-*, --radius-*) rather
+ * than fresh literals — this is new CSS, so there is no migration to defer.
+ */
+
+.pnl-shell { display: flex; flex-direction: column; min-width: 0; }
+
+/* -------------------------------------------------------------- the bar -- */
+
+.pnl-bar {
+  display: flex;
+  align-items: center;
+  /* column-gap, not a margin on the set: a margin applies to a set that has
+     wrapped onto its own row too, and showed up there as a hanging indent
+     under the row above — Settings wraps at every width. A column gap is only
+     spent between neighbours on the same line. */
+  column-gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+
+  /* Wraps rather than scrolls. Payroll carries nine pages, Settings ten, and
+     People seven — past the content width on any laptop. Scrolled, the tail
+     went off the right edge cut mid-word with nothing to say it was there,
+     which reads as a rendering bug rather than an invitation to drag. Wrapped,
+     every page in the module is on screen, which is the entire point of
+     pulling the second level out of the sidebar. */
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+
+/* No module name on the bar. The sidebar row is lit and the breadcrumb names
+   the module, so a third copy was redundant everywhere — and on Noticeboard,
+   whose first page is also called Noticeboard, it read as the same word twice
+   in a row. The bar's job is to list the pages. */
+
+/* One declared section — "Mine", "Administration". It carried a caps label
+   until the label turned out to be the loudest text on the bar; the gap before
+   the set is what keeps the groups reading as groups now. A divider only reads
+   as one when the sets are side by side — wrapped onto its own row the left
+   border would be a stray tick — so the space carries it alone, and is wider
+   than it was to do that job on its own. */
+.pnl-set { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+
+.pnl-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: 6px var(--space-3);
+  border-radius: 9px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+  line-height: 20px;
+  white-space: nowrap;
+  transition: background var(--duration-normal) var(--ease-standard),
+              color var(--duration-normal) var(--ease-standard);
+}
+.pnl-tab svg { flex: none; opacity: 0.55; transition: opacity var(--duration-normal) var(--ease-standard); }
+.pnl-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+.pnl-tab:hover svg { opacity: 1; }
+.pnl-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Three channels, matching the sidebar's active row: tint, weight, and an inset
+   hairline. Tint alone is one channel and vanishes in forced-colors mode. */
+.pnl-tab[aria-current='page'] {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--brand-soft) 92%, transparent),
+    color-mix(in srgb, var(--brand-soft) 34%, transparent)
+  );
+  color: var(--brand-ink);
+  font-weight: 620;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.pnl-tab[aria-current='page'] svg { opacity: 1; color: var(--brand-accent); }
+
+/* ------------------------------------------------------------- the pane -- */
+
+.pnl-body { min-width: 0; }
+
+/* The pages inside were written as standalone routes, so each opens with its
+   own .page-head. That is now the only <h1> on screen and keeps full
+   page-title scale — the bar above deliberately sits below it in the hierarchy
+   rather than competing with it. */
+.pnl-body .page-head { margin-bottom: var(--space-4); }
+
+/* --------------------------------------------------------------- narrow -- */
+
+@media (max-width: 860px) {
+  .pnl-bar {
+    column-gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius);
+  }
+}
+
+@media (max-width: 640px) {
+  .pnl-tab { font-size: var(--text-md); padding: 6px var(--space-2); }
+  /* Icons carry no meaning here — the labels are the content, and on a phone
+     every pixel of the strip belongs to them. */
+  .pnl-tab svg { display: none; }
+}

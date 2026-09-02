@@ -100,8 +100,17 @@ export function isOwner(user: User | null): boolean {
   return user?.role === 'owner'
 }
 
-/** Mirrors Role.can_view_team on the server — owner, admin or manager. */
+/**
+ * Sees somebody other than themselves. Mirrors `require_team_viewer`, which
+ * reads the data scope rather than the role level.
+ *
+ * Scope is the authority when a named role supplies one — that is what lets a
+ * company-scoped Finance Officer reach the expense queue without being made a
+ * manager. The role check stays as the fallback for the people who hold no
+ * named role, where the server resolves scope from their level the same way.
+ */
 export function canViewTeam(user: User | null): boolean {
+  if (user?.data_scope) return user.data_scope !== 'self'
   return canAdminister(user) || user?.role === 'manager'
 }
 

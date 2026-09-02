@@ -7,8 +7,23 @@
    that department. So inherited rows are dimmed, un-editable, and sit behind an
    explicit "override" — the visual difference carries a real one. */
 
-.wf-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.wf-scope { margin-bottom: 14px; }
+/* .wf-tabs is gone — the flow switcher is the shared <Tabs> component now. Its
+   six buttons carried `className="chip"`, a class defined in no stylesheet, so
+   they rendered as bare UA buttons with no selected state. */
+
+.wf-scope {
+  margin-bottom: var(--space-5);
+  /* Bounded. The select used to be the third child of a column flex container
+     that spanned the page, so a dropdown holding "Everyone in the company" was
+     drawn 1200px wide. */
+  max-width: 420px;
+}
+.wf-scope-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
 
 .wf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin: 8px 0; }
 .wf-field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
@@ -16,7 +31,22 @@
   font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--text-muted);
 }
-.wf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+/* Buttons only. The "already submitted" caveat used to sit in this row as a
+   90-character span, which made three controls and a paragraph read as four
+   buttons of wildly different widths. */
+.wf-actions {
+  display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.wf-caveat {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 68ch;
+}
 
 /* One rung. The number is a rail down the left rather than a label, so the
    order reads at a glance — which is the only thing a chain really says. */
@@ -41,3 +71,184 @@
 /* Inherited: shown, not editable, visibly not this scope's own. */
 .wf-levels.is-inherited { opacity: 0.72; }
 .wf-levels.is-inherited .wf-level-no { background: var(--text-muted); }
+
+/* ── conditional routing ───────────────────────────────────────────────────
+   A rule is a condition and a whole chain. The list is ordered and the order is
+   the routing, so the visual weight goes on the number and on the fallback
+   sitting last — the two things a reader has to be able to see at a glance. */
+
+.wf-rules { margin-top: var(--space-6); }
+
+.wf-rules-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.wf-rules-title { margin: 0 0 2px; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.wf-rules-head .muted { margin: 0; max-width: 68ch; line-height: 1.55; }
+.wf-rules-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.wf-saved { color: var(--success-text); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+
+.wf-rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+
+.wf-rule {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+/* The fallback is visibly the last resort rather than another rule. */
+.wf-rule.is-fallback {
+  background: var(--surface-2);
+  border-style: dashed;
+}
+.wf-rule.is-off { opacity: 0.6; }
+
+.wf-rule-head { display: flex; align-items: center; gap: var(--space-2); }
+
+.wf-rule-order {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  flex-shrink: 0;
+}
+.wf-rule.is-fallback .wf-rule-order { background: var(--surface-1); color: var(--text-muted); }
+
+.wf-rule-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--weight-semibold);
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.wf-rule-name:hover { border-color: var(--border); }
+.wf-rule-name:focus { border-color: var(--brand); background: var(--surface-1); }
+
+.wf-rule-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.wf-move {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.wf-move:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.wf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.wf-remove {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.wf-remove:hover { color: var(--status-critical); background: var(--surface-hover); }
+
+/* "When" and "Then" are labelled rather than implied by position: a reader
+   arriving at row four should not have to count back to the header to work out
+   which half is the condition. */
+.wf-when, .wf-then { display: flex; align-items: flex-start; gap: var(--space-3); }
+
+.wf-when-label {
+  width: 44px;
+  flex-shrink: 0;
+  padding-top: 7px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+}
+
+.wf-clauses, .wf-then-levels { display: grid; gap: 6px; flex: 1; min-width: 0; }
+
+.wf-clause {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wf-clause-join {
+  width: 26px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.wf-clause select, .wf-clause input { min-width: 0; }
+.wf-clause-help {
+  flex-basis: 100%;
+  padding-left: 32px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.wf-money { display: inline-flex; align-items: center; gap: 4px; }
+.wf-money input { width: 120px; }
+
+.wf-add-clause {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--brand-ink);
+  cursor: pointer;
+}
+.wf-add-clause:hover { text-decoration: underline; }
+
+.wf-then-level { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wf-then-num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.wf-rule-when { margin: 0; }
+
+.wf-rules-note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  max-width: 72ch;
+  line-height: 1.55;
+}

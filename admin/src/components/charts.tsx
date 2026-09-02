@@ -389,3 +389,236 @@ export function TimelineStrip({
     </div>
   )
 }
+
+
+/* ------------------------------------------------------------------ donut -- */
+
+/**
+ * Part-to-whole, with the whole as a hero number in the middle.
+ *
+ * A donut is the wrong form for most data and the right one here, under two
+ * conditions this component enforces rather than trusts the caller to observe:
+ *
+ * **At most four arcs plus "Other".** The categorical ramp is four slots in a
+ * fixed order and it is never cycled — a fifth hue would be invented, and two
+ * inventions later nobody can tell which slice is which. Anything past the
+ * fourth largest folds into one neutral "Other" arc. A thirteen-slice ring is
+ * not a chart, it is a colour-matching puzzle.
+ *
+ * **Colour is never the only channel.** The ring carries no labels of its own;
+ * it is always rendered beside a legend that names every share and prints its
+ * number, and that legend is also the table view. Hovering an arc names it too.
+ *
+ * The hole exists to hold the total. Without a number in it a donut is strictly
+ * worse than a bar chart, because the eye compares angles badly — the ring is
+ * carrying "how it splits" and the middle is carrying "how much", and that
+ * division of labour is the only reason to draw one.
+ */
+export interface Slice {
+  key: string
+  label: string
+  value: number
+  color: string
+}
+
+export function Donut({
+  slices,
+  total,
+  caption,
+  unit,
+  size = 168,
+}: {
+  slices: Slice[]
+  total: number
+  /** The hero number's own label, under it. */
+  caption: string
+  /** Appended in the tooltip after each value — "days", "people". */
+  unit?: string
+  size?: number
+}) {
+  const tooltip = useTooltip()
+  const stroke = 22
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const sum = slices.reduce((n, slice) => n + slice.value, 0)
+
+  let offset = 0
+
+  return (
+    <div className="donut">
+      <svg
+        className="donut-svg"
+        viewBox={`0 0 ${size} ${size}`}
+        width={size}
+        height={size}
+        role="img"
+        aria-label={`${caption}: ${total}`}
+      >
+        {/* The track. Always drawn, so an empty month reads as a ring with
+            nothing in it rather than as a chart that failed to render. */}
+        <circle
+          className="donut-track"
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={stroke}
+        />
+        {sum > 0 &&
+          slices.map((slice) => {
+            const share = (slice.value / sum) * circumference
+            /* A 2px gap between neighbouring fills, per the mark spec — without
+               it two adjacent arcs of similar hue read as one long arc. */
+            const dash = `${Math.max(0, share - 2)} ${circumference - Math.max(0, share - 2)}`
+            const node = (
+              <circle
+                key={slice.key}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={slice.color}
+                strokeWidth={stroke}
+                strokeDasharray={dash}
+                strokeDashoffset={-offset}
+                /* Rotated so the first arc starts at twelve o'clock, which is
+                   where a reader assumes a ring begins. */
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                onMouseMove={(event) =>
+                  tooltip.show(event, {
+                    title: slice.label,
+                    rows: [
+                      ['Amount', unit ? `${slice.value} ${unit}` : String(slice.value)],
+                      ['Share', `${Math.round((slice.value / sum) * 100)}%`],
+                    ],
+                  })
+                }
+                onMouseLeave={tooltip.hide}
+              />
+            )
+            offset += share
+            return node
+          })}
+      </svg>
+      <div className="donut-centre">
+        <span className="donut-total">{total}</span>
+        <span className="donut-caption">{caption}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------- columns -- */
+
+export interface Column {
+  key: string
+  /** Under the axis. Kept short — this is a tick, not a sentence. */
+  label: string
+  /** Spelled out in the tooltip, where there is room for the full name. */
+  title?: string
+  value: number
+}
+
+/**
+ * One measure across a handful of named slots — months of a year, people per
+ * holiday. Vertical because the labels are short and the reading is
+ * left-to-right through time or through a list.
+ *
+ * One series, so one colour, and it is the sequential ramp's mid step rather
+ * than a categorical hue: nothing here has an identity to carry, only a size.
+ * That is also why there is no legend — the card's title names the measure, and
+ * a legend box for a single series is furniture.
+ *
+ * Values are direct-labelled above the non-zero bars, which is what stands in
+ * for a table view: every number on the chart is also readable as a number.
+ */
+export function ColumnChart({
+  data,
+  format = (value: number) => String(value),
+  emptyLabel = 'Nothing in this period',
+  axisLabel,
+}: {
+  data: Column[]
+  format?: (value: number) => string
+  emptyLabel?: string
+  axisLabel?: string
+}) {
+  const tooltip = useTooltip()
+  if (data.length === 0) return <p className="empty">{emptyLabel}</p>
+
+  const W = 720
+  const H = 220
+  const padL = 44
+  const padR = 8
+  const padT = 16
+  const padB = 40
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+
+  const peak = Math.max(...data.map((column) => column.value), 0)
+  // A flat-zero series still needs a scale, or every bar divides by nothing.
+  const max = peak > 0 ? peak : 1
+  const slot = plotW / data.length
+  const barW = Math.max(6, Math.min(44, slot - 14))
+
+  return (
+    <svg
+      className="chart-svg"
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label={axisLabel ?? 'Column chart'}
+    >
+      {[0, max / 2, max].map((value) => {
+        const y = padT + plotH - (value / max) * plotH
+        return (
+          <g key={value}>
+            <line className="gridline" x1={padL} x2={W - padR} y1={y} y2={y} />
+            <text className="axis-label" x={padL - 8} y={y + 3} textAnchor="end">
+              {format(value)}
+            </text>
+          </g>
+        )
+      })}
+
+      {data.map((column, index) => {
+        const height = (column.value / max) * plotH
+        const x = padL + index * slot + (slot - barW) / 2
+        const y = padT + plotH - height
+        return (
+          <g
+            key={column.key}
+            onMouseMove={(event) =>
+              tooltip.show(event, {
+                title: column.title ?? column.label,
+                rows: [['Total', format(column.value)]],
+              })
+            }
+            onMouseLeave={tooltip.hide}
+          >
+            {/* A full-height hit area: the bar itself is the mark, but a 4px
+                column in a quiet month is not a target anybody can hit. */}
+            <rect x={padL + index * slot} y={padT} width={slot} height={plotH} fill="transparent" />
+            {column.value > 0 && (
+              <>
+                <path d={barPath(x, y, barW, Math.max(2, height))} fill="var(--seq-450)" />
+                <text className="axis-value" x={x + barW / 2} y={y - 6} textAnchor="middle">
+                  {format(column.value)}
+                </text>
+              </>
+            )}
+            <text
+              className="axis-label"
+              x={padL + index * slot + slot / 2}
+              y={H - 14}
+              textAnchor="middle"
+            >
+              {column.label}
+            </text>
+          </g>
+        )
+      })}
+
+      <line className="baseline" x1={padL} x2={W - padR} y1={padT + plotH} y2={padT + plotH} />
+    </svg>
+  )
+}

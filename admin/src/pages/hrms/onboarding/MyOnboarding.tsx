@@ -97,9 +97,7 @@ export default function MyOnboarding() {
         <div>
           <h1 className="page-title">My onboarding</h1>
           <p className="page-sub">
-            Everything that has to happen for you to be fully set up. Tick off your own steps as
-            you finish them; the ones HR, IT or your manager owe you are shown so you can see
-            where things stand, not so you can close them.
+            Everything that has to happen for you to be fully set up.
           </p>
         </div>
       </div>

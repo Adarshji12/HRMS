@@ -184,8 +184,7 @@ export default function HelpdeskQueue() {
         <div>
           <h1 className="page-title">Ticket queue</h1>
           <p className="page-sub">
-            Every ticket raised in the company, ordered by priority then age. Taking a ticket is
-            what makes it yours — and it is what lets you read and write the internal notes on it.
+            Every ticket in the company, by priority then age.
           </p>
         </div>
       </div>

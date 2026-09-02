@@ -89,8 +89,7 @@ export default function Projects() {
         <div>
           <h1 className="page-title">Projects</h1>
           <p className="page-sub">
-            Tracked time is attributed to projects by rule or by the employee's own selection.
-            Billable hours drive the amounts below.
+            Tracked time attributed to projects by rule, or by the employee's own choice.
           </p>
         </div>
         <div className="head-actions">

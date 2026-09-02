@@ -685,12 +685,7 @@ export default function ApprovalsInbox() {
         <div>
           <h1 className="page-title">Approvals</h1>
           <p className="page-sub">
-            Everything waiting on you, oldest first, across attendance corrections,
-            leave, timesheets, expense claims and loan requests. Who appears here
-            is what the server already resolves for each of those queues — this
-            page does not widen it, and each decision is recorded by the module it
-            belongs to. Where an approval chain is configured, a row reaches you
-            only when it is your level's turn.
+            Everything waiting on a decision from you, oldest first.
           </p>
         </div>
         <div className="head-actions">
@@ -815,19 +810,18 @@ export default function ApprovalsInbox() {
         )}
       </section>
 
+      {/* Was eight lines of prose explaining that this queue and the module
+          queues are the same endpoint. Nobody needs that told twice; what they
+          DO need is the one place this list is incomplete, so only that
+          survives — and only for the people it can bite. */}
       <p className="page-sub" style={{ marginTop: 12 }}>
-        Deciding here is the same act as deciding on{' '}
-        <Link to="/attendance/team">Team attendance</Link>,{' '}
-        <Link to="/leave/team">Team leave</Link> or <Link to="/timesheets">Timesheets</Link> — the
-        same endpoint, the same audit row, the same notification to the employee.
+        Also decidable from <Link to="/attendance/team">Team attendance</Link>,{' '}
+        <Link to="/leave/team">Team leave</Link> or <Link to="/timesheets">Timesheets</Link>.
         {mayTimesheet && (
           <>
             {' '}
-            Attendance corrections and leave are complete: their queues answer for everything
-            pending. <b>Timesheets are not.</b> Approval is per period and there is no endpoint
-            that lists every submitted sheet, so this covers the current and previous{' '}
-            <em>weekly</em> periods only — a monthly sheet, or one left unapproved for longer
-            than a fortnight, is on <Link to="/timesheets">Timesheets</Link> and not here.
+            <b>Timesheets here covers recent weekly periods only</b> — older or monthly
+            sheets are on <Link to="/timesheets">Timesheets</Link>.
           </>
         )}
       </p>

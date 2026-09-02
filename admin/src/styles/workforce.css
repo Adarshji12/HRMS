@@ -1,0 +1,140 @@
+/* Workforce Management — the module's landing page.
+
+   It is a reading page, not a working one: a month strip that doubles as a
+   chart, a ring with a hero total, two column charts and a table of who is
+   away. Nothing on it can be acted on, so nothing on it is styled as a control
+   except the two things that change what you are reading — the month and the
+   period.
+
+   All the colour is in the charts, and it comes from the DATA tokens
+   (--series-*, --seq-*, --neutral-mark), never from --brand. That separation is
+   the one rule this file cannot bend: brand violet on a leave-type arc would
+   make "the company's colour" indistinguishable from "casual leave". */
+
+.wf { display: flex; flex-direction: column; gap: var(--space-4); }
+.wf > .page-head { margin-bottom: 0; }
+
+.wf-year { display: flex; flex-direction: column; gap: var(--space-1); }
+.wf-year-label {
+  font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------- month strip --- */
+
+.wf-strip-card { padding: var(--space-2); }
+
+/* Twelve equal cells that scroll rather than shrink. Below roughly 900px each
+   month would get 60px, which is not enough for a name, a year and a figure —
+   and dropping the figure would turn the strip back into a plain control. */
+.wf-strip {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(78px, 1fr);
+  gap: 2px; overflow-x: auto; scrollbar-width: thin;
+}
+
+.wf-month {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: none; color: var(--text-secondary);
+  font: inherit; cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.wf-month:hover { background: var(--surface-hover); }
+.wf-month:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.wf-month-name { font-size: var(--text-base); font-weight: var(--weight-semibold); }
+.wf-month-year { font-size: var(--text-xs); color: var(--text-muted); }
+/* The month's own total. Sequential ink rather than brand: it is a reading of
+   the same measure the column chart below plots, and the two should agree about
+   what colour that measure is. */
+.wf-month-value {
+  margin-top: 2px;
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums; color: var(--seq-450);
+}
+/* A month with nothing in it prints an em-dash, and the dash is not a reading —
+   it wears muted text ink rather than the measure's colour, so an empty month
+   cannot be mistaken for a small one. */
+.wf-month-value.is-none { color: var(--text-muted); font-weight: var(--weight-regular); }
+
+.wf-month.is-on {
+  background: var(--brand); border-color: var(--brand); color: var(--brand-on);
+}
+.wf-month.is-on .wf-month-year,
+.wf-month.is-on .wf-month-value { color: var(--brand-on); opacity: 0.9; }
+
+/* ----------------------------------------------------------- leave types --- */
+
+.wf-types-body {
+  display: flex; align-items: center; gap: var(--space-7); flex-wrap: wrap;
+}
+
+/* The legend, which is also the table view.
+   
+   A wrapping row of auto-width entries, not a grid of equal cells. Both a grid
+   and a stretched flex row put the code at one edge of its cell and the number
+   at the other, and a reader then has to track "CL ......... 2" across a gap
+   wide enough to lose. Each entry sizes to its own content, so the number sits
+   where it belongs — right after the thing it counts. */
+.wf-legend {
+  list-style: none; margin: 0; padding: 0;
+  flex: 1; min-width: 220px;
+  display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6);
+}
+.wf-legend li { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+/* A type nobody used. Dimmed, not dropped: "no sick leave this month" is a
+   reading somebody came here for, and a legend that hides its zeroes cannot
+   deliver it. */
+.wf-legend li.is-zero { opacity: 0.55; }
+.wf-swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; align-self: center; }
+.wf-legend-name {
+  font-size: var(--text-md); color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wf-legend-value {
+  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------- charts --- */
+
+/* Two charts of two different measures — days, and people — so two plots side
+   by side rather than one with two scales. A second y-axis is the mistake this
+   layout exists to avoid. */
+.wf-charts {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  align-items: start;
+}
+
+/* ------------------------------------------------------------ who is away -- */
+
+.wf-windows { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--track); }
+.wf-window {
+  height: 26px; padding: 0 var(--space-3);
+  border: 1px solid transparent; border-radius: var(--radius-xs);
+  background: none; color: var(--text-secondary);
+  font: inherit; font-size: var(--text-sm); cursor: pointer;
+}
+.wf-window:hover { color: var(--text-primary); }
+.wf-window:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.wf-window.is-on {
+  background: var(--track-thumb); border-color: var(--border);
+  color: var(--brand-ink); font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.wf-person { display: flex; align-items: center; gap: var(--space-2); }
+.wf-person-name { font-weight: var(--weight-semibold); color: var(--text-primary); }
+/* A word, not a tint — half a day is a fact about the row, and the table has no
+   colour vocabulary of its own. */
+.wf-half {
+  margin-left: var(--space-2); padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-month { transition: none; }
+}

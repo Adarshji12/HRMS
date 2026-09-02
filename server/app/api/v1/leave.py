@@ -22,11 +22,11 @@ who signs off "you may take nine days off" — only one of those spends a balanc
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import (
     AdminUser,
@@ -56,16 +56,21 @@ from app.schemas.leave import (
     CompOffCreditOut,
     HolidayIn,
     HolidayOut,
+    HolidayUptakeOut,
     LeaveApplicationOut,
     LeaveApplyIn,
     LeaveBalanceAdjustIn,
     LeaveBalanceOut,
     LeaveCancelIn,
     LeaveDecisionIn,
+    LeaveOverviewOut,
     LeaveSettingsIn,
     LeaveSettingsOut,
     LeaveTypeIn,
     LeaveTypeOut,
+    LeaveTypeTallyOut,
+    MonthTallyOut,
+    OnLeaveOut,
     OptionalHolidayOptInIn,
     OptionalHolidayOptInOut,
 )
@@ -958,3 +963,221 @@ def _maybe_low_balance(db, application: LeaveApplication) -> None:
         db, user=employee, leave_type=leave_type, on=application.start_date, resolved=resolved
     )
     svc.notify_balance_low(db, employee, leave_type, view)
+
+
+# --------------------------------------------------------------------------- #
+# Workforce overview
+# --------------------------------------------------------------------------- #
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    start = date(year, month, 1)
+    end = (date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)) - timedelta(days=1)
+    return start, end
+
+
+def _overlap_milli_days(
+    application: LeaveApplication, window_start: date, window_end: date
+) -> int:
+    """The part of an application that falls inside a window.
+
+    Applications straddle month boundaries — a five-day leave from the 30th runs
+    into the next month — and attributing the whole of one to whichever month it
+    started in would move days between months and leave the twelve monthly
+    totals disagreeing with the year's.
+
+    Split by *calendar* days rather than by working days. The stored
+    ``duration_milli_days`` already excludes holidays and weekly offs and is
+    frozen at apply time (see the note on that column), so it cannot be
+    recomputed here without risking a different answer than the one the balance
+    was actually debited by. Spreading it evenly across the span it covers keeps
+    the months summing to exactly that frozen figure, which is the property a
+    summary needs.
+    """
+    first = max(application.start_date, window_start)
+    last = min(application.end_date, window_end)
+    if first > last:
+        return 0
+    span = (application.end_date - application.start_date).days + 1
+    if span <= 1:
+        return application.duration_milli_days
+    inside = (last - first).days + 1
+    # Integer arithmetic throughout (D-012): milli-days never become floats.
+    return application.duration_milli_days * inside // span
+
+
+@router.get("/overview", response_model=LeaveOverviewOut)
+def overview(
+    viewer: TeamViewer,
+    db: DbSession,
+    year: int = Query(default=0, ge=0, le=2999),
+    month: int = Query(default=0, ge=0, le=12),
+    window_start: date | None = None,
+    window_end: date | None = None,
+) -> LeaveOverviewOut:
+    """Leave across the people this viewer can see, for one year and month.
+
+    One request for one page. The four blocks it returns — the month's usage by
+    type, the year by month, optional-holiday uptake, and who is away in a given
+    window — are four readings of the same rows, and four endpoints would mean
+    four scope resolutions that could drift apart.
+
+    Scope is ``visible_user_ids``: the reporting subtree plus any team or
+    department this person heads — the same function the approvals queue and the
+    org chart use. There is one answer in this codebase to "whose data may this
+    manager see", and this is not the file that gets to redefine it.
+
+    Approved applications only. A pending request is not leave that was taken,
+    and counting it would make every chart on the page move when somebody
+    applies and move back when they are refused.
+    """
+    deny_page(viewer, "leave")
+
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+
+    scope = visible_user_ids(db, viewer)
+    people = select(User.id).where(User.org_id == viewer.org_id, User.is_active.is_(True))
+    if scope is not None:
+        people = people.where(User.id.in_(scope))
+    scope_ids = list(db.scalars(people))
+
+    if window_start is None or window_end is None:
+        # This week, Monday to Sunday, when the caller does not say otherwise.
+        window_start = today - timedelta(days=today.weekday())
+        window_end = window_start + timedelta(days=6)
+    if window_end < window_start:
+        window_start, window_end = window_end, window_start
+
+    blank_months = [MonthTallyOut(month=m, milli_days=0) for m in range(1, 13)]
+    if not scope_ids:
+        return LeaveOverviewOut(
+            year=year, month=month, headcount=0, by_type=[], by_month=blank_months,
+            optional_holidays=[], on_leave=[],
+            window_start=window_start, window_end=window_end,
+        )
+
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+    rows = db.scalars(
+        select(LeaveApplication).where(
+            LeaveApplication.org_id == viewer.org_id,
+            LeaveApplication.user_id.in_(scope_ids),
+            LeaveApplication.status == LeaveStatus.APPROVED.value,
+            # Anything overlapping the year at all, so a leave that starts in
+            # December and ends in January contributes its December half here.
+            LeaveApplication.start_date <= year_end,
+            LeaveApplication.end_date >= year_start,
+        )
+    ).all()
+
+    types = {
+        row.id: row
+        for row in db.scalars(select(LeaveType).where(LeaveType.org_id == viewer.org_id))
+    }
+    names = _names(db, viewer.org_id)
+    codes = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(User.id, User.employee_code).where(User.org_id == viewer.org_id)
+        )
+    }
+
+    by_month = [0] * 12
+    by_type: dict[uuid.UUID, int] = {}
+    for index in range(12):
+        start, end = _month_bounds(year, index + 1)
+        for application in rows:
+            share = _overlap_milli_days(application, start, end)
+            if not share:
+                continue
+            by_month[index] += share
+            if index + 1 == month:
+                by_type[application.leave_type_id] = (
+                    by_type.get(application.leave_type_id, 0) + share
+                )
+
+    # Every type the org has, including ones nobody used. A summary that
+    # silently omits "sick leave: none this month" cannot be read as a summary
+    # of sick leave. Ordered by usage then name, so what was used leads.
+    tallies = [
+        LeaveTypeTallyOut(
+            leave_type_id=type_id,
+            code=leave_type.code,
+            name=leave_type.name,
+            milli_days=by_type.get(type_id, 0),
+        )
+        for type_id, leave_type in types.items()
+    ]
+    tallies.sort(key=lambda tally: (-tally.milli_days, tally.name.lower()))
+
+    holidays = db.scalars(
+        select(Holiday)
+        .where(
+            Holiday.org_id == viewer.org_id,
+            Holiday.is_optional.is_(True),
+            Holiday.holiday_date >= year_start,
+            Holiday.holiday_date <= year_end,
+        )
+        .order_by(Holiday.holiday_date)
+    ).all()
+    uptake: dict[uuid.UUID, int] = {}
+    if holidays:
+        uptake = {
+            row[0]: int(row[1])
+            for row in db.execute(
+                select(
+                    OptionalHolidayOptIn.holiday_id,
+                    func.count(OptionalHolidayOptIn.user_id),
+                )
+                .where(
+                    OptionalHolidayOptIn.holiday_id.in_([h.id for h in holidays]),
+                    OptionalHolidayOptIn.user_id.in_(scope_ids),
+                )
+                .group_by(OptionalHolidayOptIn.holiday_id)
+            )
+        }
+
+    on_leave = [
+        OnLeaveOut(
+            user_id=application.user_id,
+            user_name=names.get(application.user_id, "—"),
+            employee_code=codes.get(application.user_id),
+            leave_type_name=(
+                types[application.leave_type_id].name
+                if application.leave_type_id in types
+                else "Leave"
+            ),
+            start_date=application.start_date,
+            end_date=application.end_date,
+            milli_days=application.duration_milli_days,
+            is_half_day=application.is_half_day,
+        )
+        for application in rows
+        if application.start_date <= window_end and application.end_date >= window_start
+    ]
+    on_leave.sort(key=lambda row: (row.start_date, row.user_name.lower()))
+
+    return LeaveOverviewOut(
+        year=year,
+        month=month,
+        headcount=len(scope_ids),
+        by_type=tallies,
+        by_month=[
+            MonthTallyOut(month=index + 1, milli_days=value)
+            for index, value in enumerate(by_month)
+        ],
+        optional_holidays=[
+            HolidayUptakeOut(
+                holiday_id=holiday.id,
+                name=holiday.name,
+                holiday_date=holiday.holiday_date,
+                employees=uptake.get(holiday.id, 0),
+            )
+            for holiday in holidays
+        ],
+        on_leave=on_leave,
+        window_start=window_start,
+        window_end=window_end,
+    )

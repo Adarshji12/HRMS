@@ -25,6 +25,7 @@ import argparse
 import logging
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -79,6 +80,12 @@ def _run_comp_off_expiry() -> object:
     return expire_comp_offs()
 
 
+def _run_crm_reminders() -> object:
+    from app.services.crm import run_due_reminders
+
+    return run_due_reminders()
+
+
 def build_jobs() -> list[Job]:
     return [
         # Fifteen minutes: the agent-silence rule fires after 30, so a longer
@@ -107,7 +114,51 @@ def build_jobs() -> list[Job]:
         Job("leave_accrual", every_seconds=24 * 60 * 60, run=_run_leave_accrual, delay=240),
 
         Job("comp_off_expiry", every_seconds=24 * 60 * 60, run=_run_comp_off_expiry, delay=300),
+
+        # --- CRM -------------------------------------------------------------
+        # Hourly, for the same reason attendance_status is: a reminder carries a
+        # time of day in the *organisation's* timezone, and one nightly UTC pass
+        # would send a 10:00 message at whatever hour the job happened to run.
+        # The job is idempotent per reminder per day, so firing it twelve times
+        # a day costs eleven no-ops rather than eleven duplicate sends.
+        Job("crm_reminders", every_seconds=60 * 60, run=_run_crm_reminders, delay=360),
     ]
+
+
+def start_in_process(stop_after: "threading.Event | None" = None) -> "threading.Thread":
+    """Run the jobs on a daemon thread inside the API process.
+
+    **Only correct under a single worker**, which is precisely the objection the
+    module docstring raises to in-process scheduling: APScheduler under uvicorn
+    fires once per worker, so two workers mail everybody twice. The separate
+    `jobs` container remains the right answer wherever a worker can be run.
+
+    It exists for the deployments where one cannot. Render's free tier has no
+    background workers and no cron, so the alternative is not "a cleaner
+    scheduler" — it is retention silently never running while the console keeps
+    telling administrators screenshots are deleted after N days. An unenforced
+    retention window is the failure this module was written to fix.
+
+    Two things make it safe here rather than merely expedient:
+
+    * The Dockerfile runs uvicorn with no ``--workers``, so there is exactly one
+      process. Guarded by ``RUN_JOBS_IN_PROCESS`` rather than switched on by
+      default, so nobody turns on a second worker and gets duplicate mail.
+    * Every job is a *condition* re-evaluated from scratch, de-duplicated by the
+      unique constraint in ``services.notifications.dispatch`` — see the note in
+      ``app.alerts``. Running one twice is a no-op, not a double send.
+    """
+    runner = Runner(build_jobs())
+
+    def loop() -> None:
+        log.info("scheduler running in-process (RUN_JOBS_IN_PROCESS)")
+        while not runner._stop and not (stop_after and stop_after.is_set()):
+            runner.tick(time.time())
+            time.sleep(1)
+
+    thread = threading.Thread(target=loop, name="scheduler", daemon=True)
+    thread.start()
+    return thread
 
 
 class Runner:

@@ -4,7 +4,9 @@
    and this file is bundled BEFORE styles.css, so anything left here loses every
    same-specificity tie. */
 
-.muted-sm { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+/* .muted-sm moved to styles.css with the other shared utilities: eight of its
+   twenty callers — the agent-install dialog, the attendance pages, the platform
+   dialogs — never import this file, so it was landing unstyled for them. */
 
 /* ---------------------------------------------------------- reports --- */
 
@@ -91,76 +93,6 @@
   font-weight: 650;
 }
 
-/* ---------------------------------------------------------------- tree --- */
-
-.tree { list-style: none; margin: 0; padding: 0; }
-
-/* Nested lists get an indent rail so the depth of a branch is readable
-   without counting pixels. */
-.tree .tree {
-  margin-left: 17px;
-  padding-left: 16px;
-  border-left: 1px solid var(--gridline);
-}
-
-.tree-item { position: relative; }
-
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 8px 7px 0;
-  border-radius: var(--radius-sm);
-}
-.tree-row:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
-
-/* A search hit is marked by a left rail plus a tint, so it survives a
-   monochrome screenshot. */
-.tree-hit {
-  background: var(--brand-soft);
-  box-shadow: inset 3px 0 0 var(--brand);
-}
-
-.tree-toggle {
-  width: 22px; height: 22px; flex: none;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1;
-  display: grid; place-items: center;
-}
-.tree-toggle:disabled { opacity: 0.4; cursor: default; border-style: dashed; }
-
-.tree-avatar {
-  width: 26px; height: 26px; flex: none;
-  border-radius: 50%;
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-  display: grid; place-items: center;
-  font-size: 12px; font-weight: 700;
-}
-
-.tree-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.tree-name {
-  font-size: 13.5px; font-weight: 600; text-decoration: none; color: var(--text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.tree-name:hover { text-decoration: underline; }
-.tree-meta {
-  font-size: 12px; color: var(--text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
-.tree-tags { display: flex; gap: 6px; flex: none; align-items: center; }
-
-@media (max-width: 640px) {
-  .tree .tree { margin-left: 9px; padding-left: 10px; }
-  .tree-meta { display: none; }
-}
-
 /* ---------------------------------------------------- employee permissions -- */
 
 .perm-heading {
@@ -216,32 +148,11 @@
 }
 .page-chip:not(.page-chip-on) { text-decoration: line-through; opacity: 0.75; }
 
-/* --------------------------------------------------- hierarchy editing --- */
-
-/* Row actions. Always rendered and always visible — not revealed on hover.
-   Hover-only controls are undiscoverable: someone looking for "how do I change
-   this" has to already suspect the buttons exist before they can find them.
-   The cost is paid in restraint instead, so they read as quiet until wanted. */
-.tree-actions {
-  display: flex;
-  gap: 6px;
-  flex: none;
-  margin-left: 10px;
-}
-.tree-actions .btn {
-  border-color: transparent;
-  background: none;
-  color: var(--text-muted);
-  font-weight: 550;
-}
-.tree-actions .btn:hover:not(:disabled) {
-  border-color: var(--border);
-  background: var(--surface-1);
-  color: var(--text-primary);
-}
-/* The row already tints on hover, so the buttons need a border of their own to
-   stay legible as controls once it does. */
-.tree-row:hover .tree-actions .btn { border-color: var(--border); }
+/* The reporting tree that used to live here — .tree, .tree-row, .tree-actions
+   and the rest — went with the indented list it dressed. The chart that
+   replaced it owns styles/orgchart.css. What stays below is the picker
+   shell, which four dialogs across the console still share, the org chart
+   included. */
 
 /* ----------------------------------------------------- manager picker --- */
 
@@ -349,7 +260,7 @@
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-md);
   background: var(--surface-2, transparent);
 }
 .agent-bundle-body { min-width: 0; }
@@ -371,7 +282,7 @@
   margin: 0 0 14px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-md);
 }
 .agent-fact { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .agent-fact-label {
@@ -388,7 +299,7 @@
 
 .agent-note {
   margin-top: 14px; padding: 11px 13px;
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--gridline);
   font-size: 12.5px; line-height: 1.6; color: var(--text-secondary);
 }
@@ -402,7 +313,7 @@
 .agent-missing {
   padding: 14px 16px;
   border: 1px dashed var(--border);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-md);
   font-size: 13px; line-height: 1.6;
 }
 .agent-missing p { margin: 6px 0 0; color: var(--text-secondary); }
@@ -425,7 +336,11 @@
   max-height: min(88vh, 900px);
 }
 .plan-body { padding: 16px 20px 20px; }
-.plan-features {
+/* The plan editor's feature textarea. Named -input because signup.css owns a
+   `.plan-features` of its own — a <ul> on the marketing page — and this file
+   resolves later in the module graph, so the bare name was giving that list a
+   textarea's resize handle and min-height. */
+.plan-features-input {
   width: 100%; resize: vertical; min-height: 96px;
-  font: inherit; font-size: 13px; line-height: 1.6;
+  font: inherit; font-size: var(--text-md); line-height: 1.6;
 }

@@ -1,0 +1,59 @@
+/* Module overviews — the first tab of a module.
+ *
+ * Reuses the shared primitives (.card, .grid-tiles, StatTile) rather than
+ * inventing a dashboard language: an overview that looks unlike the rest of the
+ * product is a second design to maintain for four pages.
+ */
+
+/* The tile row leads the page, so it carries the gap rather than the tiles
+   below it — .grid already spaces them from each other. */
+.ov-tiles { margin-bottom: var(--space-4); }
+
+/* Label/value rows. A list, not a table: two columns with no header is a table
+   pretending, and it would inherit the table's own surface inside a card. */
+.ov-list { list-style: none; margin: 0; padding: 0; }
+.ov-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--gridline);
+  font-size: var(--text-md);
+}
+.ov-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.ov-list b { font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
+.ov-unit { font-weight: var(--weight-regular); color: var(--text-muted); }
+.ov-cap { text-transform: capitalize; }
+
+/* --------------------------------------------------------- seven-day bars -- */
+
+/* Seven values sharing one maximum. Deliberately not the chart component: with
+   a fixed count and no axis, the bars ARE the comparison, and a legend would be
+   furniture. */
+.ov-spark {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+  align-items: end;
+  height: 120px;
+}
+.ov-spark-day {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  height: 100%; gap: var(--space-1);
+}
+.ov-spark-bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: linear-gradient(180deg, var(--brand-accent), var(--brand));
+  transition: height var(--duration-slow) var(--ease-standard);
+}
+.ov-spark-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-spark-bar { transition: none; }
+}

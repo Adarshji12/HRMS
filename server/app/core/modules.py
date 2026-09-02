@@ -138,6 +138,17 @@ MODULES: tuple[ModuleDef, ...] = (
         "Employee tickets and HR support queue.",
         "Operations",
     ),
+    # Its own group, not "Operations": the CRM is the only module here that
+    # faces outward. Everything above it is about the people who work at the
+    # company; this one is about the people who buy from it, and an operator
+    # deciding what a customer has bought thinks about those separately.
+    ModuleDef(
+        "crm",
+        "CRM & Lead Generation",
+        "Lead pipeline, follow-ups, field visits, the support desk, customers, "
+        "quotations and scheduled WhatsApp reminders.",
+        "Revenue",
+    ),
 )
 
 MODULES_BY_KEY: dict[str, ModuleDef] = {m.key: m for m in MODULES}

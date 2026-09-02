@@ -26,7 +26,7 @@
   padding: 2px 9px; border-radius: 11px; border: 1px solid currentColor;
 }
 .eg-draft { color: var(--text-muted); }
-.eg-published, .eg-open { color: var(--status-ok, #2e7d32); }
+.eg-published, .eg-open { color: var(--status-ok); }
 .eg-archived, .eg-closed { color: var(--text-muted); }
 
 .eg-tag {
@@ -34,10 +34,10 @@
   padding: 1px 8px; border-radius: 10px;
   background: var(--surface-2, rgba(0,0,0,0.05)); color: var(--text-secondary);
 }
-.eg-tag.is-private, .eg-tag.is-named { color: var(--status-warn, #b26a00); }
+.eg-tag.is-private, .eg-tag.is-named { color: var(--status-warn); }
 .eg-pin {
   display: inline-block; margin-right: 8px; font-size: 11px; font-weight: 600;
-  color: var(--brand-ink, #2f5aa8);
+  color: var(--brand-ink);
 }
 
 /* --- the feed ------------------------------------------------------------- */
@@ -48,7 +48,7 @@
 .eg-post-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .eg-body { margin: 8px 0; white-space: pre-wrap; line-height: 1.6; }
 .eg-post-foot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.eg-done { font-size: 12.5px; color: var(--status-ok, #2e7d32); }
+.eg-done { font-size: 12.5px; color: var(--status-ok); }
 
 /* --- surveys -------------------------------------------------------------- */
 
@@ -61,10 +61,10 @@
    styling it as a footnote would be styling it as ignorable. */
 .eg-privacy {
   margin: 10px 0; padding: 10px 14px; border-radius: 8px;
-  border: 1px solid var(--status-ok, #2e7d32);
+  border: 1px solid var(--status-ok);
   font-size: 12.5px; line-height: 1.6;
 }
-.eg-privacy.is-named { border-color: var(--status-warn, #b26a00); }
+.eg-privacy.is-named { border-color: var(--status-warn); }
 
 .eg-question { margin: 14px 0; }
 .eg-prompt { font-weight: 600; margin-bottom: 8px; }
@@ -83,7 +83,7 @@
 /* Deliberate, not broken. See the sheet header. */
 .eg-withheld {
   margin: 12px 0; padding: 14px 16px; border-radius: 10px;
-  border: 1px dashed var(--status-warn, #b26a00);
+  border: 1px dashed var(--status-warn);
   color: var(--text-secondary); font-size: 13px; line-height: 1.6;
 }
 

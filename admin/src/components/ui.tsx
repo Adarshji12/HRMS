@@ -52,9 +52,14 @@ export function Meter({ value, max, accent }: { value: number; max: number; acce
 
 /* Eight hues, all dark enough to carry white initials at 4.5:1 or better. A
    generated hue would drift into yellows that fail, so the set is fixed and the
-   name only chooses an index — the same person keeps the same disc everywhere. */
+   name only chooses an index — the same person keeps the same disc everywhere.
+   
+   The third slot was #0f7a5a, which sat 1.5 dE from the brand green — the same
+   colour, to any eye. A person's disc reading as a brand element is exactly the
+   confusion the palette note in styles.css warns about, so it moved to a bronze
+   that is 47 dE from the brand and 36 from its nearest neighbour here. */
 const AVATAR_COLORS = [
-  '#6d3ff0', '#1d6fd0', '#0f7a5a', '#a8442a',
+  '#6d3ff0', '#1d6fd0', '#6b5326', '#a8442a',
   '#8a3fb0', '#2a6f8f', '#9b2d55', '#5a5f9e',
 ]
 

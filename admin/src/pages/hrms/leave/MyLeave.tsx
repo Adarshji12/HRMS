@@ -311,9 +311,7 @@ export default function MyLeave() {
         <div>
           <h1 className="page-title">My Leave</h1>
           <p className="page-sub">
-            A balance here is never a bare number — open one to see what it is made of.
-            The figure you can actually apply for is your balance minus anything still
-            awaiting a decision.
+            Your balances, and what each one is made of.
           </p>
         </div>
       </div>

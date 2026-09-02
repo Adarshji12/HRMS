@@ -5,6 +5,39 @@ export interface TenantInfo {
   name: string
   slug: string
   timezone: string
+  /**
+   * When this company's logo last changed, or null if it has none.
+   *
+   * Two jobs at once: it is how the console knows to draw the company's mark
+   * instead of the product's, and it is what gets hung on the image URL so a
+   * replaced logo is actually re-fetched rather than served from cache.
+   */
+  logo_updated_at: string | null
+}
+
+/** `GET /org/company` — the company's identity, as opposed to its settings. */
+export interface CompanyProfile {
+  id: string
+  name: string
+  slug: string
+  timezone: string
+  legal_name: string | null
+  industry: string | null
+  website: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string
+  gstin: string | null
+  /** Null falls back to the server default — see the Meetings card. */
+  meeting_domain: string | null
+  /** Derived server-side. The storage key itself never leaves the server. */
+  has_logo: boolean
+  logo_updated_at: string | null
 }
 
 export interface Totals {
@@ -97,6 +130,14 @@ export interface User {
   notice_accepted_at: string | null
   can_view_screenshots: boolean
   can_approve_timesheets: boolean
+  /** Exempt from the geofence, whatever work mode they punch with. */
+  can_punch_anywhere: boolean
+  /** The named role assigned, if any. Null means their permissions are their own. */
+  role_id: string | null
+  role_name: string | null
+  /** self | team | department | company — resolved from the role, or from their
+   *  level when they hold none. */
+  data_scope: string
   can_export_data: boolean
   can_manage_projects: boolean
   // HRMS. Optional on the client even though the server now always sends them:
@@ -128,6 +169,8 @@ export interface User {
    * what stops a workspace locking itself out of its own payroll.
    */
   can_manage_payroll?: boolean
+  can_manage_performance?: boolean
+  can_manage_engagement?: boolean
   /**
    * Employment lifecycle: pending_setup | active | inactive.
    *
@@ -294,6 +337,8 @@ export interface HierarchyNode {
   team: string | null
   department: string | null
   is_active: boolean
+  /** Null where the company issues no codes — the chart card simply omits it. */
+  employee_code: string | null
   headcount: number
   reports: HierarchyNode[]
 }

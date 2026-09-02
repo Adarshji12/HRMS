@@ -95,7 +95,7 @@ def _names(db: Session, org_id: uuid.UUID) -> dict[uuid.UUID, str]:
 
 
 def _leave(db: Session, viewer: User, names: dict) -> list[Pending]:
-    if not getattr(viewer, "can_approve_leave", False):
+    if not viewer.has("can_approve_leave"):
         return []
     scope = hierarchy.visible_user_ids(db, viewer)
     stmt = select(LeaveApplication).where(
@@ -125,7 +125,7 @@ def _leave(db: Session, viewer: User, names: dict) -> list[Pending]:
 
 
 def _timesheets(db: Session, viewer: User, names: dict) -> list[Pending]:
-    if not getattr(viewer, "can_approve_timesheets", False):
+    if not viewer.has("can_approve_timesheets"):
         return []
     scope = hierarchy.visible_user_ids(db, viewer)
     stmt = select(TimesheetApproval).where(
@@ -152,7 +152,7 @@ def _timesheets(db: Session, viewer: User, names: dict) -> list[Pending]:
 
 
 def _regularizations(db: Session, viewer: User, names: dict) -> list[Pending]:
-    if not getattr(viewer, "can_approve_regularization", False):
+    if not viewer.has("can_approve_regularization"):
         return []
     return [
         Pending(

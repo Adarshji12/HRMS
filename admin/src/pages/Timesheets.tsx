@@ -152,8 +152,7 @@ export default function Timesheets() {
         <div>
           <h1 className="page-title">Timesheets</h1>
           <p className="page-sub">
-            Hours are derived from tracked activity plus anything entered by hand — never a
-            stored third copy. Approval freezes the totals at the moment they were signed off.
+            Hours derived from tracked activity plus anything entered by hand.
           </p>
         </div>
         {/* The endpoint takes start and end and this sent neither, so narrowing

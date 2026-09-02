@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
-import { PAGES, PERMISSIONS, ROLE_SUMMARY } from '../lib/employeeFields'
+import { PAGES, PERMISSIONS } from '../lib/employeeFields'
+import type { OrgRole } from './hrms/roles/Roles'
 import { useQuery } from '../lib/useQuery'
 import { canAdminister, useAuth } from '../lib/auth'
 import { dateTime } from '../lib/format'
@@ -67,8 +68,7 @@ export default function Employees() {
         <div>
           <h1 className="page-title">Employees</h1>
           <p className="page-sub">
-            Each employee has one enrollment key. It binds a machine to them the first time the
-            agent runs, and can be rotated if it leaks.
+            One enrollment key each. It binds a machine the first time the agent runs.
           </p>
         </div>
         <div className="head-actions">
@@ -277,6 +277,17 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
     password: '',
     can_view_screenshots: true,
     can_approve_timesheets: true,
+    // Off by default, unlike its neighbours: this one removes the geofence
+    // rather than granting a capability.
+    can_punch_anywhere: false,
+    role_id: '',
+    can_approve_leave: true,
+    can_approve_regularization: true,
+    can_manage_assets: true,
+    can_manage_onboarding: true,
+    can_manage_helpdesk: true,
+    can_manage_performance: true,
+    can_manage_engagement: true,
     can_export_data: true,
     can_manage_projects: true,
     can_manage_people: true,
@@ -291,6 +302,10 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /* The company's named roles. Assigning one is how permissions are set now —
+     the four hardcoded levels became four built-in roles, and a company can add
+     its own beside them. */
+  const rolesQ = useQuery<OrgRole[]>('org-roles', () => api.get<OrgRole[]>('/roles'))
   const teams = useQuery<Team[]>('teams', () => api.get<Team[]>('/org/teams'))
   const departments = useQuery<Department[]>('departments', () =>
     api.get<Department[]>('/org/departments'),
@@ -311,6 +326,15 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
         role: form.role,
         can_view_screenshots: form.can_view_screenshots,
         can_approve_timesheets: form.can_approve_timesheets,
+        can_punch_anywhere: form.can_punch_anywhere,
+        role_id: form.role_id || null,
+        can_approve_leave: form.can_approve_leave,
+        can_approve_regularization: form.can_approve_regularization,
+        can_manage_assets: form.can_manage_assets,
+        can_manage_onboarding: form.can_manage_onboarding,
+        can_manage_helpdesk: form.can_manage_helpdesk,
+        can_manage_performance: form.can_manage_performance,
+        can_manage_engagement: form.can_manage_engagement,
         can_export_data: form.can_export_data,
         can_manage_projects: form.can_manage_projects,
         can_manage_people: form.can_manage_people,
@@ -409,15 +433,27 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
         </label>
         <label className="setting">
           Role
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            <option value="employee">Employee</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
+          <select
+            value={form.role_id || form.role}
+            onChange={(e) => {
+              const value = e.target.value
+              const named = (rolesQ.data ?? []).find((r) => r.id === value)
+              /* A named role supplies the level; the legacy `role` field
+                 mirrors it so anything still reading that column agrees with
+                 what the role actually grants. */
+              setForm(named
+                ? { ...form, role_id: named.id, role: named.base_role }
+                : { ...form, role_id: '', role: value })
+            }}
+          >
+            {(rolesQ.data ?? []).filter((r) => r.base_role !== 'owner').map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
           </select>
-          {/* The dropdown said "Manager — sees their own team" in eight words and
-              then stopped. What a role actually reaches is the whole question
-              being asked here, so it is spelled out. */}
-          <span className="setting-hint">{ROLE_SUMMARY[form.role]}</span>
+          {/* What the chosen role actually reaches — the whole question being
+              asked here. For a named role it is that role's own description and
+              scope rather than a hardcoded sentence about four levels. */}
+          <span className="setting-hint">{roleSummary(rolesQ.data ?? [], form)}</span>
         </label>
         <label className="setting">
           Console password
@@ -432,26 +468,31 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
         </label>
       </div>
 
-      {/* Permissions narrow what the role already allows; they never widen it.
-          An employee with every box ticked still only ever sees themselves, so
-          these only do anything from Manager upwards — which is why the section
-          says so rather than rendering checkboxes that quietly mean nothing. */}
+      {/* Most permissions narrow what the role already allows and never widen
+          it: an employee with every box ticked still only ever sees themselves,
+          so the form greys them out rather than rendering checkboxes that
+          quietly mean nothing.
+
+          `selfScoped` ones are the exception and stay live at every role — they
+          act on the holder, not on other people. Blanket-disabling the section
+          had taken "can punch from anywhere" away from field staff and remote
+          hires, who are precisely the plain employees it exists for. */}
       <h3 className="perm-heading">
         What they can do
         {form.role === 'employee' && (
           <span className="perm-note">
-            An employee only ever sees their own work — these make no difference
-            until the role is Manager or Admin.
+            An employee only ever sees their own work — the greyed ones make no
+            difference until the role is Manager or Admin.
           </span>
         )}
       </h3>
-      <div className="perm-grid" aria-disabled={form.role === 'employee'}>
+      <div className="perm-grid">
         {PERMISSIONS.map((p) => (
           <label className="perm-row" key={p.key}>
             <input
               type="checkbox"
               checked={form[p.key]}
-              disabled={form.role === 'employee'}
+              disabled={form.role === 'employee' && !('selfScoped' in p && p.selfScoped)}
               onChange={(e) => setForm({ ...form, [p.key]: e.target.checked })}
             />
             <span className="perm-body">
@@ -503,4 +544,26 @@ function AddEmployee({ onDone }: { onDone: () => void }) {
       </div>
     </form>
   )
+}
+
+/* What the chosen role reaches, in the role's own words.
+ *
+ * Replaces a hardcoded sentence per level, which could only ever describe the
+ * four the product shipped with. A company's own "Finance Officer" has a
+ * description and a scope, and those are the true answer to "what will this
+ * person be able to do" — the level alone stopped being it the moment scope
+ * became a field of its own. */
+function roleSummary(roles: OrgRole[], form: { role_id: string; role: string }): string {
+  const named = roles.find((r) => r.id === form.role_id)
+  if (!named) return 'Choose a role. Roles are defined in Settings → Roles & Permissions.'
+  const scope: Record<string, string> = {
+    self: 'only their own record',
+    team: 'their reporting line',
+    department: 'their whole department',
+    company: 'the whole company',
+  }
+  const count = Object.values(named.permissions).filter(Boolean).length
+  return `${named.description ? named.description + ' ' : ''}Sees ${
+    scope[named.data_scope] ?? named.data_scope
+  }, with ${count} permission${count === 1 ? '' : 's'}.`
 }

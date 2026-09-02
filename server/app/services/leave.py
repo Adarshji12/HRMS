@@ -1132,7 +1132,8 @@ def apply_for_leave(
     else:
         # A chain begins when the request does. Does nothing when leave has no
         # chain configured, which is most companies.
-        chains.start_for(db, kind="leave", record_id=application.id, subject=employee)
+        chains.start_for(db, kind="leave", record_id=application.id, subject=employee,
+                         record=application)
     return application
 
 

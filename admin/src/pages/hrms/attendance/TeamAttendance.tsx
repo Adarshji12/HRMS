@@ -65,9 +65,7 @@ export default function TeamAttendance() {
         <div>
           <h1 className="page-title">Team attendance</h1>
           <p className="page-sub">
-            The daily muster for everyone who reports to you, directly or further down. Scope is
-            decided by the server from the reporting hierarchy — this page shows what comes back
-            and never widens it.
+            The daily muster for everyone who reports to you.
           </p>
         </div>
       </div>

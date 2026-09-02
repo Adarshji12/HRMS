@@ -10,9 +10,19 @@ import '../../../styles/timesheets.css'
 import '../../../styles/helpdesk.css'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
-import { useAuth } from '../../../lib/auth'
+import {
+  canAdminister,
+  canApproveSomething,
+  canViewTeam,
+  isOwner,
+  useAuth,
+} from '../../../lib/auth'
+import type { NavAccess } from '../../../lib/nav'
 import { clockTime, duration, shortDate } from '../../../lib/format'
+import Tabs, { TabPanel } from '../../../components/Tabs'
+import Welcome from './Welcome'
 import { Empty, EmptyState, ErrorNote, Loading, Meter } from '../../../components/ui'
+import WorkModePicker, { type WorkMode } from '../../../components/WorkModePicker'
 import { IconCheck, IconClock, IconInfo } from '../../../components/Icons'
 import { ApprovalPill } from '../../Timesheets'
 import {
@@ -198,13 +208,6 @@ function daysUntil(iso: string, today: string): number {
   return Math.round((b - a) / 86_400_000)
 }
 
-function greeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
-}
-
 /** The structural half of `useQuery`'s return. Its own interface is not
  *  exported, and a card only ever reads these four fields. */
 interface Slice<T> {
@@ -262,7 +265,91 @@ function Card({
 
 /* ============================================================== the page === */
 
+const TAB_KEY = 'hrdesktimesol.home-tab'
+type HomeTab = 'welcome' | 'dashboard'
+
+/**
+ * `/home`, in two panels.
+ *
+ * People arrive here for one of two reasons and the page used to serve only
+ * the second. **Welcome** is for somebody who came to *do* one thing — punch,
+ * apply, look up a payslip — and wants the door, not a report. **Dashboard** is
+ * the six cards this page has always been, for somebody who came to find out
+ * where they stand. Welcome leads, because the door is the more common errand
+ * and it is the cheaper of the two to walk past.
+ *
+ * The dashboard is mounted lazily and then kept. Six requests fire the first
+ * time it is opened and never again on a toggle — mounting it up front would
+ * make everyone who only ever wants a shortcut pay for six calls, and
+ * unmounting it on the way back to Welcome would re-fire them on every switch.
+ * `hidden` rather than a conditional render is what makes "kept" true; React
+ * would otherwise drop the state on the branch not taken.
+ */
 export default function EmployeeHome() {
+  const { user } = useAuth()
+
+  /* Rebuilt here rather than threaded through the router: the shell computes
+     the same object for the rail, and a prop chain through <Routes> to reach
+     one page would be a second definition of it in the router's signature.
+     Same helpers, same source of truth — `lib/auth`. */
+  const access = useMemo<NavAccess>(
+    () => ({
+      isAdmin: canAdminister(user),
+      canViewTeam: canViewTeam(user),
+      isOwner: isOwner(user),
+      canApprove: canApproveSomething(user),
+      hiddenPages: user?.hidden_pages ?? [],
+    }),
+    [user],
+  )
+
+  const [tab, setTab] = useState<HomeTab>(() =>
+    localStorage.getItem(TAB_KEY) === 'dashboard' ? 'dashboard' : 'welcome',
+  )
+  const [visitedDashboard, setVisitedDashboard] = useState(tab === 'dashboard')
+
+  function choose(next: HomeTab) {
+    setTab(next)
+    if (next === 'dashboard') setVisitedDashboard(true)
+    try {
+      localStorage.setItem(TAB_KEY, next)
+    } catch {
+      /* A private window. The choice holds for this session and no further. */
+    }
+  }
+
+  return (
+    <div className="home-switch">
+      <div className="home-switch-bar">
+        <Tabs
+          label="Home view"
+          value={tab}
+          onChange={choose}
+          items={[
+            { id: 'welcome', label: 'Welcome' },
+            { id: 'dashboard', label: 'Dashboard' },
+          ]}
+        />
+      </div>
+
+      <TabPanel id="welcome">
+        <div hidden={tab !== 'welcome'}>
+          <Welcome access={access} />
+        </div>
+      </TabPanel>
+
+      <TabPanel id="dashboard">
+        {visitedDashboard && (
+          <div hidden={tab !== 'dashboard'}>
+            <HomeDashboard />
+          </div>
+        )}
+      </TabPanel>
+    </div>
+  )
+}
+
+function HomeDashboard() {
   const { user, organization } = useAuth()
   const [punchKey, setPunchKey] = useState(0)
 
@@ -325,10 +412,11 @@ export default function EmployeeHome() {
     <div>
       <div className="page-head">
         <div>
-          <h1 className="hm-greeting">
-            {greeting()}
-            {user?.full_name ? `, ${user.full_name.split(/\s+/)[0]}` : ''}
-          </h1>
+          {/* Not a second greeting. The welcome panel next door already said
+              good morning and named the reader; repeating it one tab away
+              would make the toggle look like it had done nothing. This head
+              says what the panel holds. */}
+          <h1 className="hm-greeting">Your day</h1>
           <p className="page-sub">
             {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
               weekday: 'long',
@@ -385,6 +473,11 @@ function PunchCard({
     null,
   )
   const [result, setResult] = useState<{ kind: 'in' | 'out'; punch: PunchResult } | null>(null)
+  /* Same default and the same reason as the attendance page: Office is the
+     common case and the strict one, so a mode that relaxes the geofence has to
+     be chosen rather than defaulted into. */
+  const [workMode, setWorkMode] = useState<WorkMode>('office')
+  const [note, setNote] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
 
   const busy = phase !== null
@@ -407,9 +500,14 @@ function PunchCard({
         lng: fix?.lng ?? null,
         accuracy_m: fix?.accuracy_m ?? null,
         source: 'web',
-        note: null,
+        note: kind === 'in' ? note.trim() || null : null,
+        // Only on the way in — the day's mode was declared this morning and the
+        // server reads it off the row when closing.
+        work_mode: kind === 'in' ? workMode : null,
       })
       setResult({ kind, punch: punched })
+      setNote('')
+      setWorkMode('office')
       onPunched()
     } catch (err) {
       setFailure(typedError(err).message)
@@ -467,6 +565,27 @@ function PunchCard({
                 </>
               )}
             </div>
+
+            {/* The same question the attendance page asks, from the same
+                component — two punch buttons in the product must not have two
+                definitions of what the modes are. Only while a check-in is
+                still possible. */}
+            {canPunchIn && (
+              <>
+                <WorkModePicker value={workMode} onChange={setWorkMode} disabled={busy} />
+                <label className="setting" style={{ marginBottom: 12 }}>
+                  Note (optional)
+                  <input
+                    className="att-note-input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={500}
+                    placeholder="At the client's office today"
+                    disabled={busy}
+                  />
+                </label>
+              </>
+            )}
 
             <div className="hm-punch-actions">
               <button

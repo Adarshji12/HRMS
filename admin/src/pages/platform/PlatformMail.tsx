@@ -94,9 +94,7 @@ export default function PlatformMail() {
         <div>
           <h1 className="page-title">Email connector</h1>
           <p className="page-sub">
-            One SMTP server for the whole platform — signup, invitations, password resets
-            and every alert. Configured here and nowhere else; changes take effect
-            immediately, with no restart.
+            One SMTP server for the whole platform. Changes apply immediately.
           </p>
         </div>
       </div>

@@ -33,6 +33,27 @@ class Organization(UUIDMixin, TimestampMixin, Base):
     country: Mapped[str] = mapped_column(String(2), default="IN", nullable=False)
     gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
     industry: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # --- branding ------------------------------------------------------------
+    # The storage key of the company's own logo, which replaces the product mark
+    # in the console for everyone in this tenant. Null is the ordinary state and
+    # means "use the product mark" — there is no default logo to fall back to
+    # and none is invented.
+    logo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # When it last changed. It exists to bust the browser's cache of an image
+    # served from one unchanging URL: without it, replacing the logo would leave
+    # every signed-in console showing the old one until a hard refresh.
+    logo_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # --- meetings ------------------------------------------------------------
+    # Which Jitsi deployment hosts this company's video calls. Null means the
+    # server default (`settings.meeting_domain`, meet.jit.si out of the box).
+    #
+    # Per-tenant rather than server-wide because self-hosting is the answer for
+    # anyone who cannot send their staff's video through somebody else's
+    # servers, and that is a decision one customer makes without the others.
+    meeting_domain: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # --- platform state, controlled by Super Admin ---------------------------
     # Distinct from subscription status: this is *our* switch, not the

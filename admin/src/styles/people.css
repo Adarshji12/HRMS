@@ -5,19 +5,116 @@
    a single Save across four sections would submit fields the user never
    touched, and the server's exclude_unset patch exists precisely so it does
    not have to. */
+/* ------------------------------------------------------------------ hero -- */
+
+/* A record ABOUT a person opened with their name in the same 25px type every
+   list page uses — no face, no role, nothing to say whose record was on screen.
+   Avatar, identity and completeness on one line. */
+.hr-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  padding: var(--space-5);
+}
+/* The shared 30px disc is a table-cell size. On a page that is entirely about
+   one person it is the anchor, so it is scaled here rather than a new variant
+   being added to the component for a single caller. */
+.hr-hero > .avatar {
+  width: 64px; height: 64px;
+  font-size: 22px;
+  flex: none;
+}
+.hr-hero-id { flex: 1 1 260px; min-width: 0; }
+.hr-hero-name {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.hr-hero-meta {
+  margin: 3px 0 0;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+.hr-hero-tags {
+  display: flex; align-items: center; gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+.hr-hero-since { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* Completeness. The one figure that turns thirty blank boxes into a task with
+   an end — and both payroll and statutory filing depend on the answer. */
+.hr-hero-done { flex: 0 1 240px; min-width: 200px; }
+.hr-hero-done-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-2);
+}
+.hr-hero-done-label {
+  font-size: 10px; font-weight: var(--weight-bold);
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+}
+.hr-hero-done-pct {
+  font-size: var(--text-xl); font-weight: 650;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.hr-hero-done-meta {
+  display: block; margin-top: var(--space-1);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- layout -- */
+
+/* Exactly two columns, not auto-fit.
+ *
+ * auto-fit resolved to THREE at desktop width, and with Personal spanning all
+ * of them the two remaining sections filled columns one and two — leaving a
+ * card-shaped hole down the right third of the page. Two columns is the real
+ * shape of the content: one wide section, then a pair. */
 .hr-profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
   align-items: start;
 }
+/* Documents is a full-width strip — its upload row is a single line of
+   controls and it has nothing to sit beside. */
+.hr-profile-grid > :last-child { grid-column: 1 / -1; }
+
+@media (max-width: 900px) {
+  .hr-profile-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Personal carries twice the fields of the other two. Given an equal third it
+   ran to 1400px while Statutory and Employment stopped at 800, stranding six
+   hundred pixels of empty column beside it. Full width, with the shorter two
+   paired underneath. */
+.hr-profile-grid > .hr-section:first-child { grid-column: 1 / -1; }
 .hr-section-wide { grid-column: 1 / -1; }
+/* A profile panel. `.card` carries the surface; this only has to survive being
+   a grid item, which without an explicit min-width refuses to shrink below the
+   widest field inside it and blows the column out. */
+.hr-section { min-width: 0; }
 .hr-profile-foot { margin-top: 14px; }
 
+/* auto-fit with a 180px floor meant a 640px column fitted three per row, but a
+   340px one fitted exactly one — which is how Personal ended up as thirty
+   stacked boxes. A fixed two-column grid pairs them at every width the card
+   actually gets, and the wide fields opt out below. */
 .hr-field-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+/* Addresses and anything with a long hint take the full row — a textarea in
+   half a column is unusable and a hint under it wraps to four lines. */
+.hr-field-wide,
+.hr-field:has(textarea) { grid-column: 1 / -1; }
+
+@media (max-width: 560px) {
+  .hr-field-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .hr-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -32,17 +129,15 @@
 .hr-field-hint {
   font-size: 11.5px; line-height: 1.45; color: var(--text-muted);
 }
-.err-inline { color: var(--danger-text, #b3261e); }
+.err-inline { color: var(--danger-text); }
 
 /* Reveal sits inside the hint line rather than beside the input: it is a rare,
    deliberate action, and giving it button chrome next to the field makes it
    look like part of ordinary editing. */
-.link-btn {
-  padding: 0; border: none; background: none;
-  font: inherit; font-size: 11.5px; font-weight: 600;
-  color: var(--brand); cursor: pointer; text-decoration: underline;
-}
-.link-btn:hover { color: var(--brand-strong); }
+/* .link-btn lives in styles.css. It used to be redefined here too, with its own
+   size, weight and underline — dead code, because styles.css resolves last in
+   the module graph and won every same-specificity tie. Removed rather than
+   moved: one link button, one appearance. */
 
 .hr-section-actions {
   display: flex; align-items: center; gap: 10px;
@@ -74,12 +169,12 @@
 }
 .hr-pill-ok { color: var(--success-text); }
 .hr-pill-warn { color: var(--warn-ink); }
-.hr-pill-bad { color: var(--danger-text, #b3261e); }
+.hr-pill-bad { color: var(--danger-text); }
 .hr-pill-muted { color: var(--text-muted); border-color: var(--border-strong); }
 
 .hr-ok { color: var(--success-text); }
 .hr-warn { color: var(--warn-ink); font-weight: 600; }
-.hr-bad { color: var(--danger-text, #b3261e); font-weight: 600; }
+.hr-bad { color: var(--danger-text); font-weight: 600; }
 .hr-muted { color: var(--text-muted); }
 
 .hr-doc-name { font-weight: 600; color: var(--text-primary); }

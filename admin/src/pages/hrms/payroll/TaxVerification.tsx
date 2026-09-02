@@ -61,8 +61,7 @@ export default function TaxVerification() {
         <div>
           <h1>Tax declarations</h1>
           <p className="muted">
-            Check proofs against what people declared. Payroll switches to the
-            verified figure the month you set it — which is when they will ask.
+            Check proofs against what people declared.
           </p>
         </div>
         <div className="ex-headline">{waiting} awaiting verification</div>

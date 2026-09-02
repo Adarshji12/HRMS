@@ -148,8 +148,7 @@ export default function Settings() {
         <div>
           <h1 className="page-title">Tracking policy</h1>
           <p className="page-sub">
-            Applies to every agent in the organisation. Agents pick changes up on their next
-            heartbeat — no redeploy needed.
+            Applies to every agent. Picked up on the next heartbeat, with no redeploy.
           </p>
         </div>
       </div>

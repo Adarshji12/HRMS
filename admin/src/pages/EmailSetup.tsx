@@ -99,8 +99,7 @@ export default function EmailSetup() {
         <div>
           <h1 className="page-title">Email setup</h1>
           <p className="page-sub">
-            The mail server {organization?.name ?? 'this workspace'} sends from — timesheet
-            decisions, alerts, invitations and password resets. Only you can change this.
+            The address company mail is sent from. Only the owner can change it.
           </p>
         </div>
       </div>

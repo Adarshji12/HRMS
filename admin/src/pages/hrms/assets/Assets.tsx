@@ -214,9 +214,7 @@ export default function Assets() {
         <div>
           <h1 className="page-title">Assets</h1>
           <p className="page-sub">
-            The register and its custody ledger. An asset becomes issued by handing it to
-            somebody, never by editing its status — that is what keeps “who has this laptop”
-            answerable from one place.
+            The register, and the custody ledger behind it.
           </p>
         </div>
         <div className="head-actions">

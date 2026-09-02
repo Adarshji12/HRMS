@@ -119,9 +119,7 @@ export default function TeamLeave() {
         <div>
           <h1 className="page-title">Team Leave</h1>
           <p className="page-sub">
-            Everyone in your reporting subtree, awaiting a decision. Approving is the balance
-            debit, so each request shows what the employee is left with afterwards and who else
-            on the team is already off in the same window.
+            Requests from your reporting line, awaiting a decision.
           </p>
         </div>
         <div className="ts-toggle" role="group" aria-label="Queue">

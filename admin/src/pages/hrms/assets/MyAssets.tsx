@@ -44,8 +44,7 @@ export default function MyAssets() {
         <div>
           <h1 className="page-title">My assets</h1>
           <p className="page-sub">
-            Company property currently issued to you. Hand anything here back to IT before your
-            last working day — the register is what closes it, not an email.
+            Company property currently issued to you.
           </p>
         </div>
       </div>

@@ -283,7 +283,8 @@ def submit(
     # it: written lazily, its first rung would be consumed by whoever happened
     # to open the queue. Does nothing when this flow has no chain configured,
     # which is most companies.
-    chains.start_for(db, kind="regularization", record_id=row.id, subject=employee)
+    chains.start_for(db, kind="regularization", record_id=row.id, subject=employee,
+                     record=row)
 
     return row
 

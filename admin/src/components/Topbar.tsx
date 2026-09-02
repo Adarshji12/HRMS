@@ -1,29 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { locate, type NavAccess } from '../lib/nav'
-import { useTheme, type ThemeMode } from '../lib/theme'
+import AccountMenu from './AccountMenu'
+import AppLauncher from './AppLauncher'
 import Brand from './Brand'
 import CommandPalette from './CommandPalette'
 import Notifications from './Notifications'
-import {
-  IconChevronRight,
-  IconMenu,
-  IconMonitor,
-  IconMoon,
-  IconSearch,
-  IconSun,
-} from './Icons'
-
-const THEME_ICON: Record<ThemeMode, (p: { size?: number }) => JSX.Element> = {
-  system: IconMonitor,
-  light: IconSun,
-  dark: IconMoon,
-}
-const THEME_LABEL: Record<ThemeMode, string> = {
-  system: 'Appearance: follow system',
-  light: 'Appearance: light',
-  dark: 'Appearance: dark',
-}
+import { IconChevronRight, IconMenu, IconSearch } from './Icons'
 
 /** ⌘ on a Mac, Ctrl everywhere else — the shortcut hint has to match the keys. */
 const MOD = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
@@ -31,20 +14,21 @@ const MOD = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
 export default function Topbar({
   access,
   isAdmin,
+  settingsHome,
   onOpenDrawer,
   drawerOpen,
 }: {
   access: NavAccess
   isAdmin: boolean
+  /** Where a bare /settings lands for this role, computed by the shell. */
+  settingsHome: string
   onOpenDrawer: () => void
   drawerOpen: boolean
 }) {
   const location = useLocation()
-  const { mode, cycle } = useTheme()
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   const here = locate(location.pathname, access)
-  const ThemeGlyph = THEME_ICON[mode]
 
   /* Mod+K from anywhere, and "/" when you are not already typing. Both are the
      conventions people arrive with; the second is skipped inside a field, where
@@ -82,6 +66,13 @@ export default function Topbar({
         >
           <IconMenu />
         </button>
+
+        {/* The whole product as a grid, leftmost, where every console that has
+            one puts it. It earns its place twice over on a phone, where the
+            rail is behind the drawer and this is the only view of the shape of
+            the product. */}
+        <AppLauncher access={access} />
+
         <div className="topbar-brand"><Brand size={26} /></div>
 
         {/* Where you are, one level above the page title, which says the same
@@ -89,7 +80,10 @@ export default function Topbar({
             on screen. */}
         <nav className="crumbs" aria-label="Breadcrumb">
           <Link to="/" className="crumb crumb-root">Console</Link>
-          {here?.heading && (
+          {/* Skipped when the module and the page share a name. Noticeboard's
+              first page is also called Noticeboard, and "Noticeboard ›
+              Noticeboard" tells the reader nothing twice. */}
+          {here?.heading && here.heading !== here.item.label && (
             <>
               <IconChevronRight size={14} />
               <span className="crumb crumb-muted">{here.heading}</span>
@@ -123,11 +117,11 @@ export default function Topbar({
 
         <span className="topbar-rule" aria-hidden="true" />
 
-        <button className="icon-btn" onClick={cycle} aria-label={THEME_LABEL[mode]} title={THEME_LABEL[mode]}>
-          <ThemeGlyph size={18} />
-        </button>
-
         <Notifications isAdmin={isAdmin} />
+
+        {/* Appearance used to be a third icon button here and is now a labelled
+            row inside this menu — see AccountMenu's header for why. */}
+        <AccountMenu settingsHome={settingsHome} />
       </header>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} access={access} />

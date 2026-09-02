@@ -57,7 +57,7 @@ from app.schemas.common import (
     UserWithKeyOut,
 )
 from app.services import agentdist, hierarchy, mailconfig, reports, storage
-from app.services import subscriptions as subs
+from app.services import roles as role_svc, subscriptions as subs
 from app.services.classifier import seed_default_rules
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -553,6 +553,24 @@ def create_employee(
     if role == Role.OWNER:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot create another owner")
 
+    # A role_id is a grant of permissions, so it is checked against this tenant
+    # rather than trusted — an id from another company would otherwise hand this
+    # person that company's permission set.
+    if payload.role_id is not None:
+        assigned = role_svc.get_role(db, admin.org_id, payload.role_id)
+        if assigned.base_role == Role.OWNER.value:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "owner_role_reserved",
+                    "message": "The Owner role belongs to the account holder and "
+                               "cannot be assigned. Use Administrator instead.",
+                },
+            )
+        # The named role decides the level; the `role` field becomes a mirror of
+        # it so the coarse checks and anything reading the column agree.
+        role = Role(assigned.base_role)
+
     user = User(
         org_id=admin.org_id,
         email=email,
@@ -581,6 +599,11 @@ def create_employee(
         # generic setattr loop, which is why the fix only needed applying once.
         can_approve_leave=payload.can_approve_leave,
         can_approve_regularization=payload.can_approve_regularization,
+        can_punch_anywhere=payload.can_punch_anywhere,
+        # The named role, when one was chosen. Validated below rather than
+        # trusted: a role_id from another tenant would otherwise grant this
+        # person that tenant's permissions.
+        role_id=payload.role_id,
         can_manage_assets=payload.can_manage_assets,
         can_manage_onboarding=payload.can_manage_onboarding,
         can_manage_helpdesk=payload.can_manage_helpdesk,
@@ -626,6 +649,25 @@ def update_employee(
                 "message": "That manager reports to this employee, directly or indirectly.",
             },
         )
+    # Same check as the create path: a role_id is a grant, so it is validated
+    # against this tenant instead of being written straight through by the loop
+    # below.
+    if "role_id" in data and data["role_id"] is not None:
+        assigned = role_svc.get_role(db, admin.org_id, data["role_id"])
+        if assigned.base_role == Role.OWNER.value:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "owner_role_reserved",
+                    "message": "The Owner role belongs to the account holder and "
+                               "cannot be assigned. Use Administrator instead.",
+                },
+            )
+        # The column mirrors the role's level, so the coarse can_administer /
+        # can_view_team checks and anything reading `role` stay in agreement
+        # with what the named role actually grants.
+        data["role"] = assigned.base_role
+
     for field, value in data.items():
         setattr(user, field, value)
 

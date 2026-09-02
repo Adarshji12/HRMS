@@ -243,3 +243,46 @@ export const IconMail = (p: P) => (
     <path d="m3.5 7 8.5 6 8.5-6" />
   </Svg>
 )
+
+/* The app launcher's nine dots. Circles with an explicit fill rather than the
+   sheet's stroke, because a 1.7px-stroked ring at r=1.1 renders as a smudge —
+   this is the one glyph in the set that is solid by nature. */
+export const IconGrid = (p: P) => (
+  <Svg {...p}>
+    {[5, 12, 19].map((cy) =>
+      [5, 12, 19].map((cx) => (
+        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.55" fill="currentColor" stroke="none" />
+      )),
+    )}
+  </Svg>
+)
+
+export const IconPlus = (p: P) => (
+  <Svg {...p}><path d="M12 5.5v13M5.5 12h13" /></Svg>
+)
+
+/* Favourites. Outlined, not filled: a filled star is the "this one is on"
+   state, and every star this product draws is already on a tile that is. */
+export const IconStar = (p: P) => (
+  <Svg {...p}>
+    <path d="m12 3.8 2.55 5.17 5.7.83-4.12 4.02.97 5.68L12 16.82l-5.1 2.68.97-5.68L3.75 9.8l5.7-.83Z" />
+  </Svg>
+)
+
+/* A life ring — help, distinct from IconInfo, which this product uses for a
+   fact you are being told rather than a place you can go for answers. */
+export const IconLifebuoy = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3.6" />
+    <path d="m5.6 5.6 3.85 3.85M14.55 14.55l3.85 3.85M18.4 5.6l-3.85 3.85M9.45 14.55 5.6 18.4" />
+  </Svg>
+)
+
+/* A paperclip — attach a file. Drawn as one open curve rather than the closed
+   loop most icon sets use: at 16px the loop fills in and reads as a blob. */
+export const IconPaperclip = (p: P) => (
+  <Svg {...p}>
+    <path d="M20.4 11.5 12 19.9a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
+  </Svg>
+)

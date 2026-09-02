@@ -1,0 +1,184 @@
+/* Roles: the permission set and the data scope, per named role.
+ *
+ * The page's one job is keeping "can do" and "can see" visibly apart. They were
+ * one idea before — scope was inferred from the role level — and conflating
+ * them is what forced every wide-reading hire to become an administrator. Two
+ * fieldsets side by side, with the level beside the scope, so the interesting
+ * combination (Standard level, company scope) reads as deliberate rather than
+ * like a mistake.
+ */
+
+.rl-list { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.rl-card { padding: 0; overflow: hidden; }
+
+/* The whole header is the disclosure. A row with a small chevron at one end
+   makes people hunt for a target that is the size of a full-width button. */
+.rl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-5);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  border: 0; background: none; font: inherit; text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+}
+.rl-head:hover { background: var(--surface-hover); }
+.rl-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.rl-head[aria-expanded='true'] { border-bottom: 1px solid var(--border); }
+
+.rl-head-main { min-width: 0; }
+.rl-name {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.rl-desc {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  max-width: 68ch;
+}
+.rl-tag {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 10px; font-weight: var(--weight-bold);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rl-facts { display: flex; gap: var(--space-6); flex: none; }
+.rl-fact {
+  display: flex; flex-direction: column; gap: 1px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.rl-fact-label {
+  font-size: 10px; font-weight: var(--weight-bold);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------- the editor -- */
+
+.rl-editor { padding: var(--space-5); }
+.rl-editor-new { margin-bottom: var(--space-4); }
+
+.rl-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.rl-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.rl-field-wide { grid-column: span 1; }
+.rl-field-label {
+  font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted);
+}
+.rl-field-hint { font-size: var(--text-xs); line-height: 1.45; color: var(--text-muted); }
+
+/* Level and scope side by side — the pairing is the point. */
+.rl-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.rl-set { border: 0; padding: 0; margin: 0; min-width: 0; }
+.rl-set-head {
+  padding: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.rl-set-hint {
+  margin: 2px 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.rl-opt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px var(--space-2);
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+}
+.rl-opt + .rl-opt { margin-top: var(--space-1); }
+.rl-opt:hover { background: var(--surface-hover); }
+.rl-opt input { grid-row: span 2; margin: 0; }
+.rl-opt-label {
+  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.rl-opt-hint { font-size: var(--text-xs); line-height: 1.4; color: var(--text-muted); }
+/* Fill and an inset border together — a choice marked by tint alone loses its
+   selected state in forced-colors mode. */
+.rl-opt-on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+.rl-opt-on .rl-opt-label { color: var(--brand-ink); }
+
+/* ------------------------------------------------------------ permissions -- */
+
+.rl-perms { margin-bottom: var(--space-5); }
+.rl-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-2) var(--space-5);
+}
+.rl-perm {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gridline);
+  cursor: pointer;
+}
+.rl-perm input { margin-top: 3px; }
+.rl-perm-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rl-perm-label {
+  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.rl-perm-desc { font-size: var(--text-xs); line-height: 1.5; color: var(--text-muted); }
+
+.rl-actions {
+  display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+/* Amber, and beside the save button rather than in a tooltip: saving is not a
+   draft, and unticking a permission on a role fourteen people hold is a
+   decision about fourteen people. */
+.rl-warn {
+  flex: 1 1 260px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--warn-ink);
+  font-weight: var(--weight-medium);
+}
+
+@media (max-width: 900px) {
+  /* The facts column is the first thing to go: the name and description carry
+     the row, and three stacked stat pairs beside them squeeze both. */
+  .rl-head { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+  .rl-facts { gap: var(--space-5); }
+  .rl-grid { grid-template-columns: minmax(0, 1fr); }
+}

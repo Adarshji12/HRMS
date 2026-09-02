@@ -95,6 +95,9 @@ def test_the_real_jobs_are_wired_up():
         "attendance_status",
         "leave_accrual",
         "comp_off_expiry",
+        # CRM. Hourly like attendance_status and for the same reason: a
+        # reminder's send time is in the organisation's own timezone.
+        "crm_reminders",
     }
 
 

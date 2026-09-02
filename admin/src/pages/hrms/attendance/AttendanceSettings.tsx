@@ -48,6 +48,35 @@ interface ShiftAssignment {
   is_current: boolean
 }
 
+type ModeField = 'geofence_office' | 'geofence_work_from_home' | 'geofence_on_duty'
+
+const ENFORCEMENT_LABEL: Record<string, string> = {
+  off: 'Off',
+  flag_only: 'Flag only',
+  required: 'Required',
+}
+
+/* Named for the mode, not the column. The hint says what the mode *means* to
+   the employee choosing it, because that is what an administrator is actually
+   deciding about when they set its rule. */
+const MODE_ROWS: Array<{ field: ModeField; label: string; hint: string }> = [
+  {
+    field: 'geofence_office',
+    label: 'Office',
+    hint: 'At one of your own locations — the mode the fence was designed for.',
+  },
+  {
+    field: 'geofence_work_from_home',
+    label: 'Work from home',
+    hint: 'Usually Off. A home address is not an office and never will be inside one.',
+  },
+  {
+    field: 'geofence_on_duty',
+    label: 'On duty',
+    hint: 'Client site, field visit or travel. Flag only keeps the distance on record without refusing the punch.',
+  },
+]
+
 const ENFORCEMENT_COPY: Array<{ value: Enforcement; title: string; desc: string }> = [
   {
     value: 'off',
@@ -112,9 +141,7 @@ export default function AttendanceSettings() {
         <div>
           <h1 className="page-title">Attendance settings</h1>
           <p className="page-sub">
-            Where punching counts from, which shifts exist, and who is on them. Shift assignment is
-            dated: putting someone on a new shift closes the row they were on rather than rewriting
-            it, so past days keep the shift they were actually judged against.
+            Where punching counts from, which shifts exist, and who is on them.
           </p>
         </div>
       </div>
@@ -250,6 +277,11 @@ function GeofencePolicy({
   onSaved: () => void
 }) {
   const [choice, setChoice] = useState<Enforcement | null>(null)
+  /* Per-mode overrides, as the wire spells them: 'inherit' is a value rather
+     than null because this is a PATCH body where null already means "leave this
+     field alone". Without a distinct token there would be no way to stop
+     overriding a mode once you had started. */
+  const [modes, setModes] = useState<Record<ModeField, string> | null>(null)
   const action = useAction(onSaved)
 
   if (error) return <ErrorNote>{error}</ErrorNote>
@@ -269,7 +301,17 @@ function GeofencePolicy({
      reads as a broken screen, and the fix — add a location — is one section
      down where they cannot see it. */
   const requiredBlocked = offices === 0
-  const dirty = selected !== current
+
+  const currentModes: Record<ModeField, string> = {
+    geofence_office: settings.geofence_office ?? 'inherit',
+    geofence_work_from_home: settings.geofence_work_from_home ?? 'inherit',
+    geofence_on_duty: settings.geofence_on_duty ?? 'inherit',
+  }
+  const selectedModes = modes ?? currentModes
+  const modesDirty = MODE_ROWS.some(
+    (row) => selectedModes[row.field] !== currentModes[row.field],
+  )
+  const dirty = selected !== current || modesDirty
 
   return (
     <Section
@@ -329,6 +371,41 @@ function GeofencePolicy({
         })}
       </div>
 
+      {/* Per-mode overrides. The org-wide choice above is the default; these say
+          where it does not apply. Fencing somebody who has just declared they
+          are at a client's site asks a question whose answer you already have —
+          so most tenants set Work from home to Off and leave the rest alone. */}
+      <div className="att-modes">
+        <div className="att-modes-head">Per work mode</div>
+        <p className="att-choice-desc" style={{ margin: '0 0 10px' }}>
+          The employee picks a mode when they punch in, and the mode picks the rule.
+          Anything left on <b>Follow default</b> uses the policy above — including
+          later, if you change it.
+        </p>
+        {MODE_ROWS.map((row) => (
+          <div className="att-mode-row" key={row.field}>
+            <div>
+              <div className="att-mode-name">{row.label}</div>
+              <div className="att-mode-hint">{row.hint}</div>
+            </div>
+            <select
+              value={selectedModes[row.field]}
+              onChange={(e) => {
+                action.clear()
+                setModes({ ...selectedModes, [row.field]: e.target.value })
+              }}
+            >
+              <option value="inherit">Follow default ({ENFORCEMENT_LABEL[current]})</option>
+              <option value="off">Off</option>
+              <option value="flag_only">Flag only</option>
+              <option value="required" disabled={requiredBlocked}>
+                Required{requiredBlocked ? ' — needs an office' : ''}
+              </option>
+            </select>
+          </div>
+        ))}
+      </div>
+
       <div className="att-form-actions">
         <button
           className="btn btn-primary"
@@ -336,18 +413,25 @@ function GeofencePolicy({
           onClick={() =>
             void action
               .run(
-                () => api.put('/attendance/settings', { geofence_enforcement: selected }),
+                () =>
+                  api.put('/attendance/settings', {
+                    geofence_enforcement: selected,
+                    ...selectedModes,
+                  }),
                 'Geofence policy saved.',
               )
               .then((ok) => {
-                if (ok) setChoice(null)
+                if (ok) {
+                  setChoice(null)
+                  setModes(null)
+                }
               })
           }
         >
           {action.busy ? 'Saving…' : 'Save policy'}
         </button>
         {dirty && (
-          <button className="btn btn-sm" onClick={() => { setChoice(null); action.clear() }}>
+          <button className="btn btn-sm" onClick={() => { setChoice(null); setModes(null); action.clear() }}>
             Cancel
           </button>
         )}

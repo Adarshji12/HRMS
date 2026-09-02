@@ -518,6 +518,7 @@ function Slabs({
       </div>
 
       {slabs.length > 0 && (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -548,12 +549,13 @@ function Slabs({
               ))}
             </tbody>
           </table>
-          <p className="muted">
-            A month-specific band wins over a general one covering the same
-            range — which is how a state that charges differently in one month is
-            expressed.
-          </p>
         </div>
+        <p className="muted">
+          A month-specific band wins over a general one covering the same
+          range — which is how a state that charges differently in one month is
+          expressed.
+        </p>
+        </>
       )}
     </section>
   )

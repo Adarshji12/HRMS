@@ -215,8 +215,7 @@ export default function Helpdesk() {
         <div>
           <h1 className="page-title">Helpdesk</h1>
           <p className="page-sub">
-            Raise a request with HR or IT and follow it through. You see your own tickets and the
-            replies on them; nobody else's ticket is reachable from here.
+            Raise a request with HR or IT and follow it through.
           </p>
         </div>
         <div className="head-actions">

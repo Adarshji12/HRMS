@@ -5,6 +5,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { useAuth } from '../../../lib/auth'
 import { clockTime } from '../../../lib/format'
 import { Empty, ErrorNote, Loading, StatTile } from '../../../components/ui'
+import WorkModePicker, { type WorkMode } from '../../../components/WorkModePicker'
 import { DayRegularization, MyRegularizations, type RegRequest } from './regularization'
 
 /* ------------------------------------------------------------------ types --
@@ -43,6 +44,12 @@ export interface AttendanceDay {
   is_early_out: boolean
   early_out_minutes: number
   is_missing_punch: boolean
+  /** What the employee declared at check-in. Null on rows written before work
+   *  modes existed, and on every punch the desktop agent fills in. */
+  work_mode: 'office' | 'work_from_home' | 'on_duty' | null
+  /** Typed at the punch. Often the only record of which client site an on-duty
+   *  day was actually at. */
+  note: string | null
   is_regularized: boolean
   has_pending_regularization: boolean
   /** Present on the muster, null on the employee's own calendar. */
@@ -73,6 +80,13 @@ export interface OfficeLocation {
 export interface AttendanceSettingsPayload {
   geofence_enforcement: Enforcement
   active_location_count: number
+  /* Per-work-mode overrides. `null` on the wire means "follow
+     geofence_enforcement" — the console renders that as a real choice rather
+     than a blank, so an administrator can tell a mode that has been decided
+     from one riding the default. */
+  geofence_office: Enforcement | null
+  geofence_work_from_home: Enforcement | null
+  geofence_on_duty: Enforcement | null
 }
 
 /* ---------------------------------------------------------------- helpers -- */
@@ -194,6 +208,22 @@ export function StatusPill({ status }: { status: AttendanceStatus }) {
 /** The read-time verdicts (D-010) plus the two states worth a badge. */
 export function DayFlags({ day }: { day: AttendanceDay }) {
   const flags: Array<{ key: string; className: string; text: string; title: string }> = []
+  /* First, because it is context for every flag after it rather than a problem
+     of its own — UNVERIFIED beside WFH is expected, and beside OFFICE is not.
+     Only shown when it is not `office`: the default carries no information, and
+     a badge on every ordinary day is furniture. */
+  if (day.work_mode && day.work_mode !== 'office') {
+    flags.push({
+      key: 'mode',
+      className: 'att-flag-mode',
+      text: day.work_mode === 'work_from_home' ? 'WFH' : 'ON DUTY',
+      title:
+        (day.work_mode === 'work_from_home'
+          ? 'Declared as working from home at check-in.'
+          : 'Declared as on duty — client site, field visit or travel.') +
+        (day.note ? ` — “${day.note}”` : ''),
+    })
+  }
   if (day.is_late) {
     flags.push({
       key: 'late',
@@ -410,9 +440,7 @@ export default function MyAttendance() {
         <div>
           <h1 className="page-title">My attendance</h1>
           <p className="page-sub">
-            Your punches, and how each day was classified. The day status is decided once, after
-            the day ends; late and early-out are worked out against whichever shift you were on
-            that date, so a corrected rota corrects them too.
+            Your punches, and how each day was classified.
           </p>
         </div>
       </div>
@@ -487,6 +515,10 @@ function PunchCard({
   const [notice, setNotice] = useState<PunchNotice | null>(null)
   const [failure, setFailure] = useState<(TypedFailure & { geoWhy: string | null }) | null>(null)
   const [note, setNote] = useState('')
+  /* Office is the default because it is the common case, and because it is the
+     strict one: a mode that relaxes the geofence should be chosen deliberately,
+     not arrived at by leaving a form alone. */
+  const [workMode, setWorkMode] = useState<WorkMode>('office')
 
   const busy = phase !== null
   const openNightShift =
@@ -508,9 +540,14 @@ function PunchCard({
         accuracy_m: attempt.fix?.accuracy_m ?? null,
         source: 'web',
         note: note.trim() || null,
+        // Only on the way in. Punching out does not re-ask: the day's mode was
+        // declared this morning and the server reads it off the row, so a
+        // second question here could only contradict the first.
+        work_mode: kind === 'in' ? workMode : null,
       })
       setNotice({ kind, result, geoWhy: attempt.why })
       setNote('')
+      setWorkMode('office')
       onPunched()
     } catch (err) {
       setFailure({ ...typedError(err), geoWhy: attempt.why })
@@ -548,6 +585,13 @@ function PunchCard({
                     ? `Checked in today${today.shift_name ? ` · ${today.shift_name} ${today.shift_start_time}–${today.shift_end_time}` : ''}`
                     : 'Punch in when you start. Your location is attached if the browser gives it, and the punch works either way.'}
               </div>
+
+              {/* Asked before the buttons, and only while a check-in is still
+                  possible: once the day is open the declaration is made and
+                  re-offering it would imply it could still be changed here. */}
+              {canPunchIn && (
+                <WorkModePicker value={workMode} onChange={setWorkMode} disabled={busy} />
+              )}
 
               <div className="att-actions">
                 <button

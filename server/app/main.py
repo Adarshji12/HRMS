@@ -83,6 +83,18 @@ async def lifespan(_: FastAPI):
 
     plancatalog.bootstrap()
 
+    # Periodic jobs, only where the host cannot run the `jobs` container.
+    #
+    # Off unless asked for. The separate worker stays the right answer — this
+    # is for free tiers with no background process and no cron, where the real
+    # alternative is retention never running while the console keeps promising
+    # administrators that screenshots are deleted after N days. See
+    # `scheduler.start_in_process` for why one worker is a precondition.
+    if settings.run_jobs_in_process:
+        from app.scheduler import start_in_process
+
+        start_in_process()
+
     yield
 
 

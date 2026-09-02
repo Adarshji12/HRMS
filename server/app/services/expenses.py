@@ -608,7 +608,7 @@ def submit(
     # it: a lazily-written chain has its first rung consumed by whoever
     # happened to open the queue. Returns [] and does nothing when this flow
     # has no chain configured, which is most companies.
-    chains.start_for(db, kind="expense", record_id=claim.id, subject=viewer)
+    chains.start_for(db, kind="expense", record_id=claim.id, subject=viewer, record=claim)
 
     audit(db, org_id=viewer.org_id, actor=viewer, action="expenses.submitted",
           request=request, target_type="expense_claim", target_id=str(claim.id),

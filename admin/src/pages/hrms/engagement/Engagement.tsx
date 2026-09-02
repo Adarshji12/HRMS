@@ -19,10 +19,11 @@
  */
 
 import { useState } from 'react'
+import { IconBell, IconUsers } from '../../../components/Icons'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { dateTime, shortDate } from '../../../lib/format'
-import { Empty, ErrorNote, Loading } from '../../../components/ui'
+import { EmptyState, ErrorNote, Loading } from '../../../components/ui'
 import type {
   AnnouncementPost,
   PulseSurvey,
@@ -271,7 +272,11 @@ function Feed({ onError }: { onError: (m: string | null) => void }) {
       ) : feedQ.error ? (
         <ErrorNote>{feedQ.error}</ErrorNote>
       ) : !feedQ.data?.length ? (
-        <Empty>Nothing announced. That is a good sign, mostly.</Empty>
+        <EmptyState
+          icon={<IconBell size={22} />}
+          title="Nothing announced"
+          body="That is usually a good sign. Company-wide announcements appear here, newest first, with anything pinned held at the top."
+        />
       ) : (
         feedQ.data.map((post) => (
           <article className={`eg-post${post.is_pinned ? ' is-pinned' : ''}`} key={post.id}>
@@ -347,7 +352,11 @@ function Wall({ onError }: { onError: (m: string | null) => void }) {
       {wallQ.loading ? (
         <Loading />
       ) : !wallQ.data?.length ? (
-        <Empty>Nothing yet. Somebody has to go first.</Empty>
+        <EmptyState
+          icon={<IconUsers size={22} />}
+          title="No recognition yet"
+          body="Somebody has to go first. Thanking a colleague posts it here for everyone to see."
+        />
       ) : (
         <ul className="eg-wall">
           {wallQ.data.map((row) => (
