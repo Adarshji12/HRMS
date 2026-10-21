@@ -1,5 +1,12 @@
 from app.models.activity import ActivitySegment, MatchType, Productivity, ProductivityRule
-from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus
+from app.models.assets import (
+    Asset,
+    AssetAssignment,
+    AssetCategory,
+    AssetRenewal,
+    AssetStatus,
+    RenewalCycle,
+)
 from app.models.attendance import (
     AttendanceRecord,
     AttendanceSettings,
@@ -152,18 +159,24 @@ from app.models.chat import (
 )
 from app.models.crm import (
     CrmActivity,
+    CrmCampaign,
+    CrmCompetitor,
+    CrmContactDesignation,
     CrmCity,
     CrmCountry,
     CrmCounter,
     CrmCustomer,
     CrmCustomerPlan,
     CrmDisposition,
+    CrmDistrict,
     CrmFollowUp,
     CrmIndustry,
     CrmInteraction,
     CrmLead,
     CrmLeadSource,
     CrmLeadStatus,
+    CrmLostReason,
+    CrmOpportunityStage,
     CrmPlan,
     CrmProduct,
     CrmQuotation,
@@ -173,6 +186,7 @@ from app.models.crm import (
     CrmReminderRun,
     CrmSettings,
     CrmState,
+    CrmTerritory,
     CrmVisit,
     CrmVisitType,
     CustomerStatus,
@@ -185,13 +199,22 @@ from app.models.crm import (
     QuotationStatus,
     ReminderAudience,
     StatusBehaviour,
+    ForecastCategory,
+    LostOutcome,
+    OpportunityBehaviour,
+    ProductCategory,
     VisitStatus,
 )
 from app.models.meetings import Meeting, MeetingInvitee, MeetingStatus
+# ERP tables register on import. Imported as a module rather than name by name:
+# its thirty-odd classes are only used by the ERP services, which import them
+# from `app.models.erp` directly.
+from app.models import erp  # noqa: F401,E402
 from app.models.org_structure import Department, Designation, Team, WorkSchedule
 from app.models.organization import Organization, OrgSettings
 from app.models.plan import PlanRecord
 from app.models.mail import MailSettings
+from app.models.hrsettings import HrSettings
 from app.models.notification import NotificationLog, NotificationPreference
 from app.models.platform import PlatformAdmin
 from app.models.project import (
@@ -216,6 +239,13 @@ from app.models.user import Role, User, UserStatus
 # for, and the two modules disagreed about whether to do it.
 __all__ = [
     "CrmActivity",
+    "CrmDistrict",
+    "CrmCampaign",
+    "CrmCompetitor",
+    "CrmContactDesignation",
+    "CrmLostReason",
+    "CrmOpportunityStage",
+    "CrmTerritory",
     "CrmCity",
     "CrmCountry",
     "CrmCounter",
@@ -249,6 +279,10 @@ __all__ = [
     "QuotationStatus",
     "ReminderAudience",
     "StatusBehaviour",
+    "ForecastCategory",
+    "LostOutcome",
+    "OpportunityBehaviour",
+    "ProductCategory",
     "VisitStatus",
     "AccrualType",
     "ActivitySegment",
@@ -256,6 +290,8 @@ __all__ = [
     "Asset",
     "AssetAssignment",
     "AssetCategory",
+    "AssetRenewal",
+    "RenewalCycle",
     "AssetStatus",
     "AttendanceRecord",
     "AttendanceSettings",
@@ -296,6 +332,7 @@ __all__ = [
     "GeofenceEnforcement",
     "HalfDaySession",
     "HelpdeskCategory",
+    "HrSettings",
     "HelpdeskComment",
     "HelpdeskTicket",
     "Holiday",

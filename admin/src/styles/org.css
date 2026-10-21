@@ -344,3 +344,30 @@
   width: 100%; resize: vertical; min-height: 96px;
   font: inherit; font-size: var(--text-md); line-height: 1.6;
 }
+
+/* ------------------------------------------------- department members --- */
+
+.org-pick {
+  display: grid;
+  gap: 12px;
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.org-pick-search { width: 100%; }
+
+.org-pick-list {
+  display: grid;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.org-pick-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.org-pick-row:hover { background: var(--surface-2, var(--page)); }
+
+.org-pick-empty { padding: 16px 10px; }

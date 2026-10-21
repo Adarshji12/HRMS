@@ -41,7 +41,7 @@ export default function ModulePanel({ group }: { group: NavGroup }) {
   if (total <= 1) return <Outlet />
 
   return (
-    <div className="page pnl-shell">
+    <div className={`page pnl-shell${group.key === 'crm' ? ' pnl-crm-shell' : ''}`}>
       <nav className="pnl-bar" aria-label={`${group.heading} pages`}>
         {sections.map((section, index) => (
           /* The group's name is carried by role+aria-label rather than a caps

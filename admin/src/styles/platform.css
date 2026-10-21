@@ -44,9 +44,10 @@
   flex-direction: column;
   padding: 0 12px;
   border-radius: var(--radius-xl);
-  background: #14121f;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.25);
-  color: #c9c6db;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -58,16 +59,16 @@
   display: flex; align-items: center; gap: 10px;
   margin: 0 -12px 10px;
   padding: 16px 14px 13px;
-  background: color-mix(in srgb, #14121f 82%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-.pf-brand svg {
-  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--brand) 45%, transparent));
+.pf-brand img {
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--brand) 16%, transparent));
 }
 .pf-brand-word {
   font-size: 15px; font-weight: 750; letter-spacing: -0.025em;
-  color: #fff; line-height: 1.2;
+  color: var(--text-primary); line-height: 1.2;
 }
 /* The label that answers "which system am I in" at a glance. */
 .pf-brand-tag {
@@ -82,23 +83,19 @@
   margin-bottom: 2px;
   border-radius: 10px;
   text-decoration: none;
-  color: #b6b2cc;
+  color: var(--text-secondary);
   font-size: 13.5px; font-weight: 500;
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 /* The 2px nudge is the affordance — another grey fill is not. */
 .pf-nav-link:hover {
-  background: rgba(255, 255, 255, 0.055);
-  color: #fff;
+  background: var(--surface-hover);
+  color: var(--text-primary);
   transform: translateX(2px);
 }
 .pf-nav-link[aria-current='page'] {
-  background: linear-gradient(
-    100deg,
-    color-mix(in srgb, var(--brand) 34%, transparent),
-    color-mix(in srgb, var(--brand) 12%, transparent)
-  );
-  color: #fff;
+  background: color-mix(in srgb, var(--brand-soft) 90%, transparent);
+  color: var(--brand-ink);
   font-weight: 640;
   transform: none;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 40%, transparent);
@@ -118,14 +115,14 @@
   position: sticky; bottom: 0;
   margin: auto -12px 0;
   padding: 12px 14px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: color-mix(in srgb, #14121f 86%, transparent);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  font-size: 12px; color: #8d89a6;
+  font-size: 12px; color: var(--text-secondary);
   display: flex; flex-direction: column; gap: 10px;
 }
-.pf-admin-name { color: #fff; font-weight: 600; font-size: 13px; }
+.pf-admin-name { color: var(--text-primary); font-weight: 600; font-size: 13px; }
 
 .pf-main { flex: 1; min-width: 0; padding: 22px 26px 60px; }
 
@@ -341,14 +338,14 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(900px 400px at 50% -120px, #241a44, #0c0a16 70%);
+  background: radial-gradient(900px 400px at 50% -120px, color-mix(in srgb, var(--brand) 12%, var(--page)), var(--page) 70%);
 }
 .pf-login-card {
   width: 100%; max-width: 380px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg, 16px);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-lg);
   padding: 26px 26px 22px;
   display: flex; flex-direction: column; gap: 14px;
 }
@@ -362,7 +359,7 @@
   .pf-sidebar {
     width: auto; flex: none; height: auto; position: static;
     flex-direction: row; align-items: center; overflow-x: auto;
-    border-right: none; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: none; border-bottom: 1px solid var(--border);
     padding: 10px 12px;
   }
   .pf-brand { padding: 0 14px 0 4px; }
@@ -449,7 +446,7 @@
   padding: 0 12px 5px;
   font-size: 9.5px; font-weight: 700;
   letter-spacing: 0.11em; text-transform: uppercase;
-  color: #6f6b8a;
+  color: var(--text-muted);
 }
 
 /* ------------------------------------------------------ provisioning form -- */

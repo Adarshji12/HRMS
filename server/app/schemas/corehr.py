@@ -21,6 +21,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models.corehr import (
+    AttendanceType,
     ConfirmationStatus,
     EmploymentType,
     Gender,
@@ -64,6 +65,7 @@ class EmployeeProfileIn(BaseModel):
     marital_status: MaritalStatus | None = None
     blood_group: str | None = Field(default=None, max_length=8)
     nationality: str | None = Field(default=None, max_length=60)
+    father_name: str | None = Field(default=None, max_length=160)
     personal_email: EmailStr | None = None
     alternate_phone: str | None = Field(default=None, max_length=32)
 
@@ -177,6 +179,8 @@ class EmploymentIn(BaseModel):
 
     employment_type: EmploymentType | None = None
     work_location: str | None = Field(default=None, max_length=120)
+    attendance_type: AttendanceType | None = None
+    grade: str | None = Field(default=None, max_length=40)
     probation_months: int | None = Field(default=None, ge=0, le=36)
     #: Days of contractual notice. Null means "not recorded", which a
     #: settlement reports rather than treating as zero — see
@@ -231,6 +235,7 @@ class EmployeeProfileOut(ORMModel):
     marital_status: str | None = None
     blood_group: str | None = None
     nationality: str | None = None
+    father_name: str | None = None
     personal_email: str | None = None
     alternate_phone: str | None = None
 
@@ -269,6 +274,8 @@ class EmployeeProfileOut(ORMModel):
 
     employment_type: str | None = None
     work_location: str | None = None
+    attendance_type: str | None = None
+    grade: str | None = None
     probation_months: int | None = None
     notice_period_days: int | None = None
     probation_end_on: date | None = None

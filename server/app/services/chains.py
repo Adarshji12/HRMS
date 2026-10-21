@@ -674,6 +674,46 @@ FLOW_FIELDS: dict[str, tuple[Field, ...]] = {
 }
 
 
+def _rupees_as_paise(attr: str) -> Callable[[Any, User], Any]:
+    """Read an ERP ``Numeric`` rupee column as paise.
+
+    The ERP stores money as Decimal rupees, like the CRM, while every rule
+    threshold here is paise. Converting at the read keeps one unit in the rule
+    editor — an administrator typing "500000" means the same thing on an
+    expense rule and a purchase-order rule.
+    """
+
+    def read(record: Any, _subject: User) -> Any:
+        value = getattr(record, attr, None) if record is not None else None
+        return None if value is None else int(round(value * 100))
+
+    return read
+
+
+FLOW_FIELDS.update({
+    "purchase_requisition": (
+        Field("amount", "Estimated value", "money", _rupees_as_paise("estimated_total")),
+        Field("project", "Project", "id", _attr("project_id"), options="projects"),
+    ),
+    "purchase_order": (
+        Field("amount", "Order value", "money", _rupees_as_paise("grand_total"),
+              help="Including tax and freight."),
+        Field("project", "Project", "id", _attr("project_id"), options="projects"),
+    ),
+    "stock_adjustment": (
+        Field("amount", "Value of the variance", "money", _rupees_as_paise("value"),
+              help="Absolute value — a shortfall and a surplus of ₹10,000 both read 10,000."),
+    ),
+    "sales_order": (
+        Field("amount", "Order value", "money", _rupees_as_paise("grand_total")),
+        Field("deviation", "Differs from its quotation", "choice", _attr("has_deviation")),
+    ),
+    "credit_note": (
+        Field("amount", "Credit note value", "money", _rupees_as_paise("grand_total")),
+    ),
+})
+
+
 def fields_for(kind: str) -> tuple[Field, ...]:
     """Everything a rule on this flow may ask about."""
     return COMMON_FIELDS + FLOW_FIELDS.get(kind, ())

@@ -189,6 +189,62 @@ class ReminderAudience(str, enum.Enum):
     CUSTOMERS = "customers"
 
 
+class OpportunityBehaviour(str, enum.Enum):
+    """What an opportunity stage *means*, whatever the company calls it.
+
+    ``OPEN`` stages are the pipeline. The three closing behaviours are the
+    PRD's Won / Lost / No Decision: "no decision" is not "lost" -- nobody beat
+    us, the customer simply did not buy -- and folding the two together is how
+    a win-rate report starts blaming the sales team for a frozen budget.
+    """
+
+    OPEN = "open"
+    WON = "won"
+    LOST = "lost"
+    NO_DECISION = "no_decision"
+
+    @property
+    def is_closed(self) -> bool:
+        return self is not OpportunityBehaviour.OPEN
+
+
+class ForecastCategory(str, enum.Enum):
+    """The forecast bucket a salesperson commits an opportunity to.
+
+    Fixed in code because the roll-up and the snapshot history compare these
+    across quarters; a company renaming "Commit" in March would break the
+    comparison with December.
+    """
+
+    COMMIT = "commit"
+    BEST_CASE = "best_case"
+    PIPELINE = "pipeline"
+    UPSIDE = "upside"
+
+
+class LostOutcome(str, enum.Enum):
+    """Which closing a lost-reason applies to: a lost deal or a stalled one."""
+
+    LOST = "lost"
+    NO_DECISION = "no_decision"
+
+
+class ProductCategory(str, enum.Enum):
+    """The revenue component a product or service belongs to.
+
+    These are the PRD's opportunity amount split (FR-01.07): product, service,
+    implementation, support/AMC and recurring. Fixed, because targets and the
+    forecast are measured per component and must add up the same way in every
+    workspace.
+    """
+
+    PRODUCT = "product"
+    SERVICE = "service"
+    IMPLEMENTATION = "implementation"
+    SUPPORT_AMC = "support_amc"
+    RECURRING = "recurring"
+
+
 # --------------------------------------------------------------------------- #
 # Masters
 # --------------------------------------------------------------------------- #
@@ -294,6 +350,35 @@ class CrmState(UUIDMixin, TimestampMixin, Base):
     cities: Mapped[list["CrmCity"]] = relationship(
         back_populates="state", cascade="all, delete-orphan"
     )
+    districts: Mapped[list["CrmDistrict"]] = relationship(
+        back_populates="state", cascade="all, delete-orphan"
+    )
+
+
+class CrmDistrict(UUIDMixin, TimestampMixin, Base):
+    """A district, between state and city.
+
+    Optional on a city rather than a required level: most cities are entered
+    straight under their state, and forcing a district first would make adding
+    "Pune" a two-form job. Not seeded -- India has some 780 of them, and a
+    workspace adds the ones it sells into.
+    """
+
+    __tablename__ = "crm_districts"
+    __table_args__ = (
+        UniqueConstraint("org_id", "state_id", "name", name="uq_crm_districts_org_state_name"),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    state_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("crm_states.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    state: Mapped["CrmState"] = relationship(back_populates="districts")
 
 
 class CrmCity(UUIDMixin, TimestampMixin, Base):
@@ -308,10 +393,15 @@ class CrmCity(UUIDMixin, TimestampMixin, Base):
     state_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("crm_states.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    #: Optional; when set it must be a district of ``state_id``.
+    district_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("crm_districts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     state: Mapped["CrmState"] = relationship(back_populates="cities")
+    district: Mapped["CrmDistrict | None"] = relationship()
 
 
 class CrmProduct(UUIDMixin, TimestampMixin, Base):
@@ -332,6 +422,14 @@ class CrmProduct(UUIDMixin, TimestampMixin, Base):
     gst_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), default=Decimal("18"), nullable=False
     )
+    #: Which revenue component a line of this product counts towards -- see
+    #: ``ProductCategory``. Drives the opportunity amount split.
+    category: Mapped[str] = mapped_column(
+        String(20), default=ProductCategory.PRODUCT.value, server_default="product", nullable=False
+    )
+    #: The manufacturer whose product this is, for OEM-wise targets and win/loss.
+    #: Free text: an OEM is a label on a product, not something with a life.
+    oem: Mapped[str | None] = mapped_column(String(120), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     plans: Mapped[list["CrmPlan"]] = relationship(
@@ -401,6 +499,162 @@ class CrmVisitType(UUIDMixin, TimestampMixin, Base):
     requires_otp: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmTerritory(UUIDMixin, TimestampMixin, Base):
+    """A sales region -- "North", "Mumbai Metro" -- made of whole states.
+
+    States rather than drawn boundaries because the lead already carries a
+    state, so "which territory is this lead in" is a lookup and not geometry.
+    A state belongs to at most one territory; two would make geography-based
+    assignment a coin toss. ``state_ids`` holds the ids as strings.
+    """
+
+    __tablename__ = "crm_territories"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_territories_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    state_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    #: Who the territory's leads go to when assignment is by geography, and who
+    #: the regional roll-up reports to.
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    manager: Mapped["User | None"] = relationship(foreign_keys=[manager_id])
+
+
+class CrmCampaign(UUIDMixin, TimestampMixin, Base):
+    """A marketing push leads can be attributed to -- "Diwali Meta Ads 2026".
+
+    Hangs off a source: the source says *channel*, the campaign says *which
+    spend on that channel*, and the source-effectiveness report needs both.
+    """
+
+    __tablename__ = "crm_campaigns"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_campaigns_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("crm_lead_sources.id", ondelete="SET NULL"), nullable=True
+    )
+    starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    source: Mapped["CrmLeadSource | None"] = relationship()
+
+
+class CrmCompetitor(UUIDMixin, TimestampMixin, Base):
+    """Somebody we bid against, or who is already installed at a customer."""
+
+    __tablename__ = "crm_competitors"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_competitors_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: What the sales team knows about them -- strengths, typical pricing.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmContactDesignation(UUIDMixin, TimestampMixin, Base):
+    """A job title at a *customer* -- "CIO", "Purchase Manager".
+
+    Not ``app.models.org_structure.Designation``: that is our own staff's
+    titles, and mixing the two lists would offer "CIO" on an employee form.
+    """
+
+    __tablename__ = "crm_contact_designations"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_crm_contact_designations_org_name"),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmLostReason(UUIDMixin, TimestampMixin, Base):
+    """The taxonomy a closed-lost (or no-decision) opportunity must pick from.
+
+    A picked reason rather than free text, because "price", "Price too high"
+    and "pricing" are one reason to a reader and three to a win/loss report.
+    ``requires_competitor`` makes "Lost to competitor" refuse to save without
+    naming the competitor.
+    """
+
+    __tablename__ = "crm_lost_reasons"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_lost_reasons_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    outcome: Mapped[str] = mapped_column(
+        String(20), default=LostOutcome.LOST.value, nullable=False
+    )
+    requires_competitor: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmOpportunityStage(UUIDMixin, TimestampMixin, Base):
+    """A stage of the *opportunity* pipeline, distinct from lead statuses.
+
+    A lead's statuses are about reaching somebody ("Contacted"); an
+    opportunity's stages are about winning a deal ("Proposal", "Negotiation").
+    The PRD keeps them apart and so does this: a qualified lead converts into
+    an opportunity, it does not keep climbing the lead funnel.
+
+    ``probability`` is the default win probability an opportunity takes on
+    entering the stage; overriding it needs a reason. ``forecast_category`` is
+    the bucket it defaults into. ``stale_after_days`` is how long an
+    opportunity may sit here untouched before it is flagged stale; 0 is never.
+    """
+
+    __tablename__ = "crm_opportunity_stages"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_crm_opportunity_stages_org_name"),
+        Index("ix_crm_opportunity_stages_org_sort", "org_id", "sort_order"),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    behaviour: Mapped[str] = mapped_column(
+        String(20), default=OpportunityBehaviour.OPEN.value, nullable=False
+    )
+    probability: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    forecast_category: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    stale_after_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    colour: Mapped[str] = mapped_column(String(9), default="#3882F6", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    @property
+    def behaviour_enum(self) -> OpportunityBehaviour:
+        try:
+            return OpportunityBehaviour(self.behaviour)
+        except ValueError:
+            return OpportunityBehaviour.OPEN
 
 
 # --------------------------------------------------------------------------- #

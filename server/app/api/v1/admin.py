@@ -56,6 +56,7 @@ from app.schemas.common import (
     UserUpdate,
     UserWithKeyOut,
 )
+from app.services import hrsettings as hr_settings
 from app.services import agentdist, hierarchy, mailconfig, reports, storage
 from app.services import roles as role_svc, subscriptions as subs
 from app.services.classifier import seed_default_rules
@@ -571,13 +572,22 @@ def create_employee(
         # it so the coarse checks and anything reading the column agree.
         role = Role(assigned.base_role)
 
+    # No code given: mint the next one from HR settings' format. A code typed
+    # in by hand is kept as it is, and moves the counter on if it was the
+    # very code the series would have handed out next.
+    employee_code = (payload.employee_code or "").strip() or None
+    if employee_code:
+        hr_settings.note_used(db, admin.org_id, employee_code)
+    else:
+        employee_code = hr_settings.mint_code(db, admin.org_id)
+
     user = User(
         org_id=admin.org_id,
         email=email,
         full_name=payload.full_name,
         role=role.value,
         timezone=payload.timezone,
-        employee_code=payload.employee_code,
+        employee_code=employee_code,
         phone=payload.phone,
         joined_on=payload.joined_on,
         department_id=payload.department_id,
@@ -612,6 +622,18 @@ def create_employee(
         # only — `is_active` remains the sole authentication gate (D-016), and a
         # pre-joiner is normally created with no password, which is what
         # actually stops them signing in.
+        # The flags added after the original HRMS five were accepted by
+        # UserCreate and then dropped here too, the same bug as above: an
+        # administrator who unticked "Issue letters" got somebody who could.
+        can_manage_people=payload.can_manage_people,
+        can_issue_letters=payload.can_issue_letters,
+        can_approve_expenses=payload.can_approve_expenses,
+        can_reimburse_expenses=payload.can_reimburse_expenses,
+        can_approve_loans=payload.can_approve_loans,
+        can_disburse_loans=payload.can_disburse_loans,
+        can_manage_payroll=payload.can_manage_payroll,
+        can_manage_performance=payload.can_manage_performance,
+        can_manage_engagement=payload.can_manage_engagement,
         status=payload.status,
         hidden_pages=payload.hidden_pages,
     )

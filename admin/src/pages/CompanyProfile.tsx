@@ -71,13 +71,6 @@ const GROUPS: Array<{ heading: string; note: string; fields: Field[] }> = [
     ],
   },
   {
-    heading: 'Meetings',
-    note: 'Video calls run on a Jitsi deployment. Left empty, they use the public meet.jit.si — free, and the media travels through servers this product does not run. Name your own Jitsi host to keep it in-house; nothing else about meetings changes.',
-    fields: [
-      { key: 'meeting_domain', label: 'Jitsi host', hint: 'e.g. meet.yourcompany.com — empty uses the public instance', wide: true },
-    ],
-  },
-  {
     heading: 'Contact',
     note: 'Where somebody writes to the company itself. Not the address notifications are sent from — that is Email setup, which carries a credential and belongs to the account holder.',
     fields: [

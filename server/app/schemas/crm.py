@@ -29,7 +29,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.common import ORMModel
 
@@ -45,6 +45,10 @@ PAYMENT_STATUS = r"^(pending|partial|paid)$"
 QUOTATION_STATUS = r"^(draft|sent|failed|accepted|rejected|expired)$"
 AUDIENCE = r"^(list|leads|customers)$"
 ASSIGNMENT_RULE = r"^(unassigned|fixed|round_robin)$"
+OPPORTUNITY_BEHAVIOUR = r"^(open|won|lost|no_decision)$"
+FORECAST_CATEGORY = r"^(commit|best_case|pipeline|upside)$"
+LOST_OUTCOME = r"^(lost|no_decision)$"
+PRODUCT_CATEGORY = r"^(product|service|implementation|support_amc|recurring)$"
 #: Digits with an optional leading +, 8–20 long. Deliberately loose: this
 #: product sells in one country today and the validation must not be the reason
 #: it cannot sell in another tomorrow. The console formats; the server stores
@@ -151,15 +155,30 @@ class StateIn(NamedIn):
     _blank = field_validator("gst_code", mode="before")(_blank_to_none)
 
 
+class DistrictOut(MasterOut):
+    state_id: uuid.UUID
+    state_name: str | None = None
+
+
+class DistrictIn(NamedIn):
+    name: str = Field(min_length=1, max_length=120)
+    state_id: uuid.UUID
+
+
 class CityOut(MasterOut):
     state_id: uuid.UUID
     state_name: str | None = None
     country_id: uuid.UUID | None = None
+    district_id: uuid.UUID | None = None
+    district_name: str | None = None
 
 
 class CityIn(NamedIn):
     name: str = Field(min_length=1, max_length=120)
     state_id: uuid.UUID
+    district_id: uuid.UUID | None = None
+
+    _blank = field_validator("district_id", mode="before")(_blank_to_none)
 
 
 class ProductOut(MasterOut):
@@ -168,6 +187,8 @@ class ProductOut(MasterOut):
     unit: str | None = None
     rate: Decimal
     gst_percent: Decimal
+    category: str = "product"
+    oem: str | None = None
     plan_count: int = 0
 
 
@@ -178,8 +199,12 @@ class ProductIn(NamedIn):
     unit: str | None = Field(default=None, max_length=24)
     rate: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999.99"))
     gst_percent: Decimal = Field(default=Decimal("18"), ge=0, le=100)
+    category: str = Field(default="product", pattern=PRODUCT_CATEGORY)
+    oem: str | None = Field(default=None, max_length=120)
 
-    _blank = field_validator("description", "hsn_sac", "unit", mode="before")(_blank_to_none)
+    _blank = field_validator("description", "hsn_sac", "unit", "oem", mode="before")(
+        _blank_to_none
+    )
 
 
 class PlanOut(MasterOut):
@@ -221,6 +246,127 @@ class VisitTypeIn(NamedIn):
     colour: str = Field(default="#3882F6", pattern=COLOUR)
     requires_otp: bool = False
     sort_order: int = Field(default=0, ge=0, le=999)
+
+
+class TerritoryOut(MasterOut):
+    code: str | None = None
+    state_ids: list[str] = Field(default_factory=list)
+    state_names: list[str] = Field(default_factory=list)
+    manager_id: uuid.UUID | None = None
+    manager_name: str | None = None
+    sort_order: int = 0
+
+
+class TerritoryIn(NamedIn):
+    name: str = Field(min_length=1, max_length=120)
+    code: str | None = Field(default=None, max_length=20)
+    state_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
+    manager_id: uuid.UUID | None = None
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+    _blank = field_validator("code", "manager_id", mode="before")(_blank_to_none)
+
+    @field_validator("state_ids", mode="before")
+    @classmethod
+    def _no_null_list(cls, value: Any) -> Any:
+        return [] if value is None else value
+
+
+class CampaignOut(MasterOut):
+    source_id: uuid.UUID | None = None
+    source_name: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    budget: Decimal | None = None
+
+
+class CampaignIn(NamedIn):
+    name: str = Field(min_length=1, max_length=160)
+    source_id: uuid.UUID | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    budget: Decimal | None = Field(default=None, ge=0, le=Decimal("999999999999.99"))
+
+    _blank = field_validator("source_id", "starts_on", "ends_on", mode="before")(_blank_to_none)
+
+    @field_validator("ends_on")
+    @classmethod
+    def _ends_after_start(cls, value: date | None, info: Any) -> date | None:
+        start = info.data.get("starts_on")
+        if value and start and value < start:
+            raise ValueError("A campaign cannot end before it starts")
+        return value
+
+
+class CompetitorOut(MasterOut):
+    website: str | None = None
+    notes: str | None = None
+
+
+class CompetitorIn(NamedIn):
+    name: str = Field(min_length=1, max_length=160)
+    website: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=4000)
+
+    _blank = field_validator("website", "notes", mode="before")(_blank_to_none)
+
+
+class ContactDesignationOut(MasterOut):
+    sort_order: int = 0
+
+
+class ContactDesignationIn(NamedIn):
+    name: str = Field(min_length=1, max_length=120)
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+
+class LostReasonOut(MasterOut):
+    outcome: str
+    requires_competitor: bool = False
+    sort_order: int = 0
+
+
+class LostReasonIn(NamedIn):
+    name: str = Field(min_length=1, max_length=120)
+    outcome: str = Field(default="lost", pattern=LOST_OUTCOME)
+    requires_competitor: bool = False
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+
+class OpportunityStageOut(MasterOut):
+    behaviour: str
+    probability: int
+    forecast_category: str | None = None
+    stale_after_days: int
+    colour: str
+    sort_order: int
+
+
+class OpportunityStageIn(NamedIn):
+    """A pipeline stage.
+
+    A closed stage's probability is fixed by what closing means -- 100 for won,
+    0 otherwise -- and it has no forecast bucket: a won deal is booked, not
+    forecast. The validator enforces that rather than trusting the form.
+    """
+
+    name: str = Field(min_length=1, max_length=80)
+    behaviour: str = Field(default="open", pattern=OPPORTUNITY_BEHAVIOUR)
+    probability: int = Field(default=10, ge=0, le=100)
+    forecast_category: str | None = Field(default=None, pattern=FORECAST_CATEGORY)
+    stale_after_days: int = Field(default=30, ge=0, le=3650)
+    colour: str = Field(default="#3882F6", pattern=COLOUR)
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+    _blank = field_validator("forecast_category", mode="before")(_blank_to_none)
+
+    @model_validator(mode="after")
+    def _closing_rules(self) -> "OpportunityStageIn":
+        if self.behaviour != "open":
+            self.probability = 100 if self.behaviour == "won" else 0
+            self.forecast_category = None
+            self.stale_after_days = 0
+        return self
 
 
 # --------------------------------------------------------------------------- #

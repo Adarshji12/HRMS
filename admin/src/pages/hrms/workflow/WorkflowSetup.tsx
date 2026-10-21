@@ -80,6 +80,11 @@ const KIND_LABEL: Record<string, string> = {
   expense: 'Expense claims',
   loan: 'Loans & advances',
   performance: 'Performance reviews',
+  purchase_requisition: 'ERP · Purchase requisitions',
+  purchase_order: 'ERP · Purchase orders',
+  stock_adjustment: 'ERP · Stock adjustments',
+  sales_order: 'ERP · Sales orders',
+  credit_note: 'ERP · Credit notes',
 }
 
 function blankLevel(): Level {

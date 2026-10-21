@@ -40,7 +40,7 @@ export function useTheme(): ThemeState {
 
 function stored(): ThemeMode {
   const value = localStorage.getItem(KEY)
-  return MODES.includes(value as ThemeMode) ? (value as ThemeMode) : 'system'
+  return MODES.includes(value as ThemeMode) ? (value as ThemeMode) : 'light'
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

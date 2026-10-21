@@ -77,7 +77,6 @@ export default function PlatformApp() {
         <div className="pf-brand">
           <BrandMark size={26} />
           <div>
-            <div className="pf-brand-word">MyDeskTime</div>
             <div className="pf-brand-tag">Platform console</div>
           </div>
         </div>

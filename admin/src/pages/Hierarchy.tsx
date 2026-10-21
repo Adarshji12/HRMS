@@ -122,6 +122,11 @@ function subtreeMatches(node: HierarchyNode, needle: string): boolean {
   return matches(node, needle) || node.reports.some((child) => subtreeMatches(child, needle))
 }
 
+/** How many ranks deep the tree goes — one for a company of peers. */
+function depthOf(nodes: HierarchyNode[]): number {
+  return nodes.length ? 1 + Math.max(...nodes.map((node) => depthOf(node.reports))) : 0
+}
+
 /** The one line under a name on a card. Title first — it is what the chart is about. */
 function caption(node: HierarchyNode): string {
   return node.designation ?? node.team ?? node.department ?? node.email
@@ -249,12 +254,25 @@ export default function Hierarchy() {
   const sideNeedle = sideQuery.trim().toLowerCase()
   const shown = unassigned.filter((node) => !sideNeedle || matches(node, sideNeedle))
 
+  const managers = everyone.filter((entry) => entry.node.reports.length > 0)
+  const span = managers.length
+    ? (managers.reduce((n, entry) => n + entry.node.reports.length, 0) / managers.length)
+    : 0
+  const kpis = [
+    { label: 'People', value: everyone.length, hint: 'In the chart and unassigned', tone: 'brand' },
+    { label: 'Managers', value: managers.length, hint: 'With at least one report', tone: 'idle' },
+    { label: 'Levels', value: depthOf(chartRoots), hint: 'From the top to the deepest report', tone: 'idle' },
+    { label: 'Avg team size', value: span ? span.toFixed(1) : '—', hint: 'Direct reports per manager', tone: 'good' },
+    { label: 'Unassigned', value: unassigned.length, hint: unassigned.length ? 'Need a manager' : 'Everyone is placed', tone: unassigned.length ? 'warn' : 'good' },
+  ]
+
   return (
     <div className="hier">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Reporting hierarchy</h1>
-          <p className="page-sub">
+      <div className="hier-hero">
+        <div className="hier-hero-text">
+          <span className="hier-eyebrow">Organisation</span>
+          <h1 className="hier-title">Reporting hierarchy</h1>
+          <p className="hier-sub">
             {editable
               ? 'Who reports to whom. Drag a card onto a manager, or use a card’s menu — the chart rebuilds itself either way.'
               : 'Who reports to whom.'}
@@ -269,10 +287,20 @@ export default function Hierarchy() {
               Mass transfer
             </button>
             <button className="btn btn-primary" onClick={() => setDialog({ manager: undefined })}>
-              Assign manager
+              <IconPlus size={15} /> Assign manager
             </button>
           </div>
         )}
+      </div>
+
+      <div className="hier-kpis" role="group" aria-label="Hierarchy summary">
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className={`hier-kpi tone-${kpi.tone}`}>
+            <span className="hier-kpi-label"><span className="hier-kpi-dot" aria-hidden />{kpi.label}</span>
+            <span className="hier-kpi-value">{kpi.value}</span>
+            <span className="hier-kpi-hint">{kpi.hint}</span>
+          </div>
+        ))}
       </div>
 
       {data.scoped && (
@@ -326,6 +354,25 @@ export default function Hierarchy() {
                   title="Left to right"
                 >
                   <IconSitemap size={15} className="hier-rotate" />
+                </button>
+              </div>
+
+              <div className="hier-seg" role="group" aria-label="Expand or collapse">
+                <button
+                  className="hier-seg-btn hier-seg-text"
+                  onClick={() => setCollapsed(new Set())}
+                  title="Show everyone"
+                >
+                  Expand all
+                </button>
+                <button
+                  className="hier-seg-btn hier-seg-text"
+                  onClick={() =>
+                    setCollapsed(new Set(chartRoots.flatMap((root) => root.reports.filter((r) => r.reports.length).map((r) => r.id))))
+                  }
+                  title="Show the top two levels only"
+                >
+                  Collapse
                 </button>
               </div>
 
@@ -404,7 +451,11 @@ export default function Hierarchy() {
 
         <aside className="card hier-side">
           <div className="hier-side-head">
-            <h2 className="card-title">Unassigned ({unassigned.length})</h2>
+            <div>
+              <h2 className="hier-side-title">Unassigned</h2>
+              <span className="hier-side-sub">No manager yet</span>
+            </div>
+            <span className={`hier-side-count${unassigned.length ? ' is-warn' : ''}`}>{unassigned.length}</span>
           </div>
 
           {editable && unassigned.length > 0 && (
@@ -666,14 +717,25 @@ function NodeCard({
         if (personId && personId !== node.id) onDrop(personId, node.id)
       }}
     >
-      <Avatar name={node.name} small />
+      <span className="oc-avatar"><Avatar name={node.name} /></span>
       <div className="oc-body">
         <Link to={`/employees/${node.id}`} className="oc-name">
           {node.name}
         </Link>
         <span className="oc-role">{caption(node)}</span>
-        {node.employee_code && <span className="oc-code">Emp ID · {node.employee_code}</span>}
+        {(node.department || node.employee_code) && (
+          <span className="oc-tags">
+            {node.department && node.department !== caption(node) && <span className="oc-tag">{node.department}</span>}
+            {node.employee_code && <span className="oc-tag oc-tag-code">{node.employee_code}</span>}
+          </span>
+        )}
       </div>
+      {node.reports.length > 0 && (
+        <div className="oc-foot">
+          <span><strong>{node.reports.length}</strong> direct</span>
+          <span><strong>{node.headcount - 1}</strong> total</span>
+        </div>
+      )}
 
       {!node.is_active && <span className="oc-flag">Inactive</span>}
 

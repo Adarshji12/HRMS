@@ -177,7 +177,7 @@ export default function Signup() {
             email: order.prefill.email,
             contact: order.prefill.contact,
           },
-          theme: { color: '#5b18d9' },
+          theme: { color: '#007392' },
           handler: async (response: Record<string, string>) => {
             try {
               setComplete(await signupApi.confirm(response))

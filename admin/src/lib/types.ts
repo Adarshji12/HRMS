@@ -481,6 +481,7 @@ export interface EmployeeProfile {
   marital_status: string | null
   blood_group: string | null
   nationality: string | null
+  father_name?: string | null
   personal_email: string | null
   alternate_phone: string | null
 
@@ -518,6 +519,8 @@ export interface EmployeeProfile {
 
   employment_type: string | null
   work_location: string | null
+  attendance_type?: string | null
+  grade?: string | null
   probation_months: number | null
   /** Days of contractual notice. Null means "not recorded", which an exit
    *  settlement reports as unknown rather than treating as zero — recovering

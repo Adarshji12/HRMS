@@ -1,85 +1,43 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import '../../../styles/assets.css'
-import { api, ApiError } from '../../../lib/api'
+import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { canAdminister, useAuth } from '../../../lib/auth'
 import { dateTime } from '../../../lib/format'
 import type { User } from '../../../lib/types'
 import { Empty, EmptyState, ErrorNote, Loading, StatTile } from '../../../components/ui'
-import { IconCard, IconReturn } from '../../../components/Icons'
+import { IconCard, IconDownload, IconReturn } from '../../../components/Icons'
+import {
+  ASSET_STATUS_LABEL,
+  AssetStatusPill,
+  CATEGORY_LABEL,
+  CYCLE_LABEL,
+  RENEWAL_STATE_LABEL,
+  RenewForm,
+  RenewalPill,
+  categoryLabel,
+  day,
+  dueText,
+  errorText,
+  exportAssetsCsv,
+  paiseToInput,
+  parseRupees,
+  rupees,
+  toCategorySlug,
+  todayISODate,
+  type Asset,
+  type AssetAssignment,
+  type AssetRenewal,
+} from './assetLib'
 
-/* ---------------------------------------------------------------- types ---
-   Page-local, as Timesheets.tsx does. These mirror app/schemas/assets.py
-   exactly; `lib/types.ts` is lead-owned and does not carry them. */
-
-export interface Asset {
-  id: string
-  asset_tag: string
-  category: string
-  serial_number: string | null
-  purchase_date: string | null
-  status: string
-  created_at: string
-  /** All four are null together when nobody holds the asset. */
-  current_holder_id: string | null
-  current_holder_name: string | null
-  current_assignment_id: string | null
-  assigned_at: string | null
-}
-
-export interface AssetAssignment {
-  id: string
-  asset_id: string
-  user_id: string
-  assigned_at: string
-  returned_at: string | null
-  assigned_condition_note: string | null
-  returned_condition_note: string | null
-  is_open: boolean
-  user_name: string | null
-  asset_tag: string | null
-  asset_category: string | null
-}
-
-export const CATEGORY_LABEL: Record<string, string> = {
-  laptop: 'Laptop',
-  monitor: 'Monitor',
-  sim: 'SIM',
-  id_card: 'ID card',
-  other: 'Other',
-}
-
-export const ASSET_STATUS_LABEL: Record<string, string> = {
-  available: 'Available',
-  assigned: 'Issued',
-  under_repair: 'Under repair',
-  retired: 'Retired',
-}
+export { CATEGORY_LABEL, errorText }
+export type { Asset, AssetAssignment }
 
 /** The three statuses an asset can be *put into*. `assigned` is absent on
  *  purpose: an asset becomes issued by opening a custody row and no other way,
  *  which is what stops the register and the ledger telling two stories. */
 const SETTABLE_STATUSES = ['available', 'under_repair', 'retired'] as const
-
-/**
- * A 403 or 409 from this API may carry a typed body — `{reason, message}`.
- * `api.ts` flattens a non-string `detail` to JSON text, so unwrap it here and
- * render the sentence the server wrote. Never a bare status code.
- */
-export function errorText(err: unknown, fallback: string): string {
-  const raw = err instanceof ApiError || err instanceof Error ? err.message : String(err ?? '')
-  if (!raw) return fallback
-  if (raw.trimStart().startsWith('{')) {
-    try {
-      const parsed = JSON.parse(raw) as { message?: unknown; reason?: unknown }
-      if (typeof parsed.message === 'string') return parsed.message
-      if (typeof parsed.reason === 'string') return parsed.reason
-    } catch {
-      /* Not JSON after all — fall through and show what we were given. */
-    }
-  }
-  return raw
-}
 
 /**
  * The HRMS permission flags (D-002) are not on `UserOut` yet, so `/auth/me`
@@ -91,15 +49,6 @@ export function errorText(err: unknown, fallback: string): string {
 export function permits(user: User | null, flag: string): boolean {
   if (!user) return false
   return (user as unknown as Record<string, unknown>)[flag] !== false
-}
-
-export function AssetStatusPill({ value }: { value: string }) {
-  return (
-    <span className={`as-pill as-${value}`}>
-      <span className="as-pill-dot" style={{ background: 'currentColor' }} />
-      {ASSET_STATUS_LABEL[value] ?? value}
-    </span>
-  )
 }
 
 /* The assign/return panels open above the register, which can be a long way
@@ -121,6 +70,7 @@ function localToISO(value: string): string | null {
 export default function Assets() {
   const { user } = useAuth()
   const allowed = canAdminister(user) && permits(user, 'can_manage_assets')
+  const [params, setParams] = useSearchParams()
 
   const assets = useQuery<Asset[]>('assets', () => api.get<Asset[]>('/assets'), {
     enabled: allowed,
@@ -129,17 +79,21 @@ export default function Assets() {
     enabled: allowed,
   })
 
-  const [adding, setAdding] = useState(false)
+  /* `?new=1` opens the add form straight away — the dashboard's "Add asset"
+     button lands here. */
+  const [adding, setAdding] = useState(params.get('new') === '1')
   const [editing, setEditing] = useState<Asset | null>(null)
   const [assigning, setAssigning] = useState<Asset | null>(null)
   const [returning, setReturning] = useState<Asset | null>(null)
+  const [renewing, setRenewing] = useState<Asset | null>(null)
   const [ledgerFor, setLedgerFor] = useState<Asset | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   const [q, setQ] = useState('')
-  const [status, setStatus] = useState('')
-  const [category, setCategory] = useState('')
+  const [status, setStatus] = useState(params.get('status') ?? '')
+  const [category, setCategory] = useState(params.get('category') ?? '')
   const [holderId, setHolderId] = useState('')
+  const [renewal, setRenewal] = useState(params.get('renewal') ?? '')
 
   /* Filtered in the browser rather than re-fetched per dropdown, the same call
      Employees.tsx makes: a register is a few hundred rows, and the endpoint's
@@ -151,14 +105,22 @@ export default function Assets() {
       if (status && a.status !== status) return false
       if (category && a.category !== category) return false
       if (holderId && a.current_holder_id !== holderId) return false
+      if (renewal === 'attention' && !['overdue', 'due'].includes(a.renewal_state)) return false
+      if (renewal && renewal !== 'attention' && a.renewal_state !== renewal) return false
       if (!needle) return true
-      return (
-        a.asset_tag.toLowerCase().includes(needle) ||
-        (a.serial_number ?? '').toLowerCase().includes(needle) ||
-        (a.current_holder_name ?? '').toLowerCase().includes(needle)
-      )
+      return [
+        a.asset_tag,
+        a.name,
+        a.serial_number,
+        a.current_holder_name,
+        a.brand,
+        a.model_name,
+        a.vendor,
+        a.location,
+        a.invoice_number,
+      ].some((v) => (v ?? '').toLowerCase().includes(needle))
     })
-  }, [assets.data, q, status, category, holderId])
+  }, [assets.data, q, status, category, holderId, renewal])
 
   /* Holders come from the register itself, not the roster: the set of people
      actually holding something is far shorter, and it cannot contain a name
@@ -171,6 +133,14 @@ export default function Assets() {
     return [...seen].sort((a, b) => a[1].localeCompare(b[1]))
   }, [assets.data])
 
+  /* Every category in use plus the built-in ones, so a custom category a
+     company added ("delivery_van") shows up in the filter too. */
+  const categories = useMemo(() => {
+    const all = new Set(Object.keys(CATEGORY_LABEL))
+    for (const a of assets.data ?? []) all.add(a.category)
+    return [...all].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b)))
+  }, [assets.data])
+
   const counts = useMemo(() => {
     const all = assets.data ?? []
     const by = (s: string) => all.filter((a) => a.status === s).length
@@ -179,6 +149,7 @@ export default function Assets() {
       available: by('available'),
       assigned: by('assigned'),
       repair: by('under_repair'),
+      attention: all.filter((a) => a.renewal_state === 'overdue' || a.renewal_state === 'due').length,
     }
   }, [assets.data])
 
@@ -192,7 +163,7 @@ export default function Assets() {
           <EmptyState
             icon={<IconCard size={22} />}
             title="The asset register is not open to your account"
-            body="Who is holding which machine, and what the company paid for it, is administrator-only. Ask an administrator if you need a device issued, or open My assets to see what you are holding."
+            body="Who is holding which asset, and what the company paid for it, is administrator-only. Ask an administrator if you need a device issued, or open My assets to see what you are holding."
           />
         </section>
       </div>
@@ -206,45 +177,61 @@ export default function Assets() {
     assets.reload()
   }
 
-  const filtered = q !== '' || status !== '' || category !== '' || holderId !== ''
+  function closePanels() {
+    setAssigning(null)
+    setReturning(null)
+    setRenewing(null)
+  }
+
+  const filtered = q !== '' || status !== '' || category !== '' || holderId !== '' || renewal !== ''
 
   return (
     <div>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Assets</h1>
+          <h1 className="page-title">All assets</h1>
           <p className="page-sub">
-            The register, and the custody ledger behind it.
+            Everything the company owns — hardware, licences, subscriptions, vehicles — who has it,
+            and when it is due for renewal.
           </p>
         </div>
         <div className="head-actions">
+          <button
+            className="btn"
+            disabled={rows.length === 0}
+            onClick={() => exportAssetsCsv(`assets-${todayISODate()}.csv`, rows)}
+          >
+            <IconDownload size={14} /> Export
+          </button>
           <button
             className="btn btn-primary"
             onClick={() => {
               setEditing(null)
               setAdding((v) => !v)
+              if (params.get('new')) setParams({}, { replace: true })
             }}
           >
-            {adding ? 'Cancel' : 'Book in an asset'}
+            {adding ? 'Cancel' : '+ Add asset'}
           </button>
         </div>
       </div>
 
       {(assets.data ?? []).length > 0 && (
         <div className="grid grid-tiles" style={{ marginBottom: 14 }}>
-          <StatTile label="On the register" value={String(counts.total)} />
+          <StatTile label="Total assets" value={String(counts.total)} />
           <StatTile label="Available" value={String(counts.available)} accent="var(--status-good)" />
-          <StatTile
-            label="Issued"
-            value={String(counts.assigned)}
-            meta={counts.assigned ? 'custody open' : undefined}
-            accent="var(--brand)"
-          />
+          <StatTile label="Assigned" value={String(counts.assigned)} accent="var(--brand)" />
           <StatTile
             label="Under repair"
             value={String(counts.repair)}
-            meta={counts.repair ? 'cannot be issued' : undefined}
+            meta={counts.repair ? 'cannot be assigned' : undefined}
             accent={counts.repair ? 'var(--status-warn)' : undefined}
+          />
+          <StatTile
+            label="Renewal due / overdue"
+            value={String(counts.attention)}
+            meta={counts.attention ? 'needs action' : 'all on track'}
+            accent={counts.attention ? 'var(--status-bad)' : undefined}
           />
         </div>
       )}
@@ -253,6 +240,8 @@ export default function Assets() {
         <AssetForm
           key={editing?.id ?? 'new'}
           asset={editing}
+          people={people.data ?? []}
+          categories={categories}
           onCancel={() => {
             setAdding(false)
             setEditing(null)
@@ -288,14 +277,25 @@ export default function Assets() {
         />
       )}
 
+      {renewing && (
+        <RenewForm
+          asset={renewing}
+          onCancel={() => setRenewing(null)}
+          onDone={() => {
+            setRenewing(null)
+            refresh()
+          }}
+        />
+      )}
+
       <div className="filter-row">
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search tag, serial or holder…"
+          placeholder="Search tag, name, serial, holder, vendor…"
           aria-label="Search the register"
-          style={{ minWidth: 220 }}
+          style={{ minWidth: 240 }}
         />
         <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
           <option value="">Any status</option>
@@ -307,17 +307,26 @@ export default function Assets() {
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
           <option value="">All categories</option>
-          {Object.entries(CATEGORY_LABEL).map(([value, label]) => (
+          {categories.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {categoryLabel(value)}
             </option>
           ))}
         </select>
-        <select value={holderId} onChange={(e) => setHolderId(e.target.value)} aria-label="Holder">
-          <option value="">Anyone holding</option>
+        <select value={holderId} onChange={(e) => setHolderId(e.target.value)} aria-label="Assigned to">
+          <option value="">Assigned to anyone</option>
           {holders.map(([id, name]) => (
             <option key={id} value={id}>
               {name}
+            </option>
+          ))}
+        </select>
+        <select value={renewal} onChange={(e) => setRenewal(e.target.value)} aria-label="Renewal">
+          <option value="">Any renewal</option>
+          <option value="attention">Due + overdue</option>
+          {(['overdue', 'due', 'upcoming', 'ok', 'none'] as const).map((value) => (
+            <option key={value} value={value}>
+              {RENEWAL_STATE_LABEL[value]}
             </option>
           ))}
         </select>
@@ -332,6 +341,7 @@ export default function Assets() {
               setStatus('')
               setCategory('')
               setHolderId('')
+              setRenewal('')
             }}
           >
             Clear filters
@@ -360,16 +370,16 @@ export default function Assets() {
             <EmptyState
               icon={<IconCard size={22} />}
               title="Nothing on the register matches"
-              body="Clear the filters, or book the asset in if it has never been recorded."
+              body="Clear the filters, or add the asset if it has never been recorded."
             />
           ) : (
             <EmptyState
               icon={<IconCard size={22} />}
               title="No assets on the register yet"
-              body="Book in the laptops, monitors, SIMs and ID cards the company owns. Once an asset exists you can issue it to somebody, and the ledger will answer “who had this in March” for as long as the asset does."
+              body="Add anything the company owns — laptops, phones, furniture, software licences, domains, insurance policies. Give it a renewal date and it shows up on the dashboard when it falls due."
               action={
                 <button className="btn btn-primary" onClick={() => setAdding(true)}>
-                  Book in the first asset
+                  Add the first asset
                 </button>
               }
             />
@@ -382,9 +392,9 @@ export default function Assets() {
                   <th>Asset</th>
                   <th>Category</th>
                   <th>Status</th>
-                  <th>Held by</th>
-                  <th>Since</th>
-                  <th style={{ textAlign: 'right' }}>Custody</th>
+                  <th>Assigned to</th>
+                  <th>Renewal</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -392,17 +402,30 @@ export default function Assets() {
                   <tr key={asset.id} className={asset.current_assignment_id ? 'as-row-open' : undefined}>
                     <td>
                       <div className="as-tag">{asset.asset_tag}</div>
-                      {asset.serial_number && <div className="as-serial">{asset.serial_number}</div>}
+                      {asset.name && <div className="as-name">{asset.name}</div>}
+                      {(asset.serial_number || asset.location) && (
+                        <div className="as-serial">
+                          {[asset.serial_number, asset.location].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
                     </td>
-                    <td className="as-cat">{CATEGORY_LABEL[asset.category] ?? asset.category}</td>
+                    <td className="as-cat">{categoryLabel(asset.category)}</td>
                     <td>
                       <AssetStatusPill value={asset.status} />
                     </td>
                     <td>
                       {asset.current_holder_name ?? <span className="as-muted">nobody</span>}
+                      {asset.assigned_at && (
+                        <div className="as-when">since {dateTime(asset.assigned_at)}</div>
+                      )}
                     </td>
-                    <td className="as-when">
-                      {asset.assigned_at ? dateTime(asset.assigned_at) : '—'}
+                    <td>
+                      <RenewalPill asset={asset} />
+                      {asset.renewal_date && asset.renewal_state !== 'none' && (
+                        <div className="as-when">
+                          {day(asset.renewal_date)} · {dueText(asset)}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div className="as-actions">
@@ -410,14 +433,20 @@ export default function Assets() {
                           asset={asset}
                           onAssign={() => {
                             setRowError(null)
+                            closePanels()
                             setAssigning(asset)
-                            setReturning(null)
                             scrollToPanel()
                           }}
                           onReturn={() => {
                             setRowError(null)
+                            closePanels()
                             setReturning(asset)
-                            setAssigning(null)
+                            scrollToPanel()
+                          }}
+                          onRenew={() => {
+                            setRowError(null)
+                            closePanels()
+                            setRenewing(asset)
                             scrollToPanel()
                           }}
                           onLedger={() =>
@@ -450,19 +479,92 @@ export default function Assets() {
         )}
       </section>
 
-      {ledgerFor && (
-        <section className="card" style={{ marginTop: 14 }}>
-          <div className="card-head">
-            <h2 className="card-title">Custody history — {ledgerFor.asset_tag}</h2>
-            <div className="card-tools">
-              <button className="btn btn-sm" onClick={() => setLedgerFor(null)}>
-                Close
-              </button>
-            </div>
+      {ledgerFor && <AssetDetail asset={ledgerFor} onClose={() => setLedgerFor(null)} />}
+    </div>
+  )
+}
+
+/** Everything recorded about one asset: its details, custody history and
+ *  renewal history, side by side. */
+function AssetDetail({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+  const facts: Array<[string, ReactNode]> = [
+    ['Name', asset.name ?? '—'],
+    ['Category', categoryLabel(asset.category)],
+    ['Brand / model', [asset.brand, asset.model_name].filter(Boolean).join(' ') || '—'],
+    ['Serial', asset.serial_number ?? '—'],
+    ['Location', asset.location ?? '—'],
+    ['Vendor', asset.vendor ?? '—'],
+    ['Invoice', asset.invoice_number ?? '—'],
+    ['Purchased', day(asset.purchase_date)],
+    ['Purchase cost', rupees(asset.purchase_cost_paise)],
+    ['Warranty till', day(asset.warranty_expiry)],
+    ['Renewal due', asset.renewal_date ? `${day(asset.renewal_date)} (${dueText(asset)})` : 'Not tracked'],
+    ['Renewal cycle', asset.renewal_date ? CYCLE_LABEL[asset.renewal_cycle] ?? asset.renewal_cycle : '—'],
+    ['Renewal cost', rupees(asset.renewal_cost_paise)],
+  ]
+  return (
+    <section className="card" style={{ marginTop: 14 }}>
+      <div className="card-head">
+        <h2 className="card-title">
+          {asset.asset_tag}
+          {asset.name ? ` — ${asset.name}` : ''}
+        </h2>
+        <div className="card-tools">
+          <button className="btn btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+      <dl className="as-facts">
+        {facts.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
           </div>
-          <CustodyLedger path={`/assets/${ledgerFor.id}/history`} />
-        </section>
-      )}
+        ))}
+      </dl>
+      {asset.notes && <div className="as-note" style={{ marginBottom: 14 }}>{asset.notes}</div>}
+      <div className="grid grid-2">
+        <div>
+          <h3 className="as-subhead">Assignment history</h3>
+          <CustodyLedger path={`/assets/${asset.id}/history`} />
+        </div>
+        <div>
+          <h3 className="as-subhead">Renewal history</h3>
+          <RenewalLedger assetId={asset.id} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function RenewalLedger({ assetId }: { assetId: string }) {
+  const path = `/assets/${assetId}/renewals`
+  const history = useQuery<AssetRenewal[]>(path, () => api.get<AssetRenewal[]>(path))
+  if (history.loading) return <Loading />
+  if (history.error) return <ErrorNote>{errorText(history.error, 'Could not load renewals')}</ErrorNote>
+  const rows = history.data ?? []
+  if (rows.length === 0) return <Empty>No renewal recorded yet.</Empty>
+  return (
+    <div className="as-ledger">
+      {rows.map((row) => (
+        <div className="as-entry" key={row.id}>
+          <span className="as-dot" aria-hidden="true" />
+          <div>
+            <div className="as-entry-head">
+              <span className="as-entry-who">Renewed {day(row.renewed_on)}</span>
+              {row.cost_paise != null && <span className="as-cat">{rupees(row.cost_paise)}</span>}
+            </div>
+            <div className="as-entry-when">
+              Due {day(row.previous_due)} → {row.next_due ? day(row.next_due) : 'tracking stopped'}
+              {row.renewed_by_name ? ` · by ${row.renewed_by_name}` : ''}
+            </div>
+            {(row.reference || row.note) && (
+              <div className="as-note">{[row.reference, row.note].filter(Boolean).join(' — ')}</div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -480,6 +582,7 @@ function AssetRowActions({
   asset,
   onAssign,
   onReturn,
+  onRenew,
   onLedger,
   onEdit,
   onDelete,
@@ -487,6 +590,7 @@ function AssetRowActions({
   asset: Asset
   onAssign: () => void
   onReturn: () => void
+  onRenew: () => void
   onLedger: () => void
   onEdit: () => void
   onDelete: () => void
@@ -496,11 +600,11 @@ function AssetRowActions({
     <>
       {held ? (
         <button className="btn btn-sm" onClick={onReturn}>
-          <IconReturn size={13} /> Record return
+          <IconReturn size={13} /> Return
         </button>
       ) : asset.status === 'available' ? (
         <button className="btn btn-sm btn-primary" onClick={onAssign}>
-          Issue
+          Assign
         </button>
       ) : (
         /* under_repair and retired are not issuable, and saying so beats
@@ -509,8 +613,16 @@ function AssetRowActions({
           {asset.status === 'under_repair' ? 'In the repair queue' : 'Written off'}
         </span>
       )}
+      {asset.renewal_state !== 'none' && (
+        <button
+          className={`btn btn-sm${asset.renewal_state === 'overdue' || asset.renewal_state === 'due' ? ' btn-primary' : ''}`}
+          onClick={onRenew}
+        >
+          Renew
+        </button>
+      )}
       <button className="btn btn-sm" onClick={onLedger}>
-        History
+        Details
       </button>
       <button className="btn btn-sm" onClick={onEdit}>
         Edit
@@ -528,38 +640,103 @@ function AssetRowActions({
 
 function AssetForm({
   asset,
+  people,
+  categories,
   onCancel,
   onDone,
 }: {
   asset: Asset | null
+  people: User[]
+  categories: string[]
   onCancel: () => void
   onDone: () => void
 }) {
   const held = asset?.current_assignment_id != null
   const [form, setForm] = useState({
     asset_tag: asset?.asset_tag ?? '',
+    name: asset?.name ?? '',
     category: asset?.category ?? 'laptop',
+    brand: asset?.brand ?? '',
+    model_name: asset?.model_name ?? '',
     serial_number: asset?.serial_number ?? '',
-    purchase_date: asset?.purchase_date ?? '',
+    location: asset?.location ?? '',
     status: asset && asset.status !== 'assigned' ? asset.status : 'available',
+    vendor: asset?.vendor ?? '',
+    invoice_number: asset?.invoice_number ?? '',
+    purchase_date: asset?.purchase_date ?? '',
+    purchase_cost: paiseToInput(asset?.purchase_cost_paise),
+    warranty_expiry: asset?.warranty_expiry ?? '',
+    renewal_date: asset?.renewal_date ?? '',
+    renewal_cycle: asset?.renewal_cycle ?? 'yearly',
+    renewal_cost: paiseToInput(asset?.renewal_cost_paise),
+    reminder_days: String(asset?.reminder_days ?? 30),
+    auto_renew: asset?.auto_renew ?? false,
+    notes: asset?.notes ?? '',
   })
+  const [tracksRenewal, setTracksRenewal] = useState(Boolean(asset?.renewal_date))
+  const [customCategory, setCustomCategory] = useState('')
+  const [assignTo, setAssignTo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
+  const isCustom = form.category === '__custom'
+
   async function submit(event: FormEvent) {
     event.preventDefault()
+    const category = isCustom ? toCategorySlug(customCategory) : form.category
+    if (!category) {
+      setError('Type a name for the new category')
+      return
+    }
+    const purchaseCost = parseRupees(form.purchase_cost)
+    const renewalCost = parseRupees(form.renewal_cost)
+    if ((form.purchase_cost.trim() && purchaseCost == null) || (form.renewal_cost.trim() && renewalCost == null)) {
+      setError('Enter amounts as plain numbers, e.g. 45000 or 1299.50')
+      return
+    }
+    if (tracksRenewal && !form.renewal_date) {
+      setError('Give the next renewal date, or untick “This asset needs renewal”')
+      return
+    }
     setBusy(true)
     setError(null)
     const body = {
       asset_tag: form.asset_tag.trim(),
-      category: form.category,
+      name: form.name.trim() || null,
+      category,
+      brand: form.brand.trim() || null,
+      model_name: form.model_name.trim() || null,
       serial_number: form.serial_number.trim() || null,
-      purchase_date: form.purchase_date || null,
+      location: form.location.trim() || null,
       status: form.status,
+      vendor: form.vendor.trim() || null,
+      invoice_number: form.invoice_number.trim() || null,
+      purchase_date: form.purchase_date || null,
+      purchase_cost_paise: purchaseCost,
+      warranty_expiry: form.warranty_expiry || null,
+      renewal_date: tracksRenewal ? form.renewal_date : null,
+      renewal_cycle: tracksRenewal ? form.renewal_cycle : 'none',
+      renewal_cost_paise: tracksRenewal ? renewalCost : null,
+      reminder_days: Math.max(0, Math.min(365, Number(form.reminder_days) || 0)),
+      auto_renew: tracksRenewal && form.auto_renew,
+      notes: form.notes.trim() || null,
     }
     try {
-      if (asset) await api.patch(`/assets/${asset.id}`, body)
-      else await api.post('/assets', body)
+      if (asset) {
+        await api.patch(`/assets/${asset.id}`, body)
+      } else {
+        const created = await api.post<Asset>('/assets', body)
+        if (assignTo && form.status === 'available') {
+          try {
+            await api.post('/assets/assign', { asset_id: created.id, user_id: assignTo })
+          } catch (err) {
+            setError(`Asset saved, but it could not be assigned: ${errorText(err, 'unknown error')}`)
+            setBusy(false)
+            return
+          }
+        }
+      }
       onDone()
     } catch (err) {
       setError(errorText(err, 'Could not save the asset'))
@@ -571,7 +748,7 @@ function AssetForm({
   return (
     <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
       <div className="card-head">
-        <h2 className="card-title">{asset ? `Edit ${asset.asset_tag}` : 'Book in an asset'}</h2>
+        <h2 className="card-title">{asset ? `Edit ${asset.asset_tag}` : 'Add an asset'}</h2>
       </div>
       {error && (
         <div style={{ marginBottom: 12 }}>
@@ -579,54 +756,73 @@ function AssetForm({
         </div>
       )}
 
+      <h3 className="as-subhead">Basic details</h3>
       <div className="settings-grid">
         <label className="setting">
-          Asset tag
+          Asset tag / ID *
           <input
             value={form.asset_tag}
-            onChange={(e) => setForm({ ...form, asset_tag: e.target.value })}
+            onChange={(e) => set({ asset_tag: e.target.value })}
             placeholder="LAP-0142"
             required
+            maxLength={64}
             autoFocus
           />
-          <span className="setting-hint">The sticker on the machine. Unique per company.</span>
+          <span className="setting-hint">Your own label or sticker number. Unique per company.</span>
         </label>
         <label className="setting">
-          Category
-          <select
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-          >
-            {Object.entries(CATEGORY_LABEL).map(([value, label]) => (
+          Asset name
+          <input
+            value={form.name}
+            onChange={(e) => set({ name: e.target.value })}
+            placeholder="Dell Latitude 5420 / Microsoft 365 / Office AC"
+            maxLength={160}
+          />
+        </label>
+        <label className="setting">
+          Category *
+          <select value={form.category} onChange={(e) => set({ category: e.target.value })}>
+            {categories.map((value) => (
               <option key={value} value={value}>
-                {label}
+                {categoryLabel(value)}
               </option>
             ))}
+            <option value="__custom">+ New category…</option>
           </select>
+          {isCustom && (
+            <input
+              style={{ marginTop: 6 }}
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              placeholder="e.g. Delivery van, CCTV camera"
+              required
+            />
+          )}
         </label>
         <label className="setting">
-          Serial number
-          <input
-            value={form.serial_number}
-            onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
-          />
+          Brand / make
+          <input value={form.brand} onChange={(e) => set({ brand: e.target.value })} maxLength={120} />
         </label>
         <label className="setting">
-          Purchase date
+          Model
+          <input value={form.model_name} onChange={(e) => set({ model_name: e.target.value })} maxLength={120} />
+        </label>
+        <label className="setting">
+          Serial / licence key / reg. no.
+          <input value={form.serial_number} onChange={(e) => set({ serial_number: e.target.value })} maxLength={120} />
+        </label>
+        <label className="setting">
+          Location
           <input
-            type="date"
-            value={form.purchase_date}
-            onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
+            value={form.location}
+            onChange={(e) => set({ location: e.target.value })}
+            placeholder="Head office, 2nd floor"
+            maxLength={160}
           />
-          <span className="setting-hint">Procurement only — the holder never sees it.</span>
         </label>
         <label className="setting">
           Status
-          <select
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-            disabled={held}
-          >
+          <select value={form.status} onChange={(e) => set({ status: e.target.value })} disabled={held}>
             {SETTABLE_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {ASSET_STATUS_LABEL[value]}
@@ -635,15 +831,134 @@ function AssetForm({
           </select>
           <span className="setting-hint">
             {held
-              ? 'Issued, so the ledger owns the status. Record the return to move it to repair or retirement.'
-              : '“Issued” is not in this list: an asset becomes issued by handing it to somebody.'}
+              ? 'Assigned, so the status follows the assignment. Record the return to change it.'
+              : '“Assigned” is set by assigning the asset to someone.'}
           </span>
         </label>
       </div>
 
+      <h3 className="as-subhead">Purchase &amp; warranty</h3>
+      <div className="settings-grid">
+        <label className="setting">
+          Vendor / supplier
+          <input value={form.vendor} onChange={(e) => set({ vendor: e.target.value })} maxLength={160} />
+        </label>
+        <label className="setting">
+          Invoice number
+          <input value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} maxLength={80} />
+        </label>
+        <label className="setting">
+          Purchase date
+          <input type="date" value={form.purchase_date} onChange={(e) => set({ purchase_date: e.target.value })} />
+        </label>
+        <label className="setting">
+          Purchase cost (₹)
+          <input
+            value={form.purchase_cost}
+            onChange={(e) => set({ purchase_cost: e.target.value })}
+            inputMode="decimal"
+            placeholder="0.00"
+          />
+        </label>
+        <label className="setting">
+          Warranty valid till
+          <input type="date" value={form.warranty_expiry} onChange={(e) => set({ warranty_expiry: e.target.value })} />
+        </label>
+      </div>
+
+      <h3 className="as-subhead">Renewal</h3>
+      <label className="as-check">
+        <input type="checkbox" checked={tracksRenewal} onChange={(e) => setTracksRenewal(e.target.checked)} />
+        This asset needs renewal (licence, subscription, domain, insurance, AMC, registration…)
+      </label>
+      {tracksRenewal && (
+        <div className="settings-grid" style={{ marginTop: 10 }}>
+          <label className="setting">
+            Next renewal date *
+            <input
+              type="date"
+              value={form.renewal_date}
+              onChange={(e) => set({ renewal_date: e.target.value })}
+              required
+            />
+          </label>
+          <label className="setting">
+            Renews every
+            <select value={form.renewal_cycle} onChange={(e) => set({ renewal_cycle: e.target.value })}>
+              {Object.entries(CYCLE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="setting">
+            Renewal cost (₹)
+            <input
+              value={form.renewal_cost}
+              onChange={(e) => set({ renewal_cost: e.target.value })}
+              inputMode="decimal"
+              placeholder="0.00"
+            />
+          </label>
+          <label className="setting">
+            Remind me (days before)
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={form.reminder_days}
+              onChange={(e) => set({ reminder_days: e.target.value })}
+            />
+            <span className="setting-hint">Shows as “Due soon” on the dashboard from this many days out.</span>
+          </label>
+          <label className="as-check" style={{ alignSelf: 'center' }}>
+            <input type="checkbox" checked={form.auto_renew} onChange={(e) => set({ auto_renew: e.target.checked })} />
+            Auto-renews with the vendor
+          </label>
+        </div>
+      )}
+
+      {!asset && (
+        <>
+          <h3 className="as-subhead">Assign (optional)</h3>
+          <div className="settings-grid">
+            <label className="setting">
+              Assign to employee
+              <select
+                value={assignTo}
+                onChange={(e) => setAssignTo(e.target.value)}
+                disabled={form.status !== 'available'}
+              >
+                <option value="">Keep unassigned</option>
+                {people
+                  .filter((p) => p.is_active)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.full_name}
+                    </option>
+                  ))}
+              </select>
+              <span className="setting-hint">You can also assign it later from the list.</span>
+            </label>
+          </div>
+        </>
+      )}
+
+      <label className="setting" style={{ marginTop: 14, display: 'grid' }}>
+        Notes
+        <textarea
+          value={form.notes}
+          onChange={(e) => set({ notes: e.target.value })}
+          rows={3}
+          maxLength={4000}
+          placeholder="Accessories included, account login owner, policy number…"
+        />
+      </label>
+
       <div className="btn-group" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy}>
-          {busy ? 'Saving…' : asset ? 'Save changes' : 'Book it in'}
+          {busy ? 'Saving…' : asset ? 'Save changes' : 'Save asset'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
@@ -685,7 +1000,7 @@ function AssignForm({
       })
       onDone()
     } catch (err) {
-      setError(errorText(err, `Could not issue ${asset.asset_tag}`))
+      setError(errorText(err, `Could not assign ${asset.asset_tag}`))
     } finally {
       setBusy(false)
     }
@@ -695,7 +1010,7 @@ function AssignForm({
     <form className="as-panel" onSubmit={submit}>
       <div className="as-panel-head">
         <div>
-          <h2 className="as-panel-title">Issue {asset.asset_tag}</h2>
+          <h2 className="as-panel-title">Assign {asset.asset_tag}</h2>
           <p className="as-panel-sub">
             Opens a custody row. Only one can be open per asset, so this asset cannot be issued
             again until it is returned.
@@ -710,7 +1025,7 @@ function AssignForm({
 
       <div className="settings-grid">
         <label className="setting">
-          Issue to
+          Assign to
           <select value={userId} onChange={(e) => setUserId(e.target.value)} required>
             <option value="">Choose an employee…</option>
             {people
@@ -752,7 +1067,7 @@ function AssignForm({
 
       <div className="btn-group" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy || !userId}>
-          {busy ? 'Issuing…' : 'Issue asset'}
+          {busy ? 'Assigning…' : 'Assign asset'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel

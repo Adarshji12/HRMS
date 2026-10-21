@@ -1,20 +1,29 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import '../styles/org.css'
 import { api } from '../lib/api'
+import { Dialog } from './crm/parts'
 import { useQuery } from '../lib/useQuery'
 import { canAdminister, useAuth } from '../lib/auth'
 import type { Department, Designation, Team, User, WorkSchedule } from '../lib/types'
 import { ErrorNote } from '../components/ui'
-import Tabs, { TabPanel } from '../components/Tabs'
+import Tabs, { TabPanel, type TabDef } from '../components/Tabs'
 
 type Tab = 'departments' | 'teams' | 'designations' | 'schedules'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export default function OrgStructure() {
+export default function OrgStructure({
+  sections,
+  title = 'Organisation',
+}: {
+  /** Which tabs to show; all four when absent. */
+  sections?: Tab[]
+  title?: string
+} = {}) {
   const { user } = useAuth()
   const isAdmin = canAdminister(user)
-  const [tab, setTab] = useState<Tab>('departments')
+  const [tab, setTab] = useState<Tab>(sections?.[0] ?? 'departments')
 
   const departments = useQuery<Department[]>('departments', () =>
     api.get<Department[]>('/org/departments'),
@@ -38,7 +47,7 @@ export default function OrgStructure() {
     <div>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Organisation</h1>
+          <h1 className="page-title">{title}</h1>
           <p className="page-sub">
             Where people sit. The reporting line is separate — set it on the employee.
           </p>
@@ -47,17 +56,18 @@ export default function OrgStructure() {
 
       {/* Counts on the tab, so "do we even have designations yet" is answered
           before anyone clicks through to find out. */}
-      <Tabs
+      {/* One section means one page — a lone tab is just noise. */}
+      {(!sections || sections.length > 1) && <Tabs
         label="Organisation sections"
-        items={[
+        items={([
           { id: 'departments', label: 'Departments', badge: departments.data?.length },
           { id: 'teams', label: 'Teams', badge: teams.data?.length },
           { id: 'designations', label: 'Designations', badge: designations.data?.length },
           { id: 'schedules', label: 'Schedules', badge: schedules.data?.length },
-        ]}
+        ] as TabDef<Tab>[]).filter((t) => !sections || sections.includes(t.id))}
         value={tab}
         onChange={setTab}
-      />
+      />}
 
       {tab === 'departments' && (
         <TabPanel id="departments">
@@ -283,6 +293,7 @@ function FormCard({
   busy,
   error,
   submitLabel,
+  action,
 }: {
   title: string
   hint?: string
@@ -291,11 +302,14 @@ function FormCard({
   busy: boolean
   error: string | null
   submitLabel: string
+  /** Extra control on the right of the card's title row. */
+  action?: React.ReactNode
 }) {
   return (
     <form className="card" style={{ marginBottom: 14 }} onSubmit={onSubmit}>
       <div className="card-head">
         <h2 className="card-title">{title}</h2>
+        {action && <div className="card-tools">{action}</div>}
       </div>
       {hint && <p className="setting-hint" style={{ marginTop: -8, marginBottom: 12 }}>{hint}</p>}
       {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
@@ -313,11 +327,24 @@ function useCreate(path: string, onSaved: () => void) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function create(body: unknown, reset: () => void) {
+  /** `after` runs once the record exists. Its failure is reported but does not
+   *  undo the create — the form still resets, so a retry cannot duplicate it. */
+  async function create(
+    body: unknown,
+    reset: () => void,
+    after?: (created: { id: string }) => Promise<void>,
+  ) {
     setBusy(true)
     setError(null)
     try {
-      await api.post(path, body)
+      const created = await api.post<{ id: string }>(path, body)
+      if (after) {
+        try {
+          await after(created)
+        } catch (err) {
+          setError(`Saved, but ${err instanceof Error ? err.message : 'the follow-up step failed'}`)
+        }
+      }
       reset()
       onSaved()
     } catch (err) {
@@ -327,6 +354,95 @@ function useCreate(path: string, onSaved: () => void) {
     }
   }
   return { busy, error, create }
+}
+
+/** Picks existing employees for a department that is still being filled in.
+ *  It only collects the selection — the form assigns them once the department
+ *  exists. Anyone already in another department is moved, and the row says so. */
+function MemberPicker({
+  people,
+  initial,
+  onClose,
+  onDone,
+}: {
+  people: User[]
+  initial: string[]
+  onClose: () => void
+  onDone: (ids: string[]) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [picked, setPicked] = useState<Set<string>>(new Set(initial))
+
+  const candidates = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return people.filter(
+      (p) =>
+        !q ||
+        p.full_name.toLowerCase().includes(q) ||
+        p.email.toLowerCase().includes(q) ||
+        (p.employee_code ?? '').toLowerCase().includes(q),
+    )
+  }, [people, query])
+
+  function toggle(id: string) {
+    setPicked((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Dialog's styles are scoped under .crm, so the shell carries it here.
+  return (
+    <div className="crm">
+      <Dialog
+        title="Add employees"
+        subtitle="They join this department when it is created. Anyone already in another department is moved."
+        onClose={onClose}
+        footer={
+          <>
+            <Link to="/employees" className="btn btn-sm">New employee</Link>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn-primary" onClick={() => onDone([...picked])}>
+              {picked.size ? `Select ${picked.size}` : 'Select none'}
+            </button>
+          </>
+        }
+      >
+        <div className="org-pick">
+          <input
+            className="org-pick-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            // The picker renders inside the department form, where Enter would submit it.
+            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+            placeholder="Search by name, email or code"
+            autoFocus
+          />
+          <div className="org-pick-list">
+            {candidates.map((p) => (
+              <label key={p.id} className="crm-check org-pick-row">
+                <input type="checkbox" checked={picked.has(p.id)} onChange={() => toggle(p.id)} />
+                <span>
+                  <b>{p.full_name}</b>
+                  <span className="muted-sm">
+                    {' '}· {p.employee_code ?? p.email}
+                    {p.department_name && ` · now in ${p.department_name}`}
+                  </span>
+                </span>
+              </label>
+            ))}
+            {candidates.length === 0 && (
+              <div className="muted-sm org-pick-empty">
+                {query ? 'Nobody matches that search.' : 'No employees yet.'}
+              </div>
+            )}
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  )
 }
 
 /* --------------------------------------------------------------- forms --- */
@@ -341,7 +457,10 @@ function DepartmentForm({
   onSaved: () => void
 }) {
   const [form, setForm] = useState({ name: '', code: '', head_user_id: '', parent_id: '' })
+  const [memberIds, setMemberIds] = useState<string[]>([])
+  const [picking, setPicking] = useState(false)
   const { busy, error, create } = useCreate('/org/departments', onSaved)
+  const members = people.filter((p) => memberIds.includes(p.id))
 
   return (
     <FormCard
@@ -355,12 +474,25 @@ function DepartmentForm({
             head_user_id: form.head_user_id || null,
             parent_id: form.parent_id || null,
           },
-          () => setForm({ name: '', code: '', head_user_id: '', parent_id: '' }),
+          () => {
+            setForm({ name: '', code: '', head_user_id: '', parent_id: '' })
+            setMemberIds([])
+          },
+          memberIds.length
+            ? async (created) => {
+                await api.post('/org/assign', { user_ids: memberIds, department_id: created.id })
+              }
+            : undefined,
         )
       }}
       busy={busy}
       error={error}
       submitLabel="Create department"
+      action={
+        <button type="button" className="btn btn-primary" onClick={() => setPicking(true)}>
+          Add employees
+        </button>
+      }
     >
       <label className="setting">
         Name
@@ -393,6 +525,23 @@ function DepartmentForm({
           ))}
         </select>
       </label>
+      {members.length > 0 && (
+        <div className="setting">
+          <span>Employees ({members.length})</span>
+          <span className="setting-hint">{members.map((p) => p.full_name).join(', ')}</span>
+        </div>
+      )}
+      {picking && (
+        <MemberPicker
+          people={people}
+          initial={memberIds}
+          onClose={() => setPicking(false)}
+          onDone={(ids) => {
+            setMemberIds(ids)
+            setPicking(false)
+          }}
+        />
+      )}
     </FormCard>
   )
 }

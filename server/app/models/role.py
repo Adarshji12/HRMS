@@ -67,6 +67,21 @@ class DataScope(str, enum.Enum):
 #: let ``deny_unless`` keep working against a different source of truth without
 #: touching its forty-four callers. A key added here must also exist on ``User``
 #: until the columns are retired.
+#: The ERP's capabilities, listed separately because the ERP's permission check
+#: reads them differently from the HRMS flags — see ``services.erp.common.may``.
+ERP_PERMISSION_KEYS: tuple[str, ...] = (
+    "can_manage_erp_masters",
+    "can_verify_vendors",
+    "can_manage_procurement",
+    "can_approve_purchases",
+    "can_manage_inventory",
+    "can_approve_stock",
+    "can_manage_sales_orders",
+    "can_approve_sales_orders",
+    "can_manage_billing",
+    "can_approve_billing",
+)
+
 PERMISSION_KEYS: tuple[str, ...] = (
     "can_view_screenshots",
     "can_approve_timesheets",
@@ -87,6 +102,11 @@ PERMISSION_KEYS: tuple[str, ...] = (
     "can_manage_payroll",
     "can_manage_performance",
     "can_manage_engagement",
+    # ERP. Ten rather than one because the PRD's segregation of duties is the
+    # point of most of them: whoever raises a purchase order does not approve
+    # it, whoever counts stock does not approve the adjustment, and whoever
+    # bills does not approve the credit note. See ``services.erp.common``.
+    *ERP_PERMISSION_KEYS,
 )
 
 

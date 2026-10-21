@@ -126,28 +126,6 @@ export const NAV: NavGroup[] = [
       { to: '/approvals', label: 'Approvals', icon: IconCheck, approverOnly: true },
     ],
   },
-  /* Teams. Chat and Meetings were two loose rows among the destinations, which
-     was right when chat was one page: a module panel in front of a single door
-     is a menu guarding nothing.
-
-     They are a module now because there is a second door — a group is a
-     conversation somebody creates rather than one the org chart hands them —
-     and because the two belong together in a way the flat rail could not say.
-     Talking to colleagues, in writing or on a call, is one errand: you open
-     Teams to reach a person, and choose the medium once you are there.
-
-     Ungated, both of them, exactly as they were. There is no role that should
-     be unable to reach its own team's channel, and booking a call with two
-     colleagues is not an administrative act. */
-  {
-    heading: 'Teams',
-    key: 'teams',
-    icon: IconUsers,
-    items: [
-      { to: '/chat', label: 'Chat', icon: IconMail },
-      { to: '/meetings', label: 'Meetings', icon: IconCamera },
-    ],
-  },
   /* Employee. Formerly "People", and the rename is the point: the module is
      about the person as an employee of this company — their record, their place
      in the org, the letters issued to them — not about people in general.
@@ -161,20 +139,15 @@ export const NAV: NavGroup[] = [
     key: 'people',
     icon: IconUsers,
     items: [
-      { to: '/employees', label: 'Employees', icon: IconUsers, section: 'Company', teamOnly: true },
+      { to: '/employees', label: 'Employee', icon: IconUsers, teamOnly: true },
+      /* Its own path inside this module, not /settings/roles: that route lives
+         under the Settings panel, so the tab would throw you out of Employee. */
+      { to: '/roles', label: 'Role & Permission', icon: IconGear, adminOnly: true },
       /* Not teamOnly: knowing who you report to is the one org question an
          employee genuinely has, and the tree is already scoped. */
-      { page: 'hierarchy', to: '/hierarchy', label: 'Hierarchy', icon: IconSitemap, section: 'Company' },
-      /* Not teamOnly and not adminOnly: the directory returns work contact
-         details only — its shape is what makes it safe for everyone, not its
-         audience. */
-      { to: '/directory', label: 'Directory', icon: IconBuilding, section: 'Company' },
-      /* `end` on /letters so it does not stay lit while the templates child is
-         open. */
-      { to: '/letters', label: 'Letters', icon: IconMail, section: 'Administration', adminOnly: true, end: true },
-      { to: '/letters/templates', label: 'Letter templates', icon: IconSheet, section: 'Administration', adminOnly: true },
-      { to: '/profile', label: 'My profile', icon: IconUsers, section: 'Me' },
-      { to: '/my-letters', label: 'My letters', icon: IconMail, section: 'Me' },
+      { page: 'hierarchy', to: '/hierarchy', label: 'Hierarchy', icon: IconSitemap },
+      /* Departments and designations live under Settings → Teams & Departments
+         only; they are company setup, not something looked up per employee. */
     ],
   },
   /* Workforce Management. Attendance and Leave were two modules and are now one,
@@ -287,8 +260,11 @@ export const NAV: NavGroup[] = [
     key: 'assets',
     icon: IconCard,
     items: [
+      { to: '/assets/dashboard', label: 'Dashboard', icon: IconDashboard, adminOnly: true },
+      { to: '/assets', label: 'All assets', icon: IconBuilding, adminOnly: true, end: true },
+      { to: '/assets/renewals', label: 'Renewals', icon: IconClock, adminOnly: true },
+      { to: '/assets/report', label: 'Assignment report', icon: IconChart, adminOnly: true },
       { to: '/my-assets', label: 'My assets', icon: IconCard, end: true },
-      { to: '/assets', label: 'All assets', icon: IconBuilding, adminOnly: true },
     ],
   },
   {
@@ -352,16 +328,15 @@ export const NAV: NavGroup[] = [
     icon: IconStar,
     items: [
       { to: '/crm', label: 'Lead Dashboard', icon: IconDashboard, end: true },
-      { to: '/crm/leads', label: 'My Leads', icon: IconUsers, section: 'Pipeline' },
-      { to: '/crm/follow-ups', label: 'My Follow-ups', icon: IconClock, section: 'Pipeline' },
-      { to: '/crm/visits', label: 'My Visits', icon: IconGlobe, section: 'Pipeline' },
-      { to: '/crm/support', label: 'My Support Center', icon: IconLifebuoy, section: 'Accounts' },
-      { to: '/crm/customers', label: 'My Customers', icon: IconBuilding, section: 'Accounts' },
+      { to: '/crm/leads', label: 'My Leads', icon: IconUsers },
+      { to: '/crm/follow-ups', label: 'My Followups', icon: IconClock },
+      { to: '/crm/visits', label: 'My Visit', icon: IconGlobe },
+      { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
+      { to: '/crm/customers', label: 'My Customers', icon: IconBuilding },
       /* `end` so the row does not stay lit while the builder is open on a
          child route — the builder is its own place, not the list. */
-      { to: '/crm/quotations', label: 'Quotations', icon: IconSheet, section: 'Accounts', end: true },
-      { to: '/crm/reminders', label: 'Daily Reminders', icon: IconBell, section: 'Accounts' },
-      { to: '/crm/settings', label: 'Settings', icon: IconGear, adminOnly: true },
+      { to: '/crm/quotations', label: 'Quatation', icon: IconSheet, end: true },
+      { to: '/crm/settings', label: 'Setting', icon: IconGear, adminOnly: true },
     ],
   },
   /* Configuration, gathered out of eight other modules. `Workspace` describes
@@ -394,6 +369,38 @@ export const NAV: NavGroup[] = [
       { to: '/settings/payroll', label: 'Payroll', icon: IconSheet, section: 'Modules', adminOnly: true },
     ],
   },
+]
+
+export const HRMS_NAV_ITEMS: NavItem[] = [
+  { to: '/hrms/dashboard', label: 'HR Dashboard', icon: IconDashboard, end: true },
+  { to: '/attendance', label: 'Attandance', icon: IconClock, end: true },
+  { to: '/dashboards/time', label: 'Working Hours', icon: IconGauge, teamOnly: true },
+  { to: '/salary', label: 'Payroll', icon: IconSheet, end: true },
+  { to: '/expenses', label: 'Expense', icon: IconCard, end: true },
+  { to: '/settings/approvals', label: 'Workflow', icon: IconSitemap, end: true, adminOnly: true },
+  { page: 'timesheets', to: '/timesheets', label: 'Timesheet', icon: IconSheet },
+  { to: '/workforce', label: 'Workforce Management', icon: IconUsers, end: true, teamOnly: true },
+  { to: '/noticeboard', label: 'Noticeboard', icon: IconBell, end: true },
+  { to: '/me', label: 'Performance', icon: IconStar, end: true },
+  { to: '/hrms/joiners-letters', label: 'Joiners & Letters', icon: IconMail, end: true },
+  { to: '/hrms/settings', label: 'HR Settings', icon: IconGear, end: true },
+]
+
+/* ERP phase one — the operational backbone of the LRS PRD. Every page reads
+   its own permissions from /erp/access, so nothing here is adminOnly except
+   Settings: an employee opens Requisitions to ask for something, and the other
+   pages tell somebody without an ERP role that they have none. */
+export const ERP_NAV_ITEMS: NavItem[] = [
+  { to: '/erp', label: 'ERP Dashboard', icon: IconDashboard, end: true },
+  { to: '/erp/approvals', label: 'ERP Approvals', icon: IconCheck, end: true },
+  { to: '/erp/requisitions', label: 'Requisitions', icon: IconSheet, end: true },
+  { to: '/erp/rfqs', label: 'RFQs', icon: IconMail, end: true },
+  { to: '/erp/purchase-orders', label: 'Purchase Orders', icon: IconCard, end: true },
+  { to: '/erp/inventory', label: 'Inventory', icon: IconFolder, end: true },
+  { to: '/erp/sales-orders', label: 'Sales Orders', icon: IconChart, end: true },
+  { to: '/erp/billing', label: 'Billing', icon: IconCard, end: true },
+  { to: '/erp/masters', label: 'Masters', icon: IconBuilding, end: true },
+  { to: '/erp/settings', label: 'Setting', icon: IconGear, end: true, adminOnly: true },
 ]
 
 export interface NavAccess {

@@ -211,6 +211,10 @@ export const IconChevronRight = (p: P) => (
   <Svg {...p}><path d="m9.5 5.5 6.5 6.5-6.5 6.5" /></Svg>
 )
 
+export const IconChevronDown = (p: P) => (
+  <Svg {...p}><path d="m6 9 6 6 6-6" /></Svg>
+)
+
 /* Enter, for the palette's "open this result" hint. */
 export const IconReturn = (p: P) => (
   <Svg {...p}><path d="M20 5.5v5a3 3 0 0 1-3 3H4.5M8.5 9.5 4.5 13.5l4 4" /></Svg>
@@ -284,5 +288,14 @@ export const IconLifebuoy = (p: P) => (
 export const IconPaperclip = (p: P) => (
   <Svg {...p}>
     <path d="M20.4 11.5 12 19.9a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
+  </Svg>
+)
+
+/* A pencil — edit this record. Used on its own in table rows, so the button
+   that holds it carries the aria-label rather than the glyph. */
+export const IconEdit = (p: P) => (
+  <Svg {...p}>
+    <path d="M16.5 3.8a2.1 2.1 0 0 1 3 3L8 18.3l-4 1 1-4Z" />
+    <path d="m14.5 5.8 3 3" />
   </Svg>
 )

@@ -1,0 +1,143 @@
+/* My Visits — the summary strip, the toolbar and the table.
+ *
+ * Every colour is a token from styles.css, so the page follows the theme and
+ * the company brand colour without rules of its own. */
+
+/* --------------------------------------------------------- summary strip --- */
+
+/* Six separate cards, always on one line. Below the width where six fit, the
+   row scrolls sideways instead of wrapping onto a second line. */
+.vs-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.vs-stat {
+  --tone: var(--text-muted);
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 14px 16px 13px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font: inherit; text-align: left; color: inherit;
+  min-width: 0;
+  overflow: hidden;
+}
+/* A coloured rule down the left edge says which status the card counts. */
+.vs-stat::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--tone);
+}
+button.vs-stat {
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease,
+              transform var(--duration-fast) ease;
+}
+button.vs-stat:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+button.vs-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vs-stat.is-on {
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 8%, var(--surface-1));
+  box-shadow: 0 0 0 1px var(--tone), var(--shadow-sm);
+}
+
+.tone-brand { --tone: var(--brand); }
+.tone-idle { --tone: var(--text-secondary); }
+.tone-warn { --tone: var(--status-warn); }
+.tone-good { --tone: var(--status-good); }
+.tone-bad { --tone: var(--status-critical); }
+.tone-muted { --tone: var(--text-muted); }
+
+.vs-stat-label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.vs-stat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex: none; }
+.vs-stat-value {
+  font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.vs-stat.has-value.tone-warn .vs-stat-value,
+.vs-stat.has-value.tone-good .vs-stat-value,
+.vs-stat.has-value.tone-bad .vs-stat-value { color: var(--tone); }
+.vs-stat-hint {
+  font-size: 11.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+
+/* -------------------------------------------------------------- toolbar --- */
+
+.vs-card { padding: 0; overflow: hidden; }
+.vs-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.vs-search { flex: 1 1 280px; min-width: 200px; }
+.vs-toolbar select { min-width: 150px; }
+.vs-filter-btn { display: inline-flex; align-items: center; gap: 6px; position: relative; }
+.vs-filter-btn.is-on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink, var(--text-primary)); }
+.vs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+.vs-toolbar .filter-reset { margin-left: auto; }
+
+.vs-filters {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 220px)); gap: 12px;
+  padding: 12px 14px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---------------------------------------------------------------- table --- */
+
+.vs-table thead th {
+  background: var(--surface-2);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.vs-table tbody td { vertical-align: middle; padding-top: 11px; padding-bottom: 11px; }
+.vs-table tbody tr { transition: background var(--duration-fast) ease; }
+.vs-table tbody tr:hover { background: var(--surface-hover); }
+
+.vs-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.vs-avatar {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 650;
+  background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+.vs-who-text { display: flex; flex-direction: column; min-width: 0; }
+.vs-when { display: flex; flex-direction: column; }
+
+.vs-priority {
+  --p: var(--text-muted);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px 2px 8px; border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 600; text-transform: capitalize;
+  background: color-mix(in srgb, var(--p) 12%, transparent);
+  color: var(--p);
+}
+.vs-priority::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.vs-priority.is-low { --p: var(--text-secondary); }
+.vs-priority.is-medium { --p: var(--brand); }
+.vs-priority.is-high { --p: var(--status-warn); }
+.vs-priority.is-urgent { --p: var(--status-critical); }
+
+@media (max-width: 640px) {
+  .vs-strip { grid-template-columns: repeat(6, minmax(128px, 1fr)); gap: 8px; }
+  .vs-stat { padding: 12px 14px; }
+  .vs-stat-value { font-size: 22px; }
+  .vs-filters { grid-template-columns: minmax(0, 1fr); }
+  .vs-toolbar select { flex: 1 1 140px; min-width: 0; }
+}

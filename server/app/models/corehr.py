@@ -60,6 +60,13 @@ class EmploymentType(str, enum.Enum):
     CONSULTANT = "consultant"
 
 
+class AttendanceType(str, enum.Enum):
+    OFFICE = "office"
+    REMOTE = "remote"
+    HYBRID = "hybrid"
+    FIELD = "field"
+
+
 class ConfirmationStatus(str, enum.Enum):
     """Where someone stands against their probation.
 
@@ -121,6 +128,9 @@ class EmployeeProfile(TimestampMixin, Base):
     marital_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     blood_group: Mapped[str | None] = mapped_column(String(8), nullable=True)
     nationality: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Parent's or spouse's name. Statutory forms (PF nomination, Form 11) ask for
+    # it by name, and collecting it at hire is cheaper than chasing it at payroll.
+    father_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # A personal address, kept apart from users.email: the work address stops
     # working the day someone leaves, which is the day payroll most needs to
     # reach them about their Form 16.
@@ -184,6 +194,13 @@ class EmployeeProfile(TimestampMixin, Base):
     # drifts.
     employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     work_location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # How this person's attendance is expected to be captured — office, remote,
+    # hybrid or field. A planning fact HR records at hire, not the per-punch
+    # work-mode declaration, which stays on the attendance record.
+    attendance_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Pay grade or band, free text: "L3", "M1", "Band B". Companies name these
+    # their own way, and a master table nobody maintains is worse than a field.
+    grade: Mapped[str | None] = mapped_column(String(40), nullable=True)
     probation_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     probation_end_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     confirmation_status: Mapped[str] = mapped_column(

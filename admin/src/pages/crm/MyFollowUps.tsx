@@ -5,15 +5,21 @@
  * Nothing here is a second copy of a lead — completing a follow-up can move the
  * lead's stage and book the next call in the same action, because that is one
  * act to the person doing it: they have just put the phone down.
+ *
+ * The cards count the whole pending pile, not the filtered view, so "how much
+ * is overdue" does not change because somebody typed in the search box. Each
+ * card is also the filter for its window.
  */
 
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
+import '../../styles/visits.css'
+import '../../styles/followups.css'
 import { useQuery } from '../../lib/useQuery'
 import { relativeTime } from '../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { IconAlert, IconCheck, IconClock, IconReturn, IconSearch } from '../../components/Icons'
+import { IconCheck, IconSearch } from '../../components/Icons'
 import {
   crm,
   crmError,
@@ -24,28 +30,49 @@ import {
 import {
   CrmPage,
   Dialog,
-  DueDate,
   Field,
   MasterSelect,
   OwnerSelect,
-  Stat,
   StateText,
-  Stats,
   WhatsAppButton,
 } from './parts'
 
-const WINDOWS = [
-  { key: '', label: 'All pending' },
-  { key: 'overdue', label: 'Overdue' },
-  { key: 'today', label: 'Due today' },
-  { key: 'week', label: 'Next 7 days' },
-  { key: 'upcoming', label: 'Upcoming' },
+type Window = '' | 'overdue' | 'today' | 'week' | 'upcoming'
+type Status = 'pending' | 'done' | 'cancelled'
+
+const STATUSES: Array<{ key: Status; label: string }> = [
+  { key: 'pending', label: 'Pending' },
+  { key: 'done', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
 ]
+
+const parseISO = (iso: string) => new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
+
+const initials = (name: string | null | undefined) =>
+  (name ?? '?').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?'
+
+/* The same windows the server filters by (services/crm.py), counted here from
+   one unfiltered pending list. */
+function countWindows(rows: FollowUp[]) {
+  const now = new Date()
+  const weekEnd = new Date(now)
+  weekEnd.setDate(weekEnd.getDate() + 7)
+  weekEnd.setHours(23, 59, 59, 999)
+  let overdue = 0, today = 0, week = 0, upcoming = 0
+  for (const row of rows) {
+    const due = parseISO(row.due_at)
+    if (row.is_overdue || due < now) overdue++
+    else upcoming++
+    if (due.toDateString() === now.toDateString()) today++
+    if (due <= weekEnd) week++
+  }
+  return { all: rows.length, overdue, today, week, upcoming }
+}
 
 export default function MyFollowUps() {
   const [params] = useSearchParams()
-  const [window, setWindow] = useState(params.get('window') ?? '')
-  const [status, setStatus] = useState<'pending' | 'done' | 'cancelled'>('pending')
+  const [window, setWindow] = useState<Window>((params.get('window') ?? '') as Window)
+  const [status, setStatus] = useState<Status>('pending')
   const [ownerId, setOwnerId] = useState('')
   const [q, setQ] = useState('')
   const [completing, setCompleting] = useState<FollowUp | null>(null)
@@ -61,19 +88,24 @@ export default function MyFollowUps() {
         q: q.trim() || undefined,
       }),
   )
+  const pending = useQuery<FollowUp[]>(`crm-followups-counts-${ownerId}`, () =>
+    crm.followUps({ status: 'pending', owner_id: ownerId || undefined }),
+  )
 
   const list = rows.data ?? []
-  const overdue = list.filter((row) => row.is_overdue).length
-  const today = list.filter((row) => {
-    const due = new Date(row.due_at)
-    return due.toDateString() === new Date().toDateString()
-  }).length
+  const c = countWindows(pending.data ?? [])
+  const filtered = Boolean(q || window || ownerId)
+
+  function reloadAll() {
+    rows.reload()
+    pending.reload()
+  }
 
   async function cancel(row: FollowUp) {
     setRowError(null)
     try {
       await crm.cancelFollowUp(row.id)
-      rows.reload()
+      reloadAll()
     } catch (err) {
       setRowError(crmError(err, 'That follow-up could not be cancelled'))
     }
@@ -87,67 +119,42 @@ export default function MyFollowUps() {
     )
   }
 
+  const cards: Array<{ key: Window; label: string; value: number; tone: string; hint: string }> = [
+    { key: '', label: 'All pending', value: c.all, tone: 'brand', hint: 'Everything still owed' },
+    { key: 'overdue', label: 'Overdue', value: c.overdue, tone: 'bad', hint: c.overdue ? 'Call these first' : 'Nothing late' },
+    { key: 'today', label: 'Due today', value: c.today, tone: 'warn', hint: 'Before the day ends' },
+    { key: 'week', label: 'Next 7 days', value: c.week, tone: 'idle', hint: 'Including anything late' },
+    { key: 'upcoming', label: 'Upcoming', value: c.upcoming, tone: 'good', hint: 'Not yet due' },
+  ]
+
   return (
     <CrmPage
       title="My Follow-ups"
       subtitle="Everything you promised to get back to, in the order it is due"
     >
-      <Stats>
-        <Stat
-          icon={<IconClock size={16} />}
-          label="Pending"
-          value={status === 'pending' ? list.length : '—'}
-          meta="in this view"
-        />
-        <Stat
-          icon={<IconAlert size={16} />}
-          label="Overdue"
-          value={overdue}
-          meta={overdue ? 'call these first' : 'nothing late'}
-          tone="var(--status-critical)"
-          toned={overdue > 0}
-        />
-        <Stat
-          icon={<IconReturn size={16} />}
-          label="Due today"
-          value={today}
-          tone="var(--status-warn)"
-          toned={today > 0}
-        />
-      </Stats>
-
-      <div className="crm-bar">
-        <div className="crm-search">
-          <IconSearch size={15} />
-          <input
-            type="search"
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            placeholder="Search a name, number or purpose…"
-            aria-label="Search follow-ups"
-          />
-        </div>
-        <div className="crm-seg">
-          {WINDOWS.map((option) => (
+      <div className="vs-strip fu-strip" role="group" aria-label="Follow-up summary">
+        {cards.map((card) => {
+          const on = status === 'pending' && window === card.key
+          return (
             <button
-              key={option.key || 'all'}
-              className={window === option.key ? 'crm-seg-on' : ''}
-              onClick={() => setWindow(option.key)}
+              key={card.key || 'all'}
+              type="button"
+              className={`vs-stat tone-${card.tone}${on ? ' is-on' : ''}${card.value ? ' has-value' : ''}`}
+              aria-pressed={on}
+              onClick={() => {
+                setStatus('pending')
+                setWindow(card.key)
+              }}
             >
-              {option.label}
+              <span className="vs-stat-label">
+                <span className="vs-stat-dot" aria-hidden />
+                {card.label}
+              </span>
+              <span className="vs-stat-value">{pending.data ? card.value : '–'}</span>
+              <span className="vs-stat-hint">{card.hint}</span>
             </button>
-          ))}
-        </div>
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value as typeof status)}
-          aria-label="Status"
-        >
-          <option value="pending">Pending</option>
-          <option value="done">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Anyone" />
+          )
+        })}
       </div>
 
       {rowError && (
@@ -156,81 +163,153 @@ export default function MyFollowUps() {
         </div>
       )}
 
-      <section className="card" style={{ opacity: rows.refetching ? 0.6 : 1 }}>
-        {list.length === 0 ? (
-          rows.loading ? (
-            <Loading />
-          ) : (
-            <EmptyState
-              icon={<IconCheck size={22} />}
-              title={status === 'pending' ? 'Nothing is owed right now' : 'Nothing here'}
-              body={
-                status === 'pending'
-                  ? 'Every call you promised has been made. Book the next one from a lead or from the support desk and it will appear here.'
-                  : 'Change the filter above to see what is pending.'
-              }
-            />
-          )
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Due</th>
-                  <th>Who</th>
-                  <th>Purpose</th>
-                  <th>Owner</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((row) => (
-                  <tr key={row.id}>
-                    <td className="crm-nowrap">
-                      <DueDate iso={row.due_at} overdue={row.is_overdue} />
-                      <div className="crm-sub">{relativeTime(row.due_at)}</div>
-                    </td>
-                    <td>
-                      <div className="crm-strong">{row.subject_name ?? '—'}</div>
-                      <div className="crm-sub">
-                        {row.subject_kind === 'customer' ? 'Customer' : 'Lead'}
-                        {row.subject_mobile ? ` · ${row.subject_mobile}` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      {row.purpose ?? <span className="crm-muted">—</span>}
-                      {row.notes && <div className="crm-sub">{row.notes}</div>}
-                      {row.outcome && <div className="crm-sub">Outcome: {row.outcome}</div>}
-                    </td>
-                    <td>{row.owner_name ?? <span className="crm-muted">Unassigned</span>}</td>
-                    <td>
-                      <StateText value={row.status} />
-                    </td>
-                    <td>
-                      <div className="crm-row-actions">
-                        <WhatsAppButton mobile={row.subject_mobile} />
-                        {row.status === 'pending' && (
-                          <>
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={() => setCompleting(row)}
-                            >
-                              Complete
-                            </button>
-                            <button className="link-btn" onClick={() => cancel(row)}>
-                              Cancel
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <section className="card vs-card">
+        <div className="fu-head">
+          <div className="fu-tabs" role="tablist" aria-label="Status">
+            {STATUSES.map((s) => (
+              <button
+                key={s.key}
+                role="tab"
+                aria-selected={status === s.key}
+                className={`fu-tab${status === s.key ? ' is-on' : ''}`}
+                onClick={() => {
+                  setStatus(s.key)
+                  if (s.key !== 'pending') setWindow('')
+                }}
+              >
+                {s.label}
+                {s.key === 'pending' && pending.data && <span className="fu-tab-count">{c.all}</span>}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+
+        <div className="vs-toolbar">
+          <div className="crm-search vs-search">
+            <IconSearch size={15} />
+            <input
+              type="search"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="Search a name, number or purpose…"
+              aria-label="Search follow-ups"
+            />
+          </div>
+          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Any owner" />
+          {window && (
+            <span className="fu-active">
+              {cards.find((card) => card.key === window)?.label}
+              <button aria-label="Remove window filter" onClick={() => setWindow('')}>×</button>
+            </span>
+          )}
+          {filtered && (
+            <button
+              className="filter-reset"
+              onClick={() => {
+                setQ('')
+                setWindow('')
+                setOwnerId('')
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <div style={{ opacity: rows.refetching ? 0.6 : 1 }}>
+          {list.length === 0 ? (
+            rows.loading ? (
+              <Loading />
+            ) : (
+              <EmptyState
+                icon={filtered ? <IconSearch size={22} /> : <IconCheck size={22} />}
+                title={
+                  filtered ? 'No follow-ups match'
+                    : status === 'pending' ? 'Nothing is owed right now' : 'Nothing here'
+                }
+                body={
+                  filtered
+                    ? 'Nothing fits these filters. Clear them to see everything.'
+                    : status === 'pending'
+                      ? 'Every call you promised has been made. Book the next one from a lead or from the support desk and it will appear here.'
+                      : 'Switch to Pending to see what is still owed.'
+                }
+              />
+            )
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Due</th>
+                      <th>Contact</th>
+                      <th>Purpose</th>
+                      <th>Owner</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((row) => (
+                      <tr key={row.id} className={row.status === 'pending' && row.is_overdue ? 'fu-row-late' : undefined}>
+                        <td className="crm-nowrap">
+                          <Due iso={row.due_at} overdue={row.status === 'pending' && row.is_overdue} />
+                        </td>
+                        <td>
+                          <div className="vs-who">
+                            <span className="vs-avatar" aria-hidden>{initials(row.subject_name)}</span>
+                            <span className="vs-who-text">
+                              <span className="crm-strong">{row.subject_name ?? '—'}</span>
+                              <span className="crm-sub">
+                                <span className={`fu-kind is-${row.subject_kind === 'customer' ? 'customer' : 'lead'}`}>
+                                  {row.subject_kind === 'customer' ? 'Customer' : 'Lead'}
+                                </span>
+                                {row.subject_mobile ? ` ${row.subject_mobile}` : ''}
+                              </span>
+                            </span>
+                          </div>
+                        </td>
+                        <td className="fu-purpose">
+                          {row.purpose ?? <span className="crm-muted">—</span>}
+                          {row.notes && <div className="crm-sub">{row.notes}</div>}
+                          {row.outcome && <div className="crm-sub">Outcome: {row.outcome}</div>}
+                        </td>
+                        <td>{row.owner_name ?? <span className="crm-muted">Unassigned</span>}</td>
+                        <td>
+                          <StateText value={row.status} />
+                        </td>
+                        <td>
+                          <div className="crm-row-actions">
+                            <WhatsAppButton mobile={row.subject_mobile} />
+                            {row.status === 'pending' && (
+                              <>
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => setCompleting(row)}
+                                >
+                                  Complete
+                                </button>
+                                <button className="link-btn" onClick={() => cancel(row)}>
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="crm-foot">
+                <span>
+                  Showing {list.length} follow-up{list.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </section>
 
       {completing && (
@@ -239,11 +318,30 @@ export default function MyFollowUps() {
           onClose={() => setCompleting(null)}
           onDone={() => {
             setCompleting(null)
-            rows.reload()
+            reloadAll()
           }}
         />
       )}
     </CrmPage>
+  )
+}
+
+/** A date chip — red when late, amber when it lands today — over how far off it is. */
+function Due({ iso, overdue }: { iso: string; overdue: boolean }) {
+  const d = parseISO(iso)
+  const isToday = d.toDateString() === new Date().toDateString()
+  const tone = overdue ? 'is-late' : isToday ? 'is-today' : ''
+  return (
+    <div className="fu-due">
+      <span className={`fu-date ${tone}`}>
+        <strong>{d.toLocaleDateString(undefined, { day: '2-digit' })}</strong>
+        <span>{d.toLocaleDateString(undefined, { month: 'short' })}</span>
+      </span>
+      <span className="fu-due-text">
+        <span>{d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className={`crm-sub ${overdue ? 'fu-late-text' : ''}`}>{relativeTime(iso)}</span>
+      </span>
+    </div>
   )
 }
 

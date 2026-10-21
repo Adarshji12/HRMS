@@ -52,12 +52,15 @@ from app.models import (
     CrmCustomer,
     CrmCustomerPlan,
     CrmDisposition,
+    CrmDistrict,
     CrmFollowUp,
     CrmIndustry,
     CrmInteraction,
     CrmLead,
     CrmLeadSource,
     CrmLeadStatus,
+    CrmLostReason,
+    CrmOpportunityStage,
     CrmPlan,
     CrmProduct,
     CrmQuotation,
@@ -67,11 +70,18 @@ from app.models import (
     CrmReminderRun,
     CrmSettings,
     CrmState,
+    CrmTerritory,
     CrmVisit,
     CrmVisitType,
+    CrmCampaign,
+    CrmCompetitor,
+    CrmContactDesignation,
     CustomerStatus,
+    ForecastCategory,
     FollowUpStatus,
     InteractionStatus,
+    LostOutcome,
+    OpportunityBehaviour,
     Organization,
     QuotationStatus,
     StatusBehaviour,
@@ -276,6 +286,92 @@ DEFAULT_STATES: list[tuple[str, str]] = [
 ]
 
 
+#: The opportunity pipeline a new workspace opens with: (name, behaviour,
+#: probability, forecast bucket, days before stale, colour).
+DEFAULT_OPPORTUNITY_STAGES: list[tuple[str, str, int, str | None, int, str]] = [
+    ("Qualification", OpportunityBehaviour.OPEN.value, 10, ForecastCategory.UPSIDE.value, 21, "#94A3B8"),
+    ("Requirement Analysis", OpportunityBehaviour.OPEN.value, 25, ForecastCategory.PIPELINE.value, 30, "#3882F6"),
+    ("Solution & Proposal", OpportunityBehaviour.OPEN.value, 40, ForecastCategory.PIPELINE.value, 30, "#8B5CF6"),
+    ("Negotiation", OpportunityBehaviour.OPEN.value, 65, ForecastCategory.BEST_CASE.value, 21, "#F59E0B"),
+    ("Verbal Commit", OpportunityBehaviour.OPEN.value, 90, ForecastCategory.COMMIT.value, 14, "#0EA5E9"),
+    ("Won", OpportunityBehaviour.WON.value, 100, None, 0, "#22C55E"),
+    ("Lost", OpportunityBehaviour.LOST.value, 0, None, 0, "#EF4444"),
+    ("No Decision", OpportunityBehaviour.NO_DECISION.value, 0, None, 0, "#64748B"),
+]
+
+#: (name, outcome, requires a competitor)
+DEFAULT_LOST_REASONS: list[tuple[str, str, bool]] = [
+    ("Lost to competitor", LostOutcome.LOST.value, True),
+    ("Price too high", LostOutcome.LOST.value, False),
+    ("Product / feature gap", LostOutcome.LOST.value, False),
+    ("Relationship with incumbent", LostOutcome.LOST.value, True),
+    ("Did not qualify technically", LostOutcome.LOST.value, False),
+    ("Budget not available", LostOutcome.NO_DECISION.value, False),
+    ("Project deferred / cancelled", LostOutcome.NO_DECISION.value, False),
+    ("No response from customer", LostOutcome.NO_DECISION.value, False),
+]
+
+DEFAULT_CONTACT_DESIGNATIONS = [
+    "Managing Director / CEO", "CIO / CTO", "IT Head", "Purchase Manager",
+    "Finance Head", "Project Manager", "Technical Lead", "Administrator",
+]
+
+#: India's sales zones, by state name. Mapped onto the seeded state master, so
+#: a workspace that renamed or removed a state just gets a smaller zone.
+DEFAULT_TERRITORIES: list[tuple[str, str, list[str]]] = [
+    ("North", "N", [
+        "Delhi", "Haryana", "Punjab", "Himachal Pradesh", "Jammu and Kashmir",
+        "Uttarakhand", "Uttar Pradesh", "Rajasthan",
+    ]),
+    ("West", "W", ["Gujarat", "Maharashtra", "Goa"]),
+    ("Central", "C", ["Madhya Pradesh", "Chhattisgarh"]),
+    ("South", "S", ["Andhra Pradesh", "Karnataka", "Kerala", "Tamil Nadu", "Telangana"]),
+    ("East", "E", ["West Bengal", "Odisha", "Bihar", "Jharkhand", "Assam"]),
+]
+
+
+def _empty(db: Session, model: Any, org_id: uuid.UUID) -> bool:
+    return not db.scalar(select(func.count()).select_from(model).where(model.org_id == org_id))
+
+
+def _ensure_sales_defaults(db: Session, org_id: uuid.UUID) -> None:
+    """Seed the opportunity-side masters. Same per-master rule as the rest."""
+    if _empty(db, CrmOpportunityStage, org_id):
+        for order, (name, behaviour, probability, bucket, stale, colour) in enumerate(
+            DEFAULT_OPPORTUNITY_STAGES
+        ):
+            db.add(CrmOpportunityStage(
+                org_id=org_id, name=name, behaviour=behaviour, probability=probability,
+                forecast_category=bucket, stale_after_days=stale, colour=colour,
+                sort_order=order,
+            ))
+
+    if _empty(db, CrmLostReason, org_id):
+        for order, (name, outcome, needs_competitor) in enumerate(DEFAULT_LOST_REASONS):
+            db.add(CrmLostReason(
+                org_id=org_id, name=name, outcome=outcome,
+                requires_competitor=needs_competitor, sort_order=order,
+            ))
+
+    if _empty(db, CrmContactDesignation, org_id):
+        for order, name in enumerate(DEFAULT_CONTACT_DESIGNATIONS):
+            db.add(CrmContactDesignation(org_id=org_id, name=name, sort_order=order))
+
+    if _empty(db, CrmTerritory, org_id):
+        db.flush()  # the states seeded a moment ago must be visible to the lookup
+        by_name = {
+            name: str(state_id)
+            for state_id, name in db.execute(
+                select(CrmState.id, CrmState.name).where(CrmState.org_id == org_id)
+            )
+        }
+        for order, (name, code, states) in enumerate(DEFAULT_TERRITORIES):
+            db.add(CrmTerritory(
+                org_id=org_id, name=name, code=code, sort_order=order,
+                state_ids=[by_name[state] for state in states if state in by_name],
+            ))
+
+
 def ensure_defaults(db: Session, org_id: uuid.UUID) -> None:
     """Seed each empty master. Idempotent, and never touches a non-empty one.
 
@@ -329,6 +425,7 @@ def ensure_defaults(db: Session, org_id: uuid.UUID) -> None:
         for name, code in DEFAULT_STATES:
             db.add(CrmState(org_id=org_id, country_id=india.id, name=name, gst_code=code))
 
+    _ensure_sales_defaults(db, org_id)
     db.commit()
 
 
@@ -372,11 +469,18 @@ MASTER_MODELS: dict[str, Any] = {
     "industries": CrmIndustry,
     "countries": CrmCountry,
     "states": CrmState,
+    "districts": CrmDistrict,
     "cities": CrmCity,
     "products": CrmProduct,
     "plans": CrmPlan,
     "dispositions": CrmDisposition,
     "visit-types": CrmVisitType,
+    "territories": CrmTerritory,
+    "campaigns": CrmCampaign,
+    "competitors": CrmCompetitor,
+    "contact-designations": CrmContactDesignation,
+    "lost-reasons": CrmLostReason,
+    "opportunity-stages": CrmOpportunityStage,
 }
 
 #: What blocks deleting a master row, and the sentence the refusal uses. A
@@ -384,7 +488,11 @@ MASTER_MODELS: dict[str, Any] = {
 #: created last March has to keep saying which source it came from.
 MASTER_GUARDS: dict[str, list[tuple[Any, Any, str]]] = {
     "statuses": [(CrmLead, CrmLead.status_id, "lead")],
-    "sources": [(CrmLead, CrmLead.source_id, "lead"), (CrmCustomer, CrmCustomer.source_id, "customer")],
+    "sources": [
+        (CrmLead, CrmLead.source_id, "lead"),
+        (CrmCustomer, CrmCustomer.source_id, "customer"),
+        (CrmCampaign, CrmCampaign.source_id, "campaign"),
+    ],
     "industries": [
         (CrmLead, CrmLead.industry_id, "lead"),
         (CrmCustomer, CrmCustomer.industry_id, "customer"),
@@ -399,8 +507,107 @@ MASTER_GUARDS: dict[str, list[tuple[Any, Any, str]]] = {
     "visit-types": [(CrmVisit, CrmVisit.visit_type_id, "visit")],
     "states": [(CrmLead, CrmLead.state_id, "lead"), (CrmCustomer, CrmCustomer.state_id, "customer")],
     "cities": [(CrmLead, CrmLead.city_id, "lead"), (CrmCustomer, CrmCustomer.city_id, "customer")],
+    "districts": [(CrmCity, CrmCity.district_id, "city")],
     "countries": [(CrmCustomer, CrmCustomer.country_id, "customer")],
 }
+
+
+def _refuse(message: str, reason: str = "invalid") -> HTTPException:
+    return HTTPException(
+        http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"reason": reason, "message": message}
+    )
+
+
+def prepare_master(
+    db: Session, org_id: uuid.UUID, kind: str, data: dict[str, Any], row_id: uuid.UUID | None
+) -> dict[str, Any]:
+    """Check a master write against the rest of the workspace.
+
+    The schemas check a row on its own; this checks what only the database
+    knows -- that a referenced state, source or manager is this tenant's, and
+    that a state is not already in another territory. Returns the values to
+    store (territory state ids become strings for the JSON column).
+    """
+    if kind == "territories":
+        wanted = list(dict.fromkeys(data.get("state_ids") or []))
+        if wanted:
+            found = set(db.scalars(
+                select(CrmState.id).where(CrmState.org_id == org_id, CrmState.id.in_(wanted))
+            ))
+            if len(found) != len(wanted):
+                raise _refuse("One of the chosen states is not on this workspace's state list.")
+            taken: dict[str, str] = {}
+            others = select(CrmTerritory).where(CrmTerritory.org_id == org_id)
+            if row_id is not None:
+                others = others.where(CrmTerritory.id != row_id)
+            for other in db.scalars(others):
+                for state_id in other.state_ids or []:
+                    taken[str(state_id)] = other.name
+            clashes = [str(state) for state in wanted if str(state) in taken]
+            if clashes:
+                names = dict(db.execute(
+                    select(CrmState.id, CrmState.name).where(CrmState.id.in_(
+                        [uuid.UUID(c) for c in clashes]
+                    ))
+                ).all())
+                first = uuid.UUID(clashes[0])
+                raise _refuse(
+                    f"{names.get(first, 'A state')} is already in {taken[clashes[0]]}. "
+                    "A state can sit in one territory only, or geography-based "
+                    "assignment would not know where its leads go.",
+                    reason="state_in_other_territory",
+                )
+        data["state_ids"] = [str(state) for state in wanted]
+        manager_id = data.get("manager_id")
+        if manager_id is not None:
+            manager = db.get(User, manager_id)
+            if manager is None or manager.org_id != org_id:
+                raise _refuse("That territory manager is not in this workspace.")
+
+    if kind in ("districts", "cities") and data.get("state_id") is not None:
+        state = db.get(CrmState, data["state_id"])
+        if state is None or state.org_id != org_id:
+            raise _refuse("That state is not on this workspace's state list.")
+
+    if kind == "cities" and data.get("district_id") is not None:
+        district = db.get(CrmDistrict, data["district_id"])
+        if district is None or district.org_id != org_id:
+            raise _refuse("That district is not on this workspace's district list.")
+        if district.state_id != data.get("state_id"):
+            raise _refuse(
+                f"{district.name} is a district of another state. Pick the city's own "
+                "state, or a district inside it.",
+                reason="district_state_mismatch",
+            )
+
+    if kind == "campaigns" and data.get("source_id") is not None:
+        source = db.get(CrmLeadSource, data["source_id"])
+        if source is None or source.org_id != org_id:
+            raise _refuse("That lead source is not on this workspace's list.")
+
+    if kind == "opportunity-stages":
+        # The pipeline needs somewhere to put a new opportunity. Switching off
+        # or re-purposing the last open stage would leave conversion with no
+        # stage to land in, so it is refused here rather than at conversion.
+        becomes_closed = data.get("behaviour") != OpportunityBehaviour.OPEN.value
+        switched_off = data.get("is_active") is False
+        if becomes_closed or switched_off:
+            others_open = select(func.count()).select_from(CrmOpportunityStage).where(
+                CrmOpportunityStage.org_id == org_id,
+                CrmOpportunityStage.behaviour == OpportunityBehaviour.OPEN.value,
+                CrmOpportunityStage.is_active.is_(True),
+            )
+            if row_id is not None:
+                current = db.get(CrmOpportunityStage, row_id)
+                if current is not None and current.behaviour == OpportunityBehaviour.OPEN.value:
+                    others_open = others_open.where(CrmOpportunityStage.id != row_id)
+                    if not db.scalar(others_open):
+                        raise _refuse(
+                            "This is the last open stage. Add another open stage before "
+                            "closing or switching this one off.",
+                            reason="last_open_stage",
+                        )
+    return data
 
 
 def master_model(kind: str) -> Any:
@@ -423,6 +630,9 @@ def get_master(db: Session, org_id: uuid.UUID, kind: str, row_id: uuid.UUID) -> 
 def delete_master(db: Session, org_id: uuid.UUID, kind: str, row_id: uuid.UUID) -> None:
     """Delete a master row, or refuse with what is holding it."""
     row = get_master(db, org_id, kind, row_id)
+    if kind == "opportunity-stages":
+        # Same rule as switching it off: the last open stage has to stay.
+        prepare_master(db, org_id, kind, {"behaviour": "open", "is_active": False}, row_id)
     for model, column, noun in MASTER_GUARDS.get(kind, []):
         used = db.scalar(
             select(func.count()).select_from(model).where(

@@ -4,7 +4,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { dateTime } from '../../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../../components/ui'
 import { IconCard } from '../../../components/Icons'
-import { CATEGORY_LABEL, errorText } from './Assets'
+import { categoryLabel, errorText } from './assetLib'
 
 /**
  * One row of `GET /assets/my`.
@@ -19,6 +19,7 @@ interface MyAsset {
   assignment_id: string
   asset_id: string
   asset_tag: string
+  name: string | null
   category: string
   serial_number: string | null
   assigned_at: string
@@ -64,7 +65,8 @@ export default function MyAssets() {
               <div className="as-my-head">
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="as-tag">{row.asset_tag}</div>
-                  <div className="as-cat">{CATEGORY_LABEL[row.category] ?? row.category}</div>
+                  {row.name && <div className="as-name">{row.name}</div>}
+                  <div className="as-cat">{categoryLabel(row.category)}</div>
                 </div>
                 <span className="as-pill as-assigned">
                   <span className="as-pill-dot" style={{ background: 'currentColor' }} />

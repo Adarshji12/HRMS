@@ -18,6 +18,9 @@
 
 .pnl-shell { display: flex; flex-direction: column; min-width: 0; }
 
+/* CRM keeps its page navigation in the sidebar so the full list stays together. */
+.pnl-crm-shell > .pnl-bar { display: none; }
+
 /* -------------------------------------------------------------- the bar -- */
 
 .pnl-bar {

@@ -28,10 +28,13 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -47,11 +50,55 @@ if TYPE_CHECKING:
 
 
 class AssetCategory(str, enum.Enum):
+    """The categories the console offers out of the box.
+
+    Not a closed set: ``Asset.category`` accepts any lower-case slug, because
+    "anything the company owns" includes software licences, domains, vehicles
+    and insurance policies that no fixed list anticipates. These are the
+    suggestions, and the value every unrecognised slug reads back as.
+    """
+
     LAPTOP = "laptop"
+    DESKTOP = "desktop"
     MONITOR = "monitor"
+    MOBILE = "mobile"
+    TABLET = "tablet"
     SIM = "sim"
     ID_CARD = "id_card"
+    PRINTER = "printer"
+    NETWORKING = "networking"
+    FURNITURE = "furniture"
+    VEHICLE = "vehicle"
+    MACHINERY = "machinery"
+    SOFTWARE_LICENSE = "software_license"
+    SUBSCRIPTION = "subscription"
+    DOMAIN_HOSTING = "domain_hosting"
+    INSURANCE = "insurance"
+    AMC = "amc"
     OTHER = "other"
+
+
+class RenewalCycle(str, enum.Enum):
+    """How far one renewal pushes the next due date.
+
+    ``none`` still allows a renewal date — a one-off certificate expiry — but
+    renewing it asks for the next date explicitly instead of computing one.
+    """
+
+    NONE = "none"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    HALF_YEARLY = "half_yearly"
+    YEARLY = "yearly"
+    TWO_YEARS = "two_years"
+    THREE_YEARS = "three_years"
+
+    @property
+    def months(self) -> int:
+        return {
+            "none": 0, "monthly": 1, "quarterly": 3, "half_yearly": 6,
+            "yearly": 12, "two_years": 24, "three_years": 36,
+        }[self.value]
 
 
 class AssetStatus(str, enum.Enum):
@@ -93,14 +140,42 @@ class Asset(UUIDMixin, TimestampMixin, Base):
     # one must not require renaming every sticker.
     asset_tag: Mapped[str] = mapped_column(String(64), nullable=False)
     category: Mapped[str] = mapped_column(
-        String(20), default=AssetCategory.OTHER.value, nullable=False
+        String(40), default=AssetCategory.OTHER.value, nullable=False
     )
+    # What a person calls it ("Dell Latitude 5420", "Microsoft 365 E3"). The tag
+    # is the sticker; this is the line a report reader recognises.
+    name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Nullable because an ID card or a desk chair genuinely has no serial, and
     # forcing a placeholder value would poison de-duplication later.
     serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # A procurement date, not an instant: the invoice says a day, and storing
     # it as a timestamp would invent a timezone the finance team never gave us.
     purchase_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    invoice_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Integer paise, like every other amount in this codebase.
+    purchase_cost_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    warranty_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Renewal tracking. ``renewal_date`` is the *next* due date and NULL means
+    # the asset is not tracked for renewal at all; renewing it records a row in
+    # ``asset_renewals`` and moves this date forward.
+    renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    renewal_cycle: Mapped[str] = mapped_column(
+        String(20), default=RenewalCycle.NONE.value, server_default="none", nullable=False
+    )
+    renewal_cost_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # How many days ahead of the due date the asset counts as "due soon".
+    reminder_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30", nullable=False
+    )
+    auto_renew: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(
         String(20), default=AssetStatus.AVAILABLE.value, nullable=False
@@ -114,6 +189,12 @@ class Asset(UUIDMixin, TimestampMixin, Base):
         back_populates="asset",
         cascade="all, delete-orphan",
         order_by="AssetAssignment.assigned_at.desc()",
+    )
+
+    renewals: Mapped[list["AssetRenewal"]] = relationship(
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        order_by="AssetRenewal.renewed_on.desc()",
     )
 
     @property
@@ -222,3 +303,32 @@ class AssetAssignment(UUIDMixin, TimestampMixin, Base):
     @property
     def is_open(self) -> bool:
         return self.returned_at is None
+
+
+class AssetRenewal(UUIDMixin, TimestampMixin, Base):
+    """One renewal of an asset: paid on a day, moved the due date from X to Y.
+
+    Append-only, like the custody ledger: "what did we pay for the antivirus
+    licence last year" is answered here, not reconstructed from audit logs.
+    """
+
+    __tablename__ = "asset_renewals"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    renewed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    previous_due: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # NULL when the renewal closed tracking (e.g. the subscription was ended).
+    next_due: Mapped[date | None] = mapped_column(Date, nullable=True)
+    cost_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    renewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    asset: Mapped["Asset"] = relationship(back_populates="renewals")

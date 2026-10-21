@@ -12,13 +12,77 @@
    which is what makes the same markup work rotated, at any zoom, and inside a
    container that scrolls.
 
-   Everything is a token. The one colour with any weight in it is --baseline,
-   the same hairline the charts elsewhere in the console draw their axes with,
-   because a connector is exactly that kind of line: structure, not data. */
+   Everything is a token. Connectors are --oc-line, a light tint of the brand
+   mixed into the border colour: strong enough to read the shape at a glance,
+   faint enough that it stays structure rather than data. */
 
 .hier { display: flex; flex-direction: column; }
 
 .hier-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.hier-actions .btn { height: 38px; padding: 0 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------------------------------------------------------------- hero --- */
+
+.hier-hero {
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 22px 24px 22px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  background:
+    radial-gradient(110% 160% at 0% 0%, var(--brand-soft) 0%, transparent 55%),
+    var(--surface-1);
+  overflow: hidden;
+}
+.hier-hero::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand); }
+.hier-hero-text { min-width: 0; flex: 1 1 380px; }
+.hier-eyebrow {
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--action, var(--brand));
+}
+.hier-title { margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
+.hier-sub { margin: 6px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); max-width: 70ch; }
+
+/* ----------------------------------------------------------------- kpis --- */
+
+.hier-kpis {
+  display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 12px;
+  margin-bottom: 16px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px;
+}
+.hier-kpi {
+  --tone: var(--text-muted);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px 13px 18px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.hier-kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
+.hier-kpi.tone-brand { --tone: var(--brand); }
+.hier-kpi.tone-idle { --tone: var(--text-secondary); }
+.hier-kpi.tone-good { --tone: var(--status-good); }
+.hier-kpi.tone-warn { --tone: var(--status-warn); }
+.hier-kpi-label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-secondary); white-space: nowrap;
+}
+.hier-kpi-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+.hier-kpi-value {
+  font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+.hier-kpi-hint { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .hier-hero { padding: 18px 16px 18px 20px; }
+  .hier-title { font-size: 21px; }
+  .hier-kpis { grid-template-columns: repeat(5, minmax(132px, 1fr)); gap: 8px; }
+}
 
 .hier-work {
   display: grid;
@@ -140,6 +204,7 @@
   display: flex; align-items: flex-start; justify-content: center;
   gap: var(--space-6);
   width: max-content; min-width: 100%;
+  --oc-line: color-mix(in srgb, var(--brand) 38%, var(--border));
   zoom: var(--oc-zoom, 1);
 }
 
@@ -149,23 +214,23 @@
 /* The stub from a card (or its count chip) down to the sibling bar. */
 .oc-children::before {
   content: ''; position: absolute; z-index: 0;
-  top: -10px; left: 50%; width: 1px; height: 10px;
-  background: var(--baseline);
+  top: -10px; left: calc(50% - 1px); width: 2px; height: 10px;
+  background: var(--oc-line);
 }
 
 /* Every child carries its own half of the rank's horizontal bar plus the stub
    that drops from it. Trimming the two ends to half width is what stops the bar
    overhanging the outermost cards. */
-.oc-children > .oc-branch { padding: 22px var(--space-2) 0; }
+.oc-children > .oc-branch { padding: 22px var(--space-3) 0; }
 .oc-children > .oc-branch::before {
   content: ''; position: absolute;
-  top: 0; left: 50%; width: 1px; height: 22px;
-  background: var(--baseline);
+  top: 0; left: calc(50% - 1px); width: 2px; height: 22px;
+  background: var(--oc-line);
 }
 .oc-children > .oc-branch::after {
   content: ''; position: absolute;
-  top: 0; left: 0; right: 0; height: 1px;
-  background: var(--baseline);
+  top: 0; left: 0; right: 0; height: 2px;
+  background: var(--oc-line);
 }
 .oc-children > .oc-branch:first-child::after { left: 50%; }
 .oc-children > .oc-branch:last-child::after { right: 50%; }
@@ -179,73 +244,105 @@
 .oc-horizontal .oc-branch { flex-direction: row; align-items: center; }
 .oc-horizontal .oc-children { flex-direction: column; align-items: flex-start; }
 .oc-horizontal .oc-children::before {
-  top: 50%; left: -10px; width: 10px; height: 1px;
+  top: calc(50% - 1px); left: -10px; width: 10px; height: 2px;
 }
 .oc-horizontal .oc-children > .oc-branch { padding: var(--space-2) 0 var(--space-2) 22px; }
 .oc-horizontal .oc-children > .oc-branch::before {
-  top: 50%; left: 0; width: 22px; height: 1px;
+  top: calc(50% - 1px); left: 0; width: 22px; height: 2px;
 }
 .oc-horizontal .oc-children > .oc-branch::after {
-  top: 0; bottom: 0; left: 0; right: auto; width: 1px; height: auto;
+  top: 0; bottom: 0; left: 0; right: auto; width: 2px; height: auto;
 }
 .oc-horizontal .oc-children > .oc-branch:first-child::after { top: 50%; left: 0; }
 .oc-horizontal .oc-children > .oc-branch:last-child::after { bottom: 50%; }
 
 /* ----------------------------------------------------------------- card --- */
 
+/* A person, stacked: avatar, name, title, tags, and — for a manager — a foot
+   with their span. The coloured cap is the card's one piece of colour and it
+   means "a person in the chart", never a status. */
 .oc-card {
   position: relative; z-index: 1;
-  display: flex; align-items: center; gap: var(--space-2);
-  width: 198px;
-  padding: var(--space-3);
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  width: 216px;
+  padding: 18px 14px 14px;
   border: 1px solid var(--border);
-  /* The left rail is the card's one piece of colour and it means "this is a
-     person in the chart", nothing more — it is not a status and never varies
-     by one. */
-  border-left: 3px solid var(--brand);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   background: var(--surface-1);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px -6px rgba(0, 0, 0, 0.12);
   cursor: grab;
+  overflow: visible;
   transition:
     border-color var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
     opacity var(--duration-fast) var(--ease-standard);
 }
+.oc-card::before {
+  content: ''; position: absolute; left: -1px; right: -1px; top: -1px; height: 4px;
+  border-radius: 14px 14px 0 0; background: var(--brand);
+}
 .oc-card:active { cursor: grabbing; }
-.oc-card:hover { box-shadow: var(--shadow); }
+.oc-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 28px -10px rgba(0, 0, 0, 0.22);
+}
 
-.oc-body { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.oc-avatar { display: inline-flex; margin-bottom: 10px; border-radius: 50%; box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 5px var(--brand-soft); }
+.oc-avatar .avatar { width: 48px; height: 48px; font-size: 16px; }
+
+.oc-body { display: flex; flex-direction: column; align-items: center; min-width: 0; width: 100%; gap: 2px; }
 .oc-name {
-  font-size: var(--text-md); font-weight: var(--weight-semibold);
+  max-width: 100%;
+  font-size: 14px; font-weight: 650; letter-spacing: -0.005em;
   color: var(--text-primary); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.oc-name:hover { text-decoration: underline; }
-.oc-role, .oc-code {
-  font-size: var(--text-xs); color: var(--text-muted);
+.oc-name:hover { color: var(--brand-ink, var(--brand)); text-decoration: underline; }
+.oc-role {
+  max-width: 100%;
+  font-size: 12px; color: var(--text-secondary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.oc-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; max-width: 100%; }
+.oc-tag {
+  max-width: 100%;
+  padding: 1px 8px; border-radius: var(--radius-pill);
+  background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+  font-size: 10.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.oc-tag-code { background: var(--surface-2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.oc-foot {
+  display: flex; justify-content: center; gap: 14px; width: calc(100% + 28px);
+  margin: 12px -14px -14px; padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 14px 14px;
+  background: var(--surface-2);
+  font-size: 11.5px; color: var(--text-muted);
+}
+.oc-foot strong { color: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 2px; }
 
 /* A word, not a tint. "Inactive" is a fact about the person and the card is
    already carrying a colour that means something else. */
 .oc-flag {
-  position: absolute; top: -7px; right: 8px;
+  position: absolute; top: 10px; left: 10px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  font-size: var(--text-xs); color: var(--text-muted);
+  font-size: 10.5px; font-weight: 600; color: var(--text-muted);
 }
 .oc-card.is-inactive { opacity: 0.72; }
+.oc-card.is-inactive::before { background: var(--border-strong); }
 
-/* Search: the hit is lifted, everything off the path recedes. Both, rather than
-   only the highlight — on a chart of two hundred cards a single tinted card is
-   still a needle in a haystack unless the haystack steps back. */
+/* Search: the hit is lifted, everything off the path recedes. */
 .oc-card.is-hit {
   border-color: var(--brand);
   background: var(--brand-soft);
-  box-shadow: var(--shadow-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent), var(--shadow-brand, var(--shadow));
 }
 .oc-card.is-dim { opacity: 0.35; }
 
@@ -294,8 +391,8 @@
 .oc-count {
   position: relative; z-index: 1;
   margin-top: var(--space-2);
-  min-width: 22px; height: 20px; padding: 0 6px;
-  border: 1px solid var(--border);
+  min-width: 26px; height: 22px; padding: 0 8px;
+  border: 1.5px solid var(--oc-line);
   border-radius: var(--radius-pill);
   background: var(--surface-1);
   color: var(--text-muted);
@@ -305,8 +402,8 @@
 }
 .oc-count::before {
   content: ''; position: absolute;
-  top: -9px; left: 50%; width: 1px; height: 9px;
-  background: var(--baseline);
+  top: -9px; left: calc(50% - 1px); width: 2px; height: 9px;
+  background: var(--oc-line);
 }
 .oc-count:hover { border-color: var(--brand); color: var(--brand-ink); }
 .oc-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -318,12 +415,24 @@
   color: var(--brand-ink);
 }
 .oc-horizontal .oc-count { margin: 0 0 0 var(--space-2); }
-.oc-horizontal .oc-count::before { top: 50%; left: -9px; width: 9px; height: 1px; }
+.oc-horizontal .oc-count::before { top: calc(50% - 1px); left: -9px; width: 9px; height: 2px; }
 
 /* ----------------------------------------------------------- side panel --- */
 
 .hier-side { display: flex; flex-direction: column; gap: var(--space-3); }
-.hier-side-head { display: flex; align-items: center; justify-content: space-between; }
+.hier-side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hier-side-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.hier-side-sub { font-size: 12px; color: var(--text-muted); }
+.hier-side-count {
+  min-width: 32px; height: 28px; padding: 0 10px; border-radius: var(--radius-pill);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--status-good) 14%, transparent);
+  color: var(--success-text, var(--status-good));
+}
+.hier-side-count.is-warn { background: var(--warn-bg); color: var(--warn-ink); }
+.hier-seg-text { width: auto; padding: 0 10px; font: inherit; font-size: 12px; font-weight: 600; }
+
 
 .hier-hint {
   margin: 0; padding: var(--space-3);

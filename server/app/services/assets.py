@@ -44,8 +44,9 @@ the register depend on features it is meant to outlive.
 
 from __future__ import annotations
 
+import calendar
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 from fastapi import status as http_status
@@ -54,15 +55,32 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import audit
-from app.models import Asset, AssetAssignment, AssetStatus, User
+from app.models import (
+    Asset,
+    AssetAssignment,
+    AssetRenewal,
+    AssetStatus,
+    RenewalCycle,
+    User,
+)
 from app.schemas.assets import (
     AssetAssignmentIn,
     AssetAssignmentOut,
+    AssetDashboardOut,
     AssetIn,
     AssetOut,
+    AssetRenewalOut,
+    AssetRenewIn,
     AssetReturnIn,
+    CountRow,
+    HolderRow,
     MyAssetOut,
 )
+
+# A renewal further out than this is "ok"; inside it but outside the asset's
+# own reminder window it is "upcoming".
+UPCOMING_WINDOW_DAYS = 90
+WARRANTY_WINDOW_DAYS = 30
 
 
 def _aware(value: datetime) -> datetime:
@@ -141,8 +159,49 @@ def _open_rows_by_asset(
 # --------------------------------------------------------------------------- #
 
 
+def _today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def renewal_state(asset: Asset, today: date | None = None) -> tuple[str, int | None]:
+    """``(state, days_to_due)`` for an asset's next renewal.
+
+    A retired asset is never due: it has been written off, and nagging about
+    renewing something nobody uses is how a dashboard teaches people to ignore it.
+    """
+    if asset.renewal_date is None or asset.status_enum is AssetStatus.RETIRED:
+        return "none", None
+    days = (asset.renewal_date - (today or _today())).days
+    if days < 0:
+        return "overdue", days
+    if days <= (asset.reminder_days or 0):
+        return "due", days
+    if days <= UPCOMING_WINDOW_DAYS:
+        return "upcoming", days
+    return "ok", days
+
+
+def warranty_state(asset: Asset, today: date | None = None) -> str:
+    if asset.warranty_expiry is None or asset.status_enum is AssetStatus.RETIRED:
+        return "none"
+    days = (asset.warranty_expiry - (today or _today())).days
+    if days < 0:
+        return "expired"
+    if days <= WARRANTY_WINDOW_DAYS:
+        return "expiring"
+    return "ok"
+
+
+def add_months(value: date, months: int) -> date:
+    """Calendar-month arithmetic, clamped: 31 Jan + 1 month is 28/29 Feb."""
+    total = value.month - 1 + months
+    year, month = value.year + total // 12, total % 12 + 1
+    return date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
+
+
 def _asset_out(asset: Asset, held: tuple[AssetAssignment, str | None] | None) -> AssetOut:
     row, holder_name = held if held else (None, None)
+    state, days = renewal_state(asset)
     return AssetOut(
         id=asset.id,
         asset_tag=asset.asset_tag,
@@ -151,6 +210,23 @@ def _asset_out(asset: Asset, held: tuple[AssetAssignment, str | None] | None) ->
         purchase_date=asset.purchase_date,
         status=asset.status,
         created_at=asset.created_at,
+        name=asset.name,
+        brand=asset.brand,
+        model_name=asset.model_name,
+        vendor=asset.vendor,
+        invoice_number=asset.invoice_number,
+        purchase_cost_paise=asset.purchase_cost_paise,
+        location=asset.location,
+        warranty_expiry=asset.warranty_expiry,
+        renewal_date=asset.renewal_date,
+        renewal_cycle=asset.renewal_cycle or "none",
+        renewal_cost_paise=asset.renewal_cost_paise,
+        reminder_days=asset.reminder_days if asset.reminder_days is not None else 30,
+        auto_renew=bool(asset.auto_renew),
+        notes=asset.notes,
+        renewal_state=state,
+        days_to_renewal=days,
+        warranty_state=warranty_state(asset),
         current_holder_id=row.user_id if row else None,
         current_holder_name=holder_name,
         current_assignment_id=row.id if row else None,
@@ -191,6 +267,7 @@ def _my_asset_out(row: AssetAssignment, asset: Asset) -> MyAssetOut:
         assignment_id=row.id,
         asset_id=asset.id,
         asset_tag=asset.asset_tag,
+        name=asset.name,
         category=asset.category,
         serial_number=asset.serial_number,
         assigned_at=row.assigned_at,
@@ -261,6 +338,7 @@ def create_asset(
         # can never be born claiming a custody it has no ledger row for.
         status=payload.status,
     )
+    _apply_details(asset, payload)
     db.add(asset)
     try:
         db.flush()
@@ -276,6 +354,29 @@ def create_asset(
     db.commit()
     db.refresh(asset)
     return _asset_out(asset, None)
+
+
+def _clean(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+def _apply_details(asset: Asset, payload: AssetIn) -> None:
+    """Copy the descriptive and renewal fields; shared by create and edit."""
+    asset.name = _clean(payload.name)
+    asset.brand = _clean(payload.brand)
+    asset.model_name = _clean(payload.model_name)
+    asset.vendor = _clean(payload.vendor)
+    asset.invoice_number = _clean(payload.invoice_number)
+    asset.purchase_cost_paise = payload.purchase_cost_paise
+    asset.location = _clean(payload.location)
+    asset.warranty_expiry = payload.warranty_expiry
+    asset.renewal_date = payload.renewal_date
+    asset.renewal_cycle = payload.renewal_cycle
+    asset.renewal_cost_paise = payload.renewal_cost_paise
+    asset.reminder_days = payload.reminder_days
+    asset.auto_renew = payload.auto_renew
+    asset.notes = _clean(payload.notes)
 
 
 def update_asset(
@@ -316,6 +417,7 @@ def update_asset(
     asset.category = payload.category
     asset.serial_number = payload.serial_number or None
     asset.purchase_date = payload.purchase_date
+    _apply_details(asset, payload)
     held = _open_rows_by_asset(db, org_id, [asset.id]).get(asset.id)
     if held is None:
         asset.status = payload.status
@@ -605,3 +707,207 @@ def my_assets(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> list[MyAsse
         .order_by(AssetAssignment.assigned_at.desc())
     ).all()
     return [_my_asset_out(row, asset) for row, asset in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Renewals
+# --------------------------------------------------------------------------- #
+
+
+def _renewal_out(
+    row: AssetRenewal, *, asset: Asset | None, by_name: str | None
+) -> AssetRenewalOut:
+    return AssetRenewalOut(
+        id=row.id,
+        asset_id=row.asset_id,
+        renewed_on=row.renewed_on,
+        previous_due=row.previous_due,
+        next_due=row.next_due,
+        cost_paise=row.cost_paise,
+        reference=row.reference,
+        note=row.note,
+        renewed_by_name=by_name,
+        asset_tag=asset.asset_tag if asset else None,
+        asset_name=asset.name if asset else None,
+        created_at=row.created_at,
+    )
+
+
+def renew_asset(
+    db: Session,
+    org_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    payload: AssetRenewIn,
+    *,
+    actor: User,
+    request: Request | None = None,
+) -> AssetOut:
+    """Record a renewal and move the asset's due date forward.
+
+    The next due date is, in order: the one given; else one cycle on from the
+    previous due date (from the renewal day when there was none); else, for a
+    cycle of ``none``, the caller must say — guessing a date for a one-off
+    expiry would be inventing a contract term.
+    """
+    asset = get_asset(db, org_id, asset_id)
+    if asset.status_enum is AssetStatus.RETIRED:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT, f"{asset.asset_tag} is retired and cannot be renewed"
+        )
+    renewed_on = payload.renewed_on or _today()
+    previous = asset.renewal_date
+
+    if payload.stop_tracking:
+        next_due = None
+    elif payload.next_due is not None:
+        next_due = payload.next_due
+    else:
+        try:
+            months = RenewalCycle(asset.renewal_cycle).months
+        except ValueError:
+            months = 0
+        if months == 0:
+            raise HTTPException(
+                http_status.HTTP_400_BAD_REQUEST,
+                "This asset has no renewal cycle, so give the next due date",
+            )
+        next_due = add_months(previous or renewed_on, months)
+    if next_due is not None and next_due <= renewed_on:
+        raise HTTPException(
+            http_status.HTTP_400_BAD_REQUEST, "The next due date must be after the renewal date"
+        )
+
+    cost = payload.cost_paise if payload.cost_paise is not None else asset.renewal_cost_paise
+    row = AssetRenewal(
+        org_id=org_id,
+        asset_id=asset.id,
+        renewed_on=renewed_on,
+        previous_due=previous,
+        next_due=next_due,
+        cost_paise=cost,
+        reference=_clean(payload.reference),
+        note=_clean(payload.note),
+        renewed_by_id=actor.id,
+    )
+    db.add(row)
+    asset.renewal_date = next_due
+    if payload.cost_paise is not None:
+        asset.renewal_cost_paise = payload.cost_paise
+
+    audit(db, org_id=org_id, actor=actor, action="asset.renewed", request=request,
+          target_type="asset", target_id=str(asset.id),
+          detail={"asset_tag": asset.asset_tag,
+                  "previous_due": previous.isoformat() if previous else None,
+                  "next_due": next_due.isoformat() if next_due else None})
+    db.commit()
+    db.refresh(asset)
+    return _asset_out(asset, _open_rows_by_asset(db, org_id, [asset.id]).get(asset.id))
+
+
+def renewal_history(
+    db: Session, org_id: uuid.UUID, asset_id: uuid.UUID | None = None, *, limit: int | None = None
+) -> list[AssetRenewalOut]:
+    """Renewals newest first — for one asset, or across the register."""
+    stmt = (
+        select(AssetRenewal, Asset, User.full_name)
+        .join(Asset, Asset.id == AssetRenewal.asset_id)
+        .outerjoin(User, User.id == AssetRenewal.renewed_by_id)
+        .where(AssetRenewal.org_id == org_id)
+        .order_by(AssetRenewal.renewed_on.desc(), AssetRenewal.created_at.desc())
+    )
+    if asset_id is not None:
+        get_asset(db, org_id, asset_id)
+        stmt = stmt.where(AssetRenewal.asset_id == asset_id)
+    if limit:
+        stmt = stmt.limit(limit)
+    return [_renewal_out(r, asset=a, by_name=n) for r, a, n in db.execute(stmt).all()]
+
+
+# --------------------------------------------------------------------------- #
+# Dashboard
+# --------------------------------------------------------------------------- #
+
+
+def dashboard(db: Session, org_id: uuid.UUID) -> AssetDashboardOut:
+    """Counts, renewals and holders for the asset dashboard, in one pass.
+
+    Computed in Python over the register rather than with a dozen aggregate
+    queries: a register is hundreds of rows, and the renewal state has to be
+    derived per row against each asset's own reminder window anyway.
+    """
+    rows = list_assets(db, org_id)
+    today = _today()
+    horizon = today + timedelta(days=UPCOMING_WINDOW_DAYS)
+
+    by_status: dict[str, int] = {}
+    by_category: dict[str, CountRow] = {}
+    holders: dict[uuid.UUID, HolderRow] = {}
+    total_value = 0
+    overdue = due = upcoming = tracked = 0
+    cost_due = cost_90 = 0
+    w_expiring = w_expired = 0
+
+    for a in rows:
+        by_status[a.status] = by_status.get(a.status, 0) + 1
+        cat = by_category.setdefault(a.category, CountRow(key=a.category, count=0))
+        cat.count += 1
+        if a.status != AssetStatus.RETIRED.value:
+            total_value += a.purchase_cost_paise or 0
+            cat.value_paise += a.purchase_cost_paise or 0
+        if a.current_holder_id is not None:
+            h = holders.setdefault(
+                a.current_holder_id,
+                HolderRow(user_id=a.current_holder_id, name=a.current_holder_name or "Unknown",
+                          count=0),
+            )
+            h.count += 1
+            h.value_paise += a.purchase_cost_paise or 0
+        if a.renewal_state != "none":
+            tracked += 1
+        if a.renewal_state == "overdue":
+            overdue += 1
+            cost_due += a.renewal_cost_paise or 0
+        elif a.renewal_state == "due":
+            due += 1
+            cost_due += a.renewal_cost_paise or 0
+        elif a.renewal_state == "upcoming":
+            upcoming += 1
+        if a.renewal_state != "none" and a.renewal_date and a.renewal_date <= horizon:
+            cost_90 += a.renewal_cost_paise or 0
+        if a.warranty_state == "expiring":
+            w_expiring += 1
+        elif a.warranty_state == "expired":
+            w_expired += 1
+
+    if holders:
+        emails = dict(db.execute(
+            select(User.id, User.email).where(User.id.in_(list(holders)))
+        ).all())
+        for uid, h in holders.items():
+            h.email = emails.get(uid)
+
+    attention = sorted(
+        (a for a in rows if a.renewal_state in ("overdue", "due", "upcoming")),
+        key=lambda a: a.renewal_date or today,
+    )[:12]
+
+    return AssetDashboardOut(
+        total=len(rows),
+        active=len(rows) - by_status.get(AssetStatus.RETIRED.value, 0),
+        total_value_paise=total_value,
+        by_status=by_status,
+        by_category=sorted(by_category.values(), key=lambda c: -c.count),
+        assigned=by_status.get(AssetStatus.ASSIGNED.value, 0),
+        holders=len(holders),
+        renewals_tracked=tracked,
+        renewals_overdue=overdue,
+        renewals_due=due,
+        renewals_upcoming=upcoming,
+        renewal_cost_due_paise=cost_due,
+        renewal_cost_90d_paise=cost_90,
+        warranty_expiring=w_expiring,
+        warranty_expired=w_expired,
+        attention=attention,
+        top_holders=sorted(holders.values(), key=lambda h: (-h.count, h.name))[:10],
+        recent_renewals=renewal_history(db, org_id, limit=8),
+    )

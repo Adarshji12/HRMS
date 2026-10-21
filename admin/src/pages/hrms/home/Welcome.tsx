@@ -88,11 +88,9 @@ export function greeting(at: Date = new Date()): string {
  */
 const HELP_LINKS: Array<{ to: string; label: string }> = [
   { to: '/leave', label: 'Holiday calendar' },
-  { to: '/directory', label: 'Company directory' },
   { to: '/hierarchy', label: 'Who reports to whom' },
   { to: '/noticeboard', label: 'Announcements' },
   { to: '/helpdesk', label: 'Raise a ticket' },
-  { to: '/my-letters', label: 'My letters' },
   { to: '/payslips', label: 'My payslips' },
   { to: '/my-assets', label: 'Assets issued to me' },
 ]

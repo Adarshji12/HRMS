@@ -52,10 +52,12 @@ const PROFILE_FIELDS = [
   'uan', 'pf_number', 'esi_number', 'bank_name', 'bank_branch', 'bank_ifsc',
   'bank_account_name',
   'employment_type', 'work_location', 'probation_months', 'notice_period_days',
+  'father_name', 'attendance_type',
 ] as const
 
 const GENDERS = ['female', 'male', 'other', 'undisclosed'] as const
 const MARITAL = ['single', 'married', 'divorced', 'widowed', 'other'] as const
+const ATTENDANCE = ['office', 'hybrid', 'remote', 'field'] as const
 const EMPLOYMENT = ['full_time', 'part_time', 'contract', 'intern', 'consultant'] as const
 const CONFIRMATION = ['not_applicable', 'probation', 'confirmed', 'extended', 'terminated'] as const
 
@@ -292,6 +294,7 @@ function PersonalSection({
       marital_status: profile.marital_status ?? '',
       blood_group: profile.blood_group ?? '',
       nationality: profile.nationality ?? '',
+      father_name: profile.father_name ?? '',
       personal_email: profile.personal_email ?? '',
       alternate_phone: profile.alternate_phone ?? '',
       current_address: profile.current_address ?? '',
@@ -344,6 +347,10 @@ function PersonalSection({
       <Field label="Nationality">
         <input value={state.draft.nationality} disabled={ro}
                onChange={(e) => state.set('nationality', e.target.value)} />
+      </Field>
+      <Field label="Father’s / spouse’s name">
+        <input value={state.draft.father_name} disabled={ro} maxLength={160}
+               onChange={(e) => state.set('father_name', e.target.value)} />
       </Field>
       <Field label="Personal email" hint="Reachable after the work address stops working.">
         <input type="email" value={state.draft.personal_email} disabled={ro}
@@ -564,6 +571,8 @@ function EmploymentSection({
     {
       employment_type: profile.employment_type ?? '',
       work_location: profile.work_location ?? '',
+      attendance_type: profile.attendance_type ?? '',
+      grade: profile.grade ?? '',
       probation_months: profile.probation_months ?? ('' as number | ''),
       notice_period_days: profile.notice_period_days ?? ('' as number | ''),
       probation_end_on: profile.probation_end_on ?? '',
@@ -580,7 +589,8 @@ function EmploymentSection({
       const cleaned = Object.fromEntries(
         Object.entries(body).map(([key, value]) => [
           key,
-          value === '' && NUMERIC_EMPLOYMENT_FIELDS.has(key) ? null : value,
+          // attendance_type is an enum, so '' would 422 the same way.
+          value === '' && (NUMERIC_EMPLOYMENT_FIELDS.has(key) || key === 'attendance_type') ? null : value,
         ]),
       )
       await api.patch(`/people/${profile.user_id}/employment`, cleaned)
@@ -606,6 +616,17 @@ function EmploymentSection({
       <Field label="Work location">
         <input value={state.draft.work_location} disabled={ro}
                onChange={(e) => state.set('work_location', e.target.value)} />
+      </Field>
+      <Field label="Attendance type">
+        <select value={state.draft.attendance_type} disabled={ro}
+                onChange={(e) => state.set('attendance_type', e.target.value)}>
+          <option value="">—</option>
+          {ATTENDANCE.map((t) => <option key={t} value={t}>{title(t)}</option>)}
+        </select>
+      </Field>
+      <Field label="Grade / band">
+        <input value={state.draft.grade} disabled={ro} maxLength={40}
+               onChange={(e) => state.set('grade', e.target.value)} />
       </Field>
       <Field label="Probation (months)">
         <input type="number" min={0} max={36} value={state.draft.probation_months} disabled={ro}

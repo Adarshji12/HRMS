@@ -27,8 +27,11 @@ from app.api.deps import AdminUser, CurrentUser, DbSession, deny_unless
 from app.schemas.assets import (
     AssetAssignmentIn,
     AssetAssignmentOut,
+    AssetDashboardOut,
     AssetIn,
     AssetOut,
+    AssetRenewalOut,
+    AssetRenewIn,
     AssetReturnIn,
     MyAssetOut,
 )
@@ -104,6 +107,19 @@ def assign_asset(
     return svc.assign_asset(db, admin.org_id, payload, actor=admin, request=request)
 
 
+@router.get("/dashboard", response_model=AssetDashboardOut)
+def dashboard(admin: AdminUser, db: DbSession) -> AssetDashboardOut:
+    deny_unless(admin, "can_manage_assets", _MANAGE)
+    return svc.dashboard(db, admin.org_id)
+
+
+@router.get("/renewals", response_model=list[AssetRenewalOut])
+def all_renewals(admin: AdminUser, db: DbSession) -> list[AssetRenewalOut]:
+    """Every renewal recorded across the register, newest first."""
+    deny_unless(admin, "can_manage_assets", _MANAGE)
+    return svc.renewal_history(db, admin.org_id)
+
+
 @router.get("/users/{user_id}/history", response_model=list[AssetAssignmentOut])
 def user_history(
     user_id: uuid.UUID, admin: AdminUser, db: DbSession
@@ -164,3 +180,28 @@ def custody_history(
 ) -> list[AssetAssignmentOut]:
     deny_unless(admin, "can_manage_assets", _MANAGE)
     return svc.custody_history(db, admin.org_id, asset_id)
+
+
+# --------------------------------------------------------------------------- #
+# Renewals
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/{asset_id}/renew", response_model=AssetOut)
+def renew_asset(
+    asset_id: uuid.UUID,
+    payload: AssetRenewIn,
+    admin: AdminUser,
+    db: DbSession,
+    request: Request,
+) -> AssetOut:
+    deny_unless(admin, "can_manage_assets", _MANAGE)
+    return svc.renew_asset(db, admin.org_id, asset_id, payload, actor=admin, request=request)
+
+
+@router.get("/{asset_id}/renewals", response_model=list[AssetRenewalOut])
+def asset_renewals(
+    asset_id: uuid.UUID, admin: AdminUser, db: DbSession
+) -> list[AssetRenewalOut]:
+    deny_unless(admin, "can_manage_assets", _MANAGE)
+    return svc.renewal_history(db, admin.org_id, asset_id)

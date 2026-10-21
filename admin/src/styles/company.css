@@ -46,7 +46,7 @@
 }
 .co-preview-tile img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .co-preview-light { background: #ffffff; }
-.co-preview-dark { background: #0f1c17; }
+.co-preview-dark { background: #00263f; }
 .co-preview-none {
   display: flex; align-items: center; gap: 6px;
   font-size: var(--text-sm); color: #8a9a92;

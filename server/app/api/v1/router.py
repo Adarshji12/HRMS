@@ -14,10 +14,12 @@ from app.api.v1 import (
     auth,
     corehr,
     crm,
+    erp,
     engagement,
     expenses,
     form16,
     helpdesk,
+    hrsettings,
     incometax,
     leave,
     letters,
@@ -98,6 +100,9 @@ api_router.include_router(
 # company that never bought expenses, and each flow's adapter already applies
 # that flow's own permission rule.
 api_router.include_router(approvals.router)
+# HR-wide defaults (employee ID format, probation, warning windows). No module
+# gate: the hire form reads it whatever HR modules a company has.
+api_router.include_router(hrsettings.router)
 # No module gate, like the approvals queue: a chain is configuration for
 # whichever flows a company already has, and gating it on one module would
 # hide leave routing from a company that never bought expenses.
@@ -117,6 +122,8 @@ api_router.include_router(
 # ungated capture URL would be a way to write rows into a workspace whose plan
 # does not include the screens that would show them.
 api_router.include_router(crm.router, dependencies=[Depends(require_module("crm"))])
+# ERP. Gated like CRM, here rather than in the router, for the same reason.
+api_router.include_router(erp.router, dependencies=[Depends(require_module("erp"))])
 # Mounted after admin: /admin/reports/summary is a different, older endpoint and
 # must keep working for the existing Reports page while this one takes over.
 api_router.include_router(reports.router)

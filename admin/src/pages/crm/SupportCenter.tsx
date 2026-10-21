@@ -25,8 +25,6 @@ import {
   crm,
   crmError,
   inDays,
-  isoToLocalInput,
-  localToISO,
   rupees,
   type Customer,
   type CustomerDetail,
@@ -377,14 +375,6 @@ function LogPanel({
   const [dispositionId, setDispositionId] = useState('')
   const [status, setStatus] = useState<'open' | 'closed'>('open')
   const [remarks, setRemarks] = useState('')
-  const [bookFollowUp, setBookFollowUp] = useState(false)
-  const [followUpAt, setFollowUpAt] = useState(() => {
-    const soon = new Date()
-    soon.setDate(soon.getDate() + 1)
-    soon.setHours(10, 0, 0, 0)
-    return isoToLocalInput(soon.toISOString())
-  })
-  const [followUpPurpose, setFollowUpPurpose] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -411,13 +401,9 @@ function LogPanel({
         disposition_id: dispositionId || null,
         status,
         remarks: remarks || null,
-        follow_up_at: bookFollowUp ? localToISO(followUpAt) : null,
-        follow_up_purpose: bookFollowUp ? followUpPurpose || null : null,
       })
       setSaved(logged.ticket_no)
       setRemarks('')
-      setBookFollowUp(false)
-      setFollowUpPurpose('')
       onLogged()
     } catch (err) {
       setError(crmError(err, 'That call could not be logged'))
@@ -493,41 +479,6 @@ function LogPanel({
             disabled={!customer}
           />
         </Field>
-
-        <div className="card" style={{ padding: 12 }}>
-          <label className="crm-check">
-            <input
-              type="checkbox"
-              checked={bookFollowUp}
-              onChange={(event) => setBookFollowUp(event.target.checked)}
-              disabled={!customer}
-            />
-            <span>
-              <strong>Book a follow-up</strong>
-              <div className="crm-sub">
-                Lands in My Follow-ups with everything else that is owed.
-              </div>
-            </span>
-          </label>
-          {bookFollowUp && (
-            <div className="crm-grid-2" style={{ marginTop: 10 }}>
-              <Field label="When">
-                <input
-                  type="datetime-local"
-                  value={followUpAt}
-                  onChange={(event) => setFollowUpAt(event.target.value)}
-                />
-              </Field>
-              <Field label="Purpose">
-                <input
-                  value={followUpPurpose}
-                  onChange={(event) => setFollowUpPurpose(event.target.value)}
-                  placeholder="Call back about the renewal"
-                />
-              </Field>
-            </div>
-          )}
-        </div>
 
         <button
           className="btn btn-primary"

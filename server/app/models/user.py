@@ -199,6 +199,21 @@ class User(UUIDMixin, TimestampMixin, Base):
         Boolean, default=True, nullable=False
     )
 
+    #: The ERP capabilities. Default on, like the flags above, because they
+    #: only ever restrict: ``services.erp.common.may`` admits a person without a
+    #: named role only when they are an administrator, so an employee holding
+    #: a column left at True still reaches nothing.
+    can_manage_erp_masters: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_verify_vendors: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_manage_procurement: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_approve_purchases: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_manage_inventory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_approve_stock: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_manage_sales_orders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_approve_sales_orders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_manage_billing: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_approve_billing: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     #: Page keys this person may NOT open, e.g. ["reports", "apps"]. Empty means
     #: everything their role reaches.
     #:

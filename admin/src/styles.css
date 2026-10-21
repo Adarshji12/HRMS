@@ -2,9 +2,8 @@
  *
  * Two palettes live here and they do NOT mix.
  *
- * BRAND (--brand-*) dresses the chrome — nav, buttons, focus rings, the logo
- * lockup. It is MyDeskTime violet and it is free to be whatever the identity
- * says it is.
+ * BRAND (--brand-*) dresses the chrome — nav, buttons, focus rings, and logo.
+ * It follows the LRS navy and cyan identity.
  *
  * DATA (--prod / --seq-* / --series-*) dresses the marks inside charts and is
  * NOT a style choice. Productivity is a DIVERGING scale (productive <->
@@ -14,8 +13,7 @@
  * / 25.7 dark). Every chart that uses them also ships a legend and a table view,
  * so hue is never the only channel.
  *
- * Keeping them separate is the point: chrome that borrowed --prod would make
- * brand violet indistinguishable from "this employee was productive".
+ * Keep chart semantics on their data tokens; brand colors belong to chrome.
  *
  * Stat tiles carry an accent rail (--tile-accent). That rail is chrome, not a
  * data mark — it labels WHICH measure the tile holds, never how good it is. A
@@ -27,64 +25,50 @@
   color-scheme: light;
 
   /* brand: chrome only, never a data mark */
-  --brand:           #0e7c5a;
-  --brand-strong:    #0a6146;
-  /* The lighter half of the mark, and the hardest token to place: a green light
-     enough to read as "lighter" lands around 3.5:1, which is not readable. This
-     is the lightest emerald that still clears 4.2:1 on BOTH --surface-1 and
-     --surface-2 — solved for rather than picked, because the eye is a poor
-     judge of contrast in this hue. */
-  --brand-accent:    #168458;
-  --brand-soft:      #e6f4ee;
-  --brand-ink:       #0a5941;
-  /* Degraded-but-not-broken. Amber rather than red: the machine is healthy and
-     reporting in, it is the capture that is blocked. */
+  --brand:           #004070;
+  --brand-strong:    #003458;
+  --brand-accent:    #087999;
+  --brand-highlight: #18b8e0;
+  --action:          #007392;
+  --action-hover:    #005c75;
+  --action-on:       #ffffff;
+  --brand-soft:      #e5f7fc;
+  --brand-ink:       #00385f;
   --warn-ink:        #92400e;
   --brand-on:        #ffffff;
 
-  /* The greys carry a trace of the brand's hue rather than being neutral. It is
-     what stops a green accent looking stuck onto a grey product — but it is a
-     trace: --page is 2 points of green off white, not a tint anybody would name
-     as a colour. */
-  --page:            #f4f8f6;
+  --page:            #f5f8fa;
   --surface-1:       #ffffff;
-  --surface-2:       #edf4f0;
-  /* Row hover / pressed chrome. Previously every hover recomputed the same
-     color-mix inline; naming it keeps light and dark tuned independently. */
-  --surface-hover:   rgba(12, 40, 30, 0.045);
-  --text-primary:    #101c17;
-  --text-secondary:  #4a5a53;
-  --text-muted:      #7d8f87;
-  --gridline:        #e3ede8;
-  --baseline:        #c2d2ca;
-  --border:          rgba(12, 40, 30, 0.10);
-  --border-strong:   rgba(12, 40, 30, 0.16);
+  --surface-2:       #edf3f6;
+  --surface-hover:   rgba(0, 64, 112, 0.045);
+  --text-primary:    #102a3c;
+  --text-secondary:  #526879;
+  --text-muted:      #7d909d;
+  --gridline:        #e1eaf0;
+  --baseline:        #c3d2db;
+  --border:          rgba(0, 55, 95, 0.10);
+  --border-strong:   rgba(0, 55, 95, 0.16);
 
-  /* Elevation ramp. Three steps, each a tight contact shadow plus a wide soft
-     one — a single large blur reads as haze rather than height. */
-  --shadow-sm:       0 1px 2px rgba(12, 40, 30, 0.05);
-  --shadow:          0 1px 2px rgba(12, 40, 30, 0.04), 0 8px 24px rgba(12, 40, 30, 0.05);
-  --shadow-lg:       0 2px 4px rgba(12, 40, 30, 0.05), 0 18px 40px rgba(12, 40, 30, 0.09);
-  --shadow-brand:    0 1px 2px rgba(10, 97, 70, 0.22), 0 6px 18px rgba(14, 124, 90, 0.20);
+  --shadow-sm:       0 1px 2px rgba(0, 48, 80, 0.05);
+  --shadow:          0 1px 2px rgba(0, 48, 80, 0.04), 0 8px 24px rgba(0, 48, 80, 0.05);
+  --shadow-lg:       0 2px 4px rgba(0, 48, 80, 0.05), 0 18px 40px rgba(0, 48, 80, 0.09);
+  --shadow-brand:    0 1px 2px rgba(0, 64, 112, 0.16), 0 6px 18px rgba(24, 184, 224, 0.18);
 
-  /* diverging: productivity */
-  --prod:            #2a78d6;
-  --prod-soft:       #cde2fb;
+  --prod:            #087999;
+  --prod-soft:       #cbeaf2;
   --unprod:          #d03b3b;
   --unprod-soft:     #f6d7d7;
   --neutral-mark:    #c3c2b7;
 
-  /* sequential: single-measure magnitude (blue ramp) */
-  --seq-100:         #cde2fb;
-  --seq-250:         #86b6ef;
-  --seq-450:         #2a78d6;
-  --seq-600:         #184f95;
+  --seq-100:         #e5f7fc;
+  --seq-250:         #95d9e7;
+  --seq-450:         #087999;
+  --seq-600:         #004070;
 
-  /* categorical: team identity, fixed slot order, never cycled */
-  --series-1:        #2a78d6;
-  --series-2:        #eb6834;
-  --series-3:        #8b5cf6;
-  --series-4:        #eda100;
+  --series-1:        #004070;
+  --series-2:        #087999;
+  --series-3:        #18b8e0;
+  --series-4:        #386984;
 
   /* status: reserved for state, never for a series */
   --status-good:     #0ca30c;
@@ -101,7 +85,7 @@
      white-on-grey (pill lighter, correct) but dark goes #0f1c17-on-#17261f —
      pill DARKER than its own track, so it sank into the groove instead of
      rising out of it. Two tokens, each tuned per theme. */
-  --track:           #e7f0eb;
+  --track:           #e7f2f7;
   --track-thumb:     #ffffff;
 
   --radius-xl:       20px;
@@ -125,7 +109,7 @@
   /* Select chevron. Drawn by us because Chromium abandons the theme-aware
      native arrow the moment an author sets a background on the <select>, and
      paints a dark glyph regardless of color-scheme — invisible on dark. */
-  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%2355526b' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
+  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23476273' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
   /* The date/time picker glyphs are UA images with the same problem; flipping
      them is the only lever we have. */
   --picker-invert:   0;
@@ -219,39 +203,39 @@
   :root:where(:not([data-theme='light'])) {
     color-scheme: dark;
 
-    --brand:          #10b981;
-    --brand-strong:   #34d399;
-    --brand-accent:   #4ade9e;
-    --brand-soft:     #0d2b21;
-    --brand-ink:      #8ff0c4;
+    --brand:          #18b8e0;
+    --brand-strong:   #42c5e4;
+    --brand-accent:   #70d7ed;
+    --brand-accent-strong: #42c5e4;
+    --brand-highlight: #18b8e0;
+    --action:          #18b8e0;
+    --action-hover:    #42c5e4;
+    --action-on:       #00263a;
+    --brand-soft:     #103447;
+    --brand-ink:      #9ae5f4;
     --warn-ink:       #fcd34d;
-    /* Dark ink on the fill, not white — the one token that flips between the
-       themes, and it has to. A green dark enough to carry white text scores
-       3.26:1 against this page and sinks into it; a green bright enough to sit
-       ON the page cannot carry white at all. Bright fill plus near-black ink
-       clears both (6.6:1 text, 6.9:1 against the surface), which is exactly why
-       --brand-on was a token rather than a hardcoded white. */
-    --brand-on:       #04231a;
+     /* Dark ink on the bright cyan fill preserves readable button text. */
+     --brand-on:       #00263a;
     --focus:          var(--brand-accent);
 
-    --page:           #08130f;
-    --surface-1:      #0f1c17;
-    --surface-2:      #17261f;
-    --surface-hover:  rgba(190, 255, 226, 0.055);
-    --track:          #0b1712;
-    --track-thumb:    #22362d;
-    --text-primary:   #eaf6f0;
-    --text-secondary: #a6bcb2;
-    --text-muted:     #7d938a;
-    --gridline:       #1e3128;
-    --baseline:       #2f473b;
-    --border:         rgba(190, 255, 226, 0.10);
-    --border-strong:  rgba(190, 255, 226, 0.17);
+    --page:           #081a28;
+    --surface-1:      #102a3d;
+    --surface-2:      #17374b;
+    --surface-hover:  rgba(205, 239, 249, 0.055);
+    --track:          #0c2233;
+    --track-thumb:    #1b3a50;
+    --text-primary:   #edf7fb;
+    --text-secondary: #b2c8d5;
+    --text-muted:     #829eac;
+    --gridline:       #1a3b50;
+    --baseline:       #31566b;
+    --border:         rgba(190, 229, 244, 0.10);
+    --border-strong:  rgba(190, 229, 244, 0.17);
 
     --shadow-sm:      0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow:         0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
     --shadow-lg:      0 2px 4px rgba(0, 0, 0, 0.55), 0 18px 40px rgba(0, 0, 0, 0.5);
-    --shadow-brand:   0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(16, 185, 129, 0.30);
+    --shadow-brand:   0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(24, 184, 224, 0.30);
 
     --prod:           #3987e5;
     --prod-soft:      #184f95;
@@ -264,19 +248,19 @@
     --seq-450:        #3987e5;
     --seq-600:        #86b6ef;
 
-    --series-1:       #3987e5;
-    --series-2:       #d95926;
+    --series-1:       #18b8e0;
+    --series-2:       #70d7ed;
     /* Not lightened for dark, unlike its neighbours. #a78bfa sits at L 0.709,
        outside the dark band's 0.48–0.67, so slot 3 read brighter than the three
        marks beside it — the one hue in the set that shouted. The light value
        clears every check against this surface (lightness, chroma, CVD
        separation, normal-vision floor, contrast), so the two modes share it. */
-    --series-3:       #8b5cf6;
-    --series-4:       #c98500;
+    --series-3:       #a1e5f1;
+    --series-4:       #2688a3;
 
     --status-warn:    #e0a33a;
     --success-text:   #0ca30c;
-    --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23b4b0c9' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
+    --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23b2c8d5' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
     --picker-invert:  1;
   }
 }
@@ -284,33 +268,38 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --brand:          #10b981;
-  --brand-strong:   #34d399;
-  --brand-accent:   #4ade9e;
-  --brand-soft:     #0d2b21;
-  --brand-ink:      #8ff0c4;
+  --brand:          #18b8e0;
+  --brand-strong:   #42c5e4;
+  --brand-accent:   #70d7ed;
+  --brand-accent-strong: #42c5e4;
+  --brand-highlight: #18b8e0;
+  --action:          #18b8e0;
+  --action-hover:    #42c5e4;
+  --action-on:       #00263a;
+  --brand-soft:     #103447;
+  --brand-ink:      #9ae5f4;
   --warn-ink:       #fcd34d;
-  --brand-on:       #04231a;
+  --brand-on:       #00263a;
   --focus:          var(--brand-accent);
 
-  --page:           #08130f;
-  --surface-1:      #0f1c17;
-  --surface-2:      #17261f;
-  --surface-hover:  rgba(190, 255, 226, 0.055);
-  --track:          #0b1712;
-  --track-thumb:    #22362d;
-  --text-primary:   #eaf6f0;
-  --text-secondary: #a6bcb2;
-  --text-muted:     #7d938a;
-  --gridline:       #1e3128;
-  --baseline:       #2f473b;
-  --border:         rgba(190, 255, 226, 0.10);
-  --border-strong:  rgba(190, 255, 226, 0.17);
+  --page:           #081a28;
+  --surface-1:      #102a3d;
+  --surface-2:      #17374b;
+  --surface-hover:  rgba(205, 239, 249, 0.055);
+  --track:          #0c2233;
+  --track-thumb:    #1b3a50;
+  --text-primary:   #edf7fb;
+  --text-secondary: #b2c8d5;
+  --text-muted:     #829eac;
+  --gridline:       #1a3b50;
+  --baseline:       #31566b;
+  --border:         rgba(190, 229, 244, 0.10);
+  --border-strong:  rgba(190, 229, 244, 0.17);
 
   --shadow-sm:      0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow:         0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg:      0 2px 4px rgba(0, 0, 0, 0.55), 0 18px 40px rgba(0, 0, 0, 0.5);
-  --shadow-brand:   0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(16, 185, 129, 0.30);
+  --shadow-brand:   0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(24, 184, 224, 0.30);
 
   --prod:           #3987e5;
   --prod-soft:      #184f95;
@@ -323,14 +312,14 @@
   --seq-450:        #3987e5;
   --seq-600:        #86b6ef;
 
-  --series-1:       #3987e5;
-  --series-2:       #d95926;
-  --series-3:       #8b5cf6;  /* see the note in the media-query block */
-  --series-4:       #c98500;
+  --series-1:       #18b8e0;
+  --series-2:       #70d7ed;
+  --series-3:       #a1e5f1;
+  --series-4:       #2688a3;
 
   --status-warn:    #e0a33a;
   --success-text:   #0ca30c;
-  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23b4b0c9' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
+  --caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23b2c8d5' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75'/%3E%3C/svg%3E");
   --picker-invert:  1;
 }
 
@@ -346,7 +335,7 @@ body {
      colour — a tint, not a gradient feature. */
   background:
     radial-gradient(900px 520px at 12% -8%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 70%),
-    radial-gradient(760px 460px at 100% 0%, color-mix(in srgb, var(--brand-accent) 5%, transparent), transparent 72%),
+    radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--brand-accent) 5%, transparent), transparent 72%),
     var(--page);
   background-attachment: fixed;
   color: var(--text-primary);
@@ -483,6 +472,44 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sidebar-toggle svg { transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1); }
 
 .nav-section { display: flex; flex-direction: column; gap: 1px; }
+.crm-nav-submenu,
+.hrms-nav-submenu,
+.erp-nav-submenu {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 1px;
+  margin: 2px 0 6px 18px;
+  padding: 2px 0 4px;
+  border-left: 1px solid var(--gridline);
+}
+.crm-nav-link,
+.hrms-nav-link,
+.erp-nav-link { padding-left: 10px; font-size: 12.5px; }
+.hrms-nav-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.erp-nav-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-disclosure-arrow {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 160ms ease;
+}
+.nav-link[aria-expanded='true'] .nav-disclosure-arrow { transform: rotate(180deg); }
+.shell-collapsed .nav-disclosure-arrow { display: none; }
 /* Group separation lives here rather than on .nav-group — see org.css for why
    a margin on the heading cannot be zeroed for the first one. */
 .nav-section + .nav-section { margin-top: 14px; }
@@ -564,18 +591,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-top: 1px solid var(--border);
 }
 
-/* Brand lockup. The mark ships as SVG; the wordmark is live text so it tracks
-   the UI font and stays sharp at any zoom. */
+/* Brand lockup uses the supplied LRS wordmark at its native proportions. */
 .brand {
   display: flex; align-items: center; gap: 10px;
   padding: 4px 10px 22px;
   text-decoration: none;
 }
 .brand-mark {
-  width: 28px; height: 28px; flex: none; display: block;
-  /* Lifts the mark off the card without drawing a box around it — a box would
-     read as a second container competing with the nav pills below it. */
-  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--brand) 30%, transparent));
+  flex: none; display: block; object-fit: contain;
 }
 .brand-word {
   font-size: 17px; font-weight: 750; letter-spacing: -0.035em;
@@ -728,6 +751,47 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .foot-signout { width: 100%; }
 
 .main { flex: 1; min-width: 0; padding: 20px 18px 60px; }
+
+.module-options { width: min(100%, 1120px); margin: 0 auto; }
+.module-options-title { margin-bottom: 18px; }
+.module-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+}
+.module-option-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  min-height: 78px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+.module-option-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+.module-option-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.module-option-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+.module-option-label { min-width: 0; font-size: var(--text-md); font-weight: var(--weight-medium); }
+.module-option-card > svg { color: var(--text-muted); }
+.module-option-card[aria-current='page'] { border-color: var(--brand); }
 
 .page-head {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -920,15 +984,12 @@ input:user-invalid:focus, textarea:user-invalid:focus, select:user-invalid:focus
 .btn:active { transform: translateY(1px); box-shadow: none; }
 .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 .btn-primary {
-  /* Lift the top edge rather than interpolating between two brand tokens —
-     --brand-strong is darker in light mode and lighter in dark, so a literal
-     two-stop ramp would flip direction between themes. */
-  background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 86%, #fff), var(--brand));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--action) 86%, #fff), var(--action));
   border-color: transparent;
-  color: var(--brand-on);
+  color: var(--action-on);
   box-shadow: var(--shadow-brand);
 }
-.btn-primary:hover { background: var(--brand-strong); border-color: transparent; }
+.btn-primary:hover { background: var(--action-hover); border-color: transparent; }
 .btn-primary:active { box-shadow: none; }
 .btn-primary:disabled { opacity: 0.6; box-shadow: none; cursor: default; }
 /* In-table actions sit below the shared row height on purpose: a table row is
@@ -982,9 +1043,9 @@ input:user-invalid:focus, textarea:user-invalid:focus, select:user-invalid:focus
    blind replace across 35k lines of TSX is how a working page stops working.
    New code uses the canonical names; these stay until the last caller is
    migrated. */
-.btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 86%, #fff), var(--brand));
-               border-color: transparent; color: var(--brand-on); box-shadow: var(--shadow-brand); }
-.btn.primary:hover { background: var(--brand-strong); border-color: transparent; }
+.btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--action) 86%, #fff), var(--action));
+               border-color: transparent; color: var(--action-on); box-shadow: var(--shadow-brand); }
+.btn.primary:hover { background: var(--action-hover); border-color: transparent; }
 .btn.primary:active { box-shadow: none; }
 .btn.primary:disabled { opacity: 0.6; box-shadow: none; cursor: default; }
 
@@ -1587,7 +1648,7 @@ td.row-actions > * + * { margin-left: var(--space-2); }
   min-width: 16px; height: 16px; padding: 0 4px;
   display: grid; place-items: center;
   border-radius: 99px;
-  background: var(--brand);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 86%, #fff), var(--brand));
   color: var(--brand-on);
   font-size: 10px; font-weight: 700; line-height: 1;
   box-shadow: 0 0 0 2px var(--surface-1);

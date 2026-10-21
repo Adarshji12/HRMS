@@ -14,14 +14,11 @@
 
 import { useState } from 'react'
 import '../../styles/crm.css'
+import '../../styles/visits.css'
 import { useQuery } from '../../lib/useQuery'
-import { dateTime } from '../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
-  IconAlert,
-  IconCheck,
   IconClock,
-  IconClose,
   IconFilter,
   IconPlus,
   IconSearch,
@@ -41,13 +38,83 @@ import {
   Field,
   MasterSelect,
   OwnerSelect,
-  Stat,
   StateText,
-  Stats,
   WhatsAppButton,
 } from './parts'
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
+
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const initials = (name: string | null | undefined) =>
+  (name ?? '?').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?'
+
+/** Date over time, so a column of visits reads down by day. */
+function When({ iso }: { iso: string | null }) {
+  if (!iso) return <span className="crm-muted">—</span>
+  const d = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
+  return (
+    <span className="vs-when">
+      <span>{d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+      <span className="crm-sub">{d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+    </span>
+  )
+}
+
+type StripKey = 'today' | 'scheduled' | 'in_progress' | 'completed' | 'overdue' | 'cancelled'
+
+/* The six counts on one line. A segment that maps to a filter is a button —
+   Today narrows to today's date, the statuses to that status — and clicking
+   the active one again clears it. Overdue has no filter behind it on the
+   server, so it is a figure only. */
+function VisitStrip(p: {
+  today: number; pending: number; inProgress: number; completed: number
+  overdue: number; cancelled: number
+  status: string; isToday: boolean
+  pick: (key: Exclude<StripKey, 'overdue'>) => void
+}) {
+  const items: Array<{ key: StripKey; label: string; value: number; tone: string; hint?: string }> = [
+    { key: 'today', label: 'Today', value: p.today, tone: 'brand' },
+    { key: 'scheduled', label: 'Pending', value: p.pending, tone: 'idle' },
+    { key: 'in_progress', label: 'In Progress', value: p.inProgress, tone: 'warn' },
+    { key: 'completed', label: 'Completed', value: p.completed, tone: 'good' },
+    { key: 'overdue', label: 'Overdue', value: p.overdue, tone: 'bad', hint: 'Scheduled, never started' },
+    { key: 'cancelled', label: 'Cancelled', value: p.cancelled, tone: 'muted' },
+  ]
+  return (
+    <div className="vs-strip" role="group" aria-label="Visit summary">
+      {items.map((it) => {
+        const on = it.key === 'today' ? p.isToday : it.key === p.status
+        const body = (
+          <>
+            <span className="vs-stat-label">
+              <span className="vs-stat-dot" aria-hidden />
+              {it.label}
+            </span>
+            <span className="vs-stat-value">{it.value}</span>
+            <span className="vs-stat-hint">{it.hint ?? (on ? 'Filtering · click to clear' : 'Click to filter')}</span>
+          </>
+        )
+        return it.key === 'overdue' ? (
+          <div key={it.key} className={`vs-stat tone-${it.tone}${it.value ? ' has-value' : ''}`}>{body}</div>
+        ) : (
+          <button
+            key={it.key}
+            type="button"
+            className={`vs-stat tone-${it.tone}${on ? ' is-on' : ''}${it.value ? ' has-value' : ''}`}
+            aria-pressed={on}
+            onClick={() => p.pick(it.key as Exclude<StripKey, 'overdue'>)}
+          >
+            {body}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function MyVisits() {
   const [q, setQ] = useState('')
@@ -114,6 +181,7 @@ export default function MyVisits() {
   }
 
   const s = summary.data
+  const filtered = Boolean(q || status || typeId || employeeId || from || to)
 
   return (
     <CrmPage
@@ -125,88 +193,27 @@ export default function MyVisits() {
         </button>
       }
     >
-      <Stats>
-        <Stat label="Today" value={s?.today ?? 0} icon={<IconClock size={16} />} />
-        <Stat label="Pending" value={s?.pending ?? 0} icon={<IconClock size={16} />} />
-        <Stat
-          label="In Progress"
-          value={s?.in_progress ?? 0}
-          icon={<IconClock size={16} />}
-          tone="var(--status-warn)"
-          toned={Boolean(s?.in_progress)}
-        />
-        <Stat
-          label="Completed"
-          value={s?.completed ?? 0}
-          icon={<IconCheck size={16} />}
-          tone="var(--status-good)"
-          toned={Boolean(s?.completed)}
-        />
-        <Stat
-          label="Overdue"
-          value={s?.overdue ?? 0}
-          meta={s?.overdue ? 'scheduled, never started' : undefined}
-          icon={<IconAlert size={16} />}
-          tone="var(--status-critical)"
-          toned={Boolean(s?.overdue)}
-        />
-        <Stat label="Cancelled" value={s?.cancelled ?? 0} icon={<IconClose size={16} />} />
-      </Stats>
-
-      <div className="crm-bar">
-        <div className="crm-search">
-          <IconSearch size={15} />
-          <input
-            type="search"
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            placeholder="Search visit no, customer, mobile, purpose…"
-            aria-label="Search visits"
-          />
-        </div>
-        <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
-          <option value="">All statuses</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="in_progress">In progress</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} placeholder="All visit types" />
-        <button className="crm-tab" onClick={() => setShowFilters((open) => !open)}>
-          <IconFilter size={14} /> Filters
-        </button>
-        {(q || status || typeId || employeeId || from || to) && (
-          <button
-            className="filter-reset crm-push"
-            onClick={() => {
-              setQ('')
-              setStatus('')
-              setTypeId('')
-              setEmployeeId('')
-              setFrom('')
-              setTo('')
-            }}
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {showFilters && (
-        <section className="card" style={{ marginBottom: 14, padding: 14 }}>
-          <div className="crm-grid-4">
-            <Field label="Employee">
-              <OwnerSelect value={employeeId} onChange={setEmployeeId} placeholder="Anyone" />
-            </Field>
-            <Field label="Scheduled from">
-              <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-            </Field>
-            <Field label="Scheduled to">
-              <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            </Field>
-          </div>
-        </section>
-      )}
+      <VisitStrip
+        today={s?.today ?? 0}
+        pending={s?.pending ?? 0}
+        inProgress={s?.in_progress ?? 0}
+        completed={s?.completed ?? 0}
+        overdue={s?.overdue ?? 0}
+        cancelled={s?.cancelled ?? 0}
+        status={status}
+        isToday={Boolean(from) && from === to && from === todayISO()}
+        pick={(next) => {
+          if (next === 'today') {
+            const t = todayISO()
+            const on = from === t && to === t
+            setFrom(on ? '' : t)
+            setTo(on ? '' : t)
+            setStatus('')
+          } else {
+            setStatus(status === next ? '' : next)
+          }
+        }}
+      />
 
       {banner && (
         <div className="notice notice-ok" style={{ marginBottom: 12 }}>
@@ -222,122 +229,196 @@ export default function MyVisits() {
         </div>
       )}
 
-      <section className="card" style={{ opacity: visits.refetching ? 0.6 : 1 }}>
-        {rows.length === 0 ? (
-          visits.loading ? (
-            <Loading />
-          ) : (
-            <EmptyState
-              icon={<IconClock size={22} />}
-              title="No visits booked"
-              body="Book a field call against a customer — service, sales, a demo or a collection. Whoever it is assigned to sees it in their own list."
-              action={
-                <button className="btn btn-primary" onClick={() => setBooking(true)}>
-                  Book the first visit
-                </button>
-              }
+      <section className="card vs-card">
+        <div className="vs-toolbar">
+          <div className="crm-search vs-search">
+            <IconSearch size={15} />
+            <input
+              type="search"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="Search visit no, customer, mobile, purpose…"
+              aria-label="Search visits"
             />
-          )
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Visit no</th>
-                    <th>Customer</th>
-                    <th>Type</th>
-                    <th>Employee</th>
-                    <th>Scheduled</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Duration</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((visit) => (
-                    <tr key={visit.id}>
-                      <td className="crm-code">{visit.visit_no}</td>
-                      <td>
-                        <div className="crm-strong">{visit.customer_name}</div>
-                        <div className="crm-sub">{visit.mobile ?? visit.customer_mobile}</div>
-                      </td>
-                      <td>{visit.visit_type_name ?? <span className="crm-muted">—</span>}</td>
-                      <td>
-                        {visit.employee_name ?? <span className="crm-muted">Unassigned</span>}
-                      </td>
-                      <td className="crm-nowrap">{dateTime(visit.scheduled_at)}</td>
-                      <td>
-                        <span className="crm-pill">{visit.priority}</span>
-                      </td>
-                      <td>
-                        <StateText value={visit.status} />
-                        {visit.otp_required && (
-                          <div className="crm-sub">
-                            {visit.otp_verified ? 'arrival verified' : 'needs an arrival code'}
-                          </div>
-                        )}
-                      </td>
-                      <td className="crm-num">
-                        {visit.duration_minutes !== null ? `${visit.duration_minutes}m` : '—'}
-                      </td>
-                      <td>
-                        <div className="crm-row-actions">
-                          <WhatsAppButton mobile={visit.mobile ?? visit.customer_mobile} />
-                          {visit.status === 'scheduled' && (
-                            <>
-                              {visit.otp_required && (
-                                <button
-                                  className="link-btn"
-                                  onClick={async () => {
-                                    setRowError(null)
-                                    try {
-                                      const { otp } = await crm.issueOtp(visit.id)
-                                      setBanner(
-                                        `Arrival code for ${visit.visit_no}: ${otp}. Send it to the customer — the product has no SMS channel, so nothing was sent for you.`,
-                                      )
-                                      visits.reload()
-                                    } catch (err) {
-                                      setRowError(crmError(err, 'A code could not be issued'))
-                                    }
-                                  }}
-                                >
-                                  Get code
-                                </button>
-                              )}
-                              <button className="btn btn-sm" onClick={() => start(visit)}>
-                                Check in
-                              </button>
-                            </>
-                          )}
-                          {visit.status === 'in_progress' && (
-                            <button className="btn btn-sm btn-primary" onClick={() => setClosing(visit)}>
-                              Close
-                            </button>
-                          )}
-                          {(visit.status === 'scheduled' || visit.status === 'in_progress') && (
-                            <button className="link-btn" onClick={() => cancel(visit)}>
-                              Cancel
-                            </button>
-                          )}
-                          <button className="link-btn" onClick={() => setEditing(visit)}>
-                            Edit
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="crm-foot">
-              <span>
-                Showing {rows.length} visit{rows.length === 1 ? '' : 's'}
-              </span>
-            </div>
-          </>
+          </div>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
+            <option value="">All statuses</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} placeholder="All visit types" />
+          <button
+            className={`btn vs-filter-btn${showFilters ? ' is-on' : ''}`}
+            onClick={() => setShowFilters((open) => !open)}
+            aria-expanded={showFilters}
+          >
+            <IconFilter size={14} /> More filters
+            {(employeeId || from || to) && <span className="vs-dot" aria-label="Filters applied" />}
+          </button>
+          {filtered && (
+            <button
+              className="filter-reset"
+              onClick={() => {
+                setQ('')
+                setStatus('')
+                setTypeId('')
+                setEmployeeId('')
+                setFrom('')
+                setTo('')
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="vs-filters">
+            <Field label="Employee">
+              <OwnerSelect value={employeeId} onChange={setEmployeeId} placeholder="Anyone" />
+            </Field>
+            <Field label="Scheduled from">
+              <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+            </Field>
+            <Field label="Scheduled to">
+              <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+            </Field>
+          </div>
         )}
+
+        <div style={{ opacity: visits.refetching ? 0.6 : 1 }}>
+          {rows.length === 0 ? (
+            visits.loading ? (
+              <Loading />
+            ) : filtered ? (
+              <EmptyState
+                icon={<IconSearch size={22} />}
+                title="No visits match"
+                body="Nothing fits these filters. Widen the dates or clear them to see every visit."
+              />
+            ) : (
+              <EmptyState
+                icon={<IconClock size={22} />}
+                title="No visits booked"
+                body="Book a field call against a customer — service, sales, a demo or a collection. Whoever it is assigned to sees it in their own list."
+                action={
+                  <button className="btn btn-primary" onClick={() => setBooking(true)}>
+                    Book the first visit
+                  </button>
+                }
+              />
+            )
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Visit</th>
+                      <th>Customer</th>
+                      <th>Assigned to</th>
+                      <th>Scheduled</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Duration</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((visit) => (
+                      <tr key={visit.id}>
+                        <td>
+                          <div className="crm-code">{visit.visit_no}</div>
+                          <div className="crm-sub">{visit.visit_type_name ?? 'No type'}</div>
+                        </td>
+                        <td>
+                          <div className="vs-who">
+                            <span className="vs-avatar" aria-hidden>{initials(visit.customer_name)}</span>
+                            <span className="vs-who-text">
+                              <span className="crm-strong">{visit.customer_name}</span>
+                              <span className="crm-sub">{visit.mobile ?? visit.customer_mobile}</span>
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          {visit.employee_name ?? <span className="crm-muted">Unassigned</span>}
+                        </td>
+                        <td className="crm-nowrap">
+                          <When iso={visit.scheduled_at} />
+                        </td>
+                        <td>
+                          <span className={`vs-priority is-${visit.priority}`}>{visit.priority}</span>
+                        </td>
+                        <td>
+                          <StateText value={visit.status} />
+                          {visit.otp_required && (
+                            <div className="crm-sub">
+                              {visit.otp_verified ? 'Arrival verified' : 'Needs arrival code'}
+                            </div>
+                          )}
+                        </td>
+                        <td className="crm-num">
+                          {visit.duration_minutes !== null ? `${visit.duration_minutes} min` : '—'}
+                        </td>
+                        <td>
+                          <div className="crm-row-actions">
+                            <WhatsAppButton mobile={visit.mobile ?? visit.customer_mobile} />
+                            {visit.status === 'scheduled' && (
+                              <>
+                                {visit.otp_required && (
+                                  <button
+                                    className="link-btn"
+                                    onClick={async () => {
+                                      setRowError(null)
+                                      try {
+                                        const { otp } = await crm.issueOtp(visit.id)
+                                        setBanner(
+                                          `Arrival code for ${visit.visit_no}: ${otp}. Send it to the customer — the product has no SMS channel, so nothing was sent for you.`,
+                                        )
+                                        visits.reload()
+                                      } catch (err) {
+                                        setRowError(crmError(err, 'A code could not be issued'))
+                                      }
+                                    }}
+                                  >
+                                    Get code
+                                  </button>
+                                )}
+                                <button className="btn btn-sm" onClick={() => start(visit)}>
+                                  Check in
+                                </button>
+                              </>
+                            )}
+                            {visit.status === 'in_progress' && (
+                              <button className="btn btn-sm btn-primary" onClick={() => setClosing(visit)}>
+                                Close
+                              </button>
+                            )}
+                            {(visit.status === 'scheduled' || visit.status === 'in_progress') && (
+                              <button className="link-btn" onClick={() => cancel(visit)}>
+                                Cancel
+                              </button>
+                            )}
+                            <button className="link-btn" onClick={() => setEditing(visit)}>
+                              Edit
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="crm-foot">
+                <span>
+                  Showing {rows.length} visit{rows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </section>
 
       {(booking || editing) && (

@@ -189,3 +189,30 @@ export const PERMISSIONS = [
       'still see projects and log time to them.',
   },
 ]
+
+/* The ERP's capabilities. Role-only: unlike PERMISSIONS above they are not on
+   the per-employee form, because the ERP admits nobody without a named role
+   unless they are an administrator (see `services/erp/common.may`). Split into
+   pairs on purpose — whoever raises a document is not whoever approves it. */
+export const ERP_PERMISSIONS = [
+  { key: 'can_manage_erp_masters', label: 'ERP · Maintain items, vendors and warehouses',
+    description: 'Create and edit masters, and enter vendor bank details. Approving a vendor is separate.' },
+  { key: 'can_verify_vendors', label: 'ERP · Approve vendors and verify bank details',
+    description: 'The checker for vendor onboarding and every bank change. Never for a vendor they entered.' },
+  { key: 'can_manage_procurement', label: 'ERP · Raise RFQs and purchase orders',
+    description: 'Run sourcing and draft orders. Anybody can raise a requisition without this.' },
+  { key: 'can_approve_purchases', label: 'ERP · Approve requisitions and purchase orders',
+    description: 'When no approval chain is set. Never their own, and waiving late-delivery damages too.' },
+  { key: 'can_manage_inventory', label: 'ERP · Receive, issue and move stock',
+    description: 'GRNs, issues, returns, transfers, and drafting adjustments.' },
+  { key: 'can_approve_stock', label: 'ERP · Approve stock adjustments',
+    description: 'A counted variance changes what the company owns, so the counter does not approve it.' },
+  { key: 'can_manage_sales_orders', label: 'ERP · Book and dispatch sales orders',
+    description: 'Orders from customer POs and quotations, reservations, dispatch and delivery.' },
+  { key: 'can_approve_sales_orders', label: 'ERP · Release, hold and close sales orders',
+    description: 'Release an order for fulfilment, put it on hold, or short-close it.' },
+  { key: 'can_manage_billing', label: 'ERP · Raise invoices and record receipts',
+    description: 'Draft and post invoices, record money received, set customer credit terms.' },
+  { key: 'can_approve_billing', label: 'ERP · Approve credit notes and credit holds',
+    description: 'Credit notes, invoice cancellation, receipt reversal and the customer credit hold.' },
+] as const

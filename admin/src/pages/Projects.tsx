@@ -309,7 +309,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
     budget_hours: 0,
     manager_user_id: '',
     department_id: '',
-    color: '#5b18d9',
+    color: '#007392',
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

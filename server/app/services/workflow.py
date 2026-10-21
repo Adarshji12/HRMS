@@ -349,12 +349,111 @@ SETTLEMENT = Policy(
     stale_code="not_draft",
 )
 
+# --- the ERP flows ---------------------------------------------------------- #
+#
+# Five, declared together because they share one convention the HRMS flows
+# drifted away from: every one stores its reviewer in ``reviewed_by`` and its
+# reason in ``review_note``, and the subject is whoever raised the document.
+# Self-review is forbidden on all five, owner included — the PRD's
+# segregation of duties (§4) exists precisely so the person who raised a
+# purchase order is not the one who approves it, and in a company with one
+# director the chain sends it to a second signatory or it waits.
+#
+# Two approve straight into a posted state: an approved stock adjustment and an
+# approved credit note have already changed the books by the time the kernel
+# stamps them, and an "approved but not yet posted" adjustment is a state with
+# no meaning — the ``on_approve`` side effect is the posting.
+
+ERP_REQUISITION = Policy(
+    kind="purchase_requisition",
+    capability="can_approve_purchases",
+    label="purchase requisition",
+    pending=("submitted",),
+    approved="approved",
+    rejected="rejected",
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="erp.requisition.decided",
+    target_type="erp_requisition",
+    reviewer_column="reviewed_by",
+    subject_column="requested_by",
+    stale_code="not_submitted",
+)
+
+ERP_PURCHASE_ORDER = Policy(
+    kind="purchase_order",
+    capability="can_approve_purchases",
+    label="purchase order",
+    pending=("submitted",),
+    approved="approved",
+    rejected="rejected",
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="erp.purchase_order.decided",
+    target_type="erp_purchase_order",
+    reviewer_column="reviewed_by",
+    subject_column="created_by",
+    stale_code="not_submitted",
+)
+
+ERP_STOCK_ADJUSTMENT = Policy(
+    kind="stock_adjustment",
+    capability="can_approve_stock",
+    label="stock adjustment",
+    pending=("submitted",),
+    approved="posted",
+    rejected="rejected",
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="erp.stock_adjustment.decided",
+    target_type="erp_stock_doc",
+    reviewer_column="reviewed_by",
+    subject_column="created_by",
+    stale_code="not_submitted",
+)
+
+ERP_SALES_ORDER = Policy(
+    kind="sales_order",
+    capability="can_approve_sales_orders",
+    label="sales order",
+    pending=("submitted",),
+    approved="approved",
+    rejected="rejected",
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="erp.sales_order.decided",
+    target_type="erp_sales_order",
+    reviewer_column="reviewed_by",
+    subject_column="created_by",
+    stale_code="not_submitted",
+)
+
+ERP_CREDIT_NOTE = Policy(
+    kind="credit_note",
+    capability="can_approve_billing",
+    label="credit note",
+    pending=("submitted",),
+    approved="posted",
+    rejected="rejected",
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="erp.credit_note.decided",
+    target_type="erp_invoice",
+    reviewer_column="reviewed_by",
+    subject_column="created_by",
+    stale_code="not_submitted",
+)
+
 #: Every policy, by kind. The unified approvals queue reads this rather than
 #: keeping its own list, so a seventh flow appears there by existing. Note that
 #: membership here is not the same as being decidable — see ``Policy.decidable``.
 POLICIES: dict[str, Policy] = {
     p.kind: p
-    for p in (LEAVE, TIMESHEET, REGULARIZATION, EXPENSE, LOAN, PERFORMANCE, SETTLEMENT)
+    for p in (
+        LEAVE, TIMESHEET, REGULARIZATION, EXPENSE, LOAN, PERFORMANCE, SETTLEMENT,
+        ERP_REQUISITION, ERP_PURCHASE_ORDER, ERP_STOCK_ADJUSTMENT, ERP_SALES_ORDER,
+        ERP_CREDIT_NOTE,
+    )
 }
 
 

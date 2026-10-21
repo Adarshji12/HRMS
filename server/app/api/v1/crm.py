@@ -52,11 +52,18 @@ MASTER_SCHEMAS: dict[str, tuple[type, type]] = {
     "industries": (S.NamedIn, S.MasterOut),
     "countries": (S.CountryIn, S.CountryOut),
     "states": (S.StateIn, S.StateOut),
+    "districts": (S.DistrictIn, S.DistrictOut),
     "cities": (S.CityIn, S.CityOut),
     "products": (S.ProductIn, S.ProductOut),
     "plans": (S.PlanIn, S.PlanOut),
     "dispositions": (S.DispositionIn, S.DispositionOut),
     "visit-types": (S.VisitTypeIn, S.VisitTypeOut),
+    "territories": (S.TerritoryIn, S.TerritoryOut),
+    "campaigns": (S.CampaignIn, S.CampaignOut),
+    "competitors": (S.CompetitorIn, S.CompetitorOut),
+    "contact-designations": (S.ContactDesignationIn, S.ContactDesignationOut),
+    "lost-reasons": (S.LostReasonIn, S.LostReasonOut),
+    "opportunity-stages": (S.OpportunityStageIn, S.OpportunityStageOut),
 }
 
 
@@ -64,6 +71,22 @@ def _master_schemas(kind: str) -> tuple[type, type]:
     if kind not in MASTER_SCHEMAS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown master list")
     return MASTER_SCHEMAS[kind]
+
+
+def _parse(in_model: type, payload: dict):
+    """Validate a master write, answering 422 the way a typed body would.
+
+    These routes take a plain ``dict`` because the schema depends on the path,
+    so FastAPI cannot validate the body itself; a raw ``ValidationError`` here
+    would surface as a 500.
+    """
+    from fastapi.exceptions import RequestValidationError
+    from pydantic import ValidationError
+
+    try:
+        return in_model(**payload)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors(include_url=False)) from None
 
 
 def _serialise_master(kind: str, row, db, org_id) -> dict:
@@ -98,8 +121,23 @@ def _serialise_master(kind: str, row, db, org_id) -> dict:
     if kind == "cities":
         data["state_name"] = row.state.name if row.state else None
         data["country_id"] = row.state.country_id if row.state else None
+        data["district_name"] = row.district.name if row.district else None
+    if kind == "districts":
+        data["state_name"] = row.state.name if row.state else None
     if kind == "plans":
         data["product_name"] = row.product.name if row.product else None
+    if kind == "territories":
+        from app.models import CrmState
+
+        ids = [uuid.UUID(str(value)) for value in (row.state_ids or [])]
+        names = dict(db.execute(
+            select(CrmState.id, CrmState.name).where(CrmState.id.in_(ids))
+        ).all()) if ids else {}
+        data["state_ids"] = [str(value) for value in ids]
+        data["state_names"] = [names[value] for value in ids if value in names]
+        data["manager_name"] = row.manager.full_name if row.manager else None
+    if kind == "campaigns":
+        data["source_name"] = row.source.name if row.source else None
     return out_model(**data).model_dump()
 
 
@@ -127,7 +165,8 @@ def list_master(
     stmt = select(model).where(model.org_id == viewer.org_id)
     if parent_id is not None:
         parent_column = {
-            "states": "country_id", "cities": "state_id", "plans": "product_id"
+            "states": "country_id", "districts": "state_id", "cities": "state_id",
+            "plans": "product_id",
         }.get(kind)
         if parent_column is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "That list has no parent to filter on")
@@ -144,9 +183,10 @@ def list_master(
 def create_master(kind: str, payload: dict, viewer: CurrentUser, db: DbSession) -> dict:
     svc.require_admin_crm(viewer)
     in_model, _ = _master_schemas(kind)
-    data = in_model(**payload)
+    data = _parse(in_model, payload)
     model = svc.master_model(kind)
-    row = model(org_id=viewer.org_id, **data.model_dump())
+    values = svc.prepare_master(db, viewer.org_id, kind, data.model_dump(), None)
+    row = model(org_id=viewer.org_id, **values)
     db.add(row)
     try:
         db.commit()
@@ -168,9 +208,10 @@ def update_master(
 ) -> dict:
     svc.require_admin_crm(viewer)
     in_model, _ = _master_schemas(kind)
-    data = in_model(**payload)
+    data = _parse(in_model, payload)
     row = svc.get_master(db, viewer.org_id, kind, row_id)
-    for field, value in data.model_dump().items():
+    values = svc.prepare_master(db, viewer.org_id, kind, data.model_dump(), row_id)
+    for field, value in values.items():
         setattr(row, field, value)
     db.commit()
     db.refresh(row)

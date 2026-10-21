@@ -149,6 +149,16 @@ MODULES: tuple[ModuleDef, ...] = (
         "quotations and scheduled WhatsApp reminders.",
         "Revenue",
     ),
+    # Its own group too. The ERP is the operational spine — what is bought,
+    # held, sold and billed — and an operator selling a workforce product
+    # alone must be able to leave all of it switched off in one place.
+    ModuleDef(
+        "erp",
+        "ERP",
+        "Items, vendors and warehouses; requisitions, RFQs and purchase orders; "
+        "goods receipts and stock; sales orders, dispatch, invoices and receipts.",
+        "Operations backbone",
+    ),
 )
 
 MODULES_BY_KEY: dict[str, ModuleDef] = {m.key: m for m in MODULES}

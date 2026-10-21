@@ -1487,3 +1487,5 @@ a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
   .crm-funnel-row { grid-template-columns: 96px 1fr auto; }
   .crm-doc-dates { margin-left: 0; width: 100%; }
 }
+
+.crm-subtabs a.crm-tab { text-decoration: none; }
