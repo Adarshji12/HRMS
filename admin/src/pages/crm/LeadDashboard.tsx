@@ -61,7 +61,9 @@ const fmt = (n: number) => (Math.abs(n) >= 10000 ? compact.format(n) : n.toLocal
 const dayLabel = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 
-export default function LeadDashboard() {
+/** `overview`: shown from the main Dashboard, where the date line and the
+ *  shortcuts into CRM help. Inside CRM the sidebar already carries both. */
+export default function LeadDashboard({ overview = false }: { overview?: boolean }) {
   const [range, setRange] = useState('30')
   const [ownerId, setOwnerId] = useState('')
   const [sourceId, setSourceId] = useState('')
@@ -86,8 +88,6 @@ export default function LeadDashboard() {
   const filtered = ownerId !== '' || sourceId !== '' || statusId !== ''
   const d = data.data
 
-  const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-
   // Same card as the HR Dashboard's KPI row: label, icon, figure, one line of
   // context, a coloured spine. The follow-up counts only turn red or amber
   // when there is something to act on — a red zero is an alarm about nothing.
@@ -108,18 +108,24 @@ export default function LeadDashboard() {
     <div className="crm hrd">
       <header className="hrd-hero">
         <div className="hrd-hero-text">
-          <span className="hrd-eyebrow">CRM · {dateLine}</span>
+          {overview && (
+            <span className="hrd-eyebrow">
+              CRM · {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+          )}
           <h1 className="hrd-title">Lead Dashboard</h1>
         </div>
-        <div className="hrd-hero-actions">
-          <Link className="btn" to="/crm/follow-ups">
-            Follow-ups
-            {(d?.overdue_follow_ups ?? 0) > 0 && <span className="hrd-pill-count">{d!.overdue_follow_ups}</span>}
-          </Link>
-          <Link className="btn btn-primary" to="/crm/leads">
-            <IconUsers size={15} /> Open leads
-          </Link>
-        </div>
+        {overview && (
+          <div className="hrd-hero-actions">
+            <Link className="btn" to="/crm/follow-ups">
+              Follow-ups
+              {(d?.overdue_follow_ups ?? 0) > 0 && <span className="hrd-pill-count">{d!.overdue_follow_ups}</span>}
+            </Link>
+            <Link className="btn btn-primary" to="/crm/leads">
+              <IconUsers size={15} /> Open leads
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* One toolbar, above everything it scopes: what to look at on the left,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import '../styles/signup.css'
 import AuthShell from '../components/AuthShell'
 import { ErrorNote } from '../components/ui'
-import { BASE_DOMAIN } from '../lib/tenant'
+import { BASE_DOMAIN, tenantUrl } from '../lib/tenant'
 import {
   loadRazorpay,
   rupees,
@@ -38,6 +38,13 @@ const EMPTY_COMPANY = {
 }
 
 const EMPTY_ADMIN = { full_name: '', email: '', password: '', phone: '' }
+
+/** Back to the workspace sign-in this visitor came from (`?from=acme`), which
+ *  asks only for email and password. Without one, the bare-domain sign-in. */
+function loginHref(): string {
+  const from = new URLSearchParams(window.location.search).get('from')?.toLowerCase()
+  return from && /^[a-z0-9-]+$/.test(from) ? `${tenantUrl(from)}/login` : '/login'
+}
 
 export default function Signup() {
   const [step, setStep] = useState<Step>('company')
@@ -539,7 +546,7 @@ export default function Signup() {
         )}
 
         <div className="auth-divider">Already have a workspace?</div>
-        <p className="auth-alt"><a href="/login">Sign in to your account →</a></p>
+        <p className="auth-alt"><a href={loginHref()}>Sign in to your account →</a></p>
       </div>
     </AuthShell>
   )

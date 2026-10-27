@@ -30,6 +30,7 @@ import {
   IconPlus,
   IconSearch,
   IconSheet,
+  IconTrash,
   IconUpload,
   IconUsers,
 } from '../../components/Icons'
@@ -191,6 +192,17 @@ export default function MyLeads() {
       )
     } catch (err) {
       setRowError(crmError(err, 'The export could not be produced'))
+    }
+  }
+
+  async function remove(lead: Lead) {
+    if (!window.confirm(`Delete the lead “${lead.name}”? This cannot be undone.`)) return
+    setRowError(null)
+    try {
+      await crm.deleteLead(lead.id)
+      leads.reload()
+    } catch (err) {
+      setRowError(crmError(err, 'That lead could not be deleted'))
     }
   }
 
@@ -481,6 +493,14 @@ export default function MyLeads() {
                               <IconEdit size={15} />
                             </Link>
                             <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
+                            <button
+                              className="crm-icon-btn crm-icon-danger"
+                              onClick={() => remove(lead)}
+                              title="Delete"
+                              aria-label={`Delete ${lead.name}`}
+                            >
+                              <IconTrash size={15} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1095,7 +1115,7 @@ function ImportDialog({
  * Deliberately small rather than a library: the format this reads is "what
  * Excel saves", and the only thing that actually breaks a naive split is a
  * quoted comma in an address. */
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const cells: string[] = []
   let current = ''
   let quoted = false

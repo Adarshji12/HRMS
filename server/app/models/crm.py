@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -697,6 +698,10 @@ class CrmSettings(UUIDMixin, TimestampMixin, Base):
     #: Printed under the totals. Company-wide, over-ridable per quotation.
     quotation_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     quotation_validity_days: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    #: The rest of the quotation screen in CRM Settings — style, letterhead,
+    #: payment details, footer, signatory, image keys, number format, default
+    #: GST. Validated by ``schemas.crm.QuotationSetup``; empty means defaults.
+    quotation_setup: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     visit_prefix: Mapped[str] = mapped_column(String(12), default="VST", nullable=False)
     ticket_prefix: Mapped[str] = mapped_column(String(12), default="TKT", nullable=False)
@@ -1107,7 +1112,8 @@ class CrmInteraction(UUIDMixin, TimestampMixin, Base):
 
 
 class CrmVisit(UUIDMixin, TimestampMixin, Base):
-    """A field call booked against a customer.
+    """A field call booked against a customer — or a lead, for the demo that
+    comes before anyone is a customer. Exactly one of the two is set.
 
     The OTP is proof of arrival, not authentication: the code goes to the
     customer's number and the employee types back what they were told, which is
@@ -1122,14 +1128,21 @@ class CrmVisit(UUIDMixin, TimestampMixin, Base):
         Index("ix_crm_visits_org_scheduled", "org_id", "scheduled_at"),
         Index("ix_crm_visits_org_employee_status", "org_id", "assigned_to", "status"),
         Index("ix_crm_visits_customer", "customer_id"),
+        Index("ix_crm_visits_lead", "lead_id"),
+        CheckConstraint(
+            "(lead_id IS NULL) <> (customer_id IS NULL)", name="ck_crm_visits_one_subject"
+        ),
     )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     visit_no: Mapped[str] = mapped_column(String(24), nullable=False)
-    customer_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=True
+    )
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=True
     )
     visit_type_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("crm_visit_types.id", ondelete="SET NULL"), nullable=True
@@ -1166,7 +1179,8 @@ class CrmVisit(UUIDMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
-    customer: Mapped["CrmCustomer"] = relationship()
+    customer: Mapped["CrmCustomer | None"] = relationship()
+    lead: Mapped["CrmLead | None"] = relationship()
     employee: Mapped["User | None"] = relationship(foreign_keys="CrmVisit.assigned_to")
     visit_type: Mapped["CrmVisitType | None"] = relationship()
 

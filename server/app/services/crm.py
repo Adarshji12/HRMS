@@ -731,15 +731,17 @@ def _interaction_out(row: CrmInteraction) -> S.InteractionOut:
 
 
 def _visit_out(row: CrmVisit) -> S.VisitOut:
+    subject = row.customer or row.lead
     return S.VisitOut(
-        id=row.id, visit_no=row.visit_no, customer_id=row.customer_id,
-        customer_name=row.customer.name if row.customer else None,
-        customer_mobile=row.customer.mobile if row.customer else None,
+        id=row.id, visit_no=row.visit_no, customer_id=row.customer_id, lead_id=row.lead_id,
+        subject_kind="lead" if row.lead_id else "customer",
+        customer_name=subject.name if subject else None,
+        customer_mobile=subject.mobile if subject else None,
         visit_type_id=row.visit_type_id, visit_type_name=row.visit_type_name,
         contact_person=row.contact_person, mobile=row.mobile,
         # Blank falls back to the customer's address rather than being copied at
         # create time, so correcting the customer corrects every open visit.
-        address=row.address or (row.customer.address if row.customer else None),
+        address=row.address or (subject.address if subject else None),
         priority=row.priority, purpose=row.purpose, notes=row.notes,
         assigned_to=row.assigned_to,
         employee_name=row.employee.full_name if row.employee else None,
@@ -1323,6 +1325,9 @@ def list_follow_ups(
     window: str | None = None,
     owner_id: uuid.UUID | None = None,
     q: str | None = None,
+    kind: str | None = None,
+    due_from: datetime | None = None,
+    due_to: datetime | None = None,
 ) -> list[S.FollowUpOut]:
     scope = visible_owner_ids(db, viewer)
     stmt = (
@@ -1335,10 +1340,21 @@ def list_follow_ups(
         )
     )
     stmt = _scoped(stmt, CrmFollowUp.owner_id, scope)
-    if status:
+    # "all" is the console's "All statuses"; None keeps older callers working.
+    if status and status != "all":
         stmt = stmt.where(CrmFollowUp.status == status)
     if owner_id:
         stmt = stmt.where(CrmFollowUp.owner_id == owner_id)
+    if kind == "lead":
+        stmt = stmt.where(CrmFollowUp.lead_id.is_not(None))
+    elif kind == "customer":
+        stmt = stmt.where(CrmFollowUp.customer_id.is_not(None))
+    # The console sends the edges of the viewer's own days, so a date range
+    # means the same thing to the person choosing it as to this query.
+    if due_from:
+        stmt = stmt.where(CrmFollowUp.due_at >= _aware(due_from).astimezone(timezone.utc))
+    if due_to:
+        stmt = stmt.where(CrmFollowUp.due_at <= _aware(due_to).astimezone(timezone.utc))
 
     now = _now()
     if window == "today":
@@ -1405,6 +1421,81 @@ def create_follow_up(db: Session, viewer: User, payload: S.FollowUpIn) -> S.Foll
     return _follow_up_out(row)
 
 
+def _follow_up_subject(db: Session, org_id: uuid.UUID, contact: str) -> tuple[str, uuid.UUID] | None:
+    """A Lead ID, customer code or mobile, to the record it names.
+
+    Leads first: a follow-up sheet is nearly always a call list of prospects.
+    A mobile shared by several leads is ambiguous and refused rather than
+    guessed at."""
+    value = contact.strip()
+    for model, kind in ((CrmLead, "lead"), (CrmCustomer, "customer")):
+        by_code = db.scalar(
+            select(model.id).where(model.org_id == org_id, func.lower(model.code) == value.lower())
+        )
+        if by_code:
+            return kind, by_code
+        by_mobile = db.scalars(
+            select(model.id).where(model.org_id == org_id, model.mobile == value).limit(2)
+        ).all()
+        if len(by_mobile) == 1:
+            return kind, by_mobile[0]
+    return None
+
+
+def import_follow_ups(db: Session, viewer: User, payload: S.FollowUpImportIn) -> S.FollowUpImportResult:
+    """Book follow-ups from a sheet, one row at a time.
+
+    Each row goes through ``create_follow_up``, so an imported follow-up obeys
+    exactly the access rules and side effects of one booked by hand. A refused
+    row is reported and skipped; it does not undo the rows before it."""
+    created = 0
+    errors: list[str] = []
+    for number, row in enumerate(payload.rows, start=2):  # row 1 is the header
+        subject = _follow_up_subject(db, viewer.org_id, row.contact)
+        if subject is None:
+            errors.append(f"Row {number}: no lead or customer matches \"{row.contact}\".")
+            continue
+        kind, subject_id = subject
+        try:
+            create_follow_up(db, viewer, S.FollowUpIn(
+                due_at=row.due_at,
+                lead_id=subject_id if kind == "lead" else None,
+                customer_id=subject_id if kind == "customer" else None,
+                owner_id=payload.owner_id,
+                purpose=row.purpose,
+                notes=row.notes,
+            ))
+            created += 1
+        except HTTPException as exc:
+            db.rollback()
+            detail = exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail
+            errors.append(f"Row {number}: {detail or 'refused'}")
+    return S.FollowUpImportResult(created=created, errors=errors)
+
+
+def export_follow_ups_csv(db: Session, viewer: User, **filters: Any) -> str:
+    """The follow-up list as CSV, through the same scope and filters as the
+    table it was exported from."""
+    import csv
+    import io
+
+    rows = list_follow_ups(db, viewer, **filters)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "Due", "Contact type", "Contact", "Mobile", "Purpose", "Notes",
+        "Owner", "Status", "Outcome", "Completed",
+    ])
+    for row in rows:
+        writer.writerow([
+            _aware(row.due_at).isoformat(), row.subject_kind, row.subject_name or "",
+            row.subject_mobile or "", row.purpose or "", row.notes or "",
+            row.owner_name or "", row.status, row.outcome or "",
+            _aware(row.completed_at).isoformat() if row.completed_at else "",
+        ])
+    return buffer.getvalue()
+
+
 def complete_follow_up(
     db: Session, viewer: User, follow_up_id: uuid.UUID, payload: S.FollowUpComplete
 ) -> S.FollowUpOut:
@@ -1459,6 +1550,19 @@ def cancel_follow_up(db: Session, viewer: User, follow_up_id: uuid.UUID) -> None
     row.completed_at = _now()
     db.flush()
     _resync_next_follow_up(db, row.lead_id)
+    db.commit()
+
+
+def delete_follow_up(db: Session, viewer: User, follow_up_id: uuid.UUID) -> None:
+    """Remove a follow-up outright, for one booked by mistake. Cancelling keeps
+    the row in the history; this does not."""
+    row = db.get(CrmFollowUp, follow_up_id)
+    if row is None or row.org_id != viewer.org_id:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Follow-up not found")
+    lead_id = row.lead_id
+    db.delete(row)
+    db.flush()
+    _resync_next_follow_up(db, lead_id)
     db.commit()
 
 
@@ -1579,6 +1683,33 @@ def update_customer(
     db.commit()
     db.refresh(row)
     return _customer_out(row)
+
+
+def delete_customer(
+    db: Session, viewer: User, customer_id: uuid.UUID, *, request: Request | None = None
+) -> None:
+    """Remove a customer with its plans, interactions, follow-ups and visits.
+    Refused once ERP has billed it: orders, invoices and receipts are books."""
+    from app.models.erp import ErpInvoice, ErpReceipt, ErpSalesOrder
+
+    row = _readable_customer(db, viewer, customer_id)
+    for model in (ErpSalesOrder, ErpInvoice, ErpReceipt):
+        if db.scalar(select(func.count()).select_from(model).where(model.customer_id == row.id)):
+            raise HTTPException(
+                http_status.HTTP_409_CONFLICT,
+                detail={
+                    "reason": "customer_billed",
+                    "message": (
+                        "This customer has sales orders, invoices or receipts in ERP and "
+                        "cannot be deleted. Mark it inactive instead."
+                    ),
+                },
+            )
+    if request is not None:
+        audit(db, org_id=viewer.org_id, actor=viewer, action="crm.customer.delete", request=request,
+              target_type="crm_customer", target_id=str(row.id), detail={"code": row.code})
+    db.delete(row)
+    db.commit()
 
 
 def customer_detail(db: Session, viewer: User, customer_id: uuid.UUID) -> S.CustomerDetailOut:
@@ -1874,6 +2005,7 @@ def support_summary(db: Session, viewer: User) -> S.SupportSummary:
 
 _VISIT_LOADERS = (
     selectinload(CrmVisit.customer),
+    selectinload(CrmVisit.lead),
     selectinload(CrmVisit.employee),
     selectinload(CrmVisit.visit_type),
 )
@@ -1897,6 +2029,7 @@ def list_visits(
     status: str | None = None,
     visit_type_id: uuid.UUID | None = None,
     employee_id: uuid.UUID | None = None,
+    priority: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[S.VisitOut]:
@@ -1909,6 +2042,8 @@ def list_visits(
         stmt = stmt.where(CrmVisit.visit_type_id == visit_type_id)
     if employee_id:
         stmt = stmt.where(CrmVisit.assigned_to == employee_id)
+    if priority:
+        stmt = stmt.where(CrmVisit.priority == priority)
     if date_from:
         stmt = stmt.where(CrmVisit.scheduled_at >= datetime.combine(date_from, time.min, timezone.utc))
     if date_to:
@@ -1926,6 +2061,32 @@ def list_visits(
             or needle in (row.purpose or "").lower()
         ]
     return rows
+
+
+def export_visits_csv(db: Session, viewer: User, **filters: Any) -> str:
+    """The visit list as CSV, through the same scope and filters as the table
+    it was exported from."""
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "Visit No", "Scheduled", "Visit for", "Name", "Mobile", "Contact person", "Address",
+        "Visit type", "Priority", "Purpose", "Employee", "Status", "Started", "Completed",
+        "Duration (min)", "Outcome", "Notes",
+    ])
+    stamp = lambda value: _aware(value).isoformat() if value else ""  # noqa: E731
+    for row in list_visits(db, viewer, **filters):
+        writer.writerow([
+            row.visit_no, stamp(row.scheduled_at), row.subject_kind, row.customer_name or "",
+            row.mobile or row.customer_mobile or "", row.contact_person or "", row.address or "",
+            row.visit_type_name or "", row.priority, row.purpose or "", row.employee_name or "",
+            row.status, stamp(row.started_at), stamp(row.completed_at),
+            "" if row.duration_minutes is None else row.duration_minutes,
+            row.outcome or "", row.notes or "",
+        ])
+    return buffer.getvalue()
 
 
 def visit_summary(db: Session, viewer: User) -> S.VisitSummary:
@@ -1949,7 +2110,11 @@ def visit_summary(db: Session, viewer: User) -> S.VisitSummary:
 
 def create_visit(db: Session, viewer: User, payload: S.VisitIn) -> S.VisitOut:
     ensure_defaults(db, viewer.org_id)
-    customer = _readable_customer(db, viewer, payload.customer_id)
+    subject = (
+        _readable_lead(db, viewer, payload.lead_id)
+        if payload.lead_id
+        else _readable_customer(db, viewer, payload.customer_id)  # type: ignore[arg-type]
+    )
     settings = get_settings(db, viewer.org_id)
     visit_type = (
         get_master(db, viewer.org_id, "visit-types", payload.visit_type_id)
@@ -1959,11 +2124,12 @@ def create_visit(db: Session, viewer: User, payload: S.VisitIn) -> S.VisitOut:
     row = CrmVisit(
         org_id=viewer.org_id,
         visit_no=f"{settings.visit_prefix}-{number:04d}",
-        customer_id=customer.id,
+        customer_id=None if payload.lead_id else subject.id,
+        lead_id=subject.id if payload.lead_id else None,
         visit_type_id=visit_type.id if visit_type else None,
         visit_type_name=visit_type.name if visit_type else None,
         contact_person=payload.contact_person,
-        mobile=payload.mobile or customer.mobile,
+        mobile=payload.mobile or subject.mobile,
         address=payload.address,
         priority=payload.priority,
         purpose=payload.purpose,
@@ -1981,6 +2147,17 @@ def create_visit(db: Session, viewer: User, payload: S.VisitIn) -> S.VisitOut:
 def update_visit(db: Session, viewer: User, visit_id: uuid.UUID, payload: S.VisitPatch) -> S.VisitOut:
     row = _readable_visit(db, viewer, visit_id)
     changes = payload.model_dump(exclude_unset=True)
+    # Moving a visit to the other kind of subject clears the one it had, so the
+    # pair never holds both.
+    if changes.get("lead_id"):
+        _readable_lead(db, viewer, changes["lead_id"])
+        changes["customer_id"] = None
+    elif changes.get("customer_id"):
+        _readable_customer(db, viewer, changes["customer_id"])
+        changes["lead_id"] = None
+    else:
+        changes.pop("lead_id", None)
+        changes.pop("customer_id", None)
     if "visit_type_id" in changes:
         visit_type = (
             get_master(db, viewer.org_id, "visit-types", changes["visit_type_id"])
@@ -2049,13 +2226,22 @@ def close_visit(db: Session, viewer: User, visit_id: uuid.UUID, payload: S.Visit
     row.outcome = payload.outcome
     if payload.next_follow_up_at:
         db.add(CrmFollowUp(
-            org_id=viewer.org_id, customer_id=row.customer_id,
+            org_id=viewer.org_id, customer_id=row.customer_id, lead_id=row.lead_id,
             owner_id=row.assigned_to or viewer.id, due_at=payload.next_follow_up_at,
             purpose=f"After visit {row.visit_no}",
         ))
+        if row.lead_id:
+            db.flush()
+            _resync_next_follow_up(db, row.lead_id)
     db.commit()
     db.refresh(row)
     return _visit_out(row)
+
+
+def delete_visit(db: Session, viewer: User, visit_id: uuid.UUID) -> None:
+    row = _readable_visit(db, viewer, visit_id)
+    db.delete(row)
+    db.commit()
 
 
 def cancel_visit(db: Session, viewer: User, visit_id: uuid.UUID) -> S.VisitOut:
@@ -2071,9 +2257,143 @@ def cancel_visit(db: Session, viewer: User, visit_id: uuid.UUID) -> S.VisitOut:
 # --------------------------------------------------------------------------- #
 
 
+def quotation_setup(settings: CrmSettings) -> S.QuotationSetup:
+    """The stored quotation setup, read through its schema so every default
+    applies. Image keys live in the same document and are not part of it."""
+    stored = dict(settings.quotation_setup or {})
+    for key in ("logo_key", "stamp_key", "images_version"):
+        stored.pop(key, None)
+    return S.QuotationSetup.model_validate(stored)
+
+
+def _gst_state(gstin: str | None) -> str | None:
+    """The state a GSTIN's first two digits name, lower-cased, or None."""
+    if not gstin or len(gstin) < 2:
+        return None
+    from app.services import crm_geography
+
+    code = gstin[:2]
+    for state in crm_geography.india()["states"]:
+        if state.get("gst_code") == code:
+            return state["name"].strip().lower()
+    return None
+
+
 def _company_state(db: Session, org_id: uuid.UUID) -> str | None:
+    """The company's own GST state: from the quotation letterhead's GSTIN when
+    it has one, otherwise the company profile."""
+    from_gstin = _gst_state(quotation_setup(get_settings(db, org_id)).gstin)
+    if from_gstin:
+        return from_gstin
     org = db.get(Organization, org_id)
     return (org.state or "").strip().lower() or None if org else None
+
+
+def _number_period(fmt: str, on: date) -> tuple[str, dict[str, str]]:
+    """The counter period a format restarts in, and the token values for a date.
+
+    The default format (no {FY}, no {MM}) keeps the calendar-year period every
+    existing quotation was numbered in, so switching nothing changes nothing."""
+    fy_start = on.year if on.month >= 4 else on.year - 1
+    values = {
+        "{FY}": f"{fy_start}-{(fy_start + 1) % 100:02d}",
+        "{YYYY}": f"{on.year}",
+        "{YY}": f"{on.year % 100:02d}",
+        "{MM}": f"{on.month:02d}",
+    }
+    if "{FY}" in fmt:
+        return f"FY{values['{FY}']}", values
+    if "{MM}" in fmt:
+        return f"{on.year}-{values['{MM}']}", values
+    return str(on.year), values
+
+
+def _render_number(fmt: str, prefix: str, values: dict[str, str], seq: int) -> str:
+    out = fmt.replace("{PREFIX}", prefix).replace("{SEQ}", f"{seq:04d}")
+    for token, value in values.items():
+        out = out.replace(token, value)
+    return out
+
+
+DEFAULT_NUMBER_FORMAT = "{PREFIX}-{YYYY}-{SEQ}"
+
+
+def next_quotation_number(db: Session, org_id: uuid.UUID, on: date, *, peek: bool = False) -> str:
+    """The number for a quotation dated ``on``. ``peek`` reads the counter
+    without advancing it — for the preview in settings."""
+    settings = get_settings(db, org_id)
+    fmt = quotation_setup(settings).number_format or DEFAULT_NUMBER_FORMAT
+    period, values = _number_period(fmt, on)
+    if peek:
+        row = db.scalar(
+            select(CrmCounter).where(
+                CrmCounter.org_id == org_id, CrmCounter.series == "quotation",
+                CrmCounter.period == period,
+            )
+        )
+        seq = (row.last_number if row else 0) + 1
+    else:
+        seq = next_number(db, org_id, "quotation", period=period)
+    return _render_number(fmt, settings.quotation_prefix, values, seq)
+
+
+def quotation_defaults(db: Session, viewer: User) -> S.QuotationDefaults:
+    settings = get_settings(db, viewer.org_id)
+    return S.QuotationDefaults(
+        home_state=_company_state(db, viewer.org_id),
+        default_gst=quotation_setup(settings).default_gst,
+        validity_days=settings.quotation_validity_days,
+        terms=settings.quotation_terms,
+    )
+
+
+QUOTATION_IMAGES = ("logo", "stamp")
+
+
+def store_quotation_image(db: Session, viewer: User, kind: str, raw: bytes) -> None:
+    """Keep a logo or stamp for the quotation letterhead.
+
+    Same handling as the company logo (services/branding.py): decoded, capped,
+    re-encoded as a PNG we produced — the uploaded bytes are never stored."""
+    from app.services import branding, storage
+
+    if not raw:
+        raise branding.BrandingError("empty_upload", "The file is empty.")
+    if len(raw) > branding.MAX_LOGO_BYTES:
+        raise branding.BrandingError("too_large", "Images are limited to 2 MB.", 413)
+    encoded = branding._normalise(raw)
+    key = f"{viewer.org_id}/crm-quotation/{kind}-{uuid.uuid4().hex}.png"
+    try:
+        storage.backend().put(key, encoded, branding.STORED_CONTENT_TYPE)
+    except storage.StorageError as exc:
+        raise branding.BrandingError("storage_failed", f"The image could not be stored: {exc}", 500) from exc
+
+    settings = get_settings(db, viewer.org_id)
+    setup = dict(settings.quotation_setup or {})
+    previous = setup.get(f"{kind}_key")
+    setup[f"{kind}_key"] = key
+    setup["images_version"] = uuid.uuid4().hex[:12]
+    settings.quotation_setup = setup  # reassigned, so SQLAlchemy sees the change
+    db.flush()
+    if previous and previous != key:
+        storage.delete(previous)
+
+
+def clear_quotation_image(db: Session, viewer: User, kind: str) -> None:
+    from app.services import storage
+
+    settings = get_settings(db, viewer.org_id)
+    setup = dict(settings.quotation_setup or {})
+    previous = setup.pop(f"{kind}_key", None)
+    setup["images_version"] = uuid.uuid4().hex[:12]
+    settings.quotation_setup = setup
+    db.flush()
+    if previous:
+        storage.delete(previous)
+
+
+def quotation_image_key(db: Session, org_id: uuid.UUID, kind: str) -> str | None:
+    return (get_settings(db, org_id).quotation_setup or {}).get(f"{kind}_key")
 
 
 def _price_lines(
@@ -2247,12 +2567,9 @@ def _apply_quotation(
 def create_quotation(
     db: Session, viewer: User, payload: S.QuotationIn, *, request: Request | None = None
 ) -> S.QuotationOut:
-    settings = get_settings(db, viewer.org_id)
-    year = str(payload.quote_date.year)
-    number = next_number(db, viewer.org_id, "quotation", period=year)
     row = CrmQuotation(
         org_id=viewer.org_id,
-        number=f"{settings.quotation_prefix}-{year}-{number:04d}",
+        number=next_quotation_number(db, viewer.org_id, payload.quote_date),
         quote_date=payload.quote_date,
         created_by=viewer.id,
     )

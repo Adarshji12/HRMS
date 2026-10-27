@@ -6,7 +6,8 @@
  *                geography, industry, products, plans, call dispositions
  *   Access       which CRM menus each role opens (edited on Role & Permission)
  *   Visit Master the kinds of field visit, and how visits are numbered
- *   Quotation    numbering, validity and the default terms
+ *   Quotation    style, letterhead, numbering, payment, terms and stamp
+ *                (QuotationSetup.tsx)
  *
  * The master lists are the same tables the Master menu shows — one data
  * source, reachable from both — so a status added here is the status the
@@ -21,53 +22,29 @@ import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
-  IconBuilding,
-  IconCalendar,
   IconCheck,
   IconGear,
-  IconGlobe,
-  IconLifebuoy,
-  IconPin,
   IconSheet,
   IconShield,
-  IconStar,
   IconUsers,
 } from '../../components/Icons'
 import { crm, crmError, type CrmSettings as Settings } from './api'
 import { CrmPage, Field, OwnerSelect } from './parts'
-import DistrictMapping from './DistrictMapping'
-import CityMapping from './CityMapping'
-import { LISTS, MasterTable } from '../masters/masterKit'
+import QuotationSetupPanel from './QuotationSetup'
 import type { OrgRole } from '../hrms/roles/Roles'
 
 type Glyph = (p: { size?: number }) => JSX.Element
 
 const TABS: Array<{ key: TabKey; label: string; icon: Glyph }> = [
   { key: 'general', label: 'General', icon: IconGear },
-  { key: 'leads', label: 'Leads Master', icon: IconUsers },
   { key: 'access', label: 'Access', icon: IconShield },
-  { key: 'visits', label: 'Visit Master', icon: IconPin },
   { key: 'quotation', label: 'Quotation', icon: IconSheet },
 ]
 
-type TabKey = 'general' | 'leads' | 'access' | 'visits' | 'quotation'
+/* The master lists (lead statuses, sources, geography, products, visit types…)
+   are edited on the Master page, not here — one place for each list. */
+type TabKey = 'general' | 'access' | 'quotation'
 
-/* The Leads Master sub-tabs, in the order a lead is described. Each is a
-   master list from masterKit; a kind missing there is simply not shown. */
-const LEAD_LISTS: Array<{ kind: string; label: string; icon: Glyph }> = [
-  { kind: 'statuses', label: 'Lead Statuses', icon: IconStar },
-  { kind: 'sources', label: 'Lead Sources', icon: IconGlobe },
-  { kind: 'countries', label: 'Country Master', icon: IconGlobe },
-  { kind: 'states', label: 'State Master', icon: IconPin },
-  { kind: 'districts', label: 'District Master', icon: IconPin },
-  { kind: 'cities', label: 'City Master', icon: IconBuilding },
-  { kind: 'industries', label: 'Industry Type', icon: IconBuilding },
-  { kind: 'products', label: 'Product / Service', icon: IconSheet },
-  { kind: 'plans', label: 'Plan Master', icon: IconCalendar },
-  { kind: 'dispositions', label: 'Call Disposition', icon: IconLifebuoy },
-]
-
-const listFor = (kind: string) => LISTS.find((list) => list.kind === kind)
 
 export default function CrmSettings() {
   const { user } = useAuth()
@@ -108,16 +85,8 @@ export default function CrmSettings() {
       </nav>
 
       {tab === 'general' && <GeneralPanel />}
-      {tab === 'leads' && <LeadsMaster />}
       {tab === 'access' && <AccessPanel />}
-      {tab === 'visits' && <VisitMaster />}
-      {tab === 'quotation' && (
-        <SettingsForm
-          title="Quotation"
-          hint="Prefixes apply from the next quotation onwards. Numbers already issued keep the prefix they were issued with."
-          fields={['quotation_prefix', 'quotation_validity_days', 'quotation_terms']}
-        />
-      )}
+      {tab === 'quotation' && <QuotationSetupPanel />}
     </div>
   )
 }
@@ -232,55 +201,6 @@ function PoolMember({ id }: { id: string }) {
   )
   const person = (team.data ?? []).find((member) => member.id === id)
   return <>{person?.full_name ?? 'Unknown user'}</>
-}
-
-/* ----------------------------------------------------------- leads master --- */
-
-function LeadsMaster() {
-  const available = LEAD_LISTS.filter((entry) => listFor(entry.kind))
-  const [kind, setKind] = useState(available[0]?.kind ?? '')
-  const list = listFor(kind)
-  return (
-    <div className="cs-stack">
-      <nav className="cs-subtabs" aria-label="Leads master lists">
-        {available.map((entry) => {
-          const Icon = entry.icon
-          return (
-            <button
-              key={entry.kind}
-              type="button"
-              className={`cs-subtab${kind === entry.kind ? ' is-on' : ''}`}
-              aria-current={kind === entry.kind ? 'true' : undefined}
-              onClick={() => setKind(entry.kind)}
-            >
-              <Icon size={14} /> {entry.label}
-            </button>
-          )
-        })}
-      </nav>
-      {/* Districts get the state-by-state mapping view rather than a flat list:
-          786 rows only make sense grouped under their state. */}
-      {kind === 'districts' ? <DistrictMapping />
-        : kind === 'cities' ? <CityMapping />
-          : list && <MasterTable key={list.kind} list={list} />}
-    </div>
-  )
-}
-
-/* ----------------------------------------------------------- visit master --- */
-
-function VisitMaster() {
-  const list = listFor('visit-types')
-  return (
-    <div className="cs-stack">
-      {list && <MasterTable list={list} />}
-      <SettingsForm
-        title="Visit numbering"
-        hint="Applies from the next visit onwards; visits already booked keep their numbers."
-        fields={['visit_prefix']}
-      />
-    </div>
-  )
 }
 
 /* ----------------------------------------------------------------- access --- */

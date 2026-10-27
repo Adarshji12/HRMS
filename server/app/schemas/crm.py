@@ -374,6 +374,111 @@ class OpportunityStageIn(NamedIn):
 # --------------------------------------------------------------------------- #
 
 
+#: Tokens a quotation number format may use. {SEQ} is required: without it
+#: two quotations in one period would get the same number.
+NUMBER_TOKENS = ("{PREFIX}", "{FY}", "{YYYY}", "{YY}", "{MM}", "{SEQ}")
+
+
+class QuotationSetup(CrmBase):
+    """The quotation screen in CRM Settings, as one document.
+
+    Every field is optional with a default, so an empty document — what every
+    workspace starts with — means "behave as before"."""
+
+    style: str = Field(default="simple", pattern=r"^(simple|detailed)$")
+
+    company_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=200)
+    website: str | None = Field(default=None, max_length=200)
+    #: Its first two digits name the GST state, which decides CGST+SGST
+    #: against IGST. Blank falls back to the company profile's state.
+    gstin: str | None = Field(default=None, pattern=r"^[0-9]{2}[A-Z0-9]{13}$")
+    address: str | None = Field(default=None, max_length=1000)
+
+    #: Blank keeps PREFIX-YEAR-0001. See NUMBER_TOKENS.
+    number_format: str | None = Field(default=None, max_length=40)
+    default_gst: Decimal = Field(default=Decimal("18"), ge=0, le=28)
+
+    bank_enabled: bool = False
+    bank_name: str | None = Field(default=None, max_length=120)
+    account_name: str | None = Field(default=None, max_length=200)
+    account_number: str | None = Field(default=None, max_length=40)
+    ifsc: str | None = Field(default=None, pattern=r"^[A-Z]{4}0[A-Z0-9]{6}$")
+    branch: str | None = Field(default=None, max_length=120)
+
+    upi_enabled: bool = False
+    upi_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{2,64}@[A-Za-z]{2,32}$")
+    upi_name: str | None = Field(default=None, max_length=120)
+
+    footer: str | None = Field(default=None, max_length=1000)
+    signatory: str | None = Field(default=None, max_length=120)
+
+    # --- Detailed / Proposal only: the letterhead ---------------------------
+    accent_color: str = Field(default="#0b3a66", pattern=r"^#[0-9a-fA-F]{6}$")
+    letterhead_align: str = Field(default="left", pattern=r"^(left|center)$")
+    tagline: str | None = Field(default=None, max_length=160)
+    cin: str | None = Field(default=None, pattern=r"^[A-Z0-9]{21}$")
+    pan: str | None = Field(default=None, pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+    show_gstin_in_header: bool = True
+
+    # --- Detailed / Proposal only: the covering letter and terms ------------
+    #: {customer}, {company}, {number} and {date} are filled in per quotation.
+    letter_subject: str | None = Field(default=None, max_length=200)
+    letter_greeting: str | None = Field(default=None, max_length=120)
+    letter_body: str | None = Field(default=None, max_length=4000)
+    letter_closing: str | None = Field(default=None, max_length=120)
+    payment_terms: str | None = Field(default=None, max_length=2000)
+    delivery_terms: str | None = Field(default=None, max_length=2000)
+    warranty_terms: str | None = Field(default=None, max_length=2000)
+
+    _blank = field_validator(
+        "company_name", "phone", "email", "website", "gstin", "address", "number_format",
+        "bank_name", "account_name", "account_number", "ifsc", "branch", "upi_id",
+        "upi_name", "footer", "signatory", "tagline", "cin", "pan", "letter_subject",
+        "letter_greeting", "letter_body", "letter_closing", "payment_terms",
+        "delivery_terms", "warranty_terms", mode="before",
+    )(_blank_to_none)
+
+    @field_validator("gstin", "ifsc", "cin", "pan", mode="before")
+    @classmethod
+    def _upper(cls, value):
+        return value.strip().upper() if isinstance(value, str) and value.strip() else value
+
+    @field_validator("number_format")
+    @classmethod
+    def _format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if "{SEQ}" not in value:
+            raise ValueError("The number format needs {SEQ}, or two quotations would share a number.")
+        rest = value
+        for token in NUMBER_TOKENS:
+            rest = rest.replace(token, "")
+        if "{" in rest or "}" in rest:
+            raise ValueError("Use only " + ", ".join(NUMBER_TOKENS) + " inside braces.")
+        if not all(ch.isalnum() or ch in "-/_. " for ch in rest):
+            raise ValueError("Between the tokens, use letters, digits and - / _ . only.")
+        return value
+
+
+class QuotationSetupOut(QuotationSetup):
+    has_logo: bool = False
+    has_stamp: bool = False
+    #: Changes whenever an image changes, so the console can bust its cache.
+    images_version: str | None = None
+
+
+class QuotationDefaults(BaseModel):
+    """What the quotation editor needs from settings, readable by anyone who
+    can raise a quotation — not only CRM administrators."""
+
+    home_state: str | None = None
+    default_gst: Decimal
+    validity_days: int
+    terms: str | None = None
+
+
 class CrmSettingsOut(ORMModel):
     assignment_rule: str
     default_owner_id: uuid.UUID | None = None
@@ -386,6 +491,9 @@ class CrmSettingsOut(ORMModel):
     quotation_prefix: str
     quotation_terms: str | None = None
     quotation_validity_days: int
+    quotation_setup: QuotationSetupOut = QuotationSetupOut()
+    #: The number the next quotation dated today would get, for the preview.
+    quotation_next_number: str = ""
     visit_prefix: str
     ticket_prefix: str
     renewal_window_days: int
@@ -402,6 +510,8 @@ class CrmSettingsIn(CrmBase):
     quotation_prefix: str | None = Field(default=None, min_length=1, max_length=12)
     quotation_terms: str | None = None
     quotation_validity_days: int | None = Field(default=None, ge=1, le=365)
+    #: Replaces the whole document; image keys are kept server-side.
+    quotation_setup: QuotationSetup | None = None
     visit_prefix: str | None = Field(default=None, min_length=1, max_length=12)
     ticket_prefix: str | None = Field(default=None, min_length=1, max_length=12)
     renewal_window_days: int | None = Field(default=None, ge=1, le=365)
@@ -654,6 +764,27 @@ class FollowUpIn(CrmBase):
     notes: str | None = None
 
 
+class FollowUpImportRow(CrmBase):
+    """One CSV row. The contact is named the way a sheet names it — a Lead ID,
+    a customer code or a mobile number — never by an internal id."""
+
+    contact: str = Field(min_length=1, max_length=60)
+    due_at: datetime
+    purpose: str | None = Field(default=None, max_length=300)
+    notes: str | None = None
+
+
+class FollowUpImportIn(CrmBase):
+    rows: list[FollowUpImportRow] = Field(min_length=1, max_length=2000)
+    owner_id: uuid.UUID | None = None
+
+
+class FollowUpImportResult(BaseModel):
+    created: int
+    #: One line per refused row, naming the row number and the reason.
+    errors: list[str] = []
+
+
 class FollowUpComplete(CrmBase):
     outcome: str | None = None
     #: Book the next one in the same action. The whole reason a follow-up gets
@@ -843,7 +974,11 @@ class SupportSummary(BaseModel):
 class VisitOut(ORMModel):
     id: uuid.UUID
     visit_no: str
-    customer_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    lead_id: uuid.UUID | None = None
+    #: "customer" or "lead". `customer_name` and `customer_mobile` carry the
+    #: name and number of whichever it is, so every list keeps one column.
+    subject_kind: str = "customer"
     customer_name: str | None = None
     customer_mobile: str | None = None
     visit_type_id: uuid.UUID | None = None
@@ -868,7 +1003,8 @@ class VisitOut(ORMModel):
 
 
 class VisitIn(CrmBase):
-    customer_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    lead_id: uuid.UUID | None = None
     scheduled_at: datetime
     visit_type_id: uuid.UUID | None = None
     contact_person: str | None = Field(default=None, max_length=200)
@@ -883,13 +1019,24 @@ class VisitIn(CrmBase):
         "contact_person", "mobile", "address", "purpose", "notes", mode="before"
     )(_blank_to_none)
 
+    @model_validator(mode="after")
+    def _one_subject(self):
+        if bool(self.customer_id) == bool(self.lead_id):
+            raise ValueError("A visit is for a lead or for a customer — choose exactly one.")
+        return self
+
 
 class VisitPatch(VisitIn):
-    customer_id: uuid.UUID | None = None
     scheduled_at: datetime | None = None
     priority: str | None = Field(default=None, pattern=PRIORITY)
     status: str | None = Field(default=None, pattern=VISIT_STATUS)
     outcome: str | None = None
+
+    @model_validator(mode="after")
+    def _one_subject(self):
+        if self.customer_id and self.lead_id:
+            raise ValueError("A visit is for a lead or for a customer — not both.")
+        return self
 
 
 class VisitCheckIn(CrmBase):

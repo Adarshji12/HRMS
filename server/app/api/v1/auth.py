@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, audit
-from app.api.tenancy import CurrentTenant
+from app.api.tenancy import CurrentTenant, OptionalTenant
 from app.core.config import settings
 from app.core import ratelimit
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
@@ -32,29 +32,53 @@ def tenant_info(tenant: CurrentTenant) -> Organization:
 
 @router.post("/login", response_model=TokenResponse)
 def login(
-    payload: LoginRequest, request: Request, tenant: CurrentTenant, db: DbSession
+    payload: LoginRequest, request: Request, tenant: OptionalTenant, db: DbSession
 ) -> TokenResponse:
-    # Scoped to the tenant, not global. Email is unique per organisation, so a
-    # global lookup would return an arbitrary one of several matching accounts
-    # and could sign a user in to the wrong company.
     # Keyed on address *and* email, so one office behind a single NAT address
     # cannot lock its own staff out by having several people mistype at once,
     # while a single account still gets the protection.
     bucket = ratelimit.enforce(request, "login", ratelimit.LOGIN, payload.email)
+    email = payload.email.strip().lower()
 
-    user = db.scalar(
-        select(User).where(User.org_id == tenant.id, User.email == payload.email.strip().lower())
-    )
+    # Email is unique per organisation, not globally. On a tenant host the
+    # lookup stays scoped to it. Without one (a host with no subdomain) every
+    # account with this email is tried, and only those whose password matches
+    # count — so the answer can never sign anyone in to the wrong company.
+    query = select(User).where(User.email == email)
+    if tenant is not None:
+        query = query.where(User.org_id == tenant.id)
+    matches = [
+        user
+        for user in db.scalars(query)
+        if user.password_hash
+        and user.is_active
+        and verify_password(payload.password, user.password_hash)
+    ]
 
     # One response for unknown account, wrong password and disabled account, so
     # the endpoint cannot be used to enumerate a company's staff.
-    if (
-        user is None
-        or not user.password_hash
-        or not user.is_active
-        or not verify_password(payload.password, user.password_hash)
-    ):
+    if not matches:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+
+    if len(matches) > 1:
+        # The password is right for several companies. Naming them leaks
+        # nothing: the caller has just proved they hold each of these accounts.
+        orgs = db.scalars(
+            select(Organization)
+            .where(Organization.id.in_([user.org_id for user in matches]))
+            .order_by(Organization.name)
+        )
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "reason": "choose_workspace",
+                "message": "This account belongs to more than one company. Choose one.",
+                "workspaces": [{"slug": org.slug, "name": org.name} for org in orgs],
+            },
+        )
+
+    user = matches[0]
+    org = tenant or db.get(Organization, user.org_id)
 
     # Cleared on success: someone who mistyped twice before getting it right
     # should not still be counting against the limit afterwards.
@@ -68,7 +92,7 @@ def login(
             str(user.id), {"typ": "user", "org": str(user.org_id), "role": user.role}
         ),
         expires_in=settings.access_token_expire_minutes * 60,
-        organization=TenantInfo.model_validate(tenant),
+        organization=TenantInfo.model_validate(org),
     )
 
 
@@ -121,7 +145,7 @@ def _fingerprint(user: User) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()[:24]
 
 
-def _reset_url(request: Request, slug: str, token: str) -> str:
+def _reset_url(request: Request, slug: str | None, token: str) -> str:
     path = f"/reset-password?token={token}"
     # In development the console often runs on a port other than the
     # configured public one; build the link from the page that asked, but only
@@ -131,10 +155,15 @@ def _reset_url(request: Request, slug: str, token: str) -> str:
         host = origin.split("://", 1)[-1].split(":", 1)[0].lower()
         if host == settings.base_domain or host.endswith(f".{settings.base_domain}"):
             return f"{origin.rstrip('/')}{path}"
+    if slug is None:
+        # Asked from a host with no subdomain: the link goes back there, and the
+        # token itself names the company.
+        port = f":{settings.public_port}" if settings.public_port else ""
+        return f"{settings.public_scheme}://{settings.base_domain}{port}{path}"
     return settings.tenant_url(slug, path)
 
 
-def _user_for_token(db, tenant: Organization, token: str) -> User:
+def _user_for_token(db, tenant: Organization | None, token: str) -> User:
     payload = decode_access_token(token)
     invalid = HTTPException(
         status.HTTP_400_BAD_REQUEST,
@@ -143,14 +172,18 @@ def _user_for_token(db, tenant: Organization, token: str) -> User:
             "message": "This reset link has expired or has already been used. Request a new one.",
         },
     )
-    if not payload or payload.get("typ") != _RESET_TYP or payload.get("org") != str(tenant.id):
+    if not payload or payload.get("typ") != _RESET_TYP:
+        raise invalid
+    # On a tenant host the link must be that tenant's; elsewhere the signed
+    # token's own org claim decides.
+    if tenant is not None and payload.get("org") != str(tenant.id):
         raise invalid
     try:
         user_id = uuid.UUID(str(payload.get("sub")))
     except ValueError:
         raise invalid from None
     user = db.get(User, user_id)
-    if user is None or user.org_id != tenant.id or not user.is_active:
+    if user is None or str(user.org_id) != payload.get("org") or not user.is_active:
         raise invalid
     if not hmac.compare_digest(str(payload.get("ph", "")), _fingerprint(user)):
         raise invalid
@@ -159,40 +192,44 @@ def _user_for_token(db, tenant: Organization, token: str) -> User:
 
 @router.post("/forgot-password", response_model=ForgotPasswordOut)
 def forgot_password(
-    payload: ForgotPasswordIn, request: Request, tenant: CurrentTenant, db: DbSession
+    payload: ForgotPasswordIn, request: Request, tenant: OptionalTenant, db: DbSession
 ) -> ForgotPasswordOut:
     """Email a reset link. Answers the same whether or not the address exists.
 
     A different answer for a known address would turn this into a directory of
     the company's staff, so an unknown or disabled account gets the same
-    response as a real one — just no email.
+    response as a real one — just no email. Without a tenant host, every
+    company account on this address gets its own link.
     """
     email = payload.email.strip().lower()
     ratelimit.enforce(request, "reset", ratelimit.RESET, email)
 
-    user = db.scalar(select(User).where(User.org_id == tenant.id, User.email == email))
-    if user is None or not user.is_active:
-        return ForgotPasswordOut()
+    query = select(User).where(User.email == email, User.is_active.is_(True))
+    if tenant is not None:
+        query = query.where(User.org_id == tenant.id)
 
     hours = settings.password_reset_ttl_hours
-    token = create_access_token(
-        str(user.id),
-        {"typ": _RESET_TYP, "org": str(tenant.id), "ph": _fingerprint(user)},
-        expires_minutes=hours * 60,
-    )
-    url = _reset_url(request, tenant.slug, token)
-    sent = email_svc.send_password_reset(user.email, user.full_name, url, hours, org_id=tenant.id)
-
-    audit(db, org_id=tenant.id, actor=user, action="auth.password_reset_requested",
-          request=request, target_type="user", target_id=str(user.id),
-          detail={"delivered": sent})
+    dev_url: str | None = None
+    for user in db.scalars(query).all():
+        token = create_access_token(
+            str(user.id),
+            {"typ": _RESET_TYP, "org": str(user.org_id), "ph": _fingerprint(user)},
+            expires_minutes=hours * 60,
+        )
+        url = _reset_url(request, tenant.slug if tenant else None, token)
+        sent = email_svc.send_password_reset(user.email, user.full_name, url, hours, org_id=user.org_id)
+        audit(db, org_id=user.org_id, actor=user, action="auth.password_reset_requested",
+              request=request, target_type="user", target_id=str(user.id),
+              detail={"delivered": sent})
+        if not sent and dev_url is None:
+            dev_url = url
     db.commit()
 
-    return ForgotPasswordOut(dev_reset_url=None if sent or settings.is_production else url)
+    return ForgotPasswordOut(dev_reset_url=None if settings.is_production else dev_url)
 
 
 @router.get("/reset-password", response_model=ResetCheckOut)
-def check_reset_link(token: str, tenant: CurrentTenant, db: DbSession) -> ResetCheckOut:
+def check_reset_link(token: str, tenant: OptionalTenant, db: DbSession) -> ResetCheckOut:
     """Is this link still good? Lets the page say so before anyone types."""
     user = _user_for_token(db, tenant, token)
     return ResetCheckOut(email=user.email, name=user.full_name)
@@ -200,13 +237,13 @@ def check_reset_link(token: str, tenant: CurrentTenant, db: DbSession) -> ResetC
 
 @router.post("/reset-password", response_model=ForgotPasswordOut)
 def reset_password(
-    payload: ResetPasswordIn, request: Request, tenant: CurrentTenant, db: DbSession
+    payload: ResetPasswordIn, request: Request, tenant: OptionalTenant, db: DbSession
 ) -> ForgotPasswordOut:
     """Set the new password. The link stops working as soon as this succeeds."""
     ratelimit.enforce(request, "reset-confirm", ratelimit.RESET)
     user = _user_for_token(db, tenant, payload.token)
     user.password_hash = hash_password(payload.password)
-    audit(db, org_id=tenant.id, actor=user, action="auth.password_reset",
+    audit(db, org_id=user.org_id, actor=user, action="auth.password_reset",
           request=request, target_type="user", target_id=str(user.id))
     db.commit()
     return ForgotPasswordOut()

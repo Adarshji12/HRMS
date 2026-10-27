@@ -252,3 +252,33 @@ button.vs-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 }
 .tone-ink { --tone: var(--brand-ink, var(--brand)); }
 .tone-muted { --tone: var(--text-secondary); }
+
+/* "Visit For": two cards, a title over one line of help; the chosen one in the brand tint. */
+.vs-for { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.vs-for button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 12px 14px; border-radius: 10px; cursor: pointer; text-align: left;
+  border: 1px solid var(--border-strong, var(--border)); background: var(--surface-1);
+  font: inherit; color: var(--text-primary);
+  transition: border-color 120ms, background 120ms;
+}
+.vs-for button strong { font-size: 14px; font-weight: 600; }
+.vs-for button span { font-size: 12.5px; color: var(--text-muted); }
+.vs-for button:hover { border-color: var(--brand); }
+.vs-for button.is-on {
+  border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  background: var(--brand-soft);
+}
+.vs-for button.is-on strong { color: var(--brand-ink, var(--brand)); }
+
+/* A small tag after the name on a visit booked for a lead. */
+.vs-kind {
+  margin-left: 6px; padding: 1px 6px; border-radius: 4px; vertical-align: 1px;
+  font-size: 9.5px; font-weight: 650; letter-spacing: 0.03em; text-transform: uppercase;
+  background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+
+/* Export sits just before New Visit and takes over pushing the pair right. */
+.vs-toolbar .export-wrap { margin-left: auto; }
+.vs-toolbar .export-wrap + .vs-new { margin-left: 0; }
+.crm .vs-card .vs-toolbar .vs-export { padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }

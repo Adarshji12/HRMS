@@ -436,6 +436,9 @@ export function OwnerSelect({
 
 /* --------------------------------------------------------------- pickers --- */
 
+/** What a picker row needs: leads and customers both carry these. */
+type Pickable = { id: string; name: string; code: string; mobile: string; company: string | null }
+
 /** Type-ahead over customers. Search runs on the server, debounced, because a
  *  customer list is not something to hold in the browser. */
 export function CustomerPicker({
@@ -449,9 +452,64 @@ export function CustomerPicker({
   placeholder?: string
   autoFocus?: boolean
 }) {
+  return (
+    <SearchPicker
+      value={value}
+      onPick={onPick}
+      search={(q) => crm.customers({ q })}
+      placeholder={placeholder}
+      autoFocus={autoFocus}
+      label="customers"
+      emptyHint="Add them on My Customers first."
+    />
+  )
+}
+
+/** The same type-ahead, over leads. */
+export function LeadPicker({
+  value,
+  onPick,
+  placeholder = 'Search a lead by name, mobile or code…',
+  autoFocus,
+}: {
+  value: Lead | null
+  onPick: (lead: Lead | null) => void
+  placeholder?: string
+  autoFocus?: boolean
+}) {
+  return (
+    <SearchPicker
+      value={value}
+      onPick={onPick}
+      search={async (q) => (await crm.leads({ q, page_size: 10 })).rows}
+      placeholder={placeholder}
+      autoFocus={autoFocus}
+      label="leads"
+      emptyHint="Add them on My Leads first."
+    />
+  )
+}
+
+function SearchPicker<T extends Pickable>({
+  value,
+  onPick,
+  search,
+  placeholder,
+  autoFocus,
+  label,
+  emptyHint,
+}: {
+  value: T | null
+  onPick: (row: T | null) => void
+  search: (q: string) => Promise<T[]>
+  placeholder: string
+  autoFocus?: boolean
+  label: string
+  emptyHint: string
+}) {
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
-  const [rows, setRows] = useState<Customer[]>([])
+  const [rows, setRows] = useState<T[]>([])
   const [loading, setLoading] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -465,7 +523,7 @@ export function CustomerPicker({
     // short enough that the list feels attached to the keyboard.
     const timer = setTimeout(async () => {
       try {
-        setRows(await crm.customers({ q: text.trim() }))
+        setRows(await search(text.trim()))
       } catch {
         setRows([])
       } finally {
@@ -473,6 +531,7 @@ export function CustomerPicker({
       }
     }, 250)
     return () => clearTimeout(timer)
+    // `search` is a fresh closure each render; the text is what drives this.
   }, [text, open])
 
   useEffect(() => {
@@ -488,7 +547,7 @@ export function CustomerPicker({
       <div className="crm-fact-value">
         <span className="crm-strong">{value.name}</span>
         <span className="crm-sub">{value.code} · {value.mobile}</span>
-        <button className="crm-icon-btn" onClick={() => onPick(null)} aria-label="Choose another customer">
+        <button className="crm-icon-btn" onClick={() => onPick(null)} aria-label={`Choose another from ${label}`}>
           <IconClose size={14} />
         </button>
       </div>
@@ -508,7 +567,7 @@ export function CustomerPicker({
           }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
-          aria-label="Search customers"
+          aria-label={`Search ${label}`}
         />
       </div>
       {open && text.trim().length >= 2 && (
@@ -516,12 +575,13 @@ export function CustomerPicker({
           {loading && <div className="crm-suggest-empty">Searching…</div>}
           {!loading && rows.length === 0 && (
             <div className="crm-suggest-empty">
-              Nobody matches “{text.trim()}”. Add them on My Customers first.
+              Nobody matches “{text.trim()}”. {emptyHint}
             </div>
           )}
           {rows.map((row) => (
             <button
               key={row.id}
+              type="button"
               className="crm-suggest-item"
               onClick={() => {
                 onPick(row)

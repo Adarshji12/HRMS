@@ -574,7 +574,7 @@ function Shell() {
             />
             <Route
               path="/dashboards/crm"
-              element={access.canViewTeam ? <LeadDashboard /> : <Navigate to="/home" replace />}
+              element={access.canViewTeam ? <LeadDashboard overview /> : <Navigate to="/home" replace />}
             />
             <Route
               path="/dashboards/erp"

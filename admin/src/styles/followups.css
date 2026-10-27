@@ -180,3 +180,51 @@
   border-color: color-mix(in srgb, var(--status-critical, #d03b3b) 35%, transparent);
   background: color-mix(in srgb, var(--status-critical, #d03b3b) 6%, var(--surface-1));
 }
+
+/* ------------------------------------------------- filter box, add dialog --- */
+
+/* One toolbar row: a search that takes the room, then the controls at one height. */
+.crm .fu-card .fu-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+}
+.crm .fu-card .fu-bar-search { flex: 1 1 320px; min-width: 200px; }
+.crm .fu-card .fu-bar input,
+.crm .fu-card .fu-bar select,
+.crm .fu-card .fu-bar .btn { height: 36px; font-size: 13px; border-radius: 9px; }
+.crm .fu-card .fu-bar-status { width: 150px; }
+.crm .fu-card .fu-bar .btn { padding: 0 14px; white-space: nowrap; }
+.crm .fu-card .fu-bar .fu-icon-btn { width: 36px; padding: 0; display: inline-grid; place-items: center; }
+.crm .fu-card .fu-bar .fu-add { font-weight: 650; }
+
+.fu-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
+.crm .fu-card .fu-bar .fu-filter-btn.is-on {
+  border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+.crm .fu-pop { left: auto; right: 0; width: 300px; }
+.crm .fu-card .fu-pop select,
+.crm .fu-card .fu-pop input { width: 100%; min-width: 0; height: 34px; font-size: 12.5px; border-radius: 8px; }
+
+/* The window chip and Clear all, under the toolbar only when there is one. */
+.crm .fu-card .fu-chips {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+
+/* "Follow-up for": two equal cards, the chosen one in the brand tint. */
+.fu-for { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fu-for button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border-strong, var(--border)); background: var(--surface-1);
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--text-secondary);
+  transition: border-color 120ms, background 120ms, color 120ms;
+}
+.fu-for button:hover { border-color: var(--brand); color: var(--text-primary); }
+.fu-for button.is-on {
+  border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+
+@media (max-width: 760px) {
+  .crm .fu-card .fu-bar-search { flex-basis: 100%; }
+}

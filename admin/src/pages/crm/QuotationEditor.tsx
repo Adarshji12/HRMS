@@ -20,7 +20,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
-import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { ErrorNote, Loading } from '../../components/ui'
 import { IconPlus, IconReturn, IconSheet } from '../../components/Icons'
@@ -41,7 +40,7 @@ interface DraftLine extends QuotationLine {
   key: string
 }
 
-const emptyLine = (): DraftLine => ({
+const emptyLine = (gst = '0'): DraftLine => ({
   key: Math.random().toString(36).slice(2),
   product_id: null,
   plan_id: null,
@@ -52,7 +51,7 @@ const emptyLine = (): DraftLine => ({
   rate: '0',
   discount: '0',
   discount_is_percent: true,
-  gst_percent: '0',
+  gst_percent: gst,
 })
 
 export default function QuotationEditor() {
@@ -69,13 +68,12 @@ export default function QuotationEditor() {
 
   const products = useQuery<Product[]>('crm-products-all', () => crm.masters<Product>('products'))
   const plans = useQuery<PlanRow[]>('crm-plans-all', () => crm.masters<PlanRow>('plans'))
-  const settings = useQuery('crm-settings-quote', () => crm.settings().catch(() => null))
-  /* The company's own state decides CGST+SGST against IGST. Read here only to
-     tell the person which way the document will be taxed *before* they save —
-     the decision itself is the server's. */
-  const company = useQuery('crm-company', () =>
-    api.get<{ state: string | null }>('/org/company'),
-  )
+  /* Terms, validity, the default GST rate and the company's own GST state —
+     the last read here only to tell the person which way the document will be
+     taxed *before* they save; the decision itself is the server's. Readable by
+     every CRM user, unlike the settings it comes from. */
+  const defaults = useQuery('crm-quotation-defaults', () => crm.quotationDefaults().catch(() => null))
+  const defaultGst = defaults.data?.default_gst ?? '0'
 
   const [quoteDate, setQuoteDate] = useState(todayISO())
   const [validUntil, setValidUntil] = useState(daysFromTodayISO(15))
@@ -154,10 +152,23 @@ export default function QuotationEditor() {
   }, [customerId, isNew, saved])
 
   useEffect(() => {
-    if (isNew && settings.data?.quotation_terms && !terms) setTerms(settings.data.quotation_terms)
-  }, [settings.data, isNew, terms])
+    if (isNew && defaults.data?.terms && !terms) setTerms(defaults.data.terms)
+  }, [defaults.data, isNew, terms])
 
-  const homeState = (company.data?.state ?? '').trim().toLowerCase()
+  /* A new quotation's validity and its first blank line follow the settings,
+     once — after that they are the person's to change. */
+  const [seeded, setSeeded] = useState(false)
+  useEffect(() => {
+    if (!isNew || seeded || !defaults.data) return
+    setSeeded(true)
+    setValidUntil(daysFromTodayISO(defaults.data.validity_days))
+    const gst = defaults.data.default_gst
+    setLines((current) =>
+      current.map((line) => (!line.product_id && !line.name && line.gst_percent === '0' ? { ...line, gst_percent: gst } : line)),
+    )
+  }, [defaults.data, isNew, seeded])
+
+  const homeState = (defaults.data?.home_state ?? '').trim().toLowerCase()
   const placeOfSupply = state.trim().toLowerCase()
   const interstate = Boolean(homeState && placeOfSupply && homeState !== placeOfSupply)
 
@@ -201,7 +212,8 @@ export default function QuotationEditor() {
         '',
       hsn_sac: product?.hsn_sac ?? null,
       rate: product ? product.rate : '0',
-      gst_percent: product ? product.gst_percent : '0',
+      // The default rate stands in only where the product carries none.
+      gst_percent: product && product.gst_percent != null && product.gst_percent !== '' ? product.gst_percent : defaultGst,
     })
   }
 
@@ -446,7 +458,7 @@ export default function QuotationEditor() {
           </span>
           <button
             className="btn btn-sm crm-panel-link"
-            onClick={() => setLines((current) => [...current, emptyLine()])}
+            onClick={() => setLines((current) => [...current, emptyLine(defaultGst)])}
             disabled={decided}
           >
             <IconPlus size={14} /> Add line
@@ -583,7 +595,7 @@ export default function QuotationEditor() {
                         onClick={() =>
                           setLines((current) =>
                             current.length === 1
-                              ? [emptyLine()]
+                              ? [emptyLine(defaultGst)]
                               : current.filter((row) => row.key !== line.key),
                           )
                         }

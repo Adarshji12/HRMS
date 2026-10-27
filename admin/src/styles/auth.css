@@ -326,3 +326,13 @@
 .auth .auth-input.is-bad input { border-color: var(--danger); }
 .auth-field-error { font-size: 12px; color: var(--danger-text, var(--danger)); font-weight: 550; }
 .auth-spinner.is-dark { display: inline-block; vertical-align: -3px; margin-right: 8px; border-color: var(--border-strong); border-top-color: var(--action); }
+
+/* Company picker: one email and password that open accounts in several companies. */
+.auth-workspace {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 10px 14px; border-radius: 10px; cursor: pointer; text-align: left; font-family: inherit;
+  background: var(--surface-1); border: 1px solid var(--border-strong); color: var(--text-primary);
+}
+.auth-workspace:hover { border-color: var(--action); }
+.auth-workspace strong { font-size: 14px; font-weight: 600; }
+.auth-workspace span { font-size: 12px; color: var(--text-muted); }

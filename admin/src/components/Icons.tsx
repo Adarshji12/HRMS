@@ -361,3 +361,18 @@ export const IconUpload = (p: P) => (
     <path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" />
   </Svg>
 )
+
+export const IconUser = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="8" r="3.75" />
+    <path d="M4.75 20a7.25 7.25 0 0 1 14.5 0" />
+  </Svg>
+)
+
+export const IconSliders = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+    <circle cx="15" cy="7" r="2" />
+    <circle cx="9" cy="17" r="2" />
+  </Svg>
+)

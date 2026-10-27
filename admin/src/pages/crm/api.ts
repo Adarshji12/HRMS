@@ -224,7 +224,11 @@ export interface Interaction {
 export interface Visit {
   id: string
   visit_no: string
-  customer_id: string
+  customer_id: string | null
+  lead_id: string | null
+  /** Who the visit is for. `customer_name` / `customer_mobile` hold that
+   *  lead's or customer's name and number either way. */
+  subject_kind: 'lead' | 'customer'
   customer_name: string | null
   customer_mobile: string | null
   visit_type_id: string | null
@@ -362,10 +366,65 @@ export interface CrmSettings {
   quotation_prefix: string
   quotation_terms: string | null
   quotation_validity_days: number
+  quotation_setup: QuotationSetup
+  /** What the next quotation dated today would be numbered. */
+  quotation_next_number: string
   visit_prefix: string
   ticket_prefix: string
   renewal_window_days: number
   reminders_enabled: boolean
+}
+
+/** CRM Settings → Quotation, as one document (schemas/crm.py QuotationSetup). */
+export interface QuotationSetup {
+  style: 'simple' | 'detailed'
+  company_name: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  gstin: string | null
+  address: string | null
+  number_format: string | null
+  default_gst: string
+  bank_enabled: boolean
+  bank_name: string | null
+  account_name: string | null
+  account_number: string | null
+  ifsc: string | null
+  branch: string | null
+  upi_enabled: boolean
+  upi_id: string | null
+  upi_name: string | null
+  footer: string | null
+  signatory: string | null
+  /* Detailed / Proposal: the letterhead. */
+  accent_color: string
+  letterhead_align: 'left' | 'center'
+  tagline: string | null
+  cin: string | null
+  pan: string | null
+  show_gstin_in_header: boolean
+  /* Detailed / Proposal: the covering letter and terms. {customer}, {company},
+     {number} and {date} are filled in per quotation. */
+  letter_subject: string | null
+  letter_greeting: string | null
+  letter_body: string | null
+  letter_closing: string | null
+  payment_terms: string | null
+  delivery_terms: string | null
+  warranty_terms: string | null
+  /** Read-only: set by uploading on the same screen. */
+  has_logo?: boolean
+  has_stamp?: boolean
+  images_version?: string | null
+}
+
+/** What the quotation editor reads from settings; open to every CRM user. */
+export interface QuotationDefaults {
+  home_state: string | null
+  default_gst: string
+  validity_days: number
+  terms: string | null
 }
 
 export interface TrendPoint {
@@ -522,6 +581,7 @@ export const crm = {
   deleteMaster: (kind: string, id: string) => api.del(`/crm/masters/${kind}/${id}`),
 
   settings: () => api.get<CrmSettings>('/crm/settings'),
+  quotationDefaults: () => api.get<QuotationDefaults>('/crm/quotation-defaults'),
   saveSettings: (body: Partial<CrmSettings>) => api.put<CrmSettings>('/crm/settings', body),
   rotateIntake: () => api.post<CrmSettings>('/crm/settings/intake-token'),
 
@@ -535,6 +595,7 @@ export const crm = {
   patchLead: (id: string, body: unknown) => api.patch<Lead>(`/crm/leads/${id}`, body),
   moveLead: (id: string, body: unknown) => api.post<Lead>(`/crm/leads/${id}/status`, body),
   deleteLead: (id: string) => api.del(`/crm/leads/${id}`),
+  deleteCustomer: (id: string) => api.del(`/crm/customers/${id}`),
   addActivity: (id: string, body: unknown) =>
     api.post<Activity>(`/crm/leads/${id}/activities`, body),
   convertLead: (id: string, body: unknown) =>
@@ -549,6 +610,9 @@ export const crm = {
   completeFollowUp: (id: string, body: unknown) =>
     api.post<FollowUp>(`/crm/follow-ups/${id}/complete`, body),
   cancelFollowUp: (id: string) => api.del(`/crm/follow-ups/${id}`),
+  deleteFollowUp: (id: string) => api.del(`/crm/follow-ups/${id}?permanent=true`),
+  importFollowUps: (body: unknown) =>
+    api.post<{ created: number; errors: string[] }>('/crm/follow-ups/import', body),
 
   customers: (params: Record<string, string | undefined>) =>
     api.get<Customer[]>(`/crm/customers${qs(params)}`),
@@ -580,6 +644,7 @@ export const crm = {
   startVisit: (id: string, body: unknown) => api.post<Visit>(`/crm/visits/${id}/start`, body),
   closeVisit: (id: string, body: unknown) => api.post<Visit>(`/crm/visits/${id}/close`, body),
   cancelVisit: (id: string) => api.post<Visit>(`/crm/visits/${id}/cancel`),
+  deleteVisit: (id: string) => api.del(`/crm/visits/${id}`),
 
   quotations: (params: Record<string, string | undefined>) =>
     api.get<QuotationRow[]>(`/crm/quotations${qs(params)}`),

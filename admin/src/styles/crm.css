@@ -2924,3 +2924,9 @@ a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
   .crm .qe .crm-grid-4 > .crm-form-wide:nth-last-child(2) { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) { .crm .qe .crm-grid-4 { grid-template-columns: 1fr; } }
+
+/* Row delete icon — neutral until hovered, then the critical tone. */
+.crm .crm-row-actions .crm-icon-btn.crm-icon-danger:hover {
+  color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+}

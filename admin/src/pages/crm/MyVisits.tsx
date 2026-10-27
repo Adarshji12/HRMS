@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
 import '../../styles/hrdash.css'
+import { ExportButton } from '../../components/ExportButton'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
@@ -28,13 +29,16 @@ import {
   IconPin,
   IconPlus,
   IconSearch,
+  IconTrash,
 } from '../../components/Icons'
 import {
   crm,
   crmError,
   isoToLocalInput,
   localToISO,
+  qs,
   type Customer,
+  type Lead,
   type Visit,
 } from './api'
 import {
@@ -42,6 +46,7 @@ import {
   CustomerPicker,
   Dialog,
   Field,
+  LeadPicker,
   MasterSelect,
   OwnerSelect,
   StateText,
@@ -139,22 +144,21 @@ export default function MyVisits() {
   const [rowError, setRowError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
 
-  const key = `crm-visits-${q}-${status}-${typeId}-${employeeId}-${from}-${to}`
-  const visits = useQuery<Visit[]>(key, () =>
-    crm.visits({
-      q: q.trim() || undefined,
-      status: status || undefined,
-      visit_type_id: typeId || undefined,
-      employee_id: employeeId || undefined,
-      date_from: from || undefined,
-      date_to: to || undefined,
-    }),
-  )
+  // One set of filters for the table and the export, so the file is the screen.
+  const query = {
+    q: q.trim() || undefined,
+    status: status || undefined,
+    visit_type_id: typeId || undefined,
+    employee_id: employeeId || undefined,
+    priority: priorityFilter || undefined,
+    date_from: from || undefined,
+    date_to: to || undefined,
+  }
+  const key = `crm-visits-${q}-${status}-${typeId}-${employeeId}-${priorityFilter}-${from}-${to}`
+  const visits = useQuery<Visit[]>(key, () => crm.visits(query))
   const summary = useQuery('crm-visit-summary', () => crm.visitSummary())
 
-  // Priority is narrowed here rather than on the server: the list endpoint has
-  // no priority parameter, and the rows are already on the page.
-  const rows = (visits.data ?? []).filter((v) => !priorityFilter || v.priority === priorityFilter)
+  const rows = visits.data ?? []
 
   /* The More filters panel closes on a click outside it or on Escape. */
   useEffect(() => {
@@ -187,6 +191,18 @@ export default function MyVisits() {
       summary.reload()
     } catch (err) {
       setRowError(crmError(err, 'That visit could not be cancelled'))
+    }
+  }
+
+  async function remove(visit: Visit) {
+    if (!window.confirm(`Delete visit ${visit.visit_no}? This cannot be undone.`)) return
+    setRowError(null)
+    try {
+      await crm.deleteVisit(visit.id)
+      visits.reload()
+      summary.reload()
+    } catch (err) {
+      setRowError(crmError(err, 'That visit could not be deleted'))
     }
   }
 
@@ -337,6 +353,13 @@ export default function MyVisits() {
               Clear all
             </button>
           )}
+          <ExportButton
+            className="btn vs-export"
+            label="Export"
+            href={`/crm/visits/export${qs(query)}`}
+            filename={`visits-${new Date().toISOString().slice(0, 10)}.csv`}
+            disabled={rows.length === 0}
+          />
           <button className="btn btn-primary vs-new" onClick={() => setBooking(true)}>
             <IconPlus size={14} /> New Visit
           </button>
@@ -391,7 +414,10 @@ export default function MyVisits() {
                           <div className="vs-who">
                             <span className="vs-avatar" aria-hidden>{initials(visit.customer_name)}</span>
                             <span className="vs-who-text">
-                              <span className="crm-strong">{visit.customer_name}</span>
+                              <span className="crm-strong">
+                                {visit.customer_name}
+                                {visit.subject_kind === 'lead' && <span className="vs-kind">Lead</span>}
+                              </span>
                               <span className="crm-sub">{visit.mobile ?? visit.customer_mobile}</span>
                             </span>
                           </div>
@@ -457,6 +483,14 @@ export default function MyVisits() {
                             )}
                             <button className="link-btn" onClick={() => setEditing(visit)}>
                               Edit
+                            </button>
+                            <button
+                              className="crm-icon-btn crm-icon-danger"
+                              onClick={() => remove(visit)}
+                              title="Delete"
+                              aria-label={`Delete ${visit.visit_no}`}
+                            >
+                              <IconTrash size={15} />
                             </button>
                           </div>
                         </td>
@@ -527,7 +561,10 @@ function VisitForm({
   onClose: () => void
   onSaved: () => void
 }) {
+  const [kind, setKind] = useState<'lead' | 'customer'>('customer')
+  const [lead, setLead] = useState<Lead | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
+  const picked = kind === 'lead' ? lead : customer
   const [contact, setContact] = useState(visit?.contact_person ?? '')
   const [mobile, setMobile] = useState(visit?.mobile ?? '')
   const [address, setAddress] = useState(visit?.address ?? '')
@@ -546,7 +583,13 @@ function VisitForm({
     setBusy(true)
     setError(null)
     const body = {
-      customer_id: customer?.id ?? visit?.customer_id,
+      // Who it is for is fixed once booked; an edit changes everything else.
+      ...(visit
+        ? {}
+        : {
+            lead_id: kind === 'lead' ? picked?.id : null,
+            customer_id: kind === 'customer' ? picked?.id : null,
+          }),
       contact_person: contact || null,
       mobile: mobile || null,
       address: address || null,
@@ -567,12 +610,13 @@ function VisitForm({
     }
   }
 
-  const ready = Boolean((customer || visit) && when)
+  const ready = Boolean((picked || visit) && when)
+  const subjectWord = visit ? (visit.subject_kind === 'lead' ? 'lead' : 'customer') : kind
 
   return (
     <Dialog
       title={visit ? `Edit ${visit.visit_no}` : 'New Visit'}
-      subtitle="Book any kind of field call — service, sales, collection, a demo — against an existing customer."
+      subtitle="Book any kind of field call — service, sales, collection, a demo — for a lead or a customer."
       onClose={onClose}
       footer={
         <>
@@ -592,13 +636,39 @@ function VisitForm({
           </div>
         )}
 
+        {!visit && (
+          <div className="crm-field crm-form-wide">
+            <span className="crm-field-label">Visit For *</span>
+            <div className="vs-for" role="radiogroup" aria-label="Visit for">
+              {([
+                ['lead', 'Lead Visit', 'Before they are a customer'],
+                ['customer', 'Customer Visit', 'An existing account'],
+              ] as const).map(([option, title, sub]) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === option}
+                  className={kind === option ? 'is-on' : undefined}
+                  onClick={() => setKind(option)}
+                >
+                  <strong>{title}</strong>
+                  <span>{sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="crm-field crm-form-wide">
-          <span className="crm-field-label">Customer *</span>
+          <span className="crm-field-label">{subjectWord === 'lead' ? 'Lead *' : 'Customer *'}</span>
           {visit ? (
             <div className="crm-fact-value">
               <span className="crm-strong">{visit.customer_name}</span>
               <span className="crm-sub">{visit.customer_mobile}</span>
             </div>
+          ) : kind === 'lead' ? (
+            <LeadPicker value={lead} onPick={setLead} autoFocus />
           ) : (
             <CustomerPicker value={customer} onPick={setCustomer} autoFocus />
           )}
@@ -615,11 +685,11 @@ function VisitForm({
           <input
             value={mobile}
             onChange={(event) => setMobile(event.target.value)}
-            placeholder={customer?.mobile ?? 'Defaults to the customer’s number'}
+            placeholder={picked?.mobile ?? `Defaults to the ${subjectWord}’s number`}
           />
         </Field>
 
-        <Field label="Address" wide hint="Leave blank to use the address on the customer record.">
+        <Field label="Address" wide hint={`Leave blank to use the address on the ${subjectWord} record.`}>
           <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2} />
         </Field>
 

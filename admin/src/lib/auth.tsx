@@ -58,20 +58,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string, slug?: string) => {
-    // Set the slug before the request: the API client reads it to build the
-    // tenant header this very call depends on.
-    if (slug) setSlug(slug)
+    // Set before the request: the API client reads it to build the tenant
+    // header. With no slug (and no subdomain) none is sent, and the server
+    // finds the company from the account itself — a slug left over from an
+    // earlier sign-in must not narrow that search to the wrong company.
+    setSlug(slug ?? null)
     try {
       const result = await api.post<{ access_token: string; organization: TenantInfo }>(
         '/auth/login',
         { email, password },
       )
+      // Every call after this names the company the server signed us in to.
+      setSlug(result.organization.slug)
       setToken(result.access_token)
       setOrganization(result.organization)
       setUser(await api.get<User>('/auth/me'))
     } catch (err) {
       // Do not leave a bad slug behind for the next attempt.
-      if (slug) setSlug(null)
+      setSlug(null)
       throw err
     }
   }, [])

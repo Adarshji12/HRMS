@@ -765,3 +765,153 @@ def test_list_filters_by_industry_and_state(client, acme):
     assert count(industry_id=industries[0]["id"]) == 1
     assert count(state_id=states[1]["id"]) == 1
     assert count(industry_id=industries[0]["id"], state_id=states[1]["id"]) == 0
+
+
+def test_follow_ups_filter_by_type_and_due_range(client, acme):
+    lead = _new_lead(client, acme)
+    now = datetime.now(timezone.utc)
+    for days in (1, 5):
+        client.post(
+            "/api/v1/crm/follow-ups",
+            json={"lead_id": lead["id"], "due_at": _iso(now + timedelta(days=days))},
+            headers=acme.headers(),
+        )
+
+    def listed(**params):
+        response = client.get("/api/v1/crm/follow-ups", params=params, headers=acme.headers())
+        assert response.status_code == 200
+        return response.json()
+
+    assert len(listed(kind="lead")) == 2
+    assert listed(kind="customer") == []
+    in_range = listed(due_from=_iso(now), due_to=_iso(now + timedelta(days=2)))
+    assert len(in_range) == 1
+    assert len(listed(due_from=_iso(now + timedelta(days=3)))) == 1
+
+
+def test_follow_ups_all_statuses_export_and_import(client, acme):
+    lead = _new_lead(client, acme)
+    now = datetime.now(timezone.utc)
+    imported = client.post(
+        "/api/v1/crm/follow-ups/import",
+        json={"rows": [
+            {"contact": lead["code"], "due_at": _iso(now + timedelta(days=1)), "purpose": "By code"},
+            {"contact": lead["mobile"], "due_at": _iso(now + timedelta(days=2)), "purpose": "By mobile"},
+            {"contact": "NOPE-404", "due_at": _iso(now + timedelta(days=3))},
+        ]},
+        headers=acme.headers(),
+    )
+    assert imported.status_code == 200
+    body = imported.json()
+    assert body["created"] == 2
+    assert len(body["errors"]) == 1 and "Row 4" in body["errors"][0]
+
+    first = client.get("/api/v1/crm/follow-ups", headers=acme.headers()).json()[0]
+    client.delete(f"/api/v1/crm/follow-ups/{first['id']}", headers=acme.headers())
+    every = client.get("/api/v1/crm/follow-ups", params={"status": "all"}, headers=acme.headers()).json()
+    assert {row["status"] for row in every} == {"pending", "cancelled"}
+
+    exported = client.get("/api/v1/crm/follow-ups/export", params={"status": "all"}, headers=acme.headers())
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("text/csv")
+    lines = exported.text.strip().splitlines()
+    assert lines[0].startswith("Due,Contact type,Contact")
+    assert len(lines) == 3
+
+
+def test_a_visit_can_be_for_a_lead(client, acme):
+    lead = _new_lead(client, acme)
+    customer = _customer(client, acme)
+    when = _iso(datetime.now(timezone.utc) + timedelta(days=1))
+
+    visit = client.post(
+        "/api/v1/crm/visits",
+        json={"lead_id": lead["id"], "scheduled_at": when, "purpose": "Product demo"},
+        headers=acme.headers(),
+    )
+    assert visit.status_code == 201
+    row = visit.json()
+    assert row["subject_kind"] == "lead"
+    assert row["lead_id"] == lead["id"] and row["customer_id"] is None
+    assert row["customer_name"] == lead["name"]
+    assert row["mobile"] == lead["mobile"]
+
+    # Exactly one subject: both, or neither, is refused.
+    both = {"lead_id": lead["id"], "customer_id": customer["id"], "scheduled_at": when}
+    assert client.post("/api/v1/crm/visits", json=both, headers=acme.headers()).status_code == 422
+    neither = {"scheduled_at": when}
+    assert client.post("/api/v1/crm/visits", json=neither, headers=acme.headers()).status_code == 422
+
+    # Closing it can book the next follow-up against the lead.
+    closed = client.post(
+        f"/api/v1/crm/visits/{row['id']}/close",
+        json={"outcome": "Liked it", "next_follow_up_at": _iso(datetime.now(timezone.utc) + timedelta(days=3))},
+        headers=acme.headers(),
+    )
+    assert closed.status_code == 200
+    after = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=acme.headers()).json()
+    assert after["next_follow_up_at"] is not None
+
+
+def test_visits_export_follows_the_filters(client, acme):
+    customer = _customer(client, acme)
+    when = _iso(datetime.now(timezone.utc) + timedelta(days=1))
+    for priority in ("high", "low"):
+        client.post(
+            "/api/v1/crm/visits",
+            json={"customer_id": customer["id"], "scheduled_at": when, "priority": priority},
+            headers=acme.headers(),
+        )
+    high = client.get("/api/v1/crm/visits", params={"priority": "high"}, headers=acme.headers()).json()
+    assert [row["priority"] for row in high] == ["high"]
+
+    exported = client.get("/api/v1/crm/visits/export", params={"priority": "high"}, headers=acme.headers())
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("text/csv")
+    lines = exported.text.strip().splitlines()
+    assert lines[0].startswith("Visit No,Scheduled,Visit for,Name")
+    assert len(lines) == 2 and ",high," in lines[1]
+
+
+def test_follow_up_can_be_deleted_outright(client, acme):
+    lead = _new_lead(client, acme)
+    created = client.post(
+        "/api/v1/crm/follow-ups",
+        json={"lead_id": lead["id"], "due_at": _iso(datetime.now(timezone.utc) + timedelta(days=1))},
+        headers=acme.headers(),
+    ).json()
+    gone = client.delete(f"/api/v1/crm/follow-ups/{created['id']}?permanent=true", headers=acme.headers())
+    assert gone.status_code == 204
+    rows = client.get("/api/v1/crm/follow-ups", headers=acme.headers()).json()
+    assert all(r["id"] != created["id"] for r in rows)
+    after = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=acme.headers()).json()
+    assert after["next_follow_up_at"] is None
+
+
+def test_customer_delete_takes_its_visits_with_it(client, acme):
+    customer = _customer(client, acme)
+    service = next(v for v in _masters(client, acme, "visit-types") if v["name"] == "Service Visit")
+    visit = client.post(
+        "/api/v1/crm/visits",
+        json={"customer_id": customer["id"], "visit_type_id": service["id"],
+              "scheduled_at": _iso(datetime.now(timezone.utc) + timedelta(days=1))},
+        headers=acme.headers(),
+    ).json()
+    assert client.delete(f"/api/v1/crm/customers/{customer['id']}", headers=acme.headers()).status_code == 204
+    assert client.get(f"/api/v1/crm/customers/{customer['id']}", headers=acme.headers()).status_code == 404
+    rows = client.get("/api/v1/crm/visits", headers=acme.headers()).json()
+    assert all(r["id"] != visit["id"] for r in rows)
+
+
+def test_visit_can_be_deleted(client, acme):
+    customer = _customer(client, acme)
+    service = next(v for v in _masters(client, acme, "visit-types") if v["name"] == "Service Visit")
+    visit = client.post(
+        "/api/v1/crm/visits",
+        json={"customer_id": customer["id"], "visit_type_id": service["id"],
+              "scheduled_at": _iso(datetime.now(timezone.utc) + timedelta(days=1))},
+        headers=acme.headers(),
+    ).json()
+    assert client.delete(f"/api/v1/crm/visits/{visit['id']}", headers=acme.headers()).status_code == 204
+    rows = client.get("/api/v1/crm/visits", headers=acme.headers()).json()
+    assert all(r["id"] != visit["id"] for r in rows)

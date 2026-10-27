@@ -25,9 +25,10 @@ integration. It is declared last, and its own section says so again.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app.api.deps import CurrentUser, DbSession, audit
 from app.api.tenancy import CurrentTenant
@@ -249,6 +250,13 @@ def read_settings(viewer: CurrentUser, db: DbSession, request: Request) -> S.Crm
         quotation_prefix=row.quotation_prefix,
         quotation_terms=row.quotation_terms,
         quotation_validity_days=row.quotation_validity_days,
+        quotation_setup=S.QuotationSetupOut(
+            **svc.quotation_setup(row).model_dump(),
+            has_logo=bool((row.quotation_setup or {}).get("logo_key")),
+            has_stamp=bool((row.quotation_setup or {}).get("stamp_key")),
+            images_version=(row.quotation_setup or {}).get("images_version"),
+        ),
+        quotation_next_number=svc.next_quotation_number(db, viewer.org_id, date.today(), peek=True),
         visit_prefix=row.visit_prefix,
         ticket_prefix=row.ticket_prefix,
         renewal_window_days=row.renewal_window_days,
@@ -265,6 +273,17 @@ def write_settings(
     changes = payload.model_dump(exclude_unset=True)
     if "assignment_pool" in changes and changes["assignment_pool"] is not None:
         changes["assignment_pool"] = [str(x) for x in changes["assignment_pool"]]
+    if "quotation_setup" in changes:
+        # The screen sends the whole document; the image keys it never sees
+        # are carried over rather than wiped.
+        incoming = changes.pop("quotation_setup")
+        if incoming is not None:
+            kept = {
+                key: value for key, value in (row.quotation_setup or {}).items()
+                if key in ("logo_key", "stamp_key", "images_version")
+            }
+            setup = S.QuotationSetup.model_validate(incoming).model_dump(mode="json")
+            row.quotation_setup = {**setup, **kept}
     for field, value in changes.items():
         setattr(row, field, value)
     # A token is minted the first time capture is switched on and then left
@@ -276,6 +295,66 @@ def write_settings(
         row.intake_token = secrets.token_urlsafe(24)
     db.commit()
     return read_settings(viewer, db, request)
+
+
+@router.get("/quotation-defaults", response_model=S.QuotationDefaults)
+def quotation_defaults(viewer: CurrentUser, db: DbSession) -> S.QuotationDefaults:
+    """What the quotation editor needs from settings. Any CRM user may read it."""
+    defaults = svc.quotation_defaults(db, viewer)
+    db.commit()
+    return defaults
+
+
+@router.post("/settings/quotation-images/{kind}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def upload_quotation_image(
+    kind: str, viewer: CurrentUser, db: DbSession, request: Request, file: UploadFile = File(...)
+) -> None:
+    """The quotation letterhead's logo, or the company stamp printed over the
+    signature line. Re-encoded exactly like the company logo."""
+    from app.services import branding
+
+    svc.require_admin_crm(viewer)
+    if kind not in svc.QUOTATION_IMAGES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such image")
+    raw = await file.read(branding.MAX_LOGO_BYTES + 1)
+    try:
+        svc.store_quotation_image(db, viewer, kind, raw)
+    except branding.BrandingError as error:
+        raise HTTPException(
+            error.status_code, detail={"reason": error.code, "message": error.message}
+        ) from error
+    audit(db, org_id=viewer.org_id, actor=viewer, action=f"crm.quotation_{kind}_updated", request=request)
+    db.commit()
+
+
+@router.delete("/settings/quotation-images/{kind}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_quotation_image(kind: str, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    svc.require_admin_crm(viewer)
+    if kind not in svc.QUOTATION_IMAGES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such image")
+    svc.clear_quotation_image(db, viewer, kind)
+    audit(db, org_id=viewer.org_id, actor=viewer, action=f"crm.quotation_{kind}_cleared", request=request)
+    db.commit()
+
+
+@router.get("/settings/quotation-images/{kind}")
+def quotation_image(kind: str, viewer: CurrentUser, db: DbSession) -> Response:
+    """The image itself. Any CRM user may see it: it prints on their documents."""
+    from app.services import storage
+
+    if kind not in svc.QUOTATION_IMAGES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such image")
+    key = svc.quotation_image_key(db, viewer.org_id, kind)
+    if not key:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No image uploaded")
+    try:
+        served = storage.serve(key)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The stored image could not be found. Upload it again.")
+    if served.url:
+        return RedirectResponse(served.url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    return FileResponse(served.path, media_type="image/png",
+                        headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.post("/geography/india")
@@ -485,19 +564,57 @@ def delete_lead(
 # --------------------------------------------------------------------------- #
 
 
+_FOLLOW_UP_STATUS = r"^(pending|done|cancelled|all)$"
+
+
+@router.get("/follow-ups/export")
+def export_follow_ups(
+    viewer: CurrentUser,
+    db: DbSession,
+    status_filter: str | None = Query(default="pending", alias="status", pattern=_FOLLOW_UP_STATUS),
+    window: str | None = Query(default=None, pattern=r"^(today|overdue|upcoming|week)$"),
+    owner_id: uuid.UUID | None = None,
+    q: str | None = None,
+    kind: str | None = Query(default=None, pattern=r"^(lead|customer)$"),
+    due_from: datetime | None = None,
+    due_to: datetime | None = None,
+) -> Response:
+    """The current view as CSV — same scope, same filters, no more rows."""
+    csv_text = svc.export_follow_ups_csv(
+        db, viewer, status=status_filter, window=window, owner_id=owner_id, q=q,
+        kind=kind, due_from=due_from, due_to=due_to,
+    )
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="follow-ups-{date.today()}.csv"'},
+    )
+
+
+@router.post("/follow-ups/import", response_model=S.FollowUpImportResult)
+def import_follow_ups(
+    payload: S.FollowUpImportIn, viewer: CurrentUser, db: DbSession
+) -> S.FollowUpImportResult:
+    return svc.import_follow_ups(db, viewer, payload)
+
+
 @router.get("/follow-ups", response_model=list[S.FollowUpOut])
 def list_follow_ups(
     viewer: CurrentUser,
     db: DbSession,
-    status_filter: str | None = Query(default="pending", alias="status", pattern=r"^(pending|done|cancelled)$"),
+    status_filter: str | None = Query(default="pending", alias="status", pattern=_FOLLOW_UP_STATUS),
     window: str | None = Query(default=None, pattern=r"^(today|overdue|upcoming|week)$"),
     owner_id: uuid.UUID | None = None,
     q: str | None = None,
+    kind: str | None = Query(default=None, pattern=r"^(lead|customer)$"),
+    due_from: datetime | None = None,
+    due_to: datetime | None = None,
 ) -> list[S.FollowUpOut]:
     # Aliased because `status` is also the FastAPI status module imported above
     # — the same collision projects.py and assets.py resolve the same way.
     return svc.list_follow_ups(db, viewer, status=status_filter, window=window,
-                               owner_id=owner_id, q=q)
+                               owner_id=owner_id, q=q, kind=kind,
+                               due_from=due_from, due_to=due_to)
 
 
 @router.post("/follow-ups", response_model=S.FollowUpOut, status_code=status.HTTP_201_CREATED)
@@ -513,8 +630,14 @@ def complete_follow_up(
 
 
 @router.delete("/follow-ups/{follow_up_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-def cancel_follow_up(follow_up_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> None:
-    svc.cancel_follow_up(db, viewer, follow_up_id)
+def cancel_follow_up(
+    follow_up_id: uuid.UUID, viewer: CurrentUser, db: DbSession, permanent: bool = False
+) -> None:
+    # Plain DELETE cancels (the row stays in history); ?permanent=true removes it.
+    if permanent:
+        svc.delete_follow_up(db, viewer, follow_up_id)
+    else:
+        svc.cancel_follow_up(db, viewer, follow_up_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -556,6 +679,13 @@ def update_customer(
     customer_id: uuid.UUID, payload: S.CustomerPatch, viewer: CurrentUser, db: DbSession
 ) -> S.CustomerOut:
     return svc.update_customer(db, viewer, customer_id, payload)
+
+
+@router.delete("/customers/{customer_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_customer(
+    customer_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request
+) -> None:
+    svc.delete_customer(db, viewer, customer_id, request=request)
 
 
 @router.post("/customers/{customer_id}/plans", response_model=S.CustomerPlanOut,
@@ -619,21 +749,50 @@ def close_interaction(
 # --------------------------------------------------------------------------- #
 
 
+_VISIT_STATUS = r"^(scheduled|in_progress|completed|cancelled)$"
+_VISIT_PRIORITY = r"^(low|medium|high|urgent)$"
+
+
 @router.get("/visits", response_model=list[S.VisitOut])
 def list_visits(
     viewer: CurrentUser,
     db: DbSession,
     q: str | None = None,
-    status_filter: str | None = Query(default=None, alias="status", pattern=r"^(scheduled|in_progress|completed|cancelled)$"),
+    status_filter: str | None = Query(default=None, alias="status", pattern=_VISIT_STATUS),
     visit_type_id: uuid.UUID | None = None,
     employee_id: uuid.UUID | None = None,
+    priority: str | None = Query(default=None, pattern=_VISIT_PRIORITY),
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[S.VisitOut]:
     svc.ensure_defaults(db, viewer.org_id)
     return svc.list_visits(
         db, viewer, q=q, status=status_filter, visit_type_id=visit_type_id,
-        employee_id=employee_id, date_from=date_from, date_to=date_to,
+        employee_id=employee_id, priority=priority, date_from=date_from, date_to=date_to,
+    )
+
+
+@router.get("/visits/export")
+def export_visits(
+    viewer: CurrentUser,
+    db: DbSession,
+    q: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status", pattern=_VISIT_STATUS),
+    visit_type_id: uuid.UUID | None = None,
+    employee_id: uuid.UUID | None = None,
+    priority: str | None = Query(default=None, pattern=_VISIT_PRIORITY),
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> Response:
+    """The current view as CSV — same scope, same filters, no more rows."""
+    csv_text = svc.export_visits_csv(
+        db, viewer, q=q, status=status_filter, visit_type_id=visit_type_id,
+        employee_id=employee_id, priority=priority, date_from=date_from, date_to=date_to,
+    )
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="visits-{date.today()}.csv"'},
     )
 
 
@@ -676,6 +835,11 @@ def close_visit(
     visit_id: uuid.UUID, payload: S.VisitCloseIn, viewer: CurrentUser, db: DbSession
 ) -> S.VisitOut:
     return svc.close_visit(db, viewer, visit_id, payload)
+
+
+@router.delete("/visits/{visit_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_visit(visit_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> None:
+    svc.delete_visit(db, viewer, visit_id)
 
 
 @router.post("/visits/{visit_id}/cancel", response_model=S.VisitOut)

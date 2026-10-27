@@ -10,7 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import AuthShell, { EyeIcon } from '../components/AuthShell'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { BASE_DOMAIN, getSlug, setSlug, slugFromHostname } from '../lib/tenant'
+import { setSlug, slugFromHostname } from '../lib/tenant'
 
 const MailIcon = () => (
   <svg className="auth-input-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -22,12 +22,6 @@ const LockIcon = () => (
     <rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" />
   </svg>
 )
-const BuildingIcon = () => (
-  <svg className="auth-input-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1" />
-  </svg>
-)
-
 function StatusMark({ tone }: { tone: 'ok' | 'bad' | 'mail' }) {
   return (
     <span className={`auth-mark is-${tone}`} aria-hidden>
@@ -48,7 +42,6 @@ export function ForgotPassword() {
   const { organization } = useAuth()
   const [params] = useSearchParams()
   const fromHost = slugFromHostname()
-  const [org, setOrg] = useState(getSlug() ?? '')
   const [email, setEmail] = useState(params.get('email') ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,8 +52,9 @@ export function ForgotPassword() {
     setBusy(true)
     setError(null)
     try {
-      // Where the address does not name the workspace, the request has to.
-      if (!fromHost) setSlug(org.trim().toLowerCase())
+      // Where the address does not name the workspace, none is sent: the
+      // server mails a link for each company this address has an account in.
+      if (!fromHost) setSlug(null)
       const out = await api.post<{ ok: boolean; dev_reset_url: string | null }>(
         '/auth/forgot-password', { email: email.trim() },
       )
@@ -107,18 +101,6 @@ export function ForgotPassword() {
 
       <form className="auth-form" onSubmit={submit}>
         {error && <div className="auth-error" role="alert">{error}</div>}
-
-        {!fromHost && (
-          <label className="auth-field">
-            <span className="auth-field-label">Workspace</span>
-            <span className="auth-input has-addon">
-              <BuildingIcon />
-              <input type="text" autoComplete="organization" value={org} required
-                     onChange={(e) => setOrg(e.target.value)} placeholder="your-company" />
-              <span className="auth-input-addon">.{BASE_DOMAIN}</span>
-            </span>
-          </label>
-        )}
 
         <label className="auth-field">
           <span className="auth-field-label">Work email</span>
@@ -170,6 +152,9 @@ export function ResetPassword() {
 
   useEffect(() => {
     if (!token) return
+    // Off a tenant host the signed link names its own company; a workspace
+    // remembered from another sign-in would only contradict it.
+    if (!slugFromHostname()) setSlug(null)
     api.get<{ email: string; name: string }>(`/auth/reset-password?token=${encodeURIComponent(token)}`)
       .then(setWho)
       .catch((err) => setLinkError(err instanceof Error ? err.message : 'This reset link is not valid.'))

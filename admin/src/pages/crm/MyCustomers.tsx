@@ -31,6 +31,7 @@ import {
   IconPlus,
   IconReturn,
   IconSearch,
+  IconTrash,
   IconUpload,
   IconUsers,
 } from '../../components/Icons'
@@ -75,7 +76,7 @@ export default function MyCustomers() {
   const [managerId, setManagerId] = useState('')
   const [adding, setAdding] = useState(false)
   const [openId, setOpenId] = useState<string | null>(params.get('open'))
-  const [rowError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
   const [created, setCreated] = useState<Created>('')
   const [typeF, setTypeF] = useState('')
   const [industryF, setIndustryF] = useState('')
@@ -165,6 +166,18 @@ export default function MyCustomers() {
       row.primary_plan?.days_to_renewal !== undefined &&
       row.primary_plan.days_to_renewal < 0,
   ).length
+
+  async function remove(row: Customer) {
+    if (!window.confirm(`Delete the customer “${row.name}” with its plans, follow-ups and visits? This cannot be undone.`)) return
+    setRowError(null)
+    try {
+      await crm.deleteCustomer(row.id)
+      rows.reload()
+      all.reload()
+    } catch (err) {
+      setRowError(crmError(err, 'That customer could not be deleted'))
+    }
+  }
 
   if (rows.error && !rows.data) {
     return (
@@ -419,6 +432,14 @@ export default function MyCustomers() {
                             aria-label={`Edit ${row.name}`}
                           >
                             <IconEdit size={15} />
+                          </button>
+                          <button
+                            className="crm-icon-btn crm-icon-danger"
+                            onClick={() => remove(row)}
+                            title="Delete"
+                            aria-label={`Delete ${row.name}`}
+                          >
+                            <IconTrash size={15} />
                           </button>
                         </div>
                       </td>

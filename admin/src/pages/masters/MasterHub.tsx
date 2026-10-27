@@ -18,6 +18,8 @@ import { useQuery } from '../../lib/useQuery'
 import { crm } from '../crm/api'
 import { LISTS, MASTER_GROUPS, MasterTable, shortLabel } from './masterKit'
 import { MasterTrail } from './MasterBack'
+import DistrictMapping from '../crm/DistrictMapping'
+import CityMapping from '../crm/CityMapping'
 
 const byKind = new Map(LISTS.map((list) => [list.kind, list]))
 
@@ -81,7 +83,13 @@ export default function MasterHub({ groupKey }: { groupKey: string }) {
       </nav>
 
       <div className="mh-table">
-        <MasterTable key={list.kind} list={list} />
+        {/* Districts and cities get the state-by-state mapping views (with
+            "Load India districts") rather than a flat list: hundreds of rows
+            only make sense grouped under their state. These views moved
+            here from CRM Settings when its master tabs were removed. */}
+        {list.kind === 'districts' ? <DistrictMapping />
+          : list.kind === 'cities' ? <CityMapping />
+            : <MasterTable key={list.kind} list={list} />}
       </div>
     </div>
   )
