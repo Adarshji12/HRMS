@@ -35,6 +35,9 @@ databases:
     databaseName: hrdesktimesol
     user: hrdesktimesol
     plan: free
+    # Same region as the API: the internal connection string only resolves
+    # inside one region.
+    region: singapore
 
 services:
   # --------------------------------------------------------------- API ---
