@@ -307,15 +307,6 @@ export default function MyLeave() {
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">My Leave</h1>
-          <p className="page-sub">
-            Your balances, and what each one is made of.
-          </p>
-        </div>
-      </div>
-
       {notice && (
         <div className="notice notice-ok" style={{ marginBottom: 14 }}>
           {notice}

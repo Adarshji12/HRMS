@@ -220,15 +220,7 @@ export default function WorkforceOverview() {
 
   return (
     <div className="page wf">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Workforce Management</h1>
-          <p className="page-sub">
-            The pattern of leave across {data.headcount}{' '}
-            {data.headcount === 1 ? 'person' : 'people'} you can see — how much went, of what
-            kind, and who is away. Approved leave only.
-          </p>
-        </div>
+      <div className="page-head" style={{ justifyContent: 'flex-end' }}>
         <label className="wf-year">
           <span className="wf-year-label">Year</span>
           <select value={year} onChange={(event) => setYear(Number(event.target.value))}>

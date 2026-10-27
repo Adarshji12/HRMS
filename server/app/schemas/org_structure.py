@@ -13,6 +13,9 @@ class DepartmentIn(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     parent_id: uuid.UUID | None = None
     head_user_id: uuid.UUID | None = None
+    # PATCH replaces the whole record, so an omitted flag means active — the
+    # older forms that never sent it keep behaving as they did.
+    is_active: bool = True
 
 
 class DepartmentOut(ORMModel):
@@ -50,13 +53,18 @@ class TeamOut(ORMModel):
 
 class DesignationIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    level: int = Field(default=0, ge=0, le=100)
+    # 1 is the most senior; larger numbers sit further down the ladder.
+    level: int = Field(default=1, ge=1, le=100)
+    department_id: uuid.UUID | None = None
+    is_active: bool = True
 
 
 class DesignationOut(ORMModel):
     id: uuid.UUID
     name: str
     level: int
+    department_id: uuid.UUID | None = None
+    department_name: str | None = None
     is_active: bool
     member_count: int = 0
 

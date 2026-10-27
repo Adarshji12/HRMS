@@ -1,6 +1,6 @@
 {
-  "name": "MyDeskTime — Workforce Analytics",
-  "short_name": "MyDeskTime",
+  "name": "LRS Services — Workforce Platform",
+  "short_name": "LRS Services",
   "description": "Employee time and activity analytics console.",
   "start_url": "/",
   "scope": "/",

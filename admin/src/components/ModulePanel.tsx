@@ -28,6 +28,7 @@ export default function ModulePanel({ group }: { group: NavGroup }) {
     isOwner: isOwner(user),
     canApprove: canApproveSomething(user),
     hiddenPages: user?.hidden_pages ?? [],
+    menuRights: user?.menu_rights ?? null,
   }
 
   const sections = sectionsIn(group, access)

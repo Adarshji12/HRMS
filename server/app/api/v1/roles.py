@@ -13,6 +13,7 @@ from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import AdminUser, DbSession, audit
+from app.core import menus
 from app.models import PERMISSION_KEYS
 from app.schemas.common import ORMModel
 from app.services import roles as svc
@@ -33,6 +34,9 @@ class RoleIn(BaseModel):
     #: Only the true entries need sending; the service drops the rest. See
     #: ``services.roles.clean_permissions`` for why absent means off.
     permissions: dict[str, bool] | None = None
+    #: Per-menu rights, ``{"/crm/leads": {"access": true, "add": false, ...}}``.
+    #: Omitted means unchanged. See ``core.menus``.
+    menu_rights: dict[str, dict[str, bool]] | None = None
 
 
 class RoleOut(ORMModel):
@@ -42,6 +46,9 @@ class RoleOut(ORMModel):
     base_role: str
     data_scope: str
     permissions: dict[str, bool]
+    #: ``None`` until the role is first restricted by menu — it then keeps every
+    #: menu it could always reach.
+    menu_rights: dict[str, dict[str, bool]] | None = None
     is_builtin: bool
     #: How many people hold it. Shown beside the save button, because editing a
     #: role changes what all of them can do the moment it is saved.
@@ -66,6 +73,7 @@ def _out(role, counts: dict[uuid.UUID, int]) -> RoleOut:
         base_role=role.base_role,
         data_scope=role.data_scope,
         permissions={key: bool(role.permissions.get(key)) for key in PERMISSION_KEYS},
+        menu_rights=role.menu_rights,
         is_builtin=role.is_builtin,
         member_count=counts.get(role.id, 0),
     )
@@ -90,6 +98,37 @@ def list_permissions(admin: AdminUser) -> list[str]:
     return list(PERMISSION_KEYS)
 
 
+class MenuOut(BaseModel):
+    key: str
+    label: str
+    parent: str | None = None
+    note: str | None = None
+    #: Which of add / edit / delete the menu has. Empty: Access only.
+    actions: list[str]
+    #: The older permission flags shown as the row's other rights.
+    rights: list[str]
+
+
+class MenuGroupOut(BaseModel):
+    key: str
+    label: str
+    description: str
+    menus: list[MenuOut]
+
+
+@router.get("/menus", response_model=list[MenuGroupOut])
+def list_menus(admin: AdminUser) -> list[MenuGroupOut]:
+    """The menu catalogue the roles screen draws its rows from."""
+    return [
+        MenuGroupOut(
+            key=g.key, label=g.label, description=g.description,
+            menus=[MenuOut(key=m.key, label=m.label, parent=m.parent, note=m.note,
+                           actions=list(m.actions), rights=list(m.rights)) for m in g.menus],
+        )
+        for g in menus.GROUPS
+    ]
+
+
 @router.post("", response_model=RoleOut, status_code=status.HTTP_201_CREATED)
 def create_role(payload: RoleIn, admin: AdminUser, request: Request, db: DbSession) -> RoleOut:
     row = svc.create_role(
@@ -99,6 +138,7 @@ def create_role(payload: RoleIn, admin: AdminUser, request: Request, db: DbSessi
         base_role=payload.base_role or "employee",
         data_scope=payload.data_scope or "self",
         permissions=payload.permissions,
+        menu_rights=payload.menu_rights,
     )
     audit(db, org_id=admin.org_id, actor=admin, action="role.created", request=request,
           target_type="org_role", target_id=str(row.id),
@@ -119,6 +159,7 @@ def update_role(role_id: uuid.UUID, payload: RoleIn, admin: AdminUser,
         base_role=payload.base_role,
         data_scope=payload.data_scope,
         permissions=payload.permissions,
+        menu_rights=payload.menu_rights,
     )
     counts = svc.member_counts(db, admin.org_id)
     audit(db, org_id=admin.org_id, actor=admin, action="role.updated", request=request,
@@ -128,6 +169,7 @@ def update_role(role_id: uuid.UUID, payload: RoleIn, admin: AdminUser,
           # payroll to fourteen people" are different events.
           detail={"name": row.name, "base_role": row.base_role,
                   "data_scope": row.data_scope, "permissions": row.permissions,
+                  "menu_rights": row.menu_rights,
                   "members_affected": counts.get(row.id, 0)})
     db.commit()
     return _out(row, counts)

@@ -101,7 +101,7 @@ class Team(UUIDMixin, TimestampMixin, Base):
 
 
 class Designation(UUIDMixin, TimestampMixin, Base):
-    """Job title. ``level`` orders them for seniority sorting in reports."""
+    """Job title. ``level`` orders them by seniority: 1 is the most senior."""
 
     __tablename__ = "designations"
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_designation_org_name"),)
@@ -110,7 +110,12 @@ class Designation(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Null means the title is used in any department. SET NULL so deleting a
+    # department widens its titles rather than deleting them.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 

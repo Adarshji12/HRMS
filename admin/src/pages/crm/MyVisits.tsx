@@ -12,14 +12,20 @@
  * labelled "Send OTP" that sends nothing.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
+import '../../styles/hrdash.css'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
+  IconAlert,
+  IconCalendar,
+  IconCheck,
   IconClock,
+  IconClose,
   IconFilter,
+  IconPin,
   IconPlus,
   IconSearch,
 } from '../../components/Icons'
@@ -76,35 +82,35 @@ function VisitStrip(p: {
   status: string; isToday: boolean
   pick: (key: Exclude<StripKey, 'overdue'>) => void
 }) {
-  const items: Array<{ key: StripKey; label: string; value: number; tone: string; hint?: string }> = [
-    { key: 'today', label: 'Today', value: p.today, tone: 'brand' },
-    { key: 'scheduled', label: 'Pending', value: p.pending, tone: 'idle' },
-    { key: 'in_progress', label: 'In Progress', value: p.inProgress, tone: 'warn' },
-    { key: 'completed', label: 'Completed', value: p.completed, tone: 'good' },
-    { key: 'overdue', label: 'Overdue', value: p.overdue, tone: 'bad', hint: 'Scheduled, never started' },
-    { key: 'cancelled', label: 'Cancelled', value: p.cancelled, tone: 'muted' },
+  const items: Array<{ key: StripKey; label: string; value: number; tone: string; hint: string; icon: ReactNode }> = [
+    { key: 'today', label: 'Today', value: p.today, tone: 'brand', hint: 'Booked for today', icon: <IconCalendar size={16} /> },
+    { key: 'scheduled', label: 'Pending', value: p.pending, tone: 'idle', hint: 'Scheduled, not started', icon: <IconClock size={16} /> },
+    { key: 'in_progress', label: 'In progress', value: p.inProgress, tone: 'warn', hint: 'Checked in on site', icon: <IconPin size={16} /> },
+    { key: 'completed', label: 'Completed', value: p.completed, tone: 'good', hint: 'Closed with an outcome', icon: <IconCheck size={16} /> },
+    { key: 'overdue', label: 'Overdue', value: p.overdue, tone: p.overdue ? 'bad' : 'idle', hint: p.overdue ? 'Scheduled, never started' : 'Nothing late', icon: <IconAlert size={16} /> },
+    { key: 'cancelled', label: 'Cancelled', value: p.cancelled, tone: 'idle', hint: 'Called off', icon: <IconClose size={16} /> },
   ]
   return (
-    <div className="vs-strip" role="group" aria-label="Visit summary">
+    <div className="hrd-kpis crm-kpis" role="group" aria-label="Visit summary">
       {items.map((it) => {
         const on = it.key === 'today' ? p.isToday : it.key === p.status
         const body = (
           <>
-            <span className="vs-stat-label">
-              <span className="vs-stat-dot" aria-hidden />
-              {it.label}
+            <span className="hrd-kpi-top">
+              <span className="hrd-kpi-label">{it.label}</span>
+              <span className="hrd-kpi-icon" aria-hidden>{it.icon}</span>
             </span>
-            <span className="vs-stat-value">{it.value}</span>
-            <span className="vs-stat-hint">{it.hint ?? (on ? 'Filtering · click to clear' : 'Click to filter')}</span>
+            <span className="hrd-kpi-value">{it.value}</span>
+            <span className="hrd-kpi-hint">{it.hint}</span>
           </>
         )
         return it.key === 'overdue' ? (
-          <div key={it.key} className={`vs-stat tone-${it.tone}${it.value ? ' has-value' : ''}`}>{body}</div>
+          <div key={it.key} className={`hrd-kpi tone-${it.tone}`}>{body}</div>
         ) : (
           <button
             key={it.key}
             type="button"
-            className={`vs-stat tone-${it.tone}${on ? ' is-on' : ''}${it.value ? ' has-value' : ''}`}
+            className={`hrd-kpi cu-kpi tone-${it.tone}${on ? ' is-on' : ''}`}
             aria-pressed={on}
             onClick={() => p.pick(it.key as Exclude<StripKey, 'overdue'>)}
           >
@@ -123,7 +129,9 @@ export default function MyVisits() {
   const [employeeId, setEmployeeId] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
   const [booking, setBooking] = useState(false)
   const [editing, setEditing] = useState<Visit | null>(null)
   const [closing, setClosing] = useState<Visit | null>(null)
@@ -144,7 +152,32 @@ export default function MyVisits() {
   )
   const summary = useQuery('crm-visit-summary', () => crm.visitSummary())
 
-  const rows = visits.data ?? []
+  // Priority is narrowed here rather than on the server: the list endpoint has
+  // no priority parameter, and the rows are already on the page.
+  const rows = (visits.data ?? []).filter((v) => !priorityFilter || v.priority === priorityFilter)
+
+  /* The More filters panel closes on a click outside it or on Escape. */
+  useEffect(() => {
+    if (!showFilters) return
+    const onDown = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setShowFilters(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowFilters(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [showFilters])
+
+  const moreCount = [employeeId, priorityFilter, from, to].filter(Boolean).length
+  function clearMore() {
+    setEmployeeId('')
+    setPriorityFilter('')
+    setFrom('')
+    setTo('')
+  }
 
   async function cancel(visit: Visit) {
     setRowError(null)
@@ -181,18 +214,12 @@ export default function MyVisits() {
   }
 
   const s = summary.data
-  const filtered = Boolean(q || status || typeId || employeeId || from || to)
+  const filtered = Boolean(q || status || typeId || employeeId || priorityFilter || from || to)
 
   return (
-    <CrmPage
-      title="My Visits"
-      subtitle="Every field call — service, sales, support and the rest"
-      actions={
-        <button className="btn btn-primary" onClick={() => setBooking(true)}>
-          <IconPlus size={15} /> New Visit
-        </button>
-      }
-    >
+    /* No page heading: "My Visit" is the tab above. New Visit sits in the
+       toolbar with the filters. */
+    <div className="crm">
       <VisitStrip
         today={s?.today ?? 0}
         pending={s?.pending ?? 0}
@@ -249,14 +276,51 @@ export default function MyVisits() {
             <option value="cancelled">Cancelled</option>
           </select>
           <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} placeholder="All visit types" />
-          <button
-            className={`btn vs-filter-btn${showFilters ? ' is-on' : ''}`}
-            onClick={() => setShowFilters((open) => !open)}
-            aria-expanded={showFilters}
-          >
-            <IconFilter size={14} /> More filters
-            {(employeeId || from || to) && <span className="vs-dot" aria-label="Filters applied" />}
-          </button>
+          <div className="vs-more" ref={moreRef}>
+            <button
+              className={`btn vs-filter-btn${showFilters || moreCount ? ' is-on' : ''}`}
+              onClick={() => setShowFilters((open) => !open)}
+              aria-expanded={showFilters}
+              aria-haspopup="dialog"
+            >
+              <IconFilter size={14} /> More filters
+              {moreCount > 0 && <span className="vs-more-count">{moreCount}</span>}
+            </button>
+            {showFilters && (
+              <div className="vs-pop" role="dialog" aria-label="More filters">
+                <label className="vs-pop-field">
+                  <span>Employee</span>
+                  <OwnerSelect value={employeeId} onChange={setEmployeeId} placeholder="Everyone" />
+                </label>
+                <label className="vs-pop-field">
+                  <span>Priority</span>
+                  <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+                    <option value="">Any priority</option>
+                    {PRIORITIES.map((level) => (
+                      <option key={level} value={level}>
+                        {level.charAt(0).toUpperCase() + level.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="vs-pop-dates">
+                  <label className="vs-pop-field">
+                    <span>Scheduled from</span>
+                    <input type="date" value={from} max={to || undefined}
+                           onChange={(event) => setFrom(event.target.value)} />
+                  </label>
+                  <label className="vs-pop-field">
+                    <span>to</span>
+                    <input type="date" value={to} min={from || undefined}
+                           onChange={(event) => setTo(event.target.value)} />
+                  </label>
+                </div>
+                <button type="button" className="vs-pop-clear" onClick={clearMore} disabled={moreCount === 0}>
+                  Clear all filters
+                </button>
+              </div>
+            )}
+          </div>
           {filtered && (
             <button
               className="filter-reset"
@@ -265,6 +329,7 @@ export default function MyVisits() {
                 setStatus('')
                 setTypeId('')
                 setEmployeeId('')
+                setPriorityFilter('')
                 setFrom('')
                 setTo('')
               }}
@@ -272,21 +337,10 @@ export default function MyVisits() {
               Clear all
             </button>
           )}
+          <button className="btn btn-primary vs-new" onClick={() => setBooking(true)}>
+            <IconPlus size={14} /> New Visit
+          </button>
         </div>
-
-        {showFilters && (
-          <div className="vs-filters">
-            <Field label="Employee">
-              <OwnerSelect value={employeeId} onChange={setEmployeeId} placeholder="Anyone" />
-            </Field>
-            <Field label="Scheduled from">
-              <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-            </Field>
-            <Field label="Scheduled to">
-              <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            </Field>
-          </div>
-        )}
 
         <div style={{ opacity: visits.refetching ? 0.6 : 1 }}>
           {rows.length === 0 ? (
@@ -460,7 +514,7 @@ export default function MyVisits() {
           }}
         />
       )}
-    </CrmPage>
+    </div>
   )
 }
 

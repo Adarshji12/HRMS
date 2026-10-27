@@ -2,15 +2,25 @@ import { useEffect, useState } from 'react'
 import { fetchImage } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
-/* The LRS logo is the default brand; companies may still show their own logo. */
+/* The LRS Services logo is the default brand; companies may still show their
+   own. Two images: the full lockup, and the round mark alone for the collapsed
+   rail, where the lockup would shrink to an unreadable sliver. CSS shows one. */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
-    <img
-      className="brand-mark"
-      src="/LRS%20logo.png"
-      alt="LRS Services"
-      style={{ height: size, width: 'auto', maxWidth: '100%' }}
-    />
+    <>
+      <img
+        className="brand-mark brand-mark-full"
+        src="/lrs-logo.png"
+        alt="LRS Services"
+        style={{ height: size, width: 'auto', maxWidth: '100%' }}
+      />
+      <img
+        className="brand-mark brand-mark-icon"
+        src="/lrs-mark.png"
+        alt="LRS Services"
+        style={{ height: size, width: size }}
+      />
+    </>
   )
 }
 
@@ -74,7 +84,7 @@ function CompanyMark({
 /**
  * The lockup at the top of the rail.
  *
- * It shows the company's logo where one has been uploaded and the MyDeskTime
+ * It shows the company's logo where one has been uploaded and the LRS Services
  * mark where one has not. Two conditions gate the swap and both matter:
  *
  * - **A signed-in user.** The logo endpoint needs a token, and this component

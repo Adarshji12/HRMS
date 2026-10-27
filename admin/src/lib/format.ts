@@ -59,6 +59,12 @@ export function daysAgoISO(days: number): string {
 }
 
 export function shortDate(iso: string): string {
+  // A timestamp (created_at and the like) is a moment, shown on the local day
+  // it fell on. Split as a plain date it printed "Invalid Date": the day part
+  // came out as "21T10:02:00".
+  if (iso.length > 10) {
+    return new Date(asUTC(iso)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

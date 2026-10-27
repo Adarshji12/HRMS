@@ -21,6 +21,7 @@ import {
   IconSitemap,
   IconUsers,
 } from '../components/Icons'
+import type { MenuRights } from './types'
 
 export interface NavItem {
   to: string
@@ -96,34 +97,30 @@ export interface NavGroup {
  * second copy in any of them is a link that silently stops existing when
  * someone edits the other. */
 export const NAV: NavGroup[] = [
-  /* Dashboard is a module, not a destination, and it is declared first so the
-     sidebar can render its row above the plain rows — see the note in App.tsx.
-     Gathering the module summaries here rather than making each one the first
-     tab of its own module is the difference between "the state of the company"
-     and "the state of payroll": somebody opening a dashboard wants to compare
-     across modules, and five clicks into five modules is not comparing. */
-  {
-    heading: 'Dashboard',
-    key: 'dashboard',
-    icon: IconDashboard,
-    items: [
-      { to: '/', label: 'Company', icon: IconDashboard, end: true },
-      /* teamOnly on the three that aggregate other people: an employee
-         resolving to a scope of themselves would read "of 9 people" about a
-         list of one. Nav and route have to agree, or the tab is merely
-         invisible rather than actually closed. */
-      { to: '/dashboards/time', label: 'Time & Work', icon: IconFolder, teamOnly: true },
-      { to: '/dashboards/attendance', label: 'Attendance', icon: IconClock, teamOnly: true },
-      { to: '/dashboards/leave', label: 'Leave', icon: IconReturn },
-      { to: '/dashboards/expenses', label: 'Expenses', icon: IconCard },
-    ],
-  },
   {
     items: [
       { to: '/home', label: 'Home', icon: IconHome, end: true },
       /* `approverOnly`, not `teamOnly`: the inbox holds expense claims and loan
          requests too, and a finance approver is routinely nobody's manager. */
       { to: '/approvals', label: 'Approvals', icon: IconCheck, approverOnly: true },
+    ],
+  },
+  /* Dashboard. Overview is the whole company on one page; the tabs after it
+     are each module's own full dashboard, opened here so comparing across
+     them never leaves this panel. The same pages stay at /hrms/dashboard,
+     /crm and /erp inside their own modules. teamOnly throughout: an employee
+     resolving to a scope of themselves would read company labels about a
+     list of one, and their landing page is Home. */
+  {
+    heading: 'Dashboard',
+    key: 'dashboard',
+    icon: IconDashboard,
+    items: [
+      { to: '/dashboard', label: 'Overview', icon: IconDashboard, end: true, teamOnly: true },
+      { to: '/dashboards/hr', label: 'HR', icon: IconUsers, teamOnly: true },
+      { to: '/dashboards/crm', label: 'CRM', icon: IconStar, teamOnly: true },
+      { to: '/dashboards/erp', label: 'ERP', icon: IconBuilding, teamOnly: true },
+      { to: '/dashboards/monitor', label: 'Desk Monitor', icon: IconGauge, teamOnly: true },
     ],
   },
   /* Employee. Formerly "People", and the rename is the point: the module is
@@ -329,7 +326,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/crm', label: 'Lead Dashboard', icon: IconDashboard, end: true },
       { to: '/crm/leads', label: 'My Leads', icon: IconUsers },
-      { to: '/crm/follow-ups', label: 'My Followups', icon: IconClock },
+      { to: '/crm/follow-ups', label: 'My Follow-ups', icon: IconClock },
       { to: '/crm/visits', label: 'My Visit', icon: IconGlobe },
       { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
       { to: '/crm/customers', label: 'My Customers', icon: IconBuilding },
@@ -374,7 +371,7 @@ export const NAV: NavGroup[] = [
 export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/hrms/dashboard', label: 'HR Dashboard', icon: IconDashboard, end: true },
   { to: '/attendance', label: 'Attandance', icon: IconClock, end: true },
-  { to: '/dashboards/time', label: 'Working Hours', icon: IconGauge, teamOnly: true },
+  { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },
   { to: '/salary', label: 'Payroll', icon: IconSheet, end: true },
   { to: '/expenses', label: 'Expense', icon: IconCard, end: true },
   { to: '/settings/approvals', label: 'Workflow', icon: IconSitemap, end: true, adminOnly: true },
@@ -412,6 +409,28 @@ export interface NavAccess {
   canApprove: boolean
   /** Page keys this person has been switched out of. */
   hiddenPages: string[]
+  /** Per-menu rights from their role; null or absent means every menu. */
+  menuRights?: MenuRights | null
+}
+
+/** Whether a menu's own route is open to this person. A route the role's
+ *  rights do not name is not a menu of its own, so it is left alone. */
+export function menuOpen(to: string, rights: MenuRights | null | undefined): boolean {
+  if (!rights) return true
+  const row = rights[to]
+  return row === undefined ? true : row.access
+}
+
+/** Whether a page may be opened, by the menu that owns it: the longest menu
+ *  route the path sits under. `/crm/leads/42` is My Leads' page, not CRM's. */
+export function routeOpen(pathname: string, rights: MenuRights | null | undefined): boolean {
+  if (!rights) return true
+  let best: string | null = null
+  for (const key of Object.keys(rights)) {
+    const hit = key === '/' ? pathname === '/' : pathname === key || pathname.startsWith(`${key}/`)
+    if (hit && (best === null || key.length > best.length)) best = key
+  }
+  return best === null || rights[best].access
 }
 
 /** Whether this person may open a single entry. */
@@ -421,7 +440,8 @@ export function canSee(item: NavItem, access: NavAccess): boolean {
     (!item.teamOnly || access.canViewTeam) &&
     (!item.approverOnly || access.canApprove) &&
     (!item.ownerOnly || access.isOwner) &&
-    !(item.page && access.hiddenPages.includes(item.page))
+    !(item.page && access.hiddenPages.includes(item.page)) &&
+    menuOpen(item.to, access.menuRights)
   )
 }
 

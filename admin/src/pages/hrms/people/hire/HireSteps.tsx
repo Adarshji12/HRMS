@@ -14,7 +14,7 @@ import type { OrgRole } from '../../roles/Roles'
 import type { Asset } from '../../assets/assetLib'
 import {
   ATTENDANCE_TYPES, BGV_STATUSES, BLOOD_GROUPS, DOC_TYPES, EMPLOYMENT_TYPES, RELATIONSHIPS,
-  addMonths, fullName, type Errors, type HireDraft, type StepId,
+  addMonths, fullName, type Errors, type HireDraft, type OnFile, type StepId,
 } from './hireModel'
 
 export interface Shift {
@@ -62,6 +62,10 @@ export interface StepProps {
   /** Show errors only after the person has tried to move on. */
   touched: boolean
   goTo: (step: StepId) => void
+  /** Editing an existing employee rather than hiring one. */
+  editing?: boolean
+  /** Masked statutory values already held, when editing. */
+  onFile?: OnFile
 }
 
 /* ---------------------------------------------------------------- fields --- */
@@ -108,7 +112,7 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 const shown = (p: StepProps, key: string) => (p.touched ? p.errors[key] : undefined)
 
 function Text({
-  p, k, label, required, hint, type = 'text', placeholder, upper, wide, maxLength, inputMode,
+  p, k, label, required, hint, type = 'text', placeholder, upper, wide, maxLength, inputMode, disabled,
 }: {
   p: StepProps
   k: keyof HireDraft
@@ -121,11 +125,13 @@ function Text({
   wide?: boolean
   maxLength?: number
   inputMode?: 'numeric' | 'decimal' | 'email' | 'tel'
+  disabled?: boolean
 }) {
   return (
     <Field label={label} required={required} hint={hint} error={shown(p, k)} wide={wide}>
       <input
         type={type}
+        disabled={disabled}
         value={p.d[k] as string}
         placeholder={placeholder}
         maxLength={maxLength}
@@ -197,16 +203,18 @@ export function BasicStep(p: StepProps) {
       </Section>
       <Section title="Work contact">
         <Text p={p} k="email" label="Work email" required type="email" inputMode="email"
-              placeholder="name@company.com" hint="Their sign-in, and where notifications go." />
+              placeholder="name@company.com" disabled={p.editing}
+              hint={p.editing ? 'Their sign-in — it cannot be changed here.' : 'Their sign-in, and where notifications go.'} />
         <Text p={p} k="phone" label="Mobile number" inputMode="tel" placeholder="+91 98765 43210" />
       </Section>
       <Section title="Joining">
         <Text p={p} k="employee_code" label="Employee ID"
-              hint="The next ID from HR Settings → General. Change it, or clear it to have one issued automatically." />
+              hint={p.editing ? undefined : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
         <Text p={p} k="joined_on" label="Date of joining" type="date" required />
         <Choice p={p} k="status" label="Status" options={[
           { value: 'active', label: 'Active — already working' },
           { value: 'pending_setup', label: 'Pre-joining — starts later' },
+          ...(p.editing ? [{ value: 'inactive', label: 'Inactive — has left' }] : []),
         ]} hint={p.d.status === 'pending_setup'
           ? 'They appear in onboarding, not in attendance, until they join.'
           : undefined} />
@@ -407,7 +415,9 @@ export function PayStep(p: StepProps) {
         <section className="hire-section">
           <header className="hire-section-head">
             <h3>Salary</h3>
-            <p>The joining salary structure. Leave blank to set it later in Payroll → Salary structures.</p>
+            <p>{p.editing
+              ? 'Leave blank to keep the current structure. A figure here adds a salary revision.'
+              : 'The joining salary structure. Leave blank to set it later in Payroll → Salary structures.'}</p>
           </header>
           <div className="hire-grid">
             <Field label="Monthly gross (₹)" error={shown(p, 'gross_monthly')}
@@ -469,8 +479,10 @@ export function PayStep(p: StepProps) {
       {can.people && (
         <>
           <Section title="Statutory" desc="Encrypted at rest and masked everywhere. Revealing one later is a separate, audited action.">
-            <Text p={p} k="pan" label="PAN" upper maxLength={10} placeholder="ABCDE1234F" />
-            <Text p={p} k="aadhaar" label="Aadhaar" inputMode="numeric" maxLength={14} placeholder="12 digits" />
+            <Text p={p} k="pan" label="PAN" upper maxLength={10} placeholder="ABCDE1234F"
+                  hint={p.onFile?.pan ? `On file: ${p.onFile.pan}. Type a new one to replace it.` : undefined} />
+            <Text p={p} k="aadhaar" label="Aadhaar" inputMode="numeric" maxLength={14} placeholder="12 digits"
+                  hint={p.onFile?.aadhaar ? `On file: ${p.onFile.aadhaar}. Type a new one to replace it.` : undefined} />
             <Text p={p} k="uan" label="UAN" inputMode="numeric" maxLength={12} hint="If they had PF at a previous employer." />
             <Text p={p} k="pf_number" label="PF number" />
             <Text p={p} k="esi_number" label="ESI number" />
@@ -478,7 +490,8 @@ export function PayStep(p: StepProps) {
           <Section title="Bank account" desc="Where salary is paid.">
             <Text p={p} k="bank_account_name" label="Account holder name"
                   placeholder={fullName(d) || undefined} />
-            <Text p={p} k="bank_account" label="Account number" inputMode="numeric" type="password" />
+            <Text p={p} k="bank_account" label="Account number" inputMode="numeric" type="password"
+                  hint={p.onFile?.bank_account ? `On file: ${p.onFile.bank_account}. Leave blank to keep it.` : undefined} />
             <Text p={p} k="bank_account_confirm" label="Confirm account number" inputMode="numeric" />
             <Text p={p} k="bank_ifsc" label="IFSC" upper maxLength={11} placeholder="HDFC0001234" />
             <Text p={p} k="bank_name" label="Bank name" />
@@ -667,16 +680,27 @@ export function AccessStep(p: StepProps) {
 
       <section className="hire-section">
         <header className="hire-section-head"><h3>Sign-in</h3></header>
-        <Toggle
-          checked={d.console_access}
-          onChange={(v) => p.set({ console_access: v, password: v ? d.password : '' })}
-          label="Can sign in to the web console"
-          desc="Off for staff who only run the desktop agent — they use their enrollment key and never sign in."
-        />
+        {p.editing ? (
+          <Toggle
+            checked={d.is_active}
+            onChange={(v) => p.set({ is_active: v })}
+            label="Account active"
+            desc="Off stops them signing in and stops the desktop agent collecting. Their records stay."
+          />
+        ) : (
+          <Toggle
+            checked={d.console_access}
+            onChange={(v) => p.set({ console_access: v, password: v ? d.password : '' })}
+            label="Can sign in to the web console"
+            desc="Off for staff who only run the desktop agent — they use their enrollment key and never sign in."
+          />
+        )}
         {d.console_access && (
           <div className="hire-grid" style={{ marginTop: 14 }}>
-            <Field label="Initial password" error={shown(p, 'password')}
-                   hint="At least 8 characters. Share it privately — they can change it later.">
+            <Field label={p.editing ? 'New password' : 'Initial password'} error={shown(p, 'password')}
+                   hint={p.editing
+                     ? 'Leave blank to keep their current password.'
+                     : 'At least 8 characters. Share it privately — they can change it later.'}>
               <div className="hire-inline">
                 <input type="text" value={d.password} autoComplete="new-password"
                        onChange={(e) => p.set({ password: e.target.value })} />
@@ -794,7 +818,7 @@ export function ReviewStep(p: StepProps & { allErrors: Record<StepId, Errors> })
           <Row label="Mobile" value={d.phone} />
           <Row label="Employee ID" value={d.employee_code} />
           <Row label="Joining" value={fmt(d.joined_on)} />
-          <Row label="Status" value={d.status === 'active' ? 'Active' : 'Pre-joining'} />
+          <Row label="Status" value={d.status === 'active' ? 'Active' : d.status === 'inactive' ? 'Inactive' : 'Pre-joining'} />
         </ReviewCard>
         <ReviewCard title="Employment" step="job" goTo={goTo} errors={n('job')}>
           <Row label="Department" value={name(lk.departments, d.department_id)} />
@@ -826,7 +850,14 @@ export function ReviewStep(p: StepProps & { allErrors: Record<StepId, Errors> })
         </ReviewCard>
         <ReviewCard title="Access, assets & documents" step="access" goTo={goTo} errors={n('access') + n('documents')}>
           <Row label="Role" value={name(lk.roles, d.role_id)} />
-          <Row label="Console sign-in" value={d.console_access ? (d.password ? 'Yes, password set' : 'Yes — set a password later') : 'Agent only'} />
+          {p.editing ? (
+            <>
+              <Row label="Account" value={d.is_active ? 'Active' : 'Deactivated'} />
+              <Row label="Password" value={d.password ? 'New password set' : 'Unchanged'} />
+            </>
+          ) : (
+            <Row label="Console sign-in" value={d.console_access ? (d.password ? 'Yes, password set' : 'Yes — set a password later') : 'Agent only'} />
+          )}
           <Row label="Assets" value={d.asset_ids.length ? `${d.asset_ids.length} to issue` : ''} />
           <Row label="Documents" value={d.documents.length ? `${d.documents.length} to upload` : ''} />
         </ReviewCard>

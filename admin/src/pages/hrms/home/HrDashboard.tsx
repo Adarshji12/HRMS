@@ -179,15 +179,12 @@ export default function HrDashboard() {
   const dateLine = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
-    <div className="hrd">
+    <div className="hrd hrd-compact">
       {/* ------------------------------------------------------------ hero */}
       <header className="hrd-hero">
         <div className="hrd-hero-text">
           <span className="hrd-eyebrow">HRMS · {dateLine}</span>
           <h1 className="hrd-title">HR Dashboard</h1>
-          <p className="hrd-sub">
-            Your people at a glance — who is in today, what is waiting on a decision, who is joining and who is leaving.
-          </p>
         </div>
         <div className="hrd-hero-actions">
           <Link className="btn" to="/approvals">

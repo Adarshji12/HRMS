@@ -15,20 +15,22 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
+import '../../styles/leads.css'
 import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
-import { dateTime, relativeTime, shortDate } from '../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
   IconClose,
   IconDownload,
+  IconEdit,
   IconFilter,
   IconGrid,
   IconPlus,
   IconSearch,
   IconSheet,
+  IconUpload,
   IconUsers,
 } from '../../components/Icons'
 import {
@@ -46,12 +48,12 @@ import {
   type LeadStatus,
 } from './api'
 import {
+  Assignee,
   CrmPage,
   Dialog,
-  Drawer,
+  DuePill,
   DueDate,
   Field,
-  LeadName,
   MasterSelect,
   OwnerSelect,
   StagePill,
@@ -76,10 +78,16 @@ export default function MyLeads() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
   const [showFilters, setShowFilters] = useState(false)
+  const [industryId, setIndustryId] = useState('')
+  const [productId, setProductId] = useState('')
+  const [stateId, setStateId] = useState('')
+  const [districtId, setDistrictId] = useState('')
+  const [cityId, setCityId] = useState('')
+  const filterRef = useRef<HTMLDivElement>(null)
 
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Lead | null>(null)
-  const [openLeadId, setOpenLeadId] = useState<string | null>(null)
+  const navigate = useNavigate()
   const [importing, setImporting] = useState(false)
   const [banner, setBanner] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -99,6 +107,11 @@ export default function MyLeads() {
     status_id: statusId || undefined,
     source_id: sourceId || undefined,
     owner_id: ownerId || undefined,
+    industry_id: industryId || undefined,
+    product_id: productId || undefined,
+    state_id: stateId || undefined,
+    district_id: districtId || undefined,
+    city_id: cityId || undefined,
     follow_up: followUp || undefined,
     date_from: from || undefined,
     date_to: to || undefined,
@@ -114,8 +127,32 @@ export default function MyLeads() {
   const rows = leads.data?.rows ?? []
   const selection = useSelection(rows)
 
+  /* The popover's own filters, counted for the badge on its button. */
+  const popoverCount = [sourceId, industryId, productId, stateId, districtId, cityId]
+    .filter(Boolean).length
   const filtered =
-    debouncedQ !== '' || statusId !== '' || sourceId !== '' || ownerId !== '' || followUp !== ''
+    debouncedQ !== '' || statusId !== '' || followUp !== '' || ownerId !== '' || popoverCount > 0
+
+  function resetPopover() {
+    setSourceId(''); setIndustryId(''); setProductId('')
+    setStateId(''); setDistrictId(''); setCityId('')
+    setPage(1)
+  }
+
+  /* The popover closes on a click outside it or on Escape. */
+  useEffect(() => {
+    if (!showFilters) return
+    const onDown = (e: MouseEvent) => {
+      if (!filterRef.current?.contains(e.target as Node)) setShowFilters(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowFilters(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [showFilters])
 
   function clearFilters() {
     setQ('')
@@ -123,6 +160,7 @@ export default function MyLeads() {
     setSourceId('')
     setOwnerId('')
     setFollowUp('')
+    resetPopover()
     setPage(1)
     setParams({}, { replace: true })
   }
@@ -140,6 +178,12 @@ export default function MyLeads() {
           status_id: statusId,
           source_id: sourceId,
           owner_id: ownerId,
+          industry_id: industryId,
+          product_id: productId,
+          state_id: stateId,
+          district_id: districtId,
+          city_id: cityId,
+          follow_up: followUp,
           date_from: from,
           date_to: to,
         })}`,
@@ -164,16 +208,11 @@ export default function MyLeads() {
   const lastRow = Math.min(page * pageSize, total)
 
   return (
-    <CrmPage
-      title="My Leads"
-      subtitle="Track, assign and convert your leads"
-      actions={
-        <button className="btn btn-primary" onClick={() => setAdding(true)}>
-          <IconPlus size={15} /> Add Lead
-        </button>
-      }
-    >
-      <div className="crm-bar">
+    /* No page heading: "My Leads" is the tab above. One toolbar instead —
+       finding on the left, the view and the actions on the right, Add Lead
+       beside Import and Export where the other lead actions are. */
+    <div className="crm">
+      <div className="crm-bar ml-toolbar">
         <div className="crm-search">
           <IconSearch size={15} />
           <input
@@ -207,9 +246,65 @@ export default function MyLeads() {
           <option value="upcoming">Upcoming</option>
           <option value="none">No follow-up booked</option>
         </select>
-        <button className="crm-tab" onClick={() => setShowFilters((open) => !open)}>
-          <IconFilter size={14} /> Filters
-        </button>
+        <div className="ml-filter" ref={filterRef}>
+          <button
+            className={`crm-tab ml-filter-btn${popoverCount ? ' is-active' : ''}${showFilters ? ' is-open' : ''}`}
+            onClick={() => setShowFilters((open) => !open)}
+            aria-expanded={showFilters}
+            aria-haspopup="dialog"
+          >
+            <IconFilter size={14} /> Filters
+            {popoverCount > 0 && <span className="ml-filter-count">{popoverCount}</span>}
+          </button>
+          {showFilters && (
+            /* Each change applies at once — the list updates behind the
+               popover — so there is no Apply button to forget. */
+            <div className="ml-pop" role="dialog" aria-label="Filter leads">
+              <label className="ml-pop-field">
+                <span>Lead source</span>
+                <MasterSelect kind="sources" value={sourceId} placeholder="All sources"
+                              onChange={(v) => { setSourceId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>Industry</span>
+                <MasterSelect kind="industries" value={industryId} placeholder="All industries"
+                              onChange={(v) => { setIndustryId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>Product / Service</span>
+                <MasterSelect kind="products" value={productId} placeholder="All products"
+                              onChange={(v) => { setProductId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>State</span>
+                <MasterSelect kind="states" value={stateId} placeholder="All states"
+                              onChange={(v) => { setStateId(v); setDistrictId(''); setCityId(''); setPage(1) }} />
+              </label>
+              {/* District and city follow the state, and stay disabled
+                  until one is chosen. */}
+              <label className="ml-pop-field">
+                <span>District</span>
+                <MasterSelect kind="districts" parentId={stateId} value={districtId} placeholder="All districts"
+                              onChange={(v) => { setDistrictId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>City</span>
+                <MasterSelect kind="cities" parentId={stateId} value={cityId} placeholder="All cities"
+                              onChange={(v) => { setCityId(v); setPage(1) }} />
+              </label>
+              <button type="button" className="ml-pop-reset" onClick={resetPopover}
+                      disabled={popoverCount === 0}>
+                Reset filters
+              </button>
+            </div>
+          )}
+        </div>
+        {/* Owner and the created-date range sit on the toolbar rather than in
+            the popover: they are the two filters people change most. */}
+        <OwnerSelect value={ownerId} placeholder="All owners"
+                     onChange={(v) => { setOwnerId(v); setPage(1) }} />
+        <CreatedRange from={from} to={to}
+                      onChange={(f, t) => { setFrom(f); setTo(t); setPage(1) }} />
         {filtered && (
           <button className="filter-reset" onClick={clearFilters}>
             <IconClose size={13} /> Clear
@@ -229,49 +324,20 @@ export default function MyLeads() {
             <IconGrid size={14} /> Kanban
           </button>
         </div>
-        <button className="crm-icon-btn" onClick={exportCsv} title="Export this view as CSV">
-          <IconDownload size={16} />
+        <span className="ml-divider" aria-hidden />
+        <button className="ml-icon-btn" onClick={() => setImporting(true)}
+                title="Import leads from a file" aria-label="Import leads from a file">
+          <IconUpload size={15} />
         </button>
-        <button className="crm-icon-btn" onClick={() => setImporting(true)} title="Import from a file">
-          <span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}>
-            <IconDownload size={16} />
-          </span>
+        <button className="ml-icon-btn" onClick={exportCsv}
+                title="Export this view as CSV" aria-label="Export this view as CSV">
+          <IconDownload size={15} />
+        </button>
+        <button className="btn btn-primary ml-add" onClick={() => setAdding(true)}>
+          <IconPlus size={14} /> Add Lead
         </button>
       </div>
 
-      {showFilters && (
-        <section className="card" style={{ marginBottom: 14, padding: 14 }}>
-          <div className="crm-grid-4">
-            <Field label="Source">
-              <MasterSelect
-                kind="sources"
-                value={sourceId}
-                onChange={(value) => {
-                  setSourceId(value)
-                  setPage(1)
-                }}
-                placeholder="All sources"
-              />
-            </Field>
-            <Field label="Owner">
-              <OwnerSelect
-                value={ownerId}
-                onChange={(value) => {
-                  setOwnerId(value)
-                  setPage(1)
-                }}
-                placeholder="All users"
-              />
-            </Field>
-            <Field label="Created from">
-              <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-            </Field>
-            <Field label="Created to">
-              <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            </Field>
-          </div>
-        </section>
-      )}
 
       {banner && (
         <div className="notice notice-ok" style={{ marginBottom: 12 }}>
@@ -314,7 +380,7 @@ export default function MyLeads() {
           statuses={statuses.data ?? []}
           total={total}
           loading={leads.loading}
-          onOpen={setOpenLeadId}
+          onOpen={(id) => navigate(`/crm/leads/${id}`)}
           onMove={async (leadId, status) => {
             setRowError(null)
             try {
@@ -326,7 +392,7 @@ export default function MyLeads() {
           }}
         />
       ) : (
-        <section className="card" style={{ opacity: leads.refetching ? 0.6 : 1 }}>
+        <section className="card ml-table-card" style={{ opacity: leads.refetching ? 0.6 : 1 }}>
           {rows.length === 0 ? (
             leads.loading ? (
               <Loading />
@@ -351,7 +417,7 @@ export default function MyLeads() {
           ) : (
             <>
               <div className="table-wrap">
-                <table className="crm-table-wide">
+                <table className="crm-table-wide crm-leads-table">
                   <thead>
                     <tr>
                       <th style={{ width: 34 }}>
@@ -362,16 +428,14 @@ export default function MyLeads() {
                           aria-label="Select every lead on this page"
                         />
                       </th>
-                      <th>Lead ID</th>
-                      <th>Lead name</th>
-                      <th>Company</th>
+                      {/* Only the columns a lead is worked from. Company,
+                          product, source, industry and created date are on the
+                          lead's own page, one click away on the edit button. */}
+                      <th>Lead</th>
                       <th>Mobile</th>
-                      <th>Product / Service</th>
-                      <th>Source</th>
                       <th>Status</th>
                       <th>Assigned</th>
                       <th>Follow-up</th>
-                      <th>Created</th>
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
@@ -387,48 +451,36 @@ export default function MyLeads() {
                           />
                         </td>
                         <td>
-                          <button className="link-btn crm-code" onClick={() => setOpenLeadId(lead.id)}>
-                            #{lead.code}
-                          </button>
+                          {/* Name first, the lead ID and email beneath it. */}
+                          <Link className="crm-lead-name" to={`/crm/leads/${lead.id}`}>
+                            <span className="crm-strong">{lead.name}</span>
+                            <span className="crm-lead-email">
+                              <span className="crm-lead-code">#{lead.code}</span>
+                              {lead.email && <> · {lead.email}</>}
+                            </span>
+                          </Link>
                         </td>
-                        <td>
-                          <button className="link-btn" onClick={() => setOpenLeadId(lead.id)}>
-                            <LeadName lead={lead} />
-                          </button>
-                        </td>
-                        <td>{lead.company ?? <span className="crm-muted">—</span>}</td>
-                        <td className="crm-nowrap">{lead.mobile}</td>
-                        <td>{lead.product_name ?? <span className="crm-muted">—</span>}</td>
-                        <td>{lead.source_name ?? <span className="crm-muted">—</span>}</td>
+                        <td className="crm-nowrap crm-num-plain">{lead.mobile}</td>
                         <td>
                           <StagePill name={lead.status_name} colour={lead.status_colour} />
                         </td>
                         <td>
-                          {lead.owner_name ?? <span className="crm-muted">Unassigned</span>}
+                          <Assignee name={lead.owner_name} />
                         </td>
                         <td className="crm-nowrap">
-                          <DueDate iso={lead.next_follow_up_at} />
+                          <DuePill iso={lead.next_follow_up_at} />
                         </td>
-                        <td className="crm-nowrap crm-sub">{shortDate(lead.created_at)}</td>
                         <td>
                           <div className="crm-row-actions">
-                            <button
+                            <Link
                               className="crm-icon-btn"
-                              onClick={() => setEditing(lead)}
+                              to={`/crm/leads/${lead.id}`}
                               title="Edit this lead"
                               aria-label={`Edit ${lead.name}`}
                             >
-                              <IconSheet size={15} />
-                            </button>
+                              <IconEdit size={15} />
+                            </Link>
                             <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
-                            <button
-                              className="crm-icon-btn"
-                              onClick={() => setOpenLeadId(lead.id)}
-                              title="Open the full record"
-                              aria-label={`Open ${lead.name}`}
-                            >
-                              ⋮
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -503,14 +555,7 @@ export default function MyLeads() {
         />
       )}
 
-      {openLeadId && (
-        <LeadDrawer
-          leadId={openLeadId}
-          onClose={() => setOpenLeadId(null)}
-          onChanged={() => leads.reload()}
-        />
-      )}
-    </CrmPage>
+    </div>
   )
 }
 
@@ -656,7 +701,7 @@ function KanbanBoard({
 
 /* ------------------------------------------------------------------- form --- */
 
-function LeadForm({
+export function LeadForm({
   lead,
   onClose,
   onSaved,
@@ -1072,208 +1117,6 @@ function splitCsvLine(line: string): string[] {
 
 /* ----------------------------------------------------------------- drawer --- */
 
-function LeadDrawer({
-  leadId,
-  onClose,
-  onChanged,
-}: {
-  leadId: string
-  onClose: () => void
-  onChanged: () => void
-}) {
-  const detail = useQuery<LeadDetail>(`crm-lead-${leadId}`, () => crm.lead(leadId))
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [booking, setBooking] = useState(false)
-  const [converting, setConverting] = useState(false)
-
-  const lead = detail.data
-
-  async function addNote() {
-    if (!note.trim()) return
-    setBusy(true)
-    try {
-      await crm.addActivity(leadId, { body: note.trim(), kind: 'note' })
-      setNote('')
-      detail.reload()
-    } catch (err) {
-      setError(crmError(err, 'That note could not be saved'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function move(statusId: string) {
-    setError(null)
-    try {
-      await crm.moveLead(leadId, { status_id: statusId })
-      detail.reload()
-      onChanged()
-    } catch (err) {
-      setError(crmError(err, 'That stage could not be set'))
-    }
-  }
-
-  return (
-    <Drawer
-      title={lead ? lead.name : 'Lead'}
-      meta={lead ? `#${lead.code} · ${lead.mobile}` : undefined}
-      onClose={onClose}
-      footer={
-        lead && (
-          <>
-            <button className="btn btn-sm" onClick={() => setBooking(true)}>
-              Book a follow-up
-            </button>
-            {!lead.customer_id && (
-              <button className="btn btn-sm btn-primary" onClick={() => setConverting(true)}>
-                Convert to customer
-              </button>
-            )}
-            <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
-          </>
-        )
-      }
-    >
-      {!lead ? (
-        <Loading />
-      ) : (
-        <>
-          {error && <ErrorNote>{error}</ErrorNote>}
-
-          <div className="crm-facts" style={{ padding: 0 }}>
-            <div>
-              <div className="crm-fact-label">Stage</div>
-              <div className="crm-fact-value">
-                <MasterSelect kind="statuses" value={lead.status_id ?? ''} onChange={move} />
-              </div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Owner</div>
-              <div className="crm-fact-value">{lead.owner_name ?? 'Unassigned'}</div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Source</div>
-              <div className="crm-fact-value">{lead.source_name ?? '—'}</div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Product</div>
-              <div className="crm-fact-value">{lead.product_name ?? '—'}</div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Next follow-up</div>
-              <div className="crm-fact-value">
-                <DueDate iso={lead.next_follow_up_at} />
-              </div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Created</div>
-              <div className="crm-fact-value">{dateTime(lead.created_at)}</div>
-            </div>
-          </div>
-
-          {lead.customer_id && (
-            <div className="notice notice-ok">
-              Converted {lead.converted_at ? relativeTime(lead.converted_at) : ''} — this lead is
-              now a customer.
-            </div>
-          )}
-          {lead.lost_reason && <div className="notice notice-warn">Lost: {lead.lost_reason}</div>}
-
-          <div>
-            <div className="crm-field-label" style={{ marginBottom: 6 }}>
-              Add a note
-            </div>
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              rows={2}
-              placeholder="What was said?"
-            />
-            <button
-              className="btn btn-sm"
-              style={{ marginTop: 6 }}
-              onClick={addNote}
-              disabled={busy || !note.trim()}
-            >
-              Save note
-            </button>
-          </div>
-
-          {lead.follow_ups.length > 0 && (
-            <div>
-              <div className="crm-field-label" style={{ marginBottom: 6 }}>
-                Follow-ups
-              </div>
-              <div className="crm-timeline">
-                {lead.follow_ups.map((row) => (
-                  <div className="crm-event" key={row.id}>
-                    <span className="crm-event-dot" />
-                    <div>
-                      <div className="crm-event-body">
-                        {row.purpose ?? 'Follow-up'} — <DueDate iso={row.due_at} overdue={row.is_overdue} />
-                      </div>
-                      <div className="crm-event-when">
-                        {row.status}
-                        {row.outcome ? ` · ${row.outcome}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <div className="crm-field-label" style={{ marginBottom: 6 }}>
-              Timeline
-            </div>
-            <div className="crm-timeline">
-              {lead.activities.length === 0 && <p className="empty">Nothing recorded yet.</p>}
-              {lead.activities.map((event) => (
-                <div className={`crm-event crm-event-${event.kind}`} key={event.id}>
-                  <span className="crm-event-dot" />
-                  <div>
-                    <div className="crm-event-body">{event.body}</div>
-                    <div className="crm-event-when">
-                      {event.actor_name ?? 'System'} · {relativeTime(event.created_at)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {booking && (
-            <FollowUpDialog
-              leadId={lead.id}
-              onClose={() => setBooking(false)}
-              onSaved={() => {
-                setBooking(false)
-                detail.reload()
-                onChanged()
-              }}
-            />
-          )}
-
-          {converting && (
-            <ConvertDialog
-              lead={lead}
-              onClose={() => setConverting(false)}
-              onDone={() => {
-                setConverting(false)
-                detail.reload()
-                onChanged()
-              }}
-            />
-          )}
-        </>
-      )}
-    </Drawer>
-  )
-}
-
 /** Book a follow-up against a lead. Exported because Follow-ups and the support
  *  desk open the same dialog rather than each growing their own. */
 export function FollowUpDialog({
@@ -1365,7 +1208,7 @@ export function FollowUpDialog({
   )
 }
 
-function ConvertDialog({
+export function ConvertDialog({
   lead,
   onClose,
   onDone,
@@ -1482,5 +1325,109 @@ function ConvertDialog({
         )}
       </div>
     </Dialog>
+  )
+}
+
+
+/* ------------------------------------------------------------ created range --- */
+
+const RANGE_PRESETS: Array<{ label: string; range: () => [string, string] }> = [
+  { label: 'Today', range: () => [todayISO(), todayISO()] },
+  { label: 'Last 7 days', range: () => [daysFromTodayISO(-6), todayISO()] },
+  { label: 'Last 30 days', range: () => [daysFromTodayISO(-29), todayISO()] },
+  { label: 'Last 90 days', range: () => [daysFromTodayISO(-90), todayISO()] },
+  {
+    label: 'This month',
+    range: () => {
+      const d = new Date()
+      return [new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA'), todayISO()]
+    },
+  },
+  { label: 'This year', range: () => [`${new Date().getFullYear()}-01-01`, todayISO()] },
+]
+
+function rangeLabel(from: string, to: string): string {
+  const f = new Date(from + 'T00:00:00')
+  const t = new Date(to + 'T00:00:00')
+  const day = (d: Date) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  return f.getFullYear() === t.getFullYear()
+    ? `${day(f)} – ${day(t)} ${t.getFullYear()}`
+    : `${day(f)} ${f.getFullYear()} – ${day(t)} ${t.getFullYear()}`
+}
+
+/** The lead "created" window as one control: a button showing the range, and
+ *  a small panel of presets plus a custom from–to. */
+function CreatedRange({
+  from, to, onChange,
+}: {
+  from: string
+  to: string
+  onChange: (from: string, to: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [draftFrom, setDraftFrom] = useState(from)
+  const [draftTo, setDraftTo] = useState(to)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setDraftFrom(from)
+    setDraftTo(to)
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, from, to])
+
+  const pick = (f: string, t: string) => { onChange(f, t); setOpen(false) }
+
+  return (
+    <div className="ml-range" ref={ref}>
+      <button type="button" className={`ml-range-btn${open ? ' is-open' : ''}`}
+              onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-haspopup="dialog"
+              title="Created date">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+             strokeLinecap="round" aria-hidden="true">
+          <rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" />
+        </svg>
+        <span>{from && to ? rangeLabel(from, to) : 'Any date'}</span>
+        <svg className="ml-range-caret" width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="ml-range-pop" role="dialog" aria-label="Created date">
+          <div className="ml-range-presets">
+            {RANGE_PRESETS.map((p) => {
+              const [f, t] = p.range()
+              const on = f === from && t === to
+              return (
+                <button key={p.label} type="button" className={on ? 'is-on' : ''} onClick={() => pick(f, t)}>
+                  {p.label}
+                </button>
+              )
+            })}
+          </div>
+          <div className="ml-range-custom">
+            <span className="ml-range-title">Custom range</span>
+            <div className="ml-range-inputs">
+              <input type="date" value={draftFrom} max={draftTo || undefined} aria-label="Created from"
+                     onChange={(e) => setDraftFrom(e.target.value)} />
+              <span aria-hidden="true">–</span>
+              <input type="date" value={draftTo} min={draftFrom || undefined} aria-label="Created to"
+                     onChange={(e) => setDraftTo(e.target.value)} />
+            </div>
+            <button type="button" className="btn btn-primary btn-sm"
+                    disabled={!draftFrom || !draftTo || draftFrom > draftTo}
+                    onClick={() => pick(draftFrom, draftTo)}>
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

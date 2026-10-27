@@ -264,3 +264,46 @@ a.hrd-person-name:hover { color: var(--brand-ink, var(--brand)); text-decoration
   .hrd-meter { width: 96px; }
   .hrd-panel-body { padding: 14px; }
 }
+
+/* --------------------------------------------------------- compact --- */
+
+/* The CRM and ERP dashboards' sizes (see `.crm.hrd` in crm.css), for the HR
+   dashboard — so the three tabs under Dashboard read at one scale. */
+.hrd.hrd-compact { gap: 12px; }
+
+.hrd-compact .hrd-hero { padding: 14px 20px 14px 22px; gap: 16px; }
+.hrd-compact .hrd-eyebrow { font-size: 10.5px; }
+.hrd-compact .hrd-title { margin-top: 2px; font-size: 21px; }
+.hrd-compact .hrd-sub { margin-top: 3px; font-size: 12.5px; line-height: 1.5; }
+.hrd-compact .hrd-hero-actions .btn { height: 32px; padding: 0 14px; font-size: 13px; }
+
+.hrd-compact .hrd-kpis { gap: 10px; }
+.hrd-compact .hrd-kpi { gap: 3px; padding: 10px 12px 10px 14px; }
+.hrd-compact .hrd-kpi-label { font-size: 10.5px; }
+.hrd-compact .hrd-kpi-icon { width: 24px; height: 24px; border-radius: 7px; }
+.hrd-compact .hrd-kpi-icon svg { width: 14px; height: 14px; }
+.hrd-compact .hrd-kpi-value { font-size: 21px; }
+.hrd-compact .hrd-kpi-hint { font-size: 11px; }
+
+.hrd-compact .hrd-row { gap: 12px; }
+.hrd-compact .hrd-panel-head { padding: 9px 14px; }
+.hrd-compact .hrd-panel-title { font-size: 13.5px; }
+.hrd-compact .hrd-panel-note { font-size: 12px; margin-top: 1px; }
+.hrd-compact .hrd-panel-link { font-size: 12px; }
+.hrd-compact .hrd-panel-body { padding: 12px 14px; }
+
+.hrd-compact .hrd-legend li { padding: 5px 9px; font-size: 12.5px; }
+.hrd-compact .hrd-bars { gap: 9px; }
+.hrd-compact .hrd-bar-name, .hrd-compact .hrd-bar-value { font-size: 12.5px; }
+.hrd-compact .hrd-bar-track { height: 8px; }
+.hrd-compact .hrd-list-row { padding: 8px; }
+.hrd-compact .hrd-list-main { font-size: 13px; }
+.hrd-compact .hrd-people li, .hrd-compact .hrd-progress li { padding: 8px 0; gap: 10px; }
+.hrd-compact .hrd-person-name { font-size: 13px; }
+.hrd-compact .hrd-person-meta { font-size: 11.5px; }
+.hrd-compact .hrd-dot-icon { width: 26px; height: 26px; }
+.hrd-compact .hrd-table tbody td { padding-top: 7px; padding-bottom: 7px; font-size: 12.5px; }
+.hrd-compact .hrd-pay-net { font-size: 22px; }
+.hrd-compact .hrd-help-value { font-size: 20px; }
+.hrd-compact .hrd-shortcut { padding: 10px 6px; }
+.hrd-compact .hrd-empty { padding: 14px 4px; font-size: 12.5px; }

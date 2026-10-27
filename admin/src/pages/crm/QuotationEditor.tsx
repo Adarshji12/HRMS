@@ -290,15 +290,8 @@ export default function QuotationEditor() {
   const decided = saved?.status === 'accepted' || saved?.status === 'rejected'
 
   return (
-    <CrmPage
-      title={saved ? saved.number : 'New Quotation'}
-      subtitle="Priced from your masters, editable line by line"
-      actions={
-        <button className="btn" onClick={() => navigate('/crm/quotations')}>
-          <IconReturn size={15} /> All quotations
-        </button>
-      }
-    >
+    <CrmPage>
+      <div className="qe">
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>{error}</ErrorNote>
@@ -311,13 +304,13 @@ export default function QuotationEditor() {
         </div>
       )}
 
-      <section className="card" style={{ marginBottom: 14 }}>
+      <section className="card qe-card">
         <div className="crm-doc-head">
           <div>
             <div className="crm-doc-number">
               <IconSheet size={16} />
-              {saved ? saved.number : 'Draft'}
-              {saved && <StateText value={saved.status} />}
+              {saved ? saved.number : 'New quotation'}
+              {saved ? <StateText value={saved.status} /> : <span className="qe-draft">Draft</span>}
             </div>
             <div className="crm-field-hint">
               {saved
@@ -342,6 +335,9 @@ export default function QuotationEditor() {
                 disabled={decided}
               />
             </Field>
+            <button className="btn qe-back" onClick={() => navigate('/crm/quotations')}>
+              <IconReturn size={14} /> All quotations
+            </button>
             <button className="btn btn-primary" onClick={() => save()} disabled={busy || decided}>
               {busy ? 'Saving…' : saved ? 'Save changes' : 'Save as Draft'}
             </button>
@@ -364,16 +360,16 @@ export default function QuotationEditor() {
         </div>
       </section>
 
-      <section className="card" style={{ marginBottom: 14 }}>
+      <section className="card qe-card">
         <div className="crm-panel-head">
           <h2 className="crm-panel-title">Customer details</h2>
+          <span className="crm-field-hint">
+            {leadId || customerId
+              ? 'Copied from the record — edits here change this quotation only.'
+              : 'Typed by hand. Raise from a lead or customer to fill these in.'}
+          </span>
         </div>
-        <p className="crm-field-hint" style={{ padding: '0 16px' }}>
-          {leadId || customerId
-            ? 'Copied from the record. Editing here changes this quotation only — the lead or customer stays as it is.'
-            : 'Typed by hand. Raise a quotation from a lead or a customer to have these filled in.'}
-        </p>
-        <div className="crm-grid-4" style={{ padding: 16 }}>
+        <div className="crm-grid-4 qe-body">
           <Field label="Customer name">
             <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={decided} />
           </Field>
@@ -415,7 +411,7 @@ export default function QuotationEditor() {
             <input value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Billing address" wide>
-            <textarea value={billing} onChange={(e) => setBilling(e.target.value)} rows={3} disabled={decided} />
+            <textarea value={billing} onChange={(e) => setBilling(e.target.value)} rows={2} disabled={decided} />
           </Field>
           <div className="crm-field crm-form-wide">
             <label className="crm-check">
@@ -434,7 +430,7 @@ export default function QuotationEditor() {
               <textarea
                 value={shipping}
                 onChange={(event) => setShipping(event.target.value)}
-                rows={3}
+                rows={2}
                 disabled={decided}
               />
             )}
@@ -442,7 +438,7 @@ export default function QuotationEditor() {
         </div>
       </section>
 
-      <section className="card" style={{ marginBottom: 14 }}>
+      <section className="card qe-card">
         <div className="crm-panel-head">
           <h2 className="crm-panel-title">Products &amp; services</h2>
           <span className="crm-field-hint">
@@ -603,7 +599,17 @@ export default function QuotationEditor() {
             </tbody>
           </table>
         </div>
+      </section>
 
+      <section className="card qe-card qe-foot">
+        <div className="qe-notes">
+          <Field label="Terms &amp; conditions" hint="Defaults from CRM Settings.">
+            <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={3} disabled={decided} />
+          </Field>
+          <Field label="Internal notes" hint="Not printed on the quotation.">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={decided} />
+          </Field>
+        </div>
         <div className="crm-totals">
           {saved ? (
             <>
@@ -669,17 +675,7 @@ export default function QuotationEditor() {
           )}
         </div>
       </section>
-
-      <section className="card">
-        <div className="crm-grid-2" style={{ padding: 16 }}>
-          <Field label="Terms &amp; conditions" hint="Defaults from CRM Settings.">
-            <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={4} disabled={decided} />
-          </Field>
-          <Field label="Internal notes" hint="Not printed on the quotation.">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} disabled={decided} />
-          </Field>
-        </div>
-      </section>
+      </div>
     </CrmPage>
   )
 }

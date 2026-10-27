@@ -85,7 +85,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers })
 
-  if (response.status === 401) {
+  // Only a request that carried a session can have lost one. A 401 to a
+  // tokenless call — sign-in with the wrong password — is an answer, not an
+  // expiry, and reloading here wiped the "wrong password" message before it
+  // could be read.
+  if (response.status === 401 && token) {
     setToken(null)
     // Full reload rather than a router push: every cached query in memory is
     // now for a session that no longer exists.

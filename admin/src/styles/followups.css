@@ -96,3 +96,87 @@
   .fu-strip { grid-template-columns: repeat(5, minmax(128px, 1fr)); }
   .fu-head { padding: 0 8px; overflow-x: auto; }
 }
+
+/* ------------------------------------------------------------ compact --- */
+
+/* The card hugs its content: no inner padding, tabs and search on one line,
+   slim rows. */
+.crm .fu-card { padding: 0; }
+.crm .fu-card .fu-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 0 12px;
+  min-height: 46px;
+}
+.crm .fu-card .fu-tab { padding: 13px 10px 12px; font-size: 13px; }
+.crm .fu-card .fu-tools { display: flex; align-items: center; gap: 6px; flex: 1 1 320px; justify-content: flex-end; padding: 6px 0; }
+.crm .fu-card .fu-tools .vs-search { flex: 0 1 280px; min-width: 180px; }
+.crm .fu-card .fu-tools input,
+.crm .fu-card .fu-tools select { height: 32px; font-size: 12.5px; border-radius: 8px; }
+.crm .fu-card .fu-tools select { min-width: 130px; padding-top: 0; padding-bottom: 0; }
+
+.crm .fu-card .vs-table thead th { padding-top: 8px; padding-bottom: 8px; font-size: 10.5px; }
+.crm .fu-card .vs-table tbody td { padding-top: 6px; padding-bottom: 6px; font-size: 12.5px; }
+.crm .fu-card .vs-table th:first-child,
+.crm .fu-card .vs-table td:first-child { padding-left: 14px; }
+.crm .fu-card .vs-table th:last-child,
+.crm .fu-card .vs-table td:last-child { padding-right: 14px; }
+.crm .fu-card .fu-date { width: 36px; padding: 2px 0; border-radius: 6px; }
+.crm .fu-card .fu-date strong { font-size: 13px; }
+.crm .fu-card .fu-date span { font-size: 9px; }
+.crm .fu-card .fu-due { gap: 8px; }
+.crm .fu-card .vs-avatar { width: 26px; height: 26px; font-size: 10.5px; }
+.crm .fu-card .vs-who { gap: 8px; }
+.crm .fu-card .crm-strong { font-size: 13px; }
+.crm .fu-card .crm-row-actions .btn-sm { height: 28px; padding: 0 11px; font-size: 12px; }
+.crm .fu-card .crm-foot { padding: 8px 14px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .crm .fu-card .fu-tools { justify-content: flex-start; padding-bottom: 10px; }
+  .crm .fu-card .fu-tools .vs-search { flex: 1 1 100%; }
+}
+
+/* Same weight as the visits card, so `.card` padding cannot creep back in. */
+.crm .card.fu-card { padding: 0; }
+
+/* ----------------------------------------------------- one-line rows --- */
+/* Every cell reads on a single line: the row is a sentence, not a stack. */
+
+.crm .fu-card .vs-table tbody td { padding-top: 9px; padding-bottom: 9px; white-space: nowrap; }
+
+/* Due: chip · time · how far off */
+.crm .fu-card .fu-due-text { flex-direction: row; align-items: baseline; gap: 6px; }
+.crm .fu-card .fu-due-text > span:first-child { font-weight: 600; color: var(--text-primary); }
+.crm .fu-card .fu-due-text .crm-sub::before { content: '·'; margin-right: 6px; color: var(--text-muted); }
+
+/* Contact: avatar · name · LEAD · mobile */
+.crm .fu-card .vs-who-text { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; }
+.crm .fu-card .vs-who-text .crm-sub {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0;
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.crm .fu-card .fu-kind { margin: 0; padding: 1px 6px; font-size: 9.5px; }
+
+/* Purpose: one line, notes trailing in muted text, clipped if long. */
+.crm .fu-card .fu-purpose {
+  max-width: 360px; overflow: hidden; text-overflow: ellipsis;
+}
+.crm .fu-card .fu-purpose > .crm-sub { display: inline; margin-left: 8px; color: var(--text-muted); }
+.crm .fu-card .fu-purpose > .crm-sub::before { content: '— '; }
+
+/* Actions: three controls of one height. */
+.crm .fu-card .crm-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.crm .fu-card .crm-row-actions .crm-icon-btn {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface-1);
+}
+.crm .fu-card .crm-row-actions .btn-sm { height: 28px; padding: 0 12px; border-radius: 7px; }
+.crm .fu-card .crm-row-actions .link-btn {
+  height: 28px; padding: 0 11px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-secondary); font-size: 12px; font-weight: 600;
+}
+.crm .fu-card .crm-row-actions .link-btn:hover {
+  text-decoration: none; color: var(--status-critical, #d03b3b);
+  border-color: color-mix(in srgb, var(--status-critical, #d03b3b) 35%, transparent);
+  background: color-mix(in srgb, var(--status-critical, #d03b3b) 6%, var(--surface-1));
+}

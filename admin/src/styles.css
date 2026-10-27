@@ -600,6 +600,22 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-mark {
   flex: none; display: block; object-fit: contain;
 }
+/* The round mark stands in for the lockup only in the collapsed rail. */
+.brand-mark-icon { display: none; }
+.shell-collapsed .sidebar-head .brand-mark-full { display: none; }
+.shell-collapsed .sidebar-head .brand-mark-icon { display: block; }
+
+/* The lockup's navy "LRS" disappears on a dark surface, so in the dark theme
+   the logo sits on a small white plate — the way a printed logo is placed on
+   a dark page. */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .brand-mark {
+    box-sizing: content-box; padding: 4px 8px; border-radius: 8px; background: #fff;
+  }
+}
+:root[data-theme='dark'] .brand-mark {
+  box-sizing: content-box; padding: 4px 8px; border-radius: 8px; background: #fff;
+}
 .brand-word {
   font-size: 17px; font-weight: 750; letter-spacing: -0.035em;
   line-height: 1; white-space: nowrap;
@@ -752,46 +768,183 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .main { flex: 1; min-width: 0; padding: 20px 18px 60px; }
 
-.module-options { width: min(100%, 1120px); margin: 0 auto; }
-.module-options-title { margin-bottom: 18px; }
-.module-options-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
-  gap: 12px;
-}
-.module-option-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 18px;
+/* ---------------------------------------------------------- module hub --- */
+/* The page a module's sidebar heading opens (components/ModuleHub.tsx).
+   All three modules share the workspace brand colour: one quiet accent reads
+   as one product, where a colour per module read as three. */
+
+/* Module hub — the page a sidebar module opens on: a slim header, then one
+   compact row-card per page. Full width, so a wide screen is filled with
+   cards rather than margins. */
+.hub { --hub: var(--brand); width: 100%; margin: 0; }
+
+.hub-head {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 78px;
-  padding: 14px 16px;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px 18px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--surface-1);
-  box-shadow: var(--shadow);
-  color: var(--text-primary);
-  text-decoration: none;
-  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
-.module-option-card:hover {
-  border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
-  background: var(--surface-hover);
-  transform: translateY(-1px);
+.hub-head::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--hub);
 }
-.module-option-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.module-option-icon {
+
+.hub-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-sm);
-  background: var(--brand-soft);
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
   color: var(--brand-ink);
+  background: var(--brand-soft);
 }
-.module-option-label { min-width: 0; font-size: var(--text-md); font-weight: var(--weight-medium); }
-.module-option-card > svg { color: var(--text-muted); }
-.module-option-card[aria-current='page'] { border-color: var(--brand); }
+.hub-mark svg { width: 18px; height: 18px; }
+
+.hub-head-text { min-width: 0; flex: 1; }
+
+.hub-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hub-title {
+  margin: 1px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.hub-blurb {
+  margin: 2px 0 0;
+  font-size: 12.5px; line-height: 1.45; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.hub-count {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 12px;
+}
+
+/* A card is one row: icon, then name over description, then the arrow. */
+.hub-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.hub-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--hub) 38%, var(--border));
+  box-shadow: 0 10px 22px -16px color-mix(in srgb, var(--hub) 50%, transparent);
+}
+.hub-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.hub-card[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--hub) 45%, var(--border));
+  background: color-mix(in srgb, var(--hub) 5%, var(--surface-1));
+}
+
+/* The top row's pieces are placed straight into the card's grid. */
+.hub-card-top { display: contents; }
+
+.hub-card-icon {
+  grid-column: 1; grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+  transition: background 160ms ease, color 160ms ease;
+}
+.hub-card-icon svg { width: 19px; height: 19px; }
+.hub-card:hover .hub-card-icon { color: var(--brand-on); background: var(--brand); }
+
+.hub-card-label {
+  grid-column: 2; grid-row: 1;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: 14.5px; font-weight: 650; letter-spacing: -0.005em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hub-card-desc {
+  grid-column: 2; grid-row: 2;
+  font-size: 12.5px; line-height: 1.4; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* "You are here": a small tag at the card's top-right corner. */
+.hub-card-here {
+  position: absolute; top: -8px; right: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--brand-on, #fff);
+  background: var(--hub);
+}
+
+.hub-card-go {
+  grid-column: 3; grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: transform 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.hub-card-go svg { width: 14px; height: 14px; }
+.hub-card:hover .hub-card-go {
+  transform: translateX(2px);
+  color: var(--hub);
+  border-color: color-mix(in srgb, var(--hub) 45%, var(--border));
+}
+
+@media (max-width: 640px) {
+  .hub-head { padding: 12px 14px; }
+  .hub-blurb { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-card, .hub-card-go, .hub-card-icon { transition: none; }
+  .hub-card:hover, .hub-card:hover .hub-card-go { transform: none; }
+}
 
 .page-head {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -981,6 +1134,9 @@ input:user-invalid:focus, textarea:user-invalid:focus, select:user-invalid:focus
   transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 .btn:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+/* A link dressed as a button ("+ Add employee", "Open leads") is still an <a>,
+   and without this it kept the link underline. */
+a.btn { text-decoration: none; }
 .btn:active { transform: translateY(1px); box-shadow: none; }
 .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 .btn-primary {
@@ -1442,23 +1598,6 @@ td.row-actions > * + * { margin-left: var(--space-2); }
 
 /* ----------------------------------------------------------------- misc --- */
 
-.login-wrap {
-  min-height: 100%; display: grid; place-items: center; padding: 24px;
-  background:
-    radial-gradient(1100px 620px at 50% -10%, var(--brand-soft), transparent 70%),
-    var(--page);
-}
-.login-card {
-  width: 100%; max-width: 396px;
-  border-radius: var(--radius-lg);
-  padding: 26px 26px 24px;
-  box-shadow: var(--shadow-lg);
-}
-.login-card .brand { justify-content: center; padding: 2px 0 16px; }
-.login-card .brand-word { font-size: 22px; }
-.login-card label { display: block; font-size: 13px; margin-bottom: 14px; color: var(--text-secondary); }
-.login-card input { width: 100%; margin-top: 5px; }
-
 .notice {
   border-left: 3px solid var(--brand);
   background: var(--brand-soft);
@@ -1575,6 +1714,17 @@ td.row-actions > * + * { margin-left: var(--space-2); }
   -webkit-backdrop-filter: blur(14px) saturate(1.3);
   box-shadow: var(--shadow-sm);
 }
+/* The gutter above the pinned bar, painted in the page colour: without it the
+   page scrolled visibly through that 12px strip above the bar. */
+.topbar::before {
+  content: '';
+  position: absolute;
+  left: -2px; right: -2px;
+  bottom: 100%;
+  height: calc(var(--rail-gutter) + 1px);
+  background: var(--page);
+  pointer-events: none;
+}
 .topbar-gap { flex: 1; min-width: 8px; }
 /* Hairline between the search and the icon cluster, so they read as two groups
    rather than four evenly spaced controls. */
@@ -1591,14 +1741,12 @@ td.row-actions > * + * { margin-left: var(--space-2); }
 }
 .crumbs svg { flex: none; opacity: 0.55; }
 .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crumb-root { text-decoration: none; color: var(--text-muted); }
-.crumb-root:hover { color: var(--text-primary); }
 .crumb-muted { color: var(--text-muted); }
 .crumb-here { color: var(--text-primary); font-weight: 600; }
 /* On a narrow desktop the group is the first thing worth dropping — the leaf
    is the part that identifies the page. */
 @media (max-width: 1100px) {
-  .crumb-root, .crumbs > svg:first-of-type, .crumb-muted { display: none; }
+  .crumbs > svg:first-of-type, .crumb-muted { display: none; }
 }
 
 /* --------------------------------------------------------- search trigger -- */
@@ -2444,90 +2592,6 @@ input.toggle {
 }
 .row-sublink:hover { color: var(--brand); }
 
-/* =========================================================== app launcher ==
- *
- * The nine-dot grid at the left of the bar and the panel it drops. Chrome, so
- * it is brand-tinted and nothing else — a launcher tile is an identity, never a
- * status, and a grid of twelve hues would be twelve claims about nothing.
- *
- * It shares the bar's popover language (the same border, radius, shadow and
- * pop-in as .popover) but not its class: .popover is right-anchored to the
- * notification bell, and this hangs off the opposite end of the same row.
- */
-
-.launcher { position: relative; display: flex; }
-.launcher-btn-on, .launcher-btn-on:hover {
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-}
-
-.launcher-panel {
-  position: absolute; top: calc(100% + 10px); left: 0; z-index: 70;
-  width: min(376px, calc(100vw - 32px));
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-lg);
-  animation: pop-in 140ms ease;
-}
-
-/* The destinations that are not modules, as a row of pills above the grid.
-   They are one page each, and a full tile for a single page next to a tile
-   standing for nine of them would say the two were the same size of thing. */
-.launcher-rail {
-  display: flex; flex-wrap: wrap; gap: var(--space-2);
-  padding-bottom: var(--space-3);
-  margin-bottom: var(--space-3);
-  border-bottom: 1px solid var(--gridline);
-}
-.launcher-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  font-size: var(--text-md); font-weight: var(--weight-medium);
-  text-decoration: none;
-}
-.launcher-pill:hover {
-  background: var(--brand-soft); color: var(--brand-ink);
-  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
-}
-.launcher-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-
-.launcher-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-1);
-}
-.launcher-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: var(--space-3) var(--space-2);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  text-align: center;
-  text-decoration: none;
-}
-.launcher-tile:hover { background: var(--surface-hover); color: var(--text-primary); }
-.launcher-tile:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.launcher-glyph {
-  display: grid; place-items: center;
-  width: 38px; height: 38px;
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-}
-.launcher-tile:hover .launcher-glyph { background: var(--brand-soft); color: var(--brand-ink); }
-/* The module you are already in. Tint plus weight, never tint alone. */
-.launcher-tile[aria-current='page'] { color: var(--brand-ink); }
-.launcher-tile[aria-current='page'] .launcher-glyph {
-  background: var(--brand-soft); color: var(--brand-ink);
-}
-.launcher-tile[aria-current='page'] .launcher-label { font-weight: var(--weight-semibold); }
-.launcher-label { font-size: var(--text-sm); line-height: 1.3; }
-
 /* ========================================================== account menu ==
  *
  * Who is signed in, top right, and the three things they do about it. The
@@ -2660,3 +2724,29 @@ input.toggle {
 @media (prefers-reduced-motion: reduce) {
   .account-btn { transition: none; }
 }
+
+/* ------------------------------------------------------------ no access --- */
+
+.no-access {
+  max-width: 440px;
+  margin: 12vh auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.no-access-icon {
+  display: grid; place-items: center;
+  width: 52px; height: 52px; margin-bottom: 6px;
+  border-radius: 14px;
+  color: var(--brand-ink); background: var(--brand-soft);
+}
+.no-access h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.no-access p { margin: 0 0 8px; font-size: 13.5px; color: var(--text-secondary); }
+
+/* Master trail in the top bar: Master › Geography › State. */
+.crumb-step { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.crumb-step > svg { flex: none; color: var(--text-muted); }
+.crumb-link { text-decoration: none; }
+.crumb-link:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }

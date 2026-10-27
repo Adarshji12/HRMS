@@ -18,6 +18,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.menus import clean_menu_rights
 from app.models import DataScope, OrgRole, PERMISSION_KEYS, Role, User
 
 
@@ -148,7 +149,8 @@ def clean_permissions(raw: dict | None) -> dict:
 
 
 def create_role(db: Session, org_id: uuid.UUID, *, name: str, description: str | None,
-                base_role: str, data_scope: str, permissions: dict | None) -> OrgRole:
+                base_role: str, data_scope: str, permissions: dict | None,
+                menu_rights: dict | None = None) -> OrgRole:
     name = name.strip()
     if not name:
         raise _refuse("name_required", "A role needs a name.", status.HTTP_422_UNPROCESSABLE_ENTITY)
@@ -165,6 +167,7 @@ def create_role(db: Session, org_id: uuid.UUID, *, name: str, description: str |
         base_role=base_role,
         data_scope=data_scope,
         permissions=clean_permissions(permissions),
+        menu_rights=clean_menu_rights(menu_rights),
         is_builtin=False,
     )
     db.add(row)
@@ -175,7 +178,7 @@ def create_role(db: Session, org_id: uuid.UUID, *, name: str, description: str |
 def update_role(db: Session, org_id: uuid.UUID, role_id: uuid.UUID, *,
                 name: str | None, description: str | None,
                 base_role: str | None, data_scope: str | None,
-                permissions: dict | None) -> OrgRole:
+                permissions: dict | None, menu_rights: dict | None = None) -> OrgRole:
     """Edit a role. Takes effect immediately for everybody holding it.
 
     That is the point of roles and the reason the console shows the member count
@@ -226,6 +229,13 @@ def update_role(db: Session, org_id: uuid.UUID, role_id: uuid.UUID, *,
         row.data_scope = data_scope
     if permissions is not None:
         row.permissions = clean_permissions(permissions)
+    if menu_rights is not None:
+        # The owner is never restricted by menu (see enforce_menu_rights), so
+        # rules saved on the owner's role would only mislead whoever reads them.
+        if row.base_role == "owner":
+            raise _refuse("owner_unrestricted",
+                          "The owner always has every menu. Their access cannot be limited.")
+        row.menu_rights = clean_menu_rights(menu_rights)
     db.flush()
     return row
 

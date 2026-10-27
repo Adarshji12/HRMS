@@ -9,26 +9,25 @@ import {
   firstRouteIn,
   itemsIn,
   locate,
+  menuOpen,
+  routeOpen,
   topLevelItems,
   visibleModules,
 } from './lib/nav'
 import ModulePanel from './components/ModulePanel'
-import {
-  AttendanceOverview,
-  ExpenseOverview,
-  LeaveOverview,
-  TimeOverview,
-} from './pages/hrms/overview/Overviews'
+import { TimeOverview } from './pages/hrms/overview/Overviews'
 import Brand from './components/Brand'
 import Topbar from './components/Topbar'
 import { Avatar } from './components/ui'
 import Login from './pages/Login'
+import { ForgotPassword, ResetPassword } from './pages/PasswordReset'
 import Signup from './pages/Signup'
 import PlatformApp from './pages/platform/PlatformApp'
-import Dashboard from './pages/Dashboard'
 import MyPerformance from './pages/MyPerformance'
 import JoinersLettersHub from './pages/hrms/JoinersLettersHub'
 import HrDashboard from './pages/hrms/home/HrDashboard'
+import Dashboard from './pages/Dashboard'
+import CompanyOverview from './pages/CompanyOverview'
 import HRMSSettings from './pages/hrms/HRMSSettings'
 import ErpDashboard from './pages/erp/ErpDashboard'
 import ErpApprovals from './pages/erp/ErpApprovals'
@@ -46,6 +45,9 @@ import CompanyProfile from './pages/CompanyProfile'
 import Employees from './pages/Employees'
 import EmployeeDay from './pages/EmployeeDay'
 import OrgStructure from './pages/OrgStructure'
+import ModuleHub from './components/ModuleHub'
+import DepartmentMaster from './pages/masters/DepartmentMaster'
+import DesignationMaster from './pages/masters/DesignationMaster'
 import Hierarchy from './pages/Hierarchy'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
@@ -65,7 +67,7 @@ import Roles from './pages/hrms/roles/Roles'
 // Core HR. First of the HRMS modules, because everything below hangs off the
 // person it describes.
 import MyProfile from './pages/hrms/people/MyProfile'
-import AddEmployee from './pages/hrms/people/hire/AddEmployee'
+import AddEmployee, { EditEmployee } from './pages/hrms/people/hire/AddEmployee'
 import MyExpenses from './pages/hrms/expenses/MyExpenses'
 import { ExpensePayments, ExpenseReview } from './pages/hrms/expenses/ExpenseQueues'
 import ExpenseSettings from './pages/hrms/expenses/ExpenseSettings'
@@ -103,6 +105,7 @@ import EmployeeHome from './pages/hrms/home/EmployeeHome'
 // CRM. Its own module, and the only one whose subject is somebody outside the
 // company — see the note on the nav group.
 import LeadDashboard from './pages/crm/LeadDashboard'
+import LeadDetail from './pages/crm/LeadDetail'
 import MyLeads from './pages/crm/MyLeads'
 import MyFollowUps from './pages/crm/MyFollowUps'
 import MyVisits from './pages/crm/MyVisits'
@@ -118,7 +121,6 @@ import ApprovalsInbox from './pages/hrms/home/ApprovalsInbox'
 import {
   IconCard,
   IconChevronDown,
-  IconChevronRight,
   IconClose,
   IconGrid,
   IconPanel,
@@ -142,6 +144,7 @@ function Shell() {
   const access = {
     isAdmin, canViewTeam: canViewTeam(user), isOwner: owner, hiddenPages,
     canApprove: canApproveSomething(user),
+    menuRights: user?.menu_rights ?? null,
   }
   const hrmsItems = HRMS_NAV_ITEMS.filter((item) => canSee(item, access))
   const hrmsRouteActive = location.pathname !== '/' && hrmsItems.some((item) =>
@@ -183,6 +186,13 @@ function Shell() {
       () => crmRouteActive,
     )
     const [selectedModule, setSelectedModule] = useState<'crm' | 'hrms' | 'erp' | null>(null)
+  /** A top-level link leaves every module: since a page outside the groups no
+   *  longer closes them by itself, these links have to. */
+  const closeGroups = () => {
+    setCrmExpanded(false)
+    setHrmsExpanded(false)
+    setErpExpanded(false)
+  }
 
   const selectedModuleItems = selectedModule === 'crm'
     ? crmItems
@@ -191,7 +201,6 @@ function Shell() {
       : selectedModule === 'erp'
         ? erpItems
         : []
-  const selectedModuleTitle = selectedModule?.toUpperCase()
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
@@ -209,9 +218,18 @@ function Shell() {
   useEffect(() => {
     setDrawerOpen(false)
     setSelectedModule(null)
-    setCrmExpanded(crmRouteActive)
-    setHrmsExpanded(hrmsRouteActive || hrmsHomeRouteActive)
-    setErpExpanded(erpRouteActive)
+    // Open the group the new page belongs to. A page in no group leaves the
+    // groups as they were: module pages link onward to screens that are not
+    // on the menu themselves (Payroll to its runs, Workforce to the team's
+    // leave, HR Settings to /settings/…), and collapsing the group the person
+    // was working in every time they followed one of those read as the menu
+    // closing on its own. Top-level links close the groups explicitly.
+    const hrmsActive = hrmsRouteActive || hrmsHomeRouteActive
+    if (crmRouteActive || erpRouteActive || hrmsActive) {
+      setCrmExpanded(crmRouteActive)
+      setErpExpanded(erpRouteActive && !crmRouteActive)
+      setHrmsExpanded(hrmsActive && !crmRouteActive && !erpRouteActive)
+    }
   }, [location.pathname])
 
   useEffect(() => {
@@ -249,8 +267,7 @@ function Shell() {
         aria-current={here?.heading === group.heading ? 'page' : undefined}
         title={collapsed ? label : undefined}
         onClick={(event) => {
-          setHrmsExpanded(false)
-          setErpExpanded(false)
+          closeGroups()
           onSelect?.(event)
         }}
       >
@@ -267,9 +284,11 @@ function Shell() {
               setSelectedModule(null)
               sessionStorage.removeItem(HRMS_HOME_NAV_KEY)
             }
-            setCrmExpanded(false)
-            setHrmsExpanded(false)
-            setErpExpanded(false)
+            // The module groups are not closed here. This handler sees every
+            // click in the app, so closing them collapsed the CRM menu the
+            // moment anyone clicked into a field on a CRM page. Which group is
+            // open follows the route (the pathname effect above) and the
+            // group toggles themselves.
           }}
       className={`shell${collapsed ? ' shell-collapsed' : ''}${
         drawerOpen ? ' shell-drawer-open' : ''
@@ -300,6 +319,7 @@ function Shell() {
           </button>
         </div>
 
+        <div className="nav-caption">Main menu</div>
         <div className="nav-section">
           {mainModuleLink('dashboard', 'Dashboard')}
           {topLevelItems(access).map((item) => (
@@ -310,22 +330,21 @@ function Shell() {
               className="nav-link"
               // The only label left once the rail collapses to icons.
               title={collapsed ? item.label : undefined}
-              onClick={() => {
-                setHrmsExpanded(false)
-                setErpExpanded(false)
-              }}
+              onClick={closeGroups}
             >
               <item.icon />
               <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
-          {itemsIn(mod('people'), access).some((item) => item.to === '/employees') && (
+          {itemsIn(mod('people'), access).some((item) => item.to === '/employees') &&
+            menuOpen('/employees', access.menuRights) && (
             <NavLink
               to="/employees"
               end
               className="nav-link"
               aria-current={location.pathname === '/employees' ? 'page' : undefined}
               title={collapsed ? 'Employees' : undefined}
+              onClick={closeGroups}
             >
               <IconUsers />
               <span className="nav-label">Employees</span>
@@ -333,11 +352,12 @@ function Shell() {
           )}
           {/* Every reference list in one place — see pages/masters/Masters.tsx.
               Administrator-only, matching the route and the server's writes. */}
-          {isAdmin && (
+          {isAdmin && menuOpen('/masters', access.menuRights) && (
             <NavLink
               to="/masters"
               className="nav-link"
               title={collapsed ? 'Master' : undefined}
+              onClick={closeGroups}
             >
               <IconGrid />
               <span className="nav-label">Master</span>
@@ -491,18 +511,17 @@ function Shell() {
             <Avatar name={user?.full_name ?? '?'} small />
             <div className="foot-id">
               <div className="foot-name">{user?.full_name}</div>
-              <div className="foot-role">{user?.role}</div>
+              <div className="foot-role">{user?.role_name ?? user?.role}</div>
             </div>
+            <button
+              className="icon-btn foot-signout"
+              onClick={logout}
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <IconSignOut size={16} />
+            </button>
           </div>
-          <button
-            className="btn btn-sm foot-signout"
-            onClick={logout}
-            title={collapsed ? 'Sign out' : undefined}
-            aria-label="Sign out"
-          >
-            <IconSignOut size={15} />
-            <span className="nav-label">Sign out</span>
-          </button>
         </div>
        </div>
       </nav>
@@ -517,72 +536,65 @@ function Shell() {
           settingsHome={settingsHome}
           onOpenDrawer={() => setDrawerOpen(true)}
           drawerOpen={drawerOpen}
+          onToggleRail={() => setCollapsed((v) => !v)}
+          railCollapsed={collapsed}
         />
 
         <main className="main">
         {selectedModule ? (
-          <section className="module-options" aria-label={`${selectedModuleTitle} options`}>
-            <h1 className="page-title module-options-title">{selectedModuleTitle}</h1>
-            <div className="module-options-grid">
-              {selectedModuleItems.map((item) => {
-                const current = location.pathname === item.to ||
-                  location.pathname.startsWith(`${item.to}/`)
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className="module-option-card"
-                    aria-current={current ? 'page' : undefined}
-                    onClick={() => setSelectedModule(null)}
-                  >
-                    <span className="module-option-icon"><item.icon size={20} /></span>
-                    <span className="module-option-label">{item.label}</span>
-                    <IconChevronRight size={17} />
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
+          <ModuleHub
+            module={selectedModule}
+            items={selectedModuleItems}
+            pathname={location.pathname}
+            onPick={() => setSelectedModule(null)}
+          />
+        ) : !routeOpen(location.pathname, access.menuRights) ? (
+          // The role's menu rights close this page. The menu is already hidden;
+          // this is for a bookmark or a typed address.
+          <NoMenuAccess />
         ) : (
         <Routes>
-          {/* Not modules — destinations. Dashboard, Home, Approvals and My
-              performance are what people come here to click, and putting a
-              category rail in front of a dashboard would be a menu guarding a
-              single page. They render bare. */}
-          {/* --- Dashboards ------------------------------------------------
-              One panel, five tabs, reached from the sidebar's Dashboard row.
-              They were each module's first tab until it became clear that is
-              the wrong home for them: somebody opening a dashboard is comparing
-              across modules, and five clicks into five modules is not
-              comparing.
+          {/* The root: anybody who sees beyond themselves lands on the company
+              dashboard; an employee lands on Home, their own day. */}
+          <Route
+            path="/"
+            element={<Navigate to={access.canViewTeam ? '/dashboard' : '/home'} replace />}
+          />
 
-              The three that aggregate other people are team-gated to match
-              their nav entries — /admin/dashboard scopes itself server-side, so
-              an employee would get a truthful payload under labels written for
-              a company ("1 of 9 online"), which is the exact bug Dashboard's
-              own comment records having to fix once already. */}
+          {/* --- Dashboard ------------------------------------------------
+              Overview first, then one tab per module dashboard. */}
           <Route element={<ModulePanel group={mod('dashboard')} />}>
-            {/* An employee's landing page is their day, not the company's.
-                Dashboard is a monitoring surface; §9.3's home screen is the
-                answer, and a "day one screen" nobody lands on is not one. */}
             <Route
-              path="/"
-              element={access.canViewTeam ? <Dashboard /> : <EmployeeHome />}
+              path="/dashboard"
+              element={access.canViewTeam ? <CompanyOverview /> : <Navigate to="/home" replace />}
             />
             <Route
-              path="/dashboards/time"
-              element={access.canViewTeam ? <TimeOverview /> : <Navigate to="/" replace />}
+              path="/dashboards/hr"
+              element={access.canViewTeam ? <HrDashboard /> : <Navigate to="/home" replace />}
             />
             <Route
-              path="/dashboards/attendance"
-              element={access.canViewTeam ? <AttendanceOverview /> : <Navigate to="/" replace />}
+              path="/dashboards/crm"
+              element={access.canViewTeam ? <LeadDashboard /> : <Navigate to="/home" replace />}
             />
-            <Route path="/dashboards/leave" element={<LeaveOverview />} />
-            <Route path="/dashboards/expenses" element={<ExpenseOverview />} />
+            <Route
+              path="/dashboards/erp"
+              element={access.canViewTeam ? <ErpDashboard /> : <Navigate to="/home" replace />}
+            />
+            <Route
+              path="/dashboards/monitor"
+              element={access.canViewTeam ? <Dashboard /> : <Navigate to="/home" replace />}
+            />
           </Route>
+
+          {/* Not modules — destinations. Home and Approvals are what people
+              come here to click, so they render bare. */}
 
           <Route path="/home" element={<EmployeeHome />} />
           <Route path="/hrms/dashboard" element={<HrDashboard />} />
+          <Route
+            path="/hrms/working-hours"
+            element={access.canViewTeam ? <TimeOverview /> : <Navigate to="/home" replace />}
+          />
           <Route path="/hrms/joiners-letters" element={<JoinersLettersHub />} />
           <Route path="/hrms/settings" element={<HRMSSettings />} />
           {/* ERP phase one. Ungated at the route: every page reads /erp/access
@@ -654,6 +666,12 @@ function Shell() {
             <Route
               path="/employees/new"
               element={isAdmin ? <AddEmployee /> : <Navigate to="/employees" replace />}
+            />
+            {/* Edit is the same ten-step form as Add, on its own page, filled
+                with what is on file. */}
+            <Route
+              path="/employees/:userId/edit"
+              element={isAdmin ? <EditEmployee /> : <Navigate to="/employees" replace />}
             />
             {/* Not gated: an employee may open their own day, and the endpoint
                 behind it already rejects anyone else's. */}
@@ -829,13 +847,19 @@ function Shell() {
               somebody a link to one. */}
           {/* Master: a destination, not a module, so it renders bare. */}
           <Route path="/masters" element={isAdmin ? <Masters /> : <Navigate to="/" replace />} />
+          {/* The ERP Master card's lists, opened here rather than under /erp so the
+              Master section stays put instead of switching to the ERP module. */}
+          <Route
+            path="/masters/erp/:tab"
+            element={isAdmin ? <ErpMasters /> : <Navigate to="/" replace />}
+          />
           {/* Organisation Master's two lists, each on its own page. Keyed so
               moving between them starts the page fresh on the right tab. */}
           <Route
             path="/departments"
             element={
               access.canViewTeam
-                ? <OrgStructure key="departments" sections={['departments']} title="Departments" />
+                ? <DepartmentMaster />
                 : <Navigate to="/employees" replace />
             }
           />
@@ -843,7 +867,7 @@ function Shell() {
             path="/designations"
             element={
               access.canViewTeam
-                ? <OrgStructure key="designations" sections={['designations']} title="Designations" />
+                ? <DesignationMaster />
                 : <Navigate to="/employees" replace />
             }
           />
@@ -861,6 +885,7 @@ function Shell() {
           <Route element={<ModulePanel group={mod('crm')} />}>
             <Route path="/crm" element={<LeadDashboard />} />
             <Route path="/crm/leads" element={<MyLeads />} />
+            <Route path="/crm/leads/:leadId" element={<LeadDetail />} />
             <Route path="/crm/follow-ups" element={<MyFollowUps />} />
             <Route path="/crm/visits" element={<MyVisits />} />
             <Route path="/crm/support" element={<SupportCenter />} />
@@ -972,6 +997,8 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         {/* Public: signup runs on the marketing host, before any tenant exists. */}
         <Route path="/signup" element={<Signup />} />
         <Route path="*" element={<Navigate to="/login" replace state={{ from: location }} />} />
@@ -992,4 +1019,22 @@ export default function App() {
 function PersonProfile() {
   const { userId } = useParams()
   return <MyProfile userId={userId} />
+}
+
+/** Shown in place of a page the person's role has no access to. */
+function NoMenuAccess() {
+  return (
+    <div className="no-access">
+      <span className="no-access-icon" aria-hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+        </svg>
+      </span>
+      <h1>You don't have access to this page</h1>
+      <p>Your role does not include this menu. Ask an administrator if you need it.</p>
+      <Link className="btn btn-primary" to="/home">Go to home</Link>
+    </div>
+  )
 }

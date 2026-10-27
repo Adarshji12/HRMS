@@ -294,6 +294,19 @@ class User(UUIDMixin, TimestampMixin, Base):
     )
 
     @property
+    def menu_rights(self) -> dict | None:
+        """Per-menu rights the console hides menus by; ``None`` means unrestricted.
+
+        The owner is never restricted, and neither is anybody whose role has not
+        been limited by menu yet. Aliases carry their menu's row.
+        """
+        from app.core.menus import effective_for_console
+
+        if self.org_role is None or self.role_enum == Role.OWNER:
+            return None
+        return effective_for_console(self.org_role.menu_rights)
+
+    @property
     def role_enum(self) -> Role:
         """The built-in level this person acts at.
 

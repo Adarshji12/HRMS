@@ -41,20 +41,23 @@ export function CrmPage({
   actions,
   children,
 }: {
-  title: string
+  /** Optional: a page whose content explains itself can go without a header. */
+  title?: string
   subtitle?: ReactNode
   actions?: ReactNode
   children: ReactNode
 }) {
   return (
     <div className="crm">
-      <header className="crm-head">
-        <div style={{ minWidth: 0 }}>
-          <h1 className="crm-title">{title}</h1>
-          {subtitle && <p className="crm-subtitle">{subtitle}</p>}
-        </div>
-        {actions && <div className="crm-head-actions">{actions}</div>}
-      </header>
+      {(title || subtitle || actions) && (
+        <header className="crm-head">
+          <div style={{ minWidth: 0 }}>
+            {title && <h1 className="crm-title">{title}</h1>}
+            {subtitle && <p className="crm-subtitle">{subtitle}</p>}
+          </div>
+          {actions && <div className="crm-head-actions">{actions}</div>}
+        </header>
+      )}
       {children}
     </div>
   )
@@ -187,6 +190,40 @@ export function DueDate({ iso, overdue }: { iso: string | null; overdue?: boolea
   const late = overdue ?? when.getTime() < today.getTime()
   const tone = late ? 'crm-due-over' : isToday ? 'crm-due-today' : ''
   return <span className={tone}>{dateTime(iso)}</span>
+}
+
+/** A follow-up date as a pill: "Today" in amber, a past date in red, a later
+ *  one plain. The table's short form of DueDate. */
+export function DuePill({ iso, overdue }: { iso: string | null; overdue?: boolean }) {
+  if (!iso) return <span className="crm-muted">—</span>
+  const when = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
+  const now = new Date()
+  const isToday = when.toDateString() === now.toDateString()
+  const late = !isToday && (overdue ?? when.getTime() < now.getTime())
+  const label = isToday
+    ? 'Today'
+    : when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  return (
+    <span className={`crm-due-pill${late ? ' is-late' : isToday ? ' is-today' : ''}`} title={dateTime(iso)}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+           strokeLinecap="round" aria-hidden>
+        <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" />
+      </svg>
+      {label}
+    </span>
+  )
+}
+
+/** Who holds a record: initials in a circle, then the name. */
+export function Assignee({ name }: { name: string | null | undefined }) {
+  if (!name) return <span className="crm-muted">Unassigned</span>
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
+  return (
+    <span className="crm-assignee" title={name}>
+      <span className="crm-assignee-dot" aria-hidden>{initials}</span>
+      <span className="crm-assignee-name">{name}</span>
+    </span>
+  )
 }
 
 /* ----------------------------------------------------------------- dialog --- */

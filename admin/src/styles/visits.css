@@ -89,7 +89,13 @@ button.vs-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .vs-filter-btn { display: inline-flex; align-items: center; gap: 6px; position: relative; }
 .vs-filter-btn.is-on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink, var(--text-primary)); }
 .vs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
-.vs-toolbar .filter-reset { margin-left: auto; }
+.vs-toolbar .filter-reset { margin-left: 0; }
+/* New Visit closes the toolbar on the right, after the filters. */
+.vs-toolbar .vs-new {
+  margin-left: auto; height: 34px; padding: 0 14px;
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 8px; font-size: 12.5px; font-weight: 600;
+}
 
 .vs-filters {
   display: grid; grid-template-columns: repeat(3, minmax(0, 220px)); gap: 12px;
@@ -141,3 +147,108 @@ button.vs-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 
   .vs-filters { grid-template-columns: minmax(0, 1fr); }
   .vs-toolbar select { flex: 1 1 140px; min-width: 0; }
 }
+
+/* ------------------------------------------------------------ compact --- */
+
+/* The card hugs its content — toolbar and table run edge to edge — and the
+   toolbar and rows are slim. Selector weight beats every `.card` padding
+   rule, global or CRM. */
+.crm .card.vs-card { padding: 0; }
+
+.crm .vs-card .vs-toolbar { gap: 6px; padding: 8px 12px; }
+.crm .vs-card .vs-toolbar input,
+.crm .vs-card .vs-toolbar select,
+.crm .vs-card .vs-toolbar .btn { height: 32px; font-size: 12.5px; border-radius: 8px; }
+.crm .vs-card .vs-toolbar select { min-width: 128px; padding-top: 0; padding-bottom: 0; }
+.crm .vs-card .vs-search { flex: 1 1 240px; max-width: 340px; min-width: 180px; }
+.crm .vs-card .vs-filter-btn { padding: 0 11px; font-weight: 600; }
+.crm .vs-card .vs-new { height: 32px; padding: 0 13px; }
+.crm .vs-card .vs-filters { padding: 10px 12px; gap: 10px; }
+
+.crm .vs-card .vs-table thead th { padding-top: 8px; padding-bottom: 8px; font-size: 10.5px; }
+.crm .vs-card .vs-table tbody td { padding-top: 6px; padding-bottom: 6px; font-size: 12.5px; }
+.crm .vs-card .vs-table th:first-child,
+.crm .vs-card .vs-table td:first-child { padding-left: 14px; }
+.crm .vs-card .vs-table th:last-child,
+.crm .vs-card .vs-table td:last-child { padding-right: 14px; }
+.crm .vs-card .vs-avatar { width: 26px; height: 26px; font-size: 10.5px; }
+.crm .vs-card .vs-who { gap: 8px; }
+.crm .vs-card .crm-strong { font-size: 13px; }
+.crm .vs-card .crm-sub { font-size: 11px; }
+.crm .vs-card .vs-priority { font-size: 11px; padding: 1px 8px 1px 7px; }
+.crm .vs-card .crm-row-actions { gap: 2px; }
+.crm .vs-card .crm-row-actions .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.crm .vs-card .crm-row-actions .link-btn { font-size: 12px; padding: 4px 5px; }
+.crm .vs-card .crm-foot { padding: 8px 14px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .crm .vs-card .vs-search { flex-basis: 100%; max-width: none; }
+}
+
+/* ------------------------------------------------- more filters panel --- */
+/* A dropdown under its button, like the leads filter — not a row that pushes
+   the table down. */
+.vs-more { position: relative; flex: none; }
+.vs-more-count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-on, #fff);
+  font-size: 10.5px; font-weight: 700;
+}
+.crm .vs-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  width: 300px;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  animation: vs-pop-in 120ms var(--ease-standard, ease);
+}
+@keyframes vs-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .crm .vs-pop { animation: none; } }
+
+.crm .vs-pop-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.crm .vs-pop-field > span { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.crm .vs-pop-field select,
+.crm .vs-pop-field input {
+  width: 100%; max-width: none; min-width: 0; height: 38px;
+  border-radius: 8px; font-size: 13px;
+}
+.crm .vs-pop-field select:focus,
+.crm .vs-pop-field input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.vs-pop-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.crm .vs-pop-clear {
+  height: 36px; margin-top: 2px;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.crm .vs-pop-clear:hover:not(:disabled) { background: var(--surface-2); }
+.crm .vs-pop-clear:disabled { color: var(--text-muted); cursor: default; }
+
+@media (max-width: 520px) {
+  .crm .vs-pop { width: calc(100vw - 40px); }
+}
+/* The card must let the panel hang below it; the table keeps its own clip. */
+.crm .card.vs-card { overflow: visible; }
+.crm .vs-card .vs-toolbar { position: relative; z-index: 5; }
+
+/* ----------------------------------------------- summary cards: plain --- */
+
+/* Figure on top in its status colour, the name under it — nothing else.
+   The card is still the filter; the pressed state shows which is on. */
+.vs-stat { gap: 6px; padding: 12px 16px; }
+.vs-stat::before { display: none; }
+.vs-stat-value { order: 0; font-size: 20px; font-weight: 700; color: var(--tone) !important; }
+.vs-stat-label {
+  order: 1;
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}
+.tone-ink { --tone: var(--brand-ink, var(--brand)); }
+.tone-muted { --tone: var(--text-secondary); }

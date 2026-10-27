@@ -12,6 +12,7 @@
  */
 import { PERMISSIONS } from '../../../../lib/employeeFields'
 import { toPaise } from '../../../../lib/format'
+import type { EmployeeProfile, User } from '../../../../lib/types'
 
 type PermissionKey = (typeof PERMISSIONS)[number]['key']
 
@@ -33,8 +34,10 @@ export interface HireDraft {
   phone: string
   employee_code: string
   joined_on: string
-  status: 'active' | 'pending_setup'
+  status: 'active' | 'pending_setup' | 'inactive'
   timezone: string
+  /** May the account sign in. Only offered when editing. */
+  is_active: boolean
 
   // --- personal
   date_of_birth: string
@@ -122,7 +125,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 export function emptyDraft(): HireDraft {
   return {
     first_name: '', middle_name: '', last_name: '', email: '', phone: '',
-    employee_code: '', joined_on: today(), status: 'active',
+    employee_code: '', joined_on: today(), status: 'active', is_active: true,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
 
     date_of_birth: '', gender: '', marital_status: '', blood_group: '',
@@ -162,6 +165,108 @@ export function emptyDraft(): HireDraft {
 
 export function fullName(d: HireDraft): string {
   return [d.first_name, d.middle_name, d.last_name].map((s) => s.trim()).filter(Boolean).join(' ')
+}
+
+/* ----------------------------------------------------------------- edit --- */
+
+/** The statutory values the server holds but only ever returns masked. The
+ *  edit form shows them as "on file" and leaves the inputs empty: typing a new
+ *  number replaces it, leaving the field blank keeps it. */
+export interface OnFile {
+  pan: string | null
+  aadhaar: string | null
+  bank_account: string | null
+}
+
+/** The account stores one full name; the form wants three parts. The first
+ *  word and the last word, with whatever sits between as the middle name. */
+function splitName(full: string): Pick<HireDraft, 'first_name' | 'middle_name' | 'last_name'> {
+  const words = full.trim().split(/\s+/).filter(Boolean)
+  if (words.length <= 1) return { first_name: words[0] ?? '', middle_name: '', last_name: '' }
+  return {
+    first_name: words[0],
+    middle_name: words.slice(1, -1).join(' '),
+    last_name: words[words.length - 1],
+  }
+}
+
+/** An existing employee as a draft, so the same ten steps can edit them. */
+export function draftFromEmployee(user: User, profile: EmployeeProfile | null, shiftId: string): HireDraft {
+  const base = emptyDraft()
+  const pr = profile
+  const v = (x: string | null | undefined) => x ?? ''
+  const permanentSame = !pr?.permanent_address && !pr?.permanent_city
+    || (pr?.permanent_address === pr?.current_address && pr?.permanent_city === pr?.current_city)
+  const status = user.status === 'pending_setup' || user.status === 'inactive' ? user.status : 'active'
+  return {
+    ...base,
+    ...splitName(user.full_name),
+    email: user.email,
+    phone: v(user.phone),
+    employee_code: v(user.employee_code),
+    joined_on: v(user.joined_on),
+    status,
+    is_active: user.is_active,
+    timezone: v(user.timezone),
+
+    date_of_birth: v(pr?.date_of_birth), gender: v(pr?.gender), marital_status: v(pr?.marital_status),
+    blood_group: v(pr?.blood_group), nationality: v(pr?.nationality), father_name: v(pr?.father_name),
+    personal_email: v(pr?.personal_email), alternate_phone: v(pr?.alternate_phone),
+    emergency_name: v(pr?.emergency_name), emergency_relationship: v(pr?.emergency_relationship),
+    emergency_phone: v(pr?.emergency_phone),
+
+    current_address: v(pr?.current_address), current_city: v(pr?.current_city),
+    current_state: v(pr?.current_state), current_postal_code: v(pr?.current_postal_code),
+    current_country: v(pr?.current_country),
+    permanent_same: permanentSame,
+    permanent_address: v(pr?.permanent_address), permanent_city: v(pr?.permanent_city),
+    permanent_state: v(pr?.permanent_state), permanent_postal_code: v(pr?.permanent_postal_code),
+    permanent_country: v(pr?.permanent_country),
+
+    department_id: v(user.department_id), designation_id: v(user.designation_id),
+    team_id: v(user.team_id), manager_id: v(user.manager_id),
+    employment_type: v(pr?.employment_type), work_location: v(pr?.work_location), grade: v(pr?.grade),
+    probation_months: pr?.probation_months == null ? '' : String(pr.probation_months),
+    notice_period_days: pr?.notice_period_days == null ? '' : String(pr.notice_period_days),
+    bgv_status: v(pr?.bgv_status),
+
+    attendance_type: pr?.attendance_type || 'office',
+    shift_id: shiftId,
+    schedule_id: v(user.schedule_id),
+    can_punch_anywhere: user.can_punch_anywhere,
+
+    uan: v(pr?.uan), pf_number: v(pr?.pf_number), esi_number: v(pr?.esi_number),
+    bank_name: v(pr?.bank_name), bank_branch: v(pr?.bank_branch), bank_ifsc: v(pr?.bank_ifsc),
+    bank_account_name: v(pr?.bank_account_name),
+
+    role_id: v(user.role_id),
+    role: user.role,
+    console_access: true,
+    permissions: Object.fromEntries(
+      // Payroll grants rather than restricts, so only an explicit true is on.
+      PERMISSIONS.map((p) => {
+        const held = (user as unknown as Record<string, unknown>)[p.key]
+        return [p.key, p.key === 'can_manage_payroll' ? held === true : held !== false]
+      }),
+    ) as Record<PermissionKey, boolean>,
+    hidden_pages: user.hidden_pages ?? [],
+
+    start_onboarding: false,
+  }
+}
+
+/** The fields of `keys` whose value differs between the two drafts, with ''
+ *  sent as null — on an edit, emptying a field means clearing it. */
+export function changed(
+  before: HireDraft, after: HireDraft, keys: Array<keyof HireDraft>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of keys) {
+    if (JSON.stringify(before[k]) === JSON.stringify(after[k])) continue
+    const value = after[k]
+    out[k] = typeof value === 'string' ? (value.trim() === '' ? null : value.trim()) : value
+  }
+  return out
 }
 
 /* ----------------------------------------------------------------- steps --- */

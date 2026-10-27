@@ -1,12 +1,21 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import '../../../styles/hrmshome.css'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { canViewTeam, useAuth } from '../../../lib/auth'
 import { dateTime, duration, money, shortDate } from '../../../lib/format'
-import { EmptyState, ErrorNote, Identity, Loading, StatTile } from '../../../components/ui'
-import { IconCheck } from '../../../components/Icons'
+import { EmptyState, ErrorNote, Identity, Loading } from '../../../components/ui'
+import {
+  IconAlert,
+  IconCheck,
+  IconClock,
+  IconUsers,
+  IconChevronDown,
+  IconClose,
+  IconFilter,
+  IconReturn,
+  IconSearch,
+} from '../../../components/Icons'
 import {
   askedLabel,
   canApproveRegularization,
@@ -152,6 +161,12 @@ interface InboxItem {
   outcome: (approve: boolean) => string
 }
 
+/** A row the reader has just decided, and what the module said happened. */
+interface Settled {
+  approved: boolean
+  message: string
+}
+
 const LANE_LABEL: Record<Lane, string> = {
   regularization: 'Attendance',
   leave: 'Leave',
@@ -236,7 +251,14 @@ export default function ApprovalsInbox() {
   /* Rows the reader has just decided. Held here rather than refetched away, so
      the row can say what happened instead of vanishing mid-sentence — and so
      deciding row four never reflows rows one to three under the cursor. */
-  const [settled, setSettled] = useState<Record<string, string>>({})
+  const [settled, setSettled] = useState<Record<string, Settled>>({})
+  /* Per-row failures live here rather than in the row, so a bulk approval can
+     report which of the selected rows it could not record. */
+  const [failures, setFailures] = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
+  const [newestFirst, setNewestFirst] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   /* Every one of the three review endpoints is gated on `TeamViewer` *and* a
      flag. The role half is the same for all three, so it gates the page; the
@@ -662,7 +684,17 @@ export default function ApprovalsInbox() {
       outstanding.filter((i) => i.lane === key).length,
     ]),
   ) as Record<Lane, number>
-  const visible = lane === 'all' ? items : items.filter((i) => i.lane === lane)
+  const needle = search.trim().toLowerCase()
+  const inLane = lane === 'all' ? items : items.filter((i) => i.lane === lane)
+  const matched = needle
+    ? inLane.filter(
+        (i) =>
+          i.personName.toLowerCase().includes(needle) ||
+          LANE_LABEL[i.lane].toLowerCase().includes(needle),
+      )
+    : inLane
+  /* `items` is oldest-first; newest-first is the same list read backwards. */
+  const visible = newestFirst ? [...matched].reverse() : matched
 
   const now = Date.now()
   /* `items` is already oldest-first and `filter` keeps that order. */
@@ -679,77 +711,101 @@ export default function ApprovalsInbox() {
     tsPrevQ.refetching || expenseQ.refetching || loanQ.refetching ||
     reviewQ.refetching
 
-  return (
-    <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Approvals</h1>
-          <p className="page-sub">
-            Everything waiting on a decision from you, oldest first.
-          </p>
-        </div>
-        <div className="head-actions">
-          <button
-            className="btn btn-sm"
-            onClick={() => {
-              setSettled({})
-              setReloadKey((n) => n + 1)
-            }}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+  /* Only rows the reader can still decide are selectable: a settled row has
+     nothing left to do, and their own request is not theirs to decide. */
+  const decidable = (i: InboxItem) => !settled[i.key] && (isOwner || i.userId !== selfId)
+  const selectable = visible.filter(decidable)
+  const picked = selectable.filter((i) => selected.has(i.key))
+  const allPicked = selectable.length > 0 && picked.length === selectable.length
+  const lanesWaiting = (Object.keys(counts) as Lane[]).filter((k) => counts[k] > 0).length
 
-      <div className="grid grid-tiles" style={{ marginBottom: 14 }}>
-        <StatTile
+  function toggle(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function settle(item: InboxItem, approved: boolean) {
+    setSettled((prev) => ({ ...prev, [item.key]: { approved, message: item.outcome(approved) } }))
+    setFailures((prev) => {
+      const rest = { ...prev }
+      delete rest[item.key]
+      return rest
+    })
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.delete(item.key)
+      return next
+    })
+  }
+
+  /* One at a time, not in parallel: each module debits, freezes or notifies on
+     its own, and a burst of simultaneous decisions against one person's balance
+     is exactly the race the services were not written to expect. A failure on
+     one row stops nothing — it is reported on that row and the rest proceed. */
+  async function approveSelected() {
+    setBulkBusy(true)
+    for (const item of picked) {
+      try {
+        await item.decide(true, '')
+        settle(item, true)
+      } catch (err) {
+        setFailures((prev) => ({
+          ...prev,
+          [item.key]: errorText(err, 'That decision could not be recorded'),
+        }))
+      }
+    }
+    setBulkBusy(false)
+  }
+
+  const laneTabs: Array<{ id: Lane; allowed: boolean }> = [
+    { id: 'regularization', allowed: mayReg },
+    { id: 'leave', allowed: mayLeave },
+    { id: 'timesheet', allowed: mayTimesheet },
+    { id: 'expense', allowed: mayExpense },
+    { id: 'loan', allowed: mayLoan },
+    { id: 'performance', allowed: mayReview },
+  ]
+
+  return (
+    <div className="ai-page">
+      {/* No page heading: the top bar already names the page, and the four
+          figures say what is waiting before any sentence could. */}
+      <div className="ai-kpis">
+        <Kpi
+          tone="brand"
+          icon={<IconClock size={16} />}
           label="Waiting on you"
           value={String(outstanding.length)}
-          accent={outstanding.length > 0 ? 'var(--brand)' : undefined}
           meta={
-            outstanding.length === 0
-              ? 'nothing outstanding'
-              : `across ${[counts.regularization, counts.leave, counts.timesheet].filter((n) => n > 0).length} of your queues`
+            outstanding.length === 0 ? 'Nothing outstanding' : `Across ${lanesWaiting} queues`
           }
         />
-        <StatTile
+        <Kpi
+          tone={oldest && now - instantMs(oldest) > 72 * 3_600_000 ? 'bad' : 'warn'}
+          icon={<IconAlert size={16} />}
           label="Longest wait"
           value={oldest ? waited(oldest, now) : '—'}
-          accent={oldest && now - instantMs(oldest) > 72 * 3_600_000 ? 'var(--unprod)' : undefined}
-          meta={oldest ? 'since the request was filed' : 'nobody is waiting'}
+          meta={oldest ? 'Since it was filed' : 'Nobody is waiting'}
         />
-        <StatTile
+        <Kpi
+          tone="info"
+          icon={<IconUsers size={16} />}
           label="People affected"
           value={String(new Set(outstanding.map((i) => i.userId)).size)}
-          meta="each one waiting on a decision from you"
+          meta="Awaiting your decision"
         />
-      </div>
-
-      {/* Lanes the reader cannot decide are absent, not shown at zero: a chip
-          reading "Leave 0" is a claim about the queue, and we have no basis
-          for it when the endpoint was never called. */}
-      <div className="filter-row">
-        <div className="ai-filters">
-          <button
-            className={`ai-chip${lane === 'all' ? ' ai-chip-on' : ''}`}
-            onClick={() => setLane('all')}
-            aria-pressed={lane === 'all'}
-          >
-            Everything <span className="ai-chip-count">{outstanding.length}</span>
-          </button>
-          {mayReg && (
-            <Chip id="regularization" lane={lane} count={counts.regularization} onPick={setLane} />
-          )}
-          {mayLeave && <Chip id="leave" lane={lane} count={counts.leave} onPick={setLane} />}
-          {mayTimesheet && (
-            <Chip id="timesheet" lane={lane} count={counts.timesheet} onPick={setLane} />
-          )}
-          {mayExpense && <Chip id="expense" lane={lane} count={counts.expense} onPick={setLane} />}
-          {mayLoan && <Chip id="loan" lane={lane} count={counts.loan} onPick={setLane} />}
-          {mayReview && (
-            <Chip id="performance" lane={lane} count={counts.performance} onPick={setLane} />
-          )}
-        </div>
+        <Kpi
+          tone="good"
+          icon={<IconCheck size={16} />}
+          label="Decided"
+          value={String(Object.keys(settled).length)}
+          meta="Since this page opened"
+        />
       </div>
 
       {/* A lane that failed says so, once, above the queue — and the queue
@@ -765,186 +821,429 @@ export default function ApprovalsInbox() {
           Timesheets: {errorText(tsNowQ.error ?? tsPrevQ.error, 'could not be loaded')}
         </ErrorNote>
       )}
+      {mayExpense && expenseQ.error && (
+        <ErrorNote>Expense claims: {errorText(expenseQ.error, 'could not be loaded')}</ErrorNote>
+      )}
+      {mayLoan && loanQ.error && (
+        <ErrorNote>Loan requests: {errorText(loanQ.error, 'could not be loaded')}</ErrorNote>
+      )}
+      {mayReview && (cyclesQ.error || reviewQ.error) && (
+        <ErrorNote>
+          Appraisals: {errorText(cyclesQ.error ?? reviewQ.error, 'could not be loaded')}
+        </ErrorNote>
+      )}
 
-      <section className="card" style={{ padding: 0, marginTop: 14 }}>
+      <section className="card ai-panel">
+        {/* Lanes the reader cannot decide are absent, not shown at zero: a tab
+            reading "Leave 0" is a claim about the queue, and we have no basis
+            for it when the endpoint was never called. */}
+        <div className="ai-toolbar">
+          <div className="ai-seg" role="tablist" aria-label="Filter by type">
+            <SegButton
+              label="All"
+              count={outstanding.length}
+              on={lane === 'all'}
+              onPick={() => setLane('all')}
+            />
+            {laneTabs
+              .filter((t) => t.allowed)
+              .map((t) => (
+                <SegButton
+                  key={t.id}
+                  lane={t.id}
+                  label={LANE_LABEL[t.id]}
+                  count={counts[t.id]}
+                  on={lane === t.id}
+                  onPick={() => setLane(t.id)}
+                />
+              ))}
+          </div>
+          <div className="ai-tools">
+            <label className="ai-search">
+              <IconSearch size={13} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search employee"
+                aria-label="Search by employee"
+              />
+            </label>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => setNewestFirst((v) => !v)}
+              title="Change the order"
+            >
+              <IconFilter size={13} /> {newestFirst ? 'Newest first' : 'Oldest first'}
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => {
+                setSettled({})
+                setFailures({})
+                setSelected(new Set())
+                setReloadKey((n) => n + 1)
+              }}
+              title="Reload every queue"
+              aria-label="Refresh"
+            >
+              <IconReturn size={14} />
+            </button>
+          </div>
+        </div>
+
+        {picked.length > 0 && (
+          <div className="ai-bulk">
+            <span>
+              <b>{picked.length}</b> selected
+            </span>
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={bulkBusy}
+              onClick={() => void approveSelected()}
+            >
+              <IconCheck size={13} /> {bulkBusy ? 'Approving…' : 'Approve selected'}
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </button>
+            <span className="ai-bulk-hint">
+              Rejections need a reason, so they are made one row at a time.
+            </span>
+          </div>
+        )}
+
         {loading ? (
           <Loading label="Gathering your queues…" />
         ) : visible.length === 0 ? (
           <EmptyState
             icon={<IconCheck size={22} />}
-            title={outstanding.length === 0 ? 'Nothing is waiting on you' : 'Nothing in this queue'}
+            title={
+              outstanding.length === 0
+                ? 'Nothing is waiting on you'
+                : needle
+                  ? 'No request matches that search'
+                  : 'Nothing in this queue'
+            }
             body={
               outstanding.length === 0 ? (
                 <>
-                  Attendance corrections, leave requests and submitted timesheets from your
-                  reporting subtree land here the moment somebody files one.
+                  Attendance corrections, leave requests, timesheets, claims, loans and appraisals
+                  land here the moment somebody files one.
                 </>
               ) : (
                 <>
-                  The other {outstanding.length} {outstanding.length === 1 ? 'item is' : 'items are'}{' '}
-                  in your other queues.
+                  {outstanding.length} {outstanding.length === 1 ? 'item is' : 'items are'} waiting
+                  elsewhere in your queue.
                 </>
               )
             }
             action={
               outstanding.length === 0 ? undefined : (
-                <button className="btn btn-sm" onClick={() => setLane('all')}>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setLane('all')
+                    setSearch('')
+                  }}
+                >
                   Show everything
                 </button>
               )
             }
           />
         ) : (
-          <div className={`ai-queue${refetching ? ' refetching' : ''}`}>
-            {visible.map((item) => (
-              <Row
-                key={item.key}
-                item={item}
-                now={now}
-                settled={settled[item.key]}
-                canDecide={isOwner || item.userId !== selfId}
-                onSettled={(message) => setSettled((prev) => ({ ...prev, [item.key]: message }))}
-              />
-            ))}
+          <div className={`table-wrap${refetching ? ' refetching' : ''}`}>
+            <table className="table ai-table">
+              <thead>
+                <tr>
+                  <th className="ai-col-check">
+                    <input
+                      type="checkbox"
+                      checked={allPicked}
+                      disabled={selectable.length === 0 || bulkBusy}
+                      onChange={() =>
+                        setSelected(allPicked ? new Set() : new Set(selectable.map((i) => i.key)))
+                      }
+                      aria-label="Select every decidable row"
+                    />
+                  </th>
+                  <th>Employee</th>
+                  <th>Type</th>
+                  <th>Request</th>
+                  <th>Waiting</th>
+                  <th className="row-actions">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((item) => (
+                  <QueueRow
+                    key={item.key}
+                    item={item}
+                    now={now}
+                    settled={settled[item.key]}
+                    failure={failures[item.key]}
+                    canDecide={isOwner || item.userId !== selfId}
+                    picked={selected.has(item.key)}
+                    locked={bulkBusy}
+                    onToggle={() => toggle(item.key)}
+                    onSettled={(approved) => settle(item, approved)}
+                    onFailed={(message) =>
+                      setFailures((prev) => ({ ...prev, [item.key]: message }))
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
 
-      {/* Was eight lines of prose explaining that this queue and the module
-          queues are the same endpoint. Nobody needs that told twice; what they
-          DO need is the one place this list is incomplete, so only that
-          survives — and only for the people it can bite. */}
-      <p className="page-sub" style={{ marginTop: 12 }}>
-        Also decidable from <Link to="/attendance/team">Team attendance</Link>,{' '}
-        <Link to="/leave/team">Team leave</Link> or <Link to="/timesheets">Timesheets</Link>.
-        {mayTimesheet && (
-          <>
-            {' '}
-            <b>Timesheets here covers recent weekly periods only</b> — older or monthly
-            sheets are on <Link to="/timesheets">Timesheets</Link>.
-          </>
-        )}
-      </p>
     </div>
   )
 }
 
-function Chip({
-  id,
-  lane,
+/** Compact summary card: a tinted icon, the figure, and one line beneath. */
+function Kpi({
+  tone,
+  icon,
+  label,
+  value,
+  meta,
+}: {
+  tone: 'brand' | 'warn' | 'bad' | 'info' | 'good'
+  icon: ReactNode
+  label: string
+  value: string
+  meta: string
+}) {
+  return (
+    <div className={`ai-kpi ai-kpi-${tone}`}>
+      <span className="ai-kpi-icon">{icon}</span>
+      <div className="ai-kpi-body">
+        <div className="ai-kpi-label">{label}</div>
+        <div className="ai-kpi-value">{value}</div>
+        <div className="ai-kpi-meta">{meta}</div>
+      </div>
+    </div>
+  )
+}
+
+function SegButton({
+  label,
   count,
+  on,
+  lane,
   onPick,
 }: {
-  id: Lane
-  lane: Lane | 'all'
+  label: string
   count: number
-  onPick: (l: Lane) => void
+  on: boolean
+  lane?: Lane
+  onPick: () => void
 }) {
   return (
     <button
-      className={`ai-chip${lane === id ? ' ai-chip-on' : ''}`}
-      onClick={() => onPick(id)}
-      aria-pressed={lane === id}
+      role="tab"
+      aria-selected={on}
+      className={`ai-seg-btn${on ? ' ai-seg-on' : ''}${count === 0 && !on ? ' ai-seg-empty' : ''}`}
+      onClick={onPick}
     >
-      {LANE_LABEL[id]} <span className="ai-chip-count">{count}</span>
+      {lane && <span className={`ai-dot ai-lane-${lane}`} />}
+      {label}
+      <span className="ai-seg-count">{count}</span>
     </button>
   )
 }
 
 /* ----------------------------------------------------------------- row ---- */
 
-function Row({
+/**
+ * One request, as a table row plus an optional detail row beneath it.
+ *
+ * The facts a decision turns on — the balance it spends, the totals it freezes —
+ * sit in the detail row rather than being dropped for a tidier table: a queue
+ * that shows the request without them is a queue that approves by reflex.
+ * Reject opens the same row, because a rejection needs a reason.
+ */
+function QueueRow({
   item,
   now,
   settled,
+  failure,
   canDecide,
+  picked,
+  locked,
+  onToggle,
   onSettled,
+  onFailed,
 }: {
   item: InboxItem
   now: number
-  settled: string | undefined
+  settled: Settled | undefined
+  failure: string | undefined
   canDecide: boolean
-  onSettled: (message: string) => void
+  picked: boolean
+  locked: boolean
+  onToggle: () => void
+  onSettled: (approved: boolean) => void
+  onFailed: (message: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null)
-  const [failure, setFailure] = useState<string | null>(null)
   /* A rejection with no reason guarantees the identical request comes back
-     tomorrow, and all three services refuse one — so the button is disabled
-     rather than allowed to fail. */
+     tomorrow, and the services refuse one — so the button is disabled rather
+     than allowed to fail. */
   const canReject = note.trim().length > 0
+  const disabled = busy !== null || locked
 
   async function act(approve: boolean) {
     setBusy(approve ? 'approve' : 'reject')
-    setFailure(null)
     try {
       await item.decide(approve, note)
-      onSettled(item.outcome(approve))
+      onSettled(approve)
+      setRejecting(false)
     } catch (err) {
-      setFailure(errorText(err, 'That decision could not be recorded'))
+      onFailed(errorText(err, 'That decision could not be recorded'))
     } finally {
       setBusy(null)
     }
   }
 
+  const expanded = open || rejecting || Boolean(failure) || Boolean(settled)
+
   return (
-    <div className={`ai-row ai-row-${item.lane}`}>
-      <div className="ai-row-head">
-        <Identity name={item.personName} meta={LANE_LABEL[item.lane]} small />
-        <span className={`ai-age ${ageClass(item.waitingSince, now)}`}>
-          waiting {waited(item.waitingSince, now)}
-        </span>
-      </div>
-
-      <div className="ai-claim">{item.claim}</div>
-      <div className="ai-facts">{item.facts}</div>
-      {item.quote && <p className="ai-quote">“{item.quote}”</p>}
-
-      {settled ? (
-        <div className="notice notice-ok ai-row-msg">{settled}</div>
-      ) : !canDecide ? (
-        <p className="ai-note">
-          This is your own request. Deciding it yourself would defeat the point of approval, so it
-          waits for somebody above you — it is listed here because the wait is real.
-        </p>
-      ) : (
-        <>
-          <div className="ai-actions">
+    <>
+      <tr className={`ai-tr${picked ? ' ai-tr-picked' : ''}${settled ? ' ai-tr-done' : ''}`}>
+        <td className="ai-col-check">
+          {canDecide && !settled && (
             <input
-              className="ai-reason"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              maxLength={2000}
-              placeholder="Reason — required to reject, optional to approve"
-              disabled={busy !== null}
+              type="checkbox"
+              checked={picked}
+              disabled={locked}
+              onChange={onToggle}
+              aria-label={`Select ${item.personName}`}
             />
-            <button
-              className="btn btn-primary btn-sm"
-              disabled={busy !== null}
-              onClick={() => void act(true)}
-            >
-              {busy === 'approve' ? 'Approving…' : 'Approve'}
-            </button>
-            <button
-              className="btn btn-sm"
-              disabled={busy !== null || !canReject}
-              onClick={() => void act(false)}
-              title={canReject ? undefined : 'Give a reason first'}
-            >
-              {busy === 'reject' ? 'Rejecting…' : 'Reject'}
-            </button>
-          </div>
-          {failure && (
-            <div className="ai-row-msg">
-              <ErrorNote>{failure}</ErrorNote>
-            </div>
           )}
-        </>
+        </td>
+        <td>
+          <Identity name={item.personName} small />
+        </td>
+        <td>
+          <span className="badge badge-neutral ai-type">
+            <span className={`ai-dot ai-lane-${item.lane}`} />
+            {LANE_LABEL[item.lane]}
+          </span>
+        </td>
+        <td className="ai-col-request">
+          <div className="ai-claim">{item.claim}</div>
+          {item.quote && <div className="ai-quote-line">“{item.quote}”</div>}
+        </td>
+        <td className="ai-col-age">
+          <span className={`ai-age ${ageClass(item.waitingSince, now)}`}>
+            {waited(item.waitingSince, now)}
+          </span>
+          <div className="muted-sm">{dateTime(item.waitingSince)}</div>
+        </td>
+        <td className="row-actions">
+          {settled ? (
+            <span className={`badge ${settled.approved ? 'badge-success' : 'badge-danger'}`}>
+              {settled.approved ? 'Approved' : 'Rejected'}
+            </span>
+          ) : !canDecide ? (
+            <span className="badge badge-neutral" title="Your own request waits for somebody above you.">
+              Your request
+            </span>
+          ) : (
+            <>
+              <button
+                className="btn btn-sm btn-primary ai-act"
+                disabled={disabled}
+                onClick={() => void act(true)}
+              >
+                <IconCheck size={13} /> {busy === 'approve' ? 'Approving…' : 'Approve'}
+              </button>
+              <button
+                className={`btn btn-sm ai-act${rejecting ? ' ai-act-on' : ''}`}
+                disabled={disabled}
+                onClick={() => setRejecting((v) => !v)}
+                title="Reject with a reason"
+              >
+                <IconClose size={13} /> Reject
+              </button>
+            </>
+          )}
+          <button
+            className={`btn btn-sm btn-ghost ai-more${expanded ? ' ai-more-open' : ''}`}
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={expanded}
+            aria-label="Details"
+            title="Details"
+          >
+            <IconChevronDown size={13} />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="ai-detail">
+          <td />
+          <td colSpan={5}>
+            <div className="ai-facts">{item.facts}</div>
+            {item.quote && <p className="ai-quote">“{item.quote}”</p>}
+            {settled && <div className="notice notice-ok ai-row-msg">{settled.message}</div>}
+            {!settled && !canDecide && (
+              <p className="ai-note">
+                This is your own request. Deciding it yourself would defeat the point of approval,
+                so it waits for somebody above you — it is listed here because the wait is real.
+              </p>
+            )}
+            {!settled && canDecide && rejecting && (
+              <div className="ai-actions">
+                <input
+                  className="ai-reason"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={2000}
+                  placeholder="Reason for rejecting — they will see this"
+                  disabled={disabled}
+                  autoFocus
+                />
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={disabled || !canReject}
+                  onClick={() => void act(false)}
+                  title={canReject ? undefined : 'Give a reason first'}
+                >
+                  {busy === 'reject' ? 'Rejecting…' : 'Confirm reject'}
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  disabled={disabled}
+                  onClick={() => {
+                    setRejecting(false)
+                    setNote('')
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {failure && (
+              <div className="ai-row-msg">
+                <ErrorNote>{failure}</ErrorNote>
+              </div>
+            )}
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   )
 }
-
 /* ------------------------------------------------------------- calendar --- */
 
 /** Today by the browser's clock, as YYYY-MM-DD.

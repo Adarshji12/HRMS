@@ -436,7 +436,7 @@ export function MasterTable({ list }: { list: ListDef }) {
   }
 
   return (
-    <section className="card">
+    <section className="card mt-card">
       <div className="crm-panel-head">
         <div>
           <h2 className="crm-panel-title">{list.label}</h2>
@@ -837,10 +837,10 @@ export const MASTER_GROUPS: MasterGroup[] = [
     description: 'Items, warehouses, vendors and customer accounts for purchase, stock and billing.',
     kinds: [],
     links: [
-      { label: 'Items', to: '/erp/masters?tab=items' },
-      { label: 'Warehouses', to: '/erp/masters?tab=warehouses' },
-      { label: 'Vendors', to: '/erp/masters?tab=vendors' },
-      { label: 'Customer accounts', to: '/erp/masters?tab=customers' },
+      { label: 'Items', to: '/masters/erp/items' },
+      { label: 'Warehouses', to: '/masters/erp/warehouses' },
+      { label: 'Vendors', to: '/masters/erp/vendors' },
+      { label: 'Customer accounts', to: '/masters/erp/customers' },
     ],
   },
   {

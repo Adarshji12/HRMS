@@ -10,12 +10,13 @@
  * read zero forever on a workspace with a shelf full of stale offers.
  */
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import '../../styles/crm.css'
+import '../../styles/hrdash.css'
 import { useQuery } from '../../lib/useQuery'
 import { shortDate } from '../../lib/format'
-import { EmptyState, ErrorNote, Loading } from '../../components/ui'
+import { Avatar, EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
   IconAlert,
   IconCheck,
@@ -31,7 +32,7 @@ import {
   rupeesShort,
   type QuotationRow,
 } from './api'
-import { CrmPage, Stat, StateText, Stats } from './parts'
+import { CrmPage, StateText } from './parts'
 
 const FILTERS: Array<{ key: string; label: string }> = [
   { key: '', label: 'All' },
@@ -89,41 +90,32 @@ export default function Quotations() {
 
   const s = summary.data
 
+  const accepted = countOf('accepted')
+  const decided = accepted + countOf('rejected')
+
+  // The HR Dashboard's KPI cards. Expired only turns amber when there is a
+  // stale offer to chase — an amber zero is an alarm about nothing.
+  const kpis: Array<{ label: string; value: ReactNode; hint: string; tone: string; icon: ReactNode }> = [
+    { label: 'Quotations', value: s?.count ?? 0, hint: `${countOf('draft')} draft · ${countOf('sent')} sent`, tone: 'brand', icon: <IconSheet size={16} /> },
+    { label: 'Open value', value: rupeesShort(s?.open_value ?? '0'), hint: 'Draft and sent', tone: 'brand', icon: <IconClock size={16} /> },
+    { label: 'Accepted value', value: rupeesShort(s?.accepted_value ?? '0'), hint: decided ? `${Math.round((accepted / decided) * 100)}% win rate` : 'Signed off', tone: 'good', icon: <IconCheck size={16} /> },
+    { label: 'Expired', value: s?.expired ?? 0, hint: s?.expired ? 'Past their validity date' : 'All still valid', tone: s?.expired ? 'warn' : 'idle', icon: <IconAlert size={16} /> },
+  ]
+
   return (
-    <CrmPage
-      title="Quotations"
-      subtitle="Every offer your team has priced — and where each one stands"
-      actions={
-        <Link className="btn btn-primary" to="/crm/quotations/new">
-          <IconPlus size={15} /> New quotation
-        </Link>
-      }
-    >
-      <Stats>
-        <Stat label="Quotations" value={s?.count ?? 0} icon={<IconSheet size={16} />} />
-        <Stat
-          label="Open value"
-          value={rupeesShort(s?.open_value ?? '0')}
-          meta="draft and sent"
-          icon={<IconClock size={16} />}
-        />
-        <Stat
-          label="Accepted value"
-          value={rupeesShort(s?.accepted_value ?? '0')}
-          meta="signed off"
-          icon={<IconCheck size={16} />}
-          tone="var(--status-good)"
-          toned={Number(s?.accepted_value ?? 0) > 0}
-        />
-        <Stat
-          label="Expired"
-          value={s?.expired ?? 0}
-          meta={s?.expired ? 'past their validity date' : 'all still valid'}
-          icon={<IconAlert size={16} />}
-          tone="var(--status-warn)"
-          toned={Boolean(s?.expired)}
-        />
-      </Stats>
+    <div className="crm hrd">
+      <div className="hrd-kpis ld-kpis" role="group" aria-label="Quotation summary">
+        {kpis.map((k) => (
+          <div key={k.label} className={`hrd-kpi tone-${k.tone}`}>
+            <span className="hrd-kpi-top">
+              <span className="hrd-kpi-label">{k.label}</span>
+              <span className="hrd-kpi-icon" aria-hidden>{k.icon}</span>
+            </span>
+            <span className="hrd-kpi-value">{k.value}</span>
+            <span className="hrd-kpi-hint">{k.hint}</span>
+          </div>
+        ))}
+      </div>
 
       <div className="crm-bar">
         <div className="crm-search">
@@ -147,6 +139,10 @@ export default function Quotations() {
             </button>
           ))}
         </div>
+        {/* No page header: the one action sits beside the status filters. */}
+        <Link className="btn btn-primary qt-new" to="/crm/quotations/new">
+          <IconPlus size={15} /> New quotation
+        </Link>
       </div>
 
       {rowError && (
@@ -155,7 +151,7 @@ export default function Quotations() {
         </div>
       )}
 
-      <section className="card" style={{ opacity: all.refetching ? 0.6 : 1 }}>
+      <section className="hrd-panel" style={{ opacity: all.refetching ? 0.6 : 1 }}>
         {list.length === 0 ? (
           all.loading ? (
             <Loading />
@@ -180,7 +176,7 @@ export default function Quotations() {
         ) : (
           <>
             <div className="table-wrap">
-              <table>
+              <table className="crm-table-wide">
                 <thead>
                   <tr>
                     <th>Quotation</th>
@@ -207,10 +203,17 @@ export default function Quotations() {
                           </Link>
                         </td>
                         <td>
-                          <div className="crm-strong">
-                            {row.customer_name ?? <span className="crm-muted">—</span>}
-                          </div>
-                          {row.company && <div className="crm-sub">{row.company}</div>}
+                          {row.customer_name ? (
+                            <span className="cu-person">
+                              <Avatar name={row.customer_name} small />
+                              <span>
+                                <span className="crm-strong">{row.customer_name}</span>
+                                {row.company && <span className="crm-sub">{row.company}</span>}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="crm-muted">—</span>
+                          )}
                         </td>
                         <td className="crm-nowrap">{shortDate(row.quote_date)}</td>
                         <td className="crm-nowrap">
@@ -222,7 +225,7 @@ export default function Quotations() {
                             <span className="crm-muted">—</span>
                           )}
                         </td>
-                        <td className="crm-num">{rupees(row.grand_total)}</td>
+                        <td className="crm-num crm-strong">{rupees(row.grand_total)}</td>
                         <td>
                           <StateText value={row.status} />
                         </td>
@@ -256,6 +259,6 @@ export default function Quotations() {
           </>
         )}
       </section>
-    </CrmPage>
+    </div>
   )
 }

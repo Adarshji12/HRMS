@@ -52,6 +52,8 @@ class UserOut(ORMModel):
     role: str
     timezone: str
     is_active: bool
+    #: Per-menu rights from their role; ``None`` means every menu. See core.menus.
+    menu_rights: dict[str, dict[str, bool]] | None = None
     created_at: datetime
     notice_accepted_at: datetime | None = None
 

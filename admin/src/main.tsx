@@ -6,6 +6,7 @@ import { AuthProvider } from './lib/auth'
 import { ThemeProvider } from './lib/theme'
 import { TooltipProvider } from './components/Tooltip'
 import './styles.css'
+import './styles/chrome.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

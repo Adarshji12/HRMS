@@ -180,6 +180,9 @@ export interface User {
    */
   status?: string
   hidden_pages: string[]
+  /** Per-menu rights from their role, keyed by route; null means every menu.
+   *  Served by the API (core/menus.py), which also enforces Add / Edit / Delete. */
+  menu_rights?: MenuRights | null
   enrollment_key?: string
 
   employee_code: string | null
@@ -226,7 +229,11 @@ export interface Team {
 export interface Designation {
   id: string
   name: string
+  /** 1 is the most senior. */
   level: number
+  /** Null when the title is used in any department. */
+  department_id: string | null
+  department_name: string | null
   is_active: boolean
   member_count: number
 }
@@ -1594,3 +1601,13 @@ export interface RecognitionPost {
   to_name: string | null
   competency_name: string | null
 }
+
+/** One menu's row on a role: Access, plus whichever of add / edit / delete it has. */
+export interface MenuRight {
+  access: boolean
+  add?: boolean
+  edit?: boolean
+  delete?: boolean
+}
+
+export type MenuRights = Record<string, MenuRight>

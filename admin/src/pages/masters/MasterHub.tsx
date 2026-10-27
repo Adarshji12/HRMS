@@ -17,6 +17,7 @@ import '../../styles/masterhub.css'
 import { useQuery } from '../../lib/useQuery'
 import { crm } from '../crm/api'
 import { LISTS, MASTER_GROUPS, MasterTable, shortLabel } from './masterKit'
+import { MasterTrail } from './MasterBack'
 
 const byKind = new Map(LISTS.map((list) => [list.kind, list]))
 
@@ -55,15 +56,9 @@ export default function MasterHub({ groupKey }: { groupKey: string }) {
 
   return (
     <div className="crm mh">
-      <header className="mh-head">
-        <div className="mh-head-text">
-          {own
-            ? <span className="mh-eyebrow">Master data</span>
-            : <span className="mh-eyebrow"><Link to="/masters">Master</Link> / {group.title}</span>}
-          <h1 className="mh-title">{group.title}</h1>
-          <p className="mh-sub">{group.description}</p>
-        </div>
-      </header>
+      {/* Just the way back: the page's name is in the top bar, and the
+          tiles below say which lists it holds. */}
+      <MasterTrail />
 
       <nav className="mh-tiles" aria-label={`${group.title} lists`}>
         {group.kinds.map((k, i) => {

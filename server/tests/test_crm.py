@@ -745,3 +745,23 @@ def test_a_rotated_token_invalidates_the_old_capture_url(client, acme):
         json={"name": "Stale", "mobile": "919000000051"},
         headers={"X-Org-Slug": acme.slug},
     ).status_code == 404
+
+
+def test_list_filters_by_industry_and_state(client, acme):
+    industries = _masters(client, acme, "industries")
+    states = _masters(client, acme, "states")
+    assert len(industries) >= 2 and len(states) >= 2
+    _new_lead(client, acme, mobile="919000000101",
+              industry_id=industries[0]["id"], state_id=states[0]["id"])
+    _new_lead(client, acme, mobile="919000000102",
+              industry_id=industries[1]["id"], state_id=states[1]["id"])
+
+    def count(**params) -> int:
+        response = client.get("/api/v1/crm/leads", params=params, headers=acme.headers())
+        assert response.status_code == 200, response.text
+        return response.json()["total"]
+
+    assert count() == 2
+    assert count(industry_id=industries[0]["id"]) == 1
+    assert count(state_id=states[1]["id"]) == 1
+    assert count(industry_id=industries[0]["id"], state_id=states[1]["id"]) == 0

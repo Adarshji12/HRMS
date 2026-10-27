@@ -1,0 +1,208 @@
+/* Employees roster — one toolbar line, a filter popover, icon actions.
+ *
+ * Every colour is a token from styles.css, so the page follows the theme and
+ * the company brand colour without rules of its own. */
+
+/* --------------------------------------------------------------- toolbar --- */
+
+.emp-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.emp-tools-left { display: flex; align-items: center; gap: 10px; flex: 1 1 520px; min-width: 0; }
+.emp-tools-right { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.emp-search {
+  flex: 1 1 360px; max-width: 460px; min-width: 200px;
+  display: flex; align-items: center; gap: 9px;
+  height: 40px; padding: 0 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); color: var(--text-muted);
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.emp-search:focus-within {
+  border-color: var(--brand); background: var(--surface-1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.emp-search input {
+  flex: 1; min-width: 0; height: auto; padding: 0;
+  border: 0; background: none; font-size: 13.5px; color: var(--text-primary);
+}
+.emp-search input:focus { outline: none; box-shadow: none; }
+
+/* Filters button and its popover */
+.emp-filter { position: relative; flex: none; }
+.emp-filter-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1); color: var(--text-primary);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.emp-filter-btn:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.emp-filter-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.emp-filter-btn.is-active, .emp-filter-btn.is-open {
+  border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+.emp-filter-count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-on, #fff);
+  font-size: 11px; font-weight: 700;
+}
+
+.emp-pop {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
+  width: 340px; max-width: calc(100vw - 32px);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px -12px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  animation: emp-pop-in 140ms var(--ease-standard, ease);
+}
+@keyframes emp-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .emp-pop { animation: none; } }
+
+.emp-pop-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-primary);
+}
+.emp-pop-x {
+  width: 28px; height: 28px; border-radius: 8px; border: 0;
+  display: grid; place-items: center;
+  background: none; color: var(--text-muted); cursor: pointer;
+}
+.emp-pop-x:hover { background: var(--surface-hover); color: var(--text-primary); }
+.emp-pop-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; }
+.emp-pop-field { display: flex; flex-direction: column; gap: 6px; }
+.emp-pop-field > span { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.emp-pop-field select { width: 100%; height: 38px; border-radius: 9px; }
+.emp-pop-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.emp-pop-foot .btn { height: 36px; padding: 0 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+
+.emp-count { flex: none; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+.emp-count strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.emp-reset {
+  flex: none; border: 0; background: none; padding: 4px 6px; border-radius: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--action, var(--brand)); cursor: pointer;
+}
+.emp-reset:hover { background: var(--brand-soft); }
+
+/* Icon actions — square, with the name in the tooltip */
+.emp-icon-btn {
+  width: 40px; height: 40px; padding: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1); color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease,
+              background var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+.emp-icon-btn:hover:not(:disabled) {
+  border-color: var(--brand); color: var(--brand-ink, var(--brand));
+  background: var(--brand-soft); transform: translateY(-1px);
+}
+.emp-icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.emp-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.emp-tools-right .export-wrap { display: inline-flex; }
+.emp-add {
+  height: 40px; padding: 0 16px; margin-left: 4px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; text-decoration: none; border-radius: 10px;
+}
+
+/* ----------------------------------------------------------------- table --- */
+
+.emp-card { padding: 0; overflow: hidden; }
+.emp-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.emp-table th:first-child, .emp-table td:first-child { padding-left: 20px; }
+.emp-table th:last-child, .emp-table td:last-child { padding-right: 20px; }
+.emp-table tbody td { vertical-align: middle; padding-top: 11px; padding-bottom: 11px; }
+.emp-table tbody tr { transition: background var(--duration-fast) ease; }
+.emp-table tbody tr:hover { background: var(--surface-hover); }
+
+/* Reveal / Rotate / Set up as one segmented control */
+.emp-table .btn-group {
+  display: inline-flex; gap: 0;
+  border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+  background: var(--surface-1);
+}
+.emp-table .btn-group .btn {
+  border: 0; border-radius: 0; height: 30px; padding: 0 11px;
+  background: none; font-size: 12px; font-weight: 600; color: var(--text-secondary);
+}
+.emp-table .btn-group .btn + .btn { border-left: 1px solid var(--border); }
+.emp-table .btn-group .btn:hover { background: var(--brand-soft); color: var(--brand-ink, var(--brand)); }
+.emp-table .btn-group .key-chip { padding: 0 10px; line-height: 30px; border-right: 1px solid var(--border); }
+
+.emp-table .icon-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: inline-grid; place-items: center;
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.emp-table .icon-btn:hover { background: var(--brand-soft); color: var(--brand-ink, var(--brand)); }
+
+/* ------------------------------------------------------------ responsive --- */
+
+@media (max-width: 900px) {
+  .emp-tools-left { flex-wrap: wrap; flex-basis: 100%; }
+  .emp-search { max-width: none; flex-basis: 100%; }
+  .emp-tools-right { width: 100%; justify-content: flex-end; }
+}
+@media (max-width: 520px) {
+  .emp-pop { width: calc(100vw - 32px); }
+  .emp-add { flex: 1; justify-content: center; }
+}
+
+/* ------------------------------------------- compact, edge-to-edge table --- */
+/* .card's own padding (styles.css loads after this file) inset the table. */
+.card.emp-card { padding: 0; }
+.emp-card .table-wrap { margin: 0; border: 0; border-radius: 0; }
+
+.emp-table { table-layout: auto; }
+.emp-table thead th { padding-top: 10px; padding-bottom: 10px; font-size: 11px; }
+.emp-table tbody td { padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--gridline); }
+.emp-table tbody tr:last-child td { border-bottom: 0; }
+.emp-table th:first-child, .emp-table td:first-child { padding-left: 18px; width: 34%; }
+.emp-table th:last-child, .emp-table td:last-child { padding-right: 18px; }
+.emp-table .identity { gap: 10px; }
+.emp-table .identity .avatar { width: 32px; height: 32px; font-size: 11.5px; }
+.emp-table .identity-name { font-size: 13.5px; }
+.emp-table .identity-meta { font-size: 12px; }
+
+.emp-table .badge { font-size: 11.5px; padding: 2px 9px; }
+.emp-table .btn-group .btn { height: 28px; padding: 0 10px; font-size: 11.5px; }
+.emp-table .btn-group .key-chip { line-height: 28px; }
+.emp-table .icon-btn { width: 30px; height: 30px; }
+/* Name sized to its content rather than a third of the row. */
+.emp-table th:first-child, .emp-table td:first-child { width: 24%; }
+/* A slim heading strip. */
+.emp-table thead th {
+  padding-top: 6px; padding-bottom: 6px; height: auto;
+  font-size: 10px; font-weight: 650; letter-spacing: 0.06em; line-height: 16px;
+}

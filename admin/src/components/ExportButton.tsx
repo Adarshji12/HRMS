@@ -21,12 +21,18 @@ export function ExportButton({
   label = 'Export CSV',
   disabled,
   title,
+  iconOnly,
+  className,
 }: {
   href: string
   filename: string
   label?: string
   disabled?: boolean
   title?: string
+  /** Just the glyph, with `label` as its accessible name and tooltip — for a
+   *  toolbar of icon buttons. */
+  iconOnly?: boolean
+  className?: string
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,13 +52,15 @@ export function ExportButton({
   return (
     <span className="export-wrap">
       <button
-        className="btn"
+        className={className ?? 'btn'}
         onClick={run}
         disabled={disabled || busy}
-        title={title ?? (disabled ? 'Nothing to export' : `Download ${filename}`)}
+        title={title ?? (disabled ? 'Nothing to export' : iconOnly ? label : `Download ${filename}`)}
+        aria-label={iconOnly ? (busy ? 'Preparing export…' : label) : undefined}
+        aria-busy={busy || undefined}
       >
-        <IconDownload size={15} />
-        {busy ? 'Preparing…' : label}
+        <IconDownload size={iconOnly ? 17 : 15} />
+        {!iconOnly && (busy ? 'Preparing…' : label)}
       </button>
       {error && <span className="export-error" role="alert">{error}</span>}
     </span>

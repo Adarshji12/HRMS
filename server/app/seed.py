@@ -224,8 +224,8 @@ def ensure_structure(db, org) -> tuple[dict[str, Department], dict[str, Team], d
 
     designations: dict[str, Designation] = {}
     for name, level in (
-        ("Engineering Manager", 40), ("Senior Engineer", 30), ("Engineer", 20),
-        ("Product Designer", 20), ("Support Specialist", 15),
+        ("Engineering Manager", 1), ("Senior Engineer", 2), ("Engineer", 3),
+        ("Product Designer", 3), ("Support Specialist", 4),
     ):
         existing = db.scalar(
             select(Designation).where(Designation.org_id == org.id, Designation.name == name)

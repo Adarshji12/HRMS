@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
+from starlette.requests import HTTPConnection
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -367,3 +368,70 @@ def require_module(key: str):
             )
 
     return _guard
+
+
+_READS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def enforce_menu_rights(
+    connection: HTTPConnection,
+    db: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """Refuse a write the caller's role does not allow on that menu.
+
+    Runs on every API request, before the handler. It only ever refuses; it
+    never authenticates — a request with no user token passes through untouched
+    and meets the handler's own auth, so login, signup, the agent and the
+    platform console are unaffected.
+
+    Nothing is checked for the owner, for a person with no named role, for a
+    role never restricted by menu (``menu_rights`` is None), or for a path that
+    belongs to no menu. Reads are not checked here; see ``core.menus``.
+    """
+    from app.core.menus import action_for, menu_for_write
+
+    # A WebSocket (the chat socket) has no method and is not a write; this
+    # dependency sees it because it is attached to every route.
+    method = getattr(connection, "method", None)
+    if method is None or method.upper() in _READS:
+        return
+    path = connection.url.path
+    if path.startswith("/api/v1"):
+        path = path[len("/api/v1"):]
+    match = menu_for_write(path)
+    if match is None:
+        return
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return
+    payload = decode_access_token(authorization.split(" ", 1)[1].strip())
+    if not payload or payload.get("typ") != "user":
+        return
+    try:
+        user = db.get(User, uuid.UUID(payload["sub"]))
+    except (KeyError, ValueError):
+        return
+    # The tenant is not re-checked here: get_current_user does that in the
+    # handler, and this can only refuse, never let anything through.
+    if user is None:
+        return
+    role = user.org_role
+    if role is None or role.menu_rights is None or user.role_enum == Role.OWNER:
+        return
+
+    menu, remainder = match
+    action = action_for(method, remainder)
+    if action is None:
+        return
+    row = role.menu_rights.get(menu.key) or {}
+    if not row.get("access"):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Your role ({role.name}) does not have access to {menu.label}.",
+        )
+    if not row.get(action):
+        verb = {"add": "add new entries", "edit": "make changes", "delete": "delete entries"}[action]
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Your role ({role.name}) cannot {verb} in {menu.label}.",
+        )

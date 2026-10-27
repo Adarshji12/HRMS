@@ -62,7 +62,14 @@ export default function AccountMenu({ settingsHome }: { settingsHome: string }) 
         aria-label={`Account: ${name}`}
       >
         <Avatar name={name} small />
-        <span className="account-btn-name">{name.split(/\s+/)[0]}</span>
+        <span className="account-btn-text">
+          <span className="account-btn-name">{name}</span>
+          <span className="account-btn-role">{user?.role_name ?? user?.role}</span>
+        </span>
+        <svg className="account-btn-caret" width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
       </button>
 
       {open && (

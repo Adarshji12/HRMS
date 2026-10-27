@@ -115,13 +115,7 @@ export default function TeamLeave() {
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Team Leave</h1>
-          <p className="page-sub">
-            Requests from your reporting line, awaiting a decision.
-          </p>
-        </div>
+      <div className="page-head" style={{ justifyContent: 'flex-end' }}>
         <div className="ts-toggle" role="group" aria-label="Queue">
           {VIEWS.map((v) => (
             <button

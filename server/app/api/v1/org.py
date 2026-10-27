@@ -280,16 +280,11 @@ def list_designations(viewer: CurrentUser, db: DbSession) -> list[DesignationOut
     rows = db.scalars(
         select(Designation)
         .where(Designation.org_id == viewer.org_id)
-        .order_by(Designation.level.desc(), Designation.name)
+        .order_by(Designation.level, Designation.name)
     ).all()
     members = _counts_by(db, User.designation_id, viewer.org_id)
-    return [
-        DesignationOut(
-            id=d.id, name=d.name, level=d.level, is_active=d.is_active,
-            member_count=members.get(d.id, 0),
-        )
-        for d in rows
-    ]
+    departments = _department_names(db, viewer.org_id)
+    return [_designation_out(d, departments, members.get(d.id, 0)) for d in rows]
 
 
 @router.post("/designations", response_model=DesignationOut, status_code=status.HTTP_201_CREATED)
@@ -300,12 +295,53 @@ def create_designation(payload: DesignationIn, admin: AdminUser, db: DbSession) 
         )
     ):
         raise HTTPException(status.HTTP_409_CONFLICT, "That designation exists")
-    designation = Designation(org_id=admin.org_id, name=payload.name.strip(), level=payload.level)
+    _validate_owned(db, admin.org_id, Department, payload.department_id)
+    designation = Designation(org_id=admin.org_id, **payload.model_dump())
+    designation.name = payload.name.strip()
     db.add(designation)
     db.commit()
+    return _designation_out(designation, _department_names(db, admin.org_id), 0)
+
+
+@router.patch("/designations/{designation_id}", response_model=DesignationOut)
+def update_designation(
+    designation_id: uuid.UUID, payload: DesignationIn, admin: AdminUser, db: DbSession
+) -> DesignationOut:
+    designation = db.get(Designation, designation_id)
+    if designation is None or designation.org_id != admin.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Designation not found")
+    if db.scalar(
+        select(Designation.id).where(
+            Designation.org_id == admin.org_id,
+            Designation.name == payload.name.strip(),
+            Designation.id != designation.id,
+        )
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "That designation exists")
+    _validate_owned(db, admin.org_id, Department, payload.department_id)
+
+    for field, value in payload.model_dump().items():
+        setattr(designation, field, value)
+    designation.name = payload.name.strip()
+    db.commit()
+    members = _counts_by(db, User.designation_id, admin.org_id)
+    return _designation_out(
+        designation, _department_names(db, admin.org_id), members.get(designation.id, 0)
+    )
+
+
+def _department_names(db, org_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    return {
+        d.id: d.name
+        for d in db.scalars(select(Department).where(Department.org_id == org_id)).all()
+    }
+
+
+def _designation_out(d: Designation, departments: dict, member_count: int) -> DesignationOut:
     return DesignationOut(
-        id=designation.id, name=designation.name, level=designation.level,
-        is_active=designation.is_active,
+        id=d.id, name=d.name, level=d.level, is_active=d.is_active,
+        department_id=d.department_id, department_name=departments.get(d.department_id),
+        member_count=member_count,
     )
 
 

@@ -145,5 +145,12 @@ class OrgRole(UUIDMixin, TimestampMixin, Base):
     #: that has deleted every role cannot onboard anybody.
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    #: Per-menu rights: ``{"/crm/leads": {"access": true, "add": true, ...}}``,
+    #: keyed by the menus in ``core.menus``. ``None`` means the role has never
+    #: been restricted by menu and keeps every menu it could always reach — so
+    #: no company's access changes until somebody edits a role on the new
+    #: screen. Enforced for writes by ``api.deps.enforce_menu_rights``.
+    menu_rights: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+
     def allows(self, flag: str) -> bool:
         return bool(self.permissions.get(flag, False))

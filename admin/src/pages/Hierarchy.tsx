@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import '../styles/orgchart.css'
 /* The assign dialog is the picker shell org.css already owns — .hx-backdrop,
@@ -11,7 +11,6 @@ import { canAdminister, useAuth } from '../lib/auth'
 import type { HierarchyNode } from '../lib/types'
 import { Avatar, ErrorNote, Loading } from '../components/ui'
 import {
-  IconChevronRight,
   IconClose,
   IconDownload,
   IconPlus,
@@ -66,6 +65,8 @@ type Orientation = 'vertical' | 'horizontal'
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 1.6
 const ZOOM_STEP = 0.15
+/** The smallest zoom the chart picks for itself when fitting the panel. */
+const FIT_FLOOR = 0.85
 
 /* ------------------------------------------------------------- helpers --- */
 
@@ -141,7 +142,6 @@ export default function Hierarchy() {
   )
 
   const [query, setQuery] = useState('')
-  const [sideQuery, setSideQuery] = useState('')
   const [orientation, setOrientation] = useState<Orientation>('vertical')
   const [zoom, setZoom] = useState(1)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -153,6 +153,50 @@ export default function Hierarchy() {
   const [note, setNote] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<HTMLDivElement>(null)
+  // Set once the person zooms, so the chart stops re-fitting under them.
+  const zoomedByHand = useRef(false)
+  const zoomTo = (next: number | ((z: number) => number)) => {
+    zoomedByHand.current = true
+    setZoom(next)
+  }
+
+  /* Open the chart at a size that fits the panel. At 100% a wide team ran off
+     both edges and the cards at the ends were cut in half. Measured at 100%
+     — the chart is wider than the canvas exactly when it overflows — and only
+     ever zoomed out, never in, and never once the person has zoomed. */
+  const needsFit = useRef(true)
+  useLayoutEffect(() => {
+    needsFit.current = true
+  }, [data, orientation])
+  useLayoutEffect(() => {
+    if (zoomedByHand.current || !needsFit.current) return
+    const canvas = canvasRef.current
+    const chart = chartRef.current
+    if (!canvas || !chart) return
+    // Measure at 100%: come back through here once the reset has rendered.
+    if (zoom !== 1) {
+      setZoom(1)
+      return
+    }
+    needsFit.current = false
+    const room = canvas.clientWidth - 24
+    const wide = chart.scrollWidth
+    if (wide > room && room > 0) {
+      // Not below FIT_FLOOR: past that the names stop being readable, and a
+      // wide team is better scrolled than shrunk to a pattern of boxes.
+      const fit = Math.floor((room / wide) * 20) / 20
+      setZoom(Math.max(FIT_FLOOR, Math.min(1, fit)))
+    }
+  }, [data, orientation, zoom])
+
+  // A chart wider than the panel opens on its middle, where the top of the
+  // tree is, rather than on its left edge.
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || zoomedByHand.current) return
+    canvas.scrollLeft = Math.max(0, (canvas.scrollWidth - canvas.clientWidth) / 2)
+  }, [zoom, data, orientation])
 
   /* Mirrors require_admin on /org/assign. Gating on owner alone would be
      decoration — an admin can call the endpoint either way. A manager reading
@@ -251,8 +295,6 @@ export default function Hierarchy() {
   if (loading || !data) return <Loading />
 
   const needle = query.trim().toLowerCase()
-  const sideNeedle = sideQuery.trim().toLowerCase()
-  const shown = unassigned.filter((node) => !sideNeedle || matches(node, sideNeedle))
 
   const managers = everyone.filter((entry) => entry.node.reports.length > 0)
   const span = managers.length
@@ -272,11 +314,6 @@ export default function Hierarchy() {
         <div className="hier-hero-text">
           <span className="hier-eyebrow">Organisation</span>
           <h1 className="hier-title">Reporting hierarchy</h1>
-          <p className="hier-sub">
-            {editable
-              ? 'Who reports to whom. Drag a card onto a manager, or use a card’s menu — the chart rebuilds itself either way.'
-              : 'Who reports to whom.'}
-          </p>
         </div>
         {editable && (
           <div className="hier-actions">
@@ -394,6 +431,7 @@ export default function Hierarchy() {
                 that moves when you pan is not a control. */}
             <div className="hier-canvas" ref={canvasRef}>
               <div
+                ref={chartRef}
                 className={`oc oc-${orientation}`}
                 style={{ ['--oc-zoom' as never]: zoom }}
               >
@@ -420,7 +458,7 @@ export default function Hierarchy() {
 
             <div className="hier-zoom" role="group" aria-label="Zoom">
               <button
-                onClick={() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
+                onClick={() => zoomTo((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
                 disabled={zoom >= ZOOM_MAX}
                 title="Zoom in"
                 aria-label="Zoom in"
@@ -428,7 +466,7 @@ export default function Hierarchy() {
                 <IconPlus size={15} />
               </button>
               <button
-                onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))}
+                onClick={() => zoomTo((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))}
                 disabled={zoom <= ZOOM_MIN}
                 title="Zoom out"
                 aria-label="Zoom out"
@@ -439,7 +477,7 @@ export default function Hierarchy() {
                   would be a third control for a value already on screen. */}
               <button
                 className="hier-zoom-value"
-                onClick={() => setZoom(1)}
+                onClick={() => zoomTo(1)}
                 title="Back to 100%"
               >
                 {Math.round(zoom * 100)}%
@@ -449,79 +487,6 @@ export default function Hierarchy() {
           )}
         </section>
 
-        <aside className="card hier-side">
-          <div className="hier-side-head">
-            <div>
-              <h2 className="hier-side-title">Unassigned</h2>
-              <span className="hier-side-sub">No manager yet</span>
-            </div>
-            <span className={`hier-side-count${unassigned.length ? ' is-warn' : ''}`}>{unassigned.length}</span>
-          </div>
-
-          {editable && unassigned.length > 0 && (
-            <p className="hier-hint">
-              Drag a person onto a card to give them that manager, or use their menu.
-            </p>
-          )}
-
-          {unassigned.length > 3 && (
-            <label className="hier-search hier-search-side">
-              <IconSearch size={15} />
-              <input
-                type="search"
-                placeholder="Search…"
-                value={sideQuery}
-                onChange={(event) => setSideQuery(event.target.value)}
-                aria-label="Search unassigned people"
-              />
-            </label>
-          )}
-
-          {unassigned.length === 0 ? (
-            <p className="hier-side-empty">
-              Everybody reports to somebody. People with no manager appear here.
-            </p>
-          ) : shown.length === 0 ? (
-            <p className="hier-side-empty">Nobody here matches that.</p>
-          ) : (
-            <ul className="hier-side-list">
-              {shown.map((node) => (
-                <li key={node.id}>
-                  <div
-                    className={`hier-person${dragging === node.id ? ' is-dragging' : ''}`}
-                    draggable={editable}
-                    onDragStart={(event) => {
-                      setDragging(node.id)
-                      event.dataTransfer.setData('text/plain', node.id)
-                      event.dataTransfer.effectAllowed = 'move'
-                    }}
-                    onDragEnd={() => setDragging(null)}
-                  >
-                    <Avatar name={node.name} small />
-                    <div className="hier-person-body">
-                      <Link to={`/employees/${node.id}`} className="hier-person-name">
-                        {node.name}
-                      </Link>
-                      <span className="hier-person-meta">
-                        {node.employee_code ? `Emp ID · ${node.employee_code}` : caption(node)}
-                      </span>
-                    </div>
-                    {editable && (
-                      <button
-                        className="hier-person-assign"
-                        onClick={() => setDialog({ manager: undefined, from: node.id })}
-                        title={`Give ${node.name} a manager`}
-                        aria-label={`Give ${node.name} a manager`}
-                      >
-                        <IconChevronRight size={14} />
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
       </div>
 
       {dialog && (

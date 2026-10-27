@@ -148,70 +148,162 @@
    §9.4 — Approvals inbox
    =========================================================================== */
 
-.ai-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* ---------------------------------------------------------------- kpis ---- */
 
-/* The lane chip doubles as the count. A lane the reader has no permission for
-   is absent entirely rather than shown at zero — a chip reading "Leave 0" is a
-   claim about the queue, and for someone who cannot approve leave it is a
-   claim we have no basis for. */
-.ai-chip {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: var(--control-h); padding: 0 12px;
-  border: 1px solid var(--border); border-radius: 999px;
-  background: var(--surface); color: var(--text-secondary);
-  font-size: 12.5px; font-weight: 550; cursor: pointer;
+/* Summary strip. Deliberately shorter than the console's StatTile: on a queue
+   the table is the page, and the figures above it are a glance, not a report. */
+.ai-kpis {
+  display: grid; gap: 10px; margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
-.ai-chip:hover { background: var(--surface-hover); color: var(--text-primary); }
-.ai-chip-on, .ai-chip-on:hover {
-  background: var(--brand-soft); color: var(--brand-ink);
-  border-color: color-mix(in srgb, var(--brand) 34%, transparent);
+.ai-kpi {
+  --kpi: var(--brand);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  transition: border-color 140ms ease, transform 140ms ease;
 }
-.ai-chip-count {
-  font-variant-numeric: tabular-nums; font-weight: 650;
-  padding: 1px 7px; border-radius: 999px;
+/* A thin top rule in the card's tone ties the icon and the figure together. */
+.ai-kpi::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: var(--kpi); opacity: 0.85;
+}
+.ai-kpi:hover { border-color: color-mix(in srgb, var(--kpi) 35%, var(--border)); transform: translateY(-1px); }
+.ai-kpi-brand { --kpi: var(--brand); }
+.ai-kpi-warn  { --kpi: var(--status-warn); }
+.ai-kpi-bad   { --kpi: var(--unprod); }
+.ai-kpi-info  { --kpi: var(--brand-ink); }
+.ai-kpi-good  { --kpi: var(--status-good); }
+
+.ai-kpi-icon {
+  flex: none; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 9px;
+  color: var(--kpi);
+  background: color-mix(in srgb, var(--kpi) 13%, transparent);
+}
+.ai-kpi-body { min-width: 0; }
+.ai-kpi-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.ai-kpi-value {
+  font-size: 19px; font-weight: 680; line-height: 1.2; letter-spacing: -0.01em;
+  color: var(--text-primary); font-variant-numeric: tabular-nums;
+}
+.ai-kpi-meta {
+  font-size: 11.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* The queue is one card: toolbar on top, table beneath, no padding of its own
+   so the table's hairlines run edge to edge. */
+.ai-panel,
+.card.ai-panel { padding: 0; overflow: hidden; }
+
+/* ------------------------------------------------------------- toolbar ---- */
+
+.ai-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+/* Segmented filter. Small on purpose — it is a filter, not navigation, and it
+   doubles as the per-lane count. */
+.ai-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 2px;
+  padding: 3px; border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.ai-seg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 11px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-secondary);
+  font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+/* A lane with nothing waiting stays on the bar but steps back. */
+.ai-seg-empty { color: var(--text-muted); opacity: 0.72; }
+.ai-seg-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+.ai-seg-on, .ai-seg-on:hover {
+  background: var(--surface-1); color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--border);
+}
+.ai-seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ai-seg-count {
+  min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
+  font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums;
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
-.ai-chip-on .ai-chip-count { background: color-mix(in srgb, var(--brand) 18%, transparent); }
-.ai-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ai-seg-on .ai-seg-count { background: color-mix(in srgb, var(--brand) 18%, transparent); }
 
-/* ---------------------------------------------------------------- rows ---- */
-
-.ai-queue { display: flex; flex-direction: column; }
-
-/* One row, whatever produced it. The left rail is the only thing that differs
-   between the three modules, and it is a hue rather than a shape so the rows
-   still scan as one list.
-
-   A block, not a grid: every child spans the full width, and saying so with
-   `display: block` is honest where a two-column grid whose every cell spanned
-   `1 / -1` only looked like it meant something. */
-.ai-row {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--gridline);
-  border-left: 3px solid transparent;
+.ai-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ai-search {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 11px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-muted);
 }
-.ai-row:last-child { border-bottom: none; }
-.ai-row-leave { border-left-color: var(--prod); }
-.ai-row-regularization { border-left-color: var(--brand); }
-.ai-row-timesheet { border-left-color: var(--status-warn); }
-/* The two money lanes share a colour family, because the distinction a reader
-   needs at a glance is "this one spends money" rather than which of the two. */
-.ai-row-expense { border-left-color: var(--status-bad); }
-.ai-row-loan { border-left-color: var(--status-bad); }
-/* Appraisals get their own colour rather than joining the money lanes: a review
-   is the one row here that is about a person rather than a transaction. */
-.ai-row-performance { border-left-color: var(--brand-ink); }
-
-/* The person on the left, the age on the right. The age is the only thing in
-   this row that belongs at the far edge, because it is the sort key. */
-.ai-row-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 12px; margin-bottom: 8px;
+.ai-search:focus-within { border-color: var(--brand); }
+.ai-search input {
+  border: 0; outline: 0; background: transparent; padding: 0; height: auto;
+  width: 160px; font-size: 13px; color: var(--text-primary); box-shadow: none;
 }
+.ai-tools .btn-sm { height: 34px; border-radius: 9px; }
+.ai-tools .btn-sm[aria-label="Refresh"] { width: 34px; padding: 0; justify-content: center; }
+.ai-tools { margin-left: auto; }
 
-.ai-claim { font-size: 13.5px; color: var(--text-primary); line-height: 1.55; }
+/* Shown only while something is ticked. */
+.ai-bulk {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px; font-size: 12.5px;
+  background: var(--brand-soft); color: var(--brand-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 24%, transparent);
+}
+.ai-bulk-hint { margin-left: auto; font-size: 11.5px; color: var(--text-muted); }
+
+/* --------------------------------------------------------------- table ---- */
+
+.ai-panel .table-wrap { border-radius: 0; }
+.ai-table td { vertical-align: top; }
+.ai-table th:first-child, .ai-table td:first-child { padding-left: 14px; }
+.ai-col-check { width: 34px; padding-right: 0 !important; }
+.ai-col-check input { margin: 3px 0 0; cursor: pointer; }
+.ai-col-request { min-width: 260px; max-width: 520px; }
+.ai-col-age { white-space: nowrap; }
+
+.ai-tr-picked > td { background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.ai-tr-done > td { opacity: 0.72; }
+.ai-tr-done > td.row-actions { opacity: 1; }
+
+/* The expanded row reads as part of the row above, not as a row of its own. */
+.ai-tr:has(+ .ai-detail) > td { border-bottom-color: transparent; }
+.ai-detail > td { padding-top: 0; padding-bottom: 12px; background: none; }
+tbody tr.ai-detail:hover { background: none; }
+
+.ai-type { gap: 6px; }
+/* The lane is a hue. The two money lanes share one, because the distinction a
+   reader needs at a glance is "this one spends money" rather than which. */
+.ai-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-muted); }
+.ai-lane-leave { background: var(--prod); }
+.ai-lane-regularization { background: var(--brand); }
+.ai-lane-timesheet { background: var(--status-warn); }
+.ai-lane-expense, .ai-lane-loan { background: var(--status-bad); }
+.ai-lane-performance { background: var(--brand-ink); }
+
+.ai-claim { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+.ai-quote-line {
+  margin-top: 2px; font-size: 12px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 460px;
+}
 .ai-facts {
-  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px;
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
   font-size: 12px; color: var(--text-secondary);
 }
 .ai-facts b { color: var(--text-primary); font-weight: 600; }
@@ -225,18 +317,28 @@
 /* Age is the sort key, so it is also the one figure allowed to shout. Three
    bands only: today, a few days, and too long. Finer gradations would imply a
    policy the product does not have. */
-.ai-age { font-size: 12px; font-weight: 600; flex: none; font-variant-numeric: tabular-nums; }
-.ai-age-fresh { color: var(--text-muted); }
+.ai-age { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ai-age-fresh { color: var(--text-secondary); }
 .ai-age-warm { color: var(--status-warn); }
 .ai-age-stale { color: var(--unprod); }
 
 /* -------------------------------------------------------------- actions --- */
 
+.ai-table td.row-actions > * + * { margin-left: 4px; }
+.ai-act { height: 26px; padding: 0 9px; font-size: 11.5px; gap: 4px; }
+.ai-act-on {
+  color: var(--status-critical);
+  border-color: color-mix(in srgb, var(--status-critical) 40%, transparent);
+}
+.ai-more { width: 26px; height: 26px; padding: 0; }
+.ai-more svg { transition: transform 140ms ease; }
+.ai-more-open svg { transform: rotate(180deg); }
+
 .ai-actions {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin-top: 10px;
+  margin-top: 10px; max-width: 640px;
 }
-.ai-reason { flex: 1 1 240px; min-width: 0; }
+.ai-reason { flex: 1 1 240px; min-width: 0; height: 28px; font-size: 12.5px; }
 .ai-note {
   font-size: 12.5px; color: var(--text-muted); line-height: 1.55;
   margin: 10px 0 0;
@@ -244,9 +346,11 @@
 
 /* A refusal or a success attached to one row, not to the page: deciding row
    four must not move rows one to three. */
-.ai-row-msg { margin-top: 10px; }
+.ai-row-msg { margin-top: 10px; max-width: 640px; }
 
 @media (max-width: 640px) {
-  .ai-row { padding: 13px 12px; }
-  .ai-actions .btn { flex: 1 1 auto; }
+  .ai-toolbar { padding: 10px 12px; }
+  .ai-tools, .ai-search { width: 100%; }
+  .ai-search input { width: 100%; }
+  .ai-bulk-hint { margin-left: 0; }
 }

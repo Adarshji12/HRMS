@@ -21,7 +21,6 @@ import {
   TimelineStrip,
 } from '../components/charts'
 import { DatePresets, resolvePreset, type Range } from '../components/DatePresets'
-import EmployeeEdit from '../components/EmployeeEdit'
 import { ExportButton } from '../components/ExportButton'
 import { BreakdownTable } from './Dashboard'
 import { Loading, ErrorNote, ProductivityBadge, StatTile } from '../components/ui'
@@ -50,7 +49,6 @@ interface RangeData {
 export default function EmployeeDay() {
   const { userId = '' } = useParams()
   const { user } = useAuth()
-  const [editing, setEditing] = useState(false)
   const [range, setRange] = useState<Range>(() => resolvePreset('today', {
     start: todayISO(), end: todayISO(), preset: 'today',
   }))
@@ -107,9 +105,9 @@ export default function EmployeeDay() {
               landed; there was simply no form, so changing a role or resetting
               a forgotten password meant an API call by hand. */}
           {canAdminister(user) && (
-            <button className="btn" onClick={() => setEditing(true)}>
+            <Link className="btn" to={`/employees/${employee.id}/edit`}>
               Edit employee
-            </button>
+            </Link>
           )}
           <Link className="btn" to="/employees">
             All employees
@@ -311,18 +309,6 @@ export default function EmployeeDay() {
         </section>
       </div>
 
-      {editing && (
-        <EmployeeEdit
-          employee={employee}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            // Refetch whichever view is live, so the header, team and
-            // designation reflect the change straight away.
-            if (single) dayQuery.reload()
-            else rangeQuery.reload()
-          }}
-        />
-      )}
     </div>
   )
 }

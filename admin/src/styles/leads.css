@@ -1,0 +1,277 @@
+/* My Leads — the one toolbar above the list.
+ *
+ * Finding on the left (search, status, follow-up, filters), the view switch
+ * and the actions on the right. Every colour is a token from styles.css. */
+
+.crm .ml-toolbar {
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 7px 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* One height for everything on the bar. */
+.crm .ml-toolbar > *,
+.crm .ml-toolbar select,
+.crm .ml-toolbar .crm-search input { height: 34px; }
+.crm .ml-toolbar select,
+.crm .ml-toolbar input { font-size: 12.5px; }
+.crm .ml-toolbar select { border-radius: 8px; min-width: 128px; padding-top: 0; padding-bottom: 0; }
+
+.crm .ml-toolbar > .crm-search { flex: 1 1 240px; max-width: 340px; }
+.crm .ml-toolbar .crm-search input {
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.crm .ml-toolbar .crm-search input:focus {
+  background: var(--surface-1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+
+.crm .ml-toolbar > .crm-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 11px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+}
+.crm .ml-toolbar > .filter-reset { height: auto; }
+
+.crm .ml-toolbar .crm-seg { height: 34px; border-radius: 8px; padding: 2px; }
+.crm .ml-toolbar .crm-seg button { border-radius: 6px; font-size: 12px; font-weight: 600; padding: 0 9px; }
+
+.ml-divider {
+  flex: none; width: 1px; height: 20px !important;
+  margin: 0 2px;
+  background: var(--border);
+}
+
+.ml-icon-btn {
+  flex: none;
+  width: 34px; padding: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease,
+              background var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+.ml-icon-btn:hover {
+  border-color: var(--brand); color: var(--brand-ink, var(--brand));
+  background: var(--brand-soft); transform: translateY(-1px);
+}
+.ml-icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.crm .ml-add {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 13px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .crm .ml-toolbar > .crm-search { flex-basis: 100%; max-width: none; }
+  .crm .ml-toolbar .crm-push { margin-left: 0; }
+  .ml-divider { display: none; }
+  .crm .ml-add { margin-left: auto; }
+}
+
+/* ----------------------------------------------------------- the table --- */
+
+/* Compact: the card hugs the table, rows are one tight line, and the
+   columns that hold names get the room the empty gaps used to take. */
+.crm .ml-table-card { padding: 0; overflow: hidden; }
+.crm .ml-table-card .table-wrap { margin: 0; }
+
+.crm .crm-leads-table thead th {
+  padding-top: 8px; padding-bottom: 8px;
+  font-size: 10.5px;
+  background: var(--surface-2);
+}
+.crm .crm-leads-table tbody td {
+  padding-top: 6px; padding-bottom: 6px;
+  font-size: 12.5px;
+}
+.crm .crm-leads-table th:first-child,
+.crm .crm-leads-table td:first-child { padding-left: 12px; width: 30px; }
+.crm .crm-leads-table th:last-child,
+.crm .crm-leads-table td:last-child { padding-right: 12px; min-width: 0; }
+
+.crm .crm-leads-table .crm-lead-name .crm-strong { font-size: 13px; }
+.crm .crm-leads-table .crm-lead-email { font-size: 11px; max-width: 300px; }
+.crm .crm-leads-table .crm-lead-code { font-size: 10.5px; }
+
+/* Pills and the assignee chip at the table's size. */
+.crm .crm-leads-table .crm-pill,
+.crm .crm-leads-table .crm-due-pill { font-size: 11px; padding-top: 2px; padding-bottom: 2px; }
+.crm .crm-leads-table .crm-assignee { max-width: 170px; gap: 6px; }
+.crm .crm-leads-table .crm-assignee-dot { width: 22px; height: 22px; font-size: 9.5px; }
+
+.crm .crm-leads-table .crm-row-actions { gap: 2px; }
+.crm .crm-leads-table .crm-row-actions .crm-icon-btn { width: 28px; height: 28px; }
+
+/* Footer: pagination in one slim line. */
+.crm .ml-table-card .crm-foot { padding: 8px 12px; font-size: 12px; }
+
+/* -------------------------------------------------------- filter popover --- */
+
+.ml-filter { position: relative; flex: none; }
+.crm .ml-toolbar .ml-filter-btn { height: 34px; }
+.crm .ml-toolbar .ml-filter-btn.is-active,
+.crm .ml-toolbar .ml-filter-btn.is-open {
+  border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink, var(--brand));
+}
+.ml-filter-count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-on, #fff);
+  font-size: 10.5px; font-weight: 700;
+}
+
+/* A column of labelled selects, like a side filter panel, under the button. */
+.crm .ml-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  width: 260px; max-height: min(70vh, 620px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  animation: ml-pop-in 120ms var(--ease-standard, ease);
+}
+@keyframes ml-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .crm .ml-pop { animation: none; } }
+
+.crm .ml-pop-field { display: flex; flex-direction: column; gap: 5px; height: auto; }
+.crm .ml-pop-field > span { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.crm .ml-pop-field select,
+.crm .ml-pop-field input {
+  width: 100%; height: 34px; min-width: 0;
+  border-radius: 8px; font-size: 12.5px;
+}
+.crm .ml-pop-field select:focus,
+.crm .ml-pop-field input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.crm .ml-pop-field select:disabled { background: var(--surface-2); color: var(--text-muted); cursor: not-allowed; }
+.ml-pop-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.ml-pop-reset {
+  margin-top: 2px; height: 34px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-primary);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.ml-pop-reset:hover:not(:disabled) { border-color: var(--brand); color: var(--brand-ink, var(--brand)); background: var(--brand-soft); }
+.ml-pop-reset:disabled { opacity: 0.5; cursor: default; }
+
+@media (max-width: 520px) {
+  .crm .ml-pop { width: calc(100vw - 40px); }
+}
+
+/* ------------------------------------------------------- created range --- */
+.ml-range { position: relative; flex: none; }
+.crm .ml-range-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 10px 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-primary);
+  font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; white-space: nowrap;
+}
+.crm .ml-range-btn svg { color: var(--text-muted); flex: none; }
+.crm .ml-range-btn:hover, .crm .ml-range-btn.is-open { border-color: var(--brand); background: var(--brand-soft); }
+.crm .ml-range-btn.is-open .ml-range-caret { transform: rotate(180deg); }
+.ml-range-caret { transition: transform 140ms ease; }
+
+.crm .ml-range-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  width: 300px; padding: 10px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  animation: ml-pop-in 120ms var(--ease-standard, ease);
+}
+.ml-range-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.crm .ml-range-presets button {
+  height: 32px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-secondary);
+  font: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer;
+}
+.crm .ml-range-presets button:hover { border-color: var(--brand); color: var(--brand-ink, var(--brand)); }
+.crm .ml-range-presets button.is-on {
+  background: var(--brand-soft); border-color: var(--brand);
+  color: var(--brand-ink, var(--brand)); font-weight: 650;
+}
+.ml-range-custom { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--gridline); }
+.ml-range-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.ml-range-inputs { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; color: var(--text-muted); }
+.crm .ml-range-inputs input { height: 34px; width: 100%; min-width: 0; font-size: 12.5px; border-radius: 8px; max-width: none; }
+.ml-range-custom .btn { align-self: flex-end; }
+
+/* ------------------------------------------------- toolbar: one line --- */
+
+/* Twelve controls on one line. Each has a set width so nothing has to wrap:
+   the search takes what is left, the selects size to a short label, and
+   everything is one 32px height with one 8px radius. Below 1180px it is
+   allowed to wrap rather than squeeze the search to nothing. */
+.crm .ml-toolbar { flex-wrap: nowrap; gap: 6px; padding: 7px 8px; }
+.crm .ml-toolbar > *,
+.crm .ml-toolbar select,
+.crm .ml-toolbar .crm-search input,
+.crm .ml-toolbar .ml-filter-btn,
+.crm .ml-toolbar .ml-range-btn,
+.crm .ml-toolbar .ml-icon-btn,
+.crm .ml-toolbar .ml-add { height: 32px; }
+
+.crm .ml-toolbar > .crm-search { flex: 1 1 180px; min-width: 150px; max-width: 300px; }
+.crm .ml-toolbar > select,
+.crm .ml-toolbar > .crm-select,
+.crm .ml-toolbar > select[aria-label] { flex: 0 1 124px; min-width: 104px; width: 124px; }
+.crm .ml-toolbar select { min-width: 0; padding-left: 10px; padding-right: 26px; text-overflow: ellipsis; }
+
+/* Filters: the same bordered button as everything else, not a pill. */
+.crm .ml-toolbar .ml-filter-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-primary);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.crm .ml-toolbar .ml-filter-btn:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+
+/* Created range: compact label. */
+.crm .ml-toolbar .ml-range { flex: none; }
+.crm .ml-toolbar .ml-range-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+
+/* View switch and actions never shrink. */
+.crm .ml-toolbar .crm-seg { flex: none; height: 32px; }
+.crm .ml-toolbar .crm-seg button { padding: 0 8px; font-size: 12px; }
+.crm .ml-toolbar .crm-push { margin-left: auto; }
+.crm .ml-toolbar .ml-icon-btn { flex: none; width: 32px; }
+.crm .ml-toolbar .ml-add { flex: none; white-space: nowrap; padding: 0 12px; }
+.crm .ml-toolbar > .filter-reset { flex: none; white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .crm .ml-toolbar { flex-wrap: wrap; }
+  .crm .ml-toolbar > .crm-search { max-width: none; flex-basis: 220px; }
+}
+
+/* ------------------------------------------------- My Customers toolbar --- */
+
+/* The created-date select carries a calendar glyph inside it. */
+.crm .cu-toolbar .cu-date { position: relative; flex: 0 1 132px; display: flex; align-items: center; }
+.crm .cu-toolbar .cu-date > svg {
+  position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;
+}
+.crm .cu-toolbar .cu-date select { width: 100%; padding-left: 30px; }
+.crm .cu-toolbar > .crm-push { flex: 1 1 0; min-width: 0; height: 0; }
+.crm .cu-toolbar .ml-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.cu-import-fails { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--text-secondary); }

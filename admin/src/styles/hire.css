@@ -3,43 +3,29 @@
  * Every colour is a token from styles.css, so the page follows the theme
  * (light, dark, and the company brand colour) without a rule of its own. */
 
-.hire { max-width: 1240px; margin: 0 auto; }
+.hire { max-width: 1320px; margin: 0 auto; min-width: 0; }
+/* The shell's 60px bottom pad is room for a long list; here it only adds scroll. */
+.main:has(.hire-page) { padding-bottom: 16px; }
 
-/* The header is a card of its own: what this page is on the left, how far
+/* A plain page header, not a card: what this page is on the left, how far
    along the hire is and the create button on the right. */
 .hire-top {
-  position: relative;
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
-  margin-bottom: 16px; flex-wrap: wrap;
-  padding: 22px 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  background:
-    radial-gradient(120% 140% at 0% 0%, var(--brand-soft) 0%, transparent 55%),
-    var(--surface-1);
-  overflow: hidden;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 8px; padding: 0 2px;
 }
-.hire-top::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand);
-}
-.hire-top-text { min-width: 0; flex: 1 1 380px; }
-.hire-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
-.hire-sub { margin: 6px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); max-width: 62ch; }
-.hire-top-side { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.hire-top-text { min-width: 0; flex: 1 1 320px; }
+.hire-title { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
+.hire-sub { display: none; }
+.hire-top-side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .hire-top-actions { display: flex; gap: 8px; }
-.hire-top-actions .btn { height: 38px; padding: 0 18px; font-weight: 600; }
+.hire-top-actions .btn { height: 32px; padding: 0 16px; font-size: 13px; font-weight: 600; }
 
-.hire-meter {
-  display: flex; flex-direction: column; gap: 6px; width: 220px;
-  padding: 10px 14px; border-radius: var(--radius-sm);
-  background: var(--surface-1); border: 1px solid var(--border);
-}
+.hire-meter { display: flex; flex-direction: column; gap: 5px; width: 200px; }
 .hire-meter-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--text-secondary); }
-.hire-meter-row strong { font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.hire-meter-bar { height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.hire-meter-row strong { font-size: 12.5px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.hire-meter-bar { height: 5px; border-radius: 5px; background: var(--surface-3, var(--border)); overflow: hidden; }
 .hire-meter-bar span {
-  display: block; height: 100%; border-radius: 6px; background: var(--brand);
+  display: block; height: 100%; border-radius: 5px; background: var(--brand);
   transition: width var(--duration-normal) var(--ease-standard);
 }
 .hire-ready {
@@ -50,13 +36,13 @@
 .hire-ready::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--status-warn); }
 .hire-ready.is-ok { color: var(--success-text, var(--status-good)); }
 .hire-ready.is-ok::before { background: var(--status-good); }
-.hire-crumbs { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; display: flex; gap: 6px; }
+.hire-crumbs { font-size: 11.5px; color: var(--text-muted); margin-bottom: 1px; display: flex; gap: 6px; }
 .hire-crumbs a { color: var(--text-secondary); text-decoration: none; }
 .hire-crumbs a:hover { color: var(--action); text-decoration: underline; }
 
-.hire { min-width: 0; }
+/* The step strip across the top, the current step beneath it. */
 .hire-layout {
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start;
 }
 
 /* ---------------------------------------------- the horizontal stepper --- */
@@ -64,143 +50,130 @@
 .hire-rail {
   min-width: 0;
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-sm); padding: 18px 12px 14px;
+  box-shadow: var(--shadow-sm); padding: 9px 8px 7px;
   overflow-x: auto; scrollbar-width: thin;
-}
-
-.hire-preview {
-  display: flex; gap: 12px; align-items: center; flex: none; max-width: 320px; min-width: 0;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 14px;
-}
-.hire-avatar {
-  flex: none; width: 44px; height: 44px; border-radius: 50%;
-  display: grid; place-items: center; font-weight: 650; font-size: 15px;
-  background: var(--brand-soft); color: var(--brand-ink, var(--action));
-}
-.hire-preview-body { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.hire-preview-body strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hire-preview-body > span { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hire-code {
-  align-self: flex-start; margin-top: 4px; font-size: 11px !important; font-weight: 600;
-  padding: 1px 7px; border-radius: var(--radius-pill); background: var(--surface-2);
-  color: var(--text-secondary) !important; font-variant-numeric: tabular-nums;
+  /* Pinned under the top bar, so the steps stay in view on a long step. The
+     page-coloured shadow above fills the gap between the two bars. */
+  position: sticky; top: calc(var(--rail-gutter) + 54px + 10px); z-index: 20;
+  box-shadow: 0 -10px 0 0 var(--page), var(--shadow-sm);
 }
 
 .hire-steps {
   list-style: none; margin: 0; padding: 0;
-  display: flex; align-items: flex-start; min-width: 920px;
+  display: flex; align-items: flex-start; min-width: 860px;
 }
 .hire-steps li { position: relative; flex: 1 1 0; min-width: 0; }
 /* The connector runs from this dot to the next one, behind both. */
 .hire-steps li:not(:last-child)::after {
-  content: ''; position: absolute; top: 15px; height: 2px;
-  left: calc(50% + 20px); right: calc(-50% + 20px);
+  content: ''; position: absolute; top: 10px; height: 2px;
+  left: calc(50% + 15px); right: calc(-50% + 15px);
   background: var(--border); border-radius: 2px;
   transition: background var(--duration-normal) var(--ease-standard);
 }
 .hire-steps li.is-done:not(:last-child)::after { background: var(--status-good); }
 
 .hire-step {
-  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  text-align: center; padding: 0 4px 4px; border: 0; background: transparent;
+  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  text-align: center; padding: 0 2px 2px; border: 0; background: transparent;
   border-radius: var(--radius-sm); cursor: pointer; color: var(--text-secondary); font: inherit;
 }
 .hire-step:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .hire-step-dot {
   position: relative; z-index: 1;
-  flex: none; width: 32px; height: 32px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 12.5px; font-weight: 650;
-  border: 2px solid var(--border-strong); color: var(--text-secondary); background: var(--surface-1);
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 10.5px; font-weight: 650;
+  border: 1.5px solid var(--border-strong); color: var(--text-secondary); background: var(--surface-1);
   transition: background var(--duration-fast) var(--ease-standard),
-              border-color var(--duration-fast) var(--ease-standard),
-              box-shadow var(--duration-fast) var(--ease-standard);
+              border-color var(--duration-fast) var(--ease-standard);
 }
 .hire-step:hover .hire-step-dot { border-color: var(--action); color: var(--action); }
 .hire-step.is-current .hire-step-dot {
   background: var(--action); border-color: var(--action); color: var(--action-on);
-  box-shadow: 0 0 0 4px var(--brand-soft);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 .hire-step.is-done .hire-step-dot { background: var(--status-good); border-color: var(--status-good); color: #fff; }
 .hire-step.is-error .hire-step-dot { background: var(--danger); border-color: var(--danger); color: #fff; }
-.hire-step-text { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
-.hire-step-label { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
-.hire-step.is-current .hire-step-label { color: var(--text-primary); }
+.hire-step-text { display: flex; flex-direction: column; align-items: center; min-width: 0; max-width: 100%; }
+.hire-step-label {
+  font-size: 11.5px; font-weight: 550; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.hire-step.is-current .hire-step-label { color: var(--text-primary); font-weight: 650; }
 .hire-step.is-done .hire-step-label { color: var(--text-primary); }
 .hire-step.is-error .hire-step-label { color: var(--danger-text, var(--danger)); }
-.hire-optional {
-  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--text-muted);
+/* The step header already says when a step is optional. */
+.hire-optional { display: none; }
+
+/* Who is being created, as they will appear — at the right of the step header. */
+.hire-preview {
+  display: flex; gap: 10px; align-items: center; flex: none; max-width: 300px; min-width: 0;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 5px 12px 5px 6px;
 }
+.hire-avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 650; font-size: 12px;
+  background: var(--brand-soft); color: var(--brand-ink, var(--action));
+}
+.hire-preview-body { display: flex; flex-direction: column; min-width: 0; }
+.hire-preview-body strong { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hire-preview-body > span { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hire-code { font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------------ main pane --- */
 
-.hire-main { padding: 0; overflow: hidden; }
+/* clip, not hidden: both round off the corners, but `hidden` makes this card
+   a scroll container, and that quietly disabled the sticky footer below — the
+   Back / Save bar only appeared once the whole step had been scrolled past.
+   Qualified with .hire because .card's own padding otherwise wins on order. */
+.hire .hire-main { padding: 0; overflow: clip; }
 .hire-main-head {
-  padding: 20px 24px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 16px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
-}
-.hire-main-num {
-  flex: none; width: 48px; height: 48px; border-radius: 12px;
-  display: grid; place-items: center;
-  font-size: 17px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
-  background: var(--brand); color: var(--brand-on, #fff);
-  box-shadow: 0 6px 16px -6px var(--brand);
+  padding: 7px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
 }
 .hire-main-title { min-width: 0; flex: 1; }
-.hire-main-head h2 { margin: 2px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.015em; }
-.hire-main-hint { margin: 3px 0 0; font-size: 13px; color: var(--text-muted); }
+.hire-main-head h2 { margin: 1px 0 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.hire-main-hint { margin: 1px 0 0; font-size: 11.5px; color: var(--text-muted); }
 .hire-step-count {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 11.5px; font-weight: 650; color: var(--action); text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 10px; font-weight: 650; color: var(--action); text-transform: uppercase; letter-spacing: 0.06em;
 }
 .hire-optional-tag {
-  padding: 1px 7px; border-radius: var(--radius-pill);
+  padding: 0 6px; border-radius: var(--radius-pill);
   border: 1px solid var(--border); background: var(--surface-1);
-  font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em;
+  font-size: 9.5px; color: var(--text-muted); letter-spacing: 0.05em;
 }
 
-.hire-body { padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 16px; }
+.hire-body { padding: 10px 18px 12px; display: flex; flex-direction: column; gap: 12px; }
 
-/* Each section is a panel with its own header strip, so a long step reads as
-   a few labelled blocks rather than one wall of inputs. */
-.hire-section {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-1);
-  overflow: hidden;
-}
+/* Each section is a titled divider rather than a boxed panel: the title and
+   its note share one line, so a step reads as labelled blocks without each
+   block spending a header strip and its own padding. */
+.hire-section { min-width: 0; }
 .hire-section-head {
-  position: relative;
-  padding: 13px 18px 12px 22px;
-  background: var(--surface-2);
+  display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap;
+  padding: 0 0 5px;
   border-bottom: 1px solid var(--border);
 }
-.hire-section-head::before {
-  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
-  border-radius: 0 3px 3px 0; background: var(--brand);
+.hire-section-head h3 {
+  margin: 0; font-size: 10.5px; font-weight: 700; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.06em;
 }
-.hire-section-head h3 { margin: 0; font-size: 14px; font-weight: 650; color: var(--text-primary); }
-.hire-section-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); max-width: 80ch; line-height: 1.5; }
-/* Whatever follows the header — a grid, a toggle, a list of cards — sits
-   inset in the panel. A headless section (a lone toggle) is padded the same. */
-.hire-section { padding-bottom: 18px; }
-.hire-section > :not(.hire-section-head) { margin-left: 18px; margin-right: 18px; }
-.hire-section > :first-child:not(.hire-section-head),
-.hire-section > .hire-section-head + * { margin-top: 18px; }
-.hire-subhead { margin: 18px 0 10px; font-size: 13px; font-weight: 650; }
+.hire-section-head p { margin: 0; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.hire-section > .hire-section-head + * { margin-top: 6px; }
+.hire-subhead { margin: 14px 0 8px; font-size: 13px; font-weight: 650; }
 
-.hire-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px 20px; }
+.hire-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 16px; }
 
-.hire-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.hire-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .hire-field-wide { grid-column: 1 / -1; }
-.hire-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.hire-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .hire-req { color: var(--danger); margin-left: 3px; }
 .hire-field input, .hire-field select, .hire-field textarea { width: 100%; }
 .hire-field input:not([type='checkbox']):not([type='radio']):not([type='file']),
-.hire-field select { height: 40px; border-radius: 8px; }
-.hire-field textarea { resize: vertical; min-height: 72px; border-radius: 8px; }
+.hire-field select { height: 34px; border-radius: 7px; font-size: 13px; }
+.hire-field textarea { font-size: 13px; }
+.hire-field textarea { resize: vertical; min-height: 54px; border-radius: 8px; }
 .hire-field input:focus, .hire-field select:focus, .hire-field textarea:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
@@ -212,19 +185,21 @@
   border-color: var(--danger);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 12%, transparent);
 }
-.hire-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
-.hire-error { font-size: 11.5px; color: var(--danger-text, var(--danger)); font-weight: 550; }
+.hire-hint { font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+.hire-error { font-size: 11px; color: var(--danger-text, var(--danger)); font-weight: 550; }
 .hire-inline { display: flex; gap: 8px; }
 .hire-inline input { flex: 1; }
 
 .hire-locked {
-  margin: 18px 0; padding: 14px 16px; border-radius: var(--radius-sm);
+  margin: 12px 0; padding: 10px 14px; border-radius: var(--radius-sm);
   background: var(--surface-2); color: var(--text-secondary); font-size: 13px; line-height: 1.5;
   border: 1px dashed var(--border-strong);
 }
 
 /* Toggle switch */
-.hire-toggle { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+/* relative: the hidden checkbox is absolute, and without a positioned parent
+   it escapes the scrolling step body and stretches the page. */
+.hire-toggle { position: relative; display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
 .hire-toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .hire-switch {
   flex: none; position: relative; width: 36px; height: 20px; border-radius: 20px; margin-top: 1px;
@@ -239,14 +214,14 @@
 .hire-toggle input:checked + .hire-switch::after { transform: translateX(16px); }
 .hire-toggle input:focus-visible + .hire-switch { outline: 2px solid var(--focus); outline-offset: 2px; }
 .hire-toggle-body { display: flex; flex-direction: column; gap: 2px; }
-.hire-toggle-label { font-size: 13px; font-weight: 600; }
-.hire-toggle-desc { font-size: 12px; color: var(--text-muted); line-height: 1.45; max-width: 70ch; }
+.hire-toggle-label { font-size: 12.5px; font-weight: 600; }
+.hire-toggle-desc { font-size: 11.5px; color: var(--text-muted); line-height: 1.45; max-width: 70ch; }
 
 /* Selectable cards — attendance type, role */
-.hire-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.hire-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .hire-card {
   position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left;
-  padding: 14px 14px 14px 42px; border-radius: var(--radius); cursor: pointer; font: inherit;
+  padding: 9px 12px 9px 36px; border-radius: var(--radius); cursor: pointer; font: inherit;
   background: var(--surface-1); color: var(--text-primary); border: 1.5px solid var(--border);
   transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
 }
@@ -254,16 +229,16 @@
 .hire-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .hire-card.is-on { border-color: var(--action); background: var(--brand-soft); }
 .hire-card-radio {
-  position: absolute; left: 14px; top: 15px; width: 16px; height: 16px; border-radius: 50%;
+  position: absolute; left: 12px; top: 11px; width: 16px; height: 16px; border-radius: 50%;
   border: 1.5px solid var(--border-strong); background: var(--surface-1);
 }
 .hire-card.is-on .hire-card-radio { border-color: var(--action); box-shadow: inset 0 0 0 4px var(--action); }
-.hire-card-title { font-size: 13.5px; font-weight: 650; }
-.hire-card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+.hire-card-title { font-size: 13px; font-weight: 650; }
+.hire-card-desc { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
 .hire-card-meta { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-weight: 550; }
 
 /* Salary components */
-.hire-components { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.hire-components { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .hire-component {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface-1);
@@ -279,11 +254,11 @@
 .hire-toolbar input[type='search'] { flex: 1; min-width: 200px; }
 .hire-count { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .hire-asset-list {
-  max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .hire-asset {
   display: grid; grid-template-columns: auto 120px 1fr; gap: 12px; align-items: center;
-  padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
+  padding: 8px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
 }
 .hire-asset:last-child { border-bottom: 0; }
 .hire-asset:hover { background: var(--surface-hover); }
@@ -302,7 +277,7 @@
 }
 .hire-chip:hover { border-style: solid; border-color: var(--action); color: var(--action); }
 .hire-dropzone {
-  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px;
   border: 1.5px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-muted); font-size: 13px;
 }
 .hire-dropzone p { margin: 0; }
@@ -334,13 +309,13 @@
 .hire-disclosure + * { margin-top: 12px; }
 
 /* Review */
-.hire-review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; padding: 18px 0; }
-.hire-review-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.hire-review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.hire-review-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
 .hire-review-card.has-error { border-color: var(--danger); }
 .hire-review-card header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .hire-review-card h4 { margin: 0; font-size: 13px; font-weight: 650; flex: 1; }
 .hire-review-card dl { margin: 0; }
-.hire-review-row { display: grid; grid-template-columns: 120px 1fr; gap: 10px; padding: 4px 0; font-size: 12.5px; }
+.hire-review-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 1px 0; font-size: 12px; }
 .hire-review-row dt { color: var(--text-muted); }
 .hire-review-row dd { margin: 0; overflow-wrap: anywhere; }
 .hire-dim { color: var(--text-muted); }
@@ -352,12 +327,12 @@
 /* Footer */
 .hire-foot {
   position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px;
-  padding: 14px 24px; border-top: 1px solid var(--border);
+  padding: 6px 18px; border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   backdrop-filter: blur(6px);
   box-shadow: 0 -6px 16px -12px rgba(0, 0, 0, 0.25);
 }
-.hire-foot .btn { height: 38px; padding: 0 20px; font-weight: 600; }
+.hire-foot .btn { height: 32px; padding: 0 18px; font-size: 13px; font-weight: 600; }
 .hire-foot-note { flex: 1; text-align: center; font-size: 12px; color: var(--text-muted); }
 
 /* ------------------------------------------------------- result screen --- */
@@ -405,12 +380,8 @@
 }
 @media (max-width: 640px) {
   .hire-body, .hire-main-head, .hire-foot { padding-left: 16px; padding-right: 16px; }
-  .hire-top { padding: 18px 16px 18px 20px; }
-  .hire-title { font-size: 21px; }
+  .hire-title { font-size: 19px; }
   .hire-top-side, .hire-meter { width: 100%; }
-  .hire-main-num { width: 40px; height: 40px; font-size: 15px; }
-  .hire-section { padding-bottom: 14px; }
-  .hire-section > :not(.hire-section-head) { margin-left: 14px; margin-right: 14px; }
   .hire-top-actions { width: 100%; }
   .hire-top-actions .btn { flex: 1; }
   .hire-asset { grid-template-columns: auto 1fr; }
@@ -424,3 +395,28 @@
 
 /* Links styled as buttons on the result screen. */
 .hire-result-actions a.btn { text-decoration: none; }
+
+/* ----------------------------------------------------- the edit dialog --- */
+
+/* Edit employee: the same sections in the CRM's wide dialog, laid out like
+   the Add employee page — section heads with a rule, three or four fields to
+   a row — so editing a person looks like adding one. */
+.hire.hire-edit {
+  flex: 1; min-height: 0; max-width: none; margin: 0;
+  overflow-y: auto; scrollbar-width: thin;
+  padding: 16px 24px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.hire-edit-step { display: flex; flex-direction: column; gap: 14px; }
+.hire-edit .hire-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* .crm's base field rule resets `background`, which takes the global chevron with it. */
+.hire-edit .hire-field select {
+  padding-right: 30px;
+  background: var(--surface-1) var(--caret) no-repeat right 11px center / 12px 8px;
+}
+.hire-edit .hire-doc { grid-template-columns: 1fr 1fr; }
+.hire-edit .hire-done { max-width: none; }
+@media (max-width: 640px) {
+  .hire.hire-edit { padding: 14px 16px 18px; }
+  .hire-edit .hire-grid, .hire-edit .hire-cards, .hire-edit .hire-doc { grid-template-columns: 1fr; }
+}

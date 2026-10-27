@@ -1,26 +1,34 @@
-/* Named roles: what a person can do, and how much of the company they see.
+/* Roles & permissions — one role at a time, menu by menu.
  *
- * Two ideas kept apart on the screen because they are kept apart in the data,
- * and because conflating them is the mistake this page exists to prevent.
+ * The roles sit in a row of tabs; the chosen one is edited below in two parts:
  *
- * **Can do** is a permission set. **Can see** is a data scope. Before roles
- * existed, scope was inferred from the role level, so somebody who had to
- * review the whole company's expenses but managed nobody could only be given it
- * by making them an administrator — handing over payroll and settings to solve
- * a reporting problem. The two columns here are the fix.
+ * **Details** — name, description, level and data scope. Level feeds the
+ * coarse administrator / team checks; scope is how much of the company the role
+ * sees. Kept apart from what it can do, because they are kept apart in the data
+ * (a Finance Officer can see everybody and administer nothing).
  *
- * Editing a role takes effect immediately for everybody holding it. That is the
- * point of roles, and it is why the member count sits beside the save button
- * rather than in a tooltip: unticking "approve leave" on a role held by
- * fourteen people is a decision about fourteen people.
+ * **Menus & permissions** — every menu in the app, grouped as the sidebar
+ * groups it. Access shows the menu and opens its pages; Add / Edit / Delete are
+ * enforced by the API on every write (core/menus.py); the chips under "Other
+ * rights" are the older per-role switches — approving leave, seeing salaries —
+ * placed on the menu they belong to and still enforced where they always were.
+ *
+ * A role nobody has limited by menu yet has `menu_rights: null` and reaches
+ * every menu, so the screen shows it fully on and says so. The owner is never
+ * limited. Saving changes what everybody holding the role can do immediately,
+ * which is why the save bar names how many people that is.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
-import { ErrorNote, Loading, EmptyState } from '../../../components/ui'
+import { ErrorNote, Loading } from '../../../components/ui'
 import { ERP_PERMISSIONS, PERMISSIONS } from '../../../lib/employeeFields'
-import { IconChevronDown, IconPlus, IconUsers } from '../../../components/Icons'
+import type { MenuRight, MenuRights } from '../../../lib/types'
+import {
+  IconBuilding, IconCard, IconClock, IconDashboard, IconGear, IconGrid, IconLifebuoy,
+  IconPlus, IconSearch, IconShield, IconStar, IconUsers,
+} from '../../../components/Icons'
 import '../../../styles/roles.css'
 
 export interface OrgRole {
@@ -30,562 +38,535 @@ export interface OrgRole {
   base_role: string
   data_scope: string
   permissions: Record<string, boolean>
+  menu_rights: MenuRights | null
   is_builtin: boolean
   member_count: number
 }
 
-/* The four levels a role can stand in for. Named for what they mean rather than
-   for the enum value, because "employee" as a *level* is the thing that confuses
-   people — a Finance Officer sits at employee level and still sees everything,
-   which is exactly the combination the old model could not express. */
-const BASE_ROLES: Array<{ value: string; label: string; hint: string }> = [
-  { value: 'employee', label: 'Standard', hint: 'No administration. Pair with a wider scope for reviewer roles.' },
-  { value: 'manager', label: 'Manager', hint: 'Line management. Approvals and their own reporting line.' },
-  { value: 'admin', label: 'Administrator', hint: 'Runs the workspace — settings, employees, company data.' },
+interface MenuDef {
+  key: string
+  label: string
+  parent: string | null
+  note: string | null
+  actions: Action[]
+  rights: string[]
+}
+
+interface MenuGroup {
+  key: string
+  label: string
+  description: string
+  menus: MenuDef[]
+}
+
+type Action = 'add' | 'edit' | 'delete'
+const ACTIONS: Action[] = ['add', 'edit', 'delete']
+
+const BASE_ROLES = [
+  { value: 'employee', label: 'Standard' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'admin', label: 'Administrator' },
 ]
 
-const SCOPES: Array<{ value: string; label: string; hint: string }> = [
-  { value: 'self', label: 'Only themselves', hint: 'Their own record and their own requests.' },
-  { value: 'team', label: 'Their team', hint: 'Their reporting line, plus any team or department they head.' },
-  { value: 'department', label: 'Their department', hint: 'Everyone in the same department, whether or not they report to them.' },
-  { value: 'company', label: 'The whole company', hint: 'Everybody. Grant deliberately — it is not tied to being an administrator.' },
+const SCOPES = [
+  { value: 'self', label: 'Only themselves' },
+  { value: 'team', label: 'Their team' },
+  { value: 'department', label: 'Their department' },
+  { value: 'company', label: 'The whole company' },
 ]
 
 const LEVEL_LABEL: Record<string, string> = {
   owner: 'Owner', admin: 'Administrator', manager: 'Manager', employee: 'Standard',
 }
 
-export default function Roles() {
-  const rolesQ = useQuery<OrgRole[]>('org-roles', () => api.get<OrgRole[]>('/roles'))
-  /* Every role starts open. The page is opened to review what roles allow, and
-     a list of closed headers makes that a click per role; collapsing is there
-     for whoever wants to focus on one. */
-  const [closed, setClosed] = useState<Set<string>>(() => new Set())
-  const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const roles = rolesQ.data ?? []
-  const total = PERMISSIONS.length + ERP_PERMISSIONS.length
-  const toggle = (id: string) =>
-    setClosed((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-
-  const kpis = [
-    { label: 'Roles', value: roles.length, hint: 'Built-in and custom', tone: 'brand' },
-    { label: 'Built-in', value: roles.filter((r) => r.is_builtin).length, hint: 'Name and level fixed', tone: 'idle' },
-    { label: 'Custom', value: roles.filter((r) => !r.is_builtin).length, hint: 'Made for this company', tone: 'good' },
-    { label: 'People assigned', value: roles.reduce((n, r) => n + r.member_count, 0), hint: 'Across every role', tone: 'warn' },
-  ]
-
-  return (
-    <div className="page rl-page">
-      <header className="rl-hero">
-        <div className="rl-hero-text">
-          <span className="rl-eyebrow">Access control</span>
-          <h1 className="rl-title">Roles &amp; permissions</h1>
-          <p className="rl-sub">
-            What a role can do, and how much of the company it can see. Editing one
-            takes effect immediately for everybody holding it.
-          </p>
-        </div>
-        <div className="rl-hero-actions">
-          {roles.length > 0 && (
-            <>
-              <button className="btn" onClick={() => setClosed(new Set())}>Expand all</button>
-              <button className="btn" onClick={() => setClosed(new Set(roles.map((r) => r.id)))}>Collapse all</button>
-            </>
-          )}
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>
-            <IconPlus size={15} /> New role
-          </button>
-        </div>
-      </header>
-
-      {roles.length > 0 && (
-        <div className="rl-kpis" role="group" aria-label="Roles summary">
-          {kpis.map((kpi) => (
-            <div key={kpi.label} className={`rl-kpi tone-${kpi.tone}`}>
-              <span className="rl-kpi-label"><span className="rl-kpi-dot" aria-hidden />{kpi.label}</span>
-              <span className="rl-kpi-value">{kpi.value}</span>
-              <span className="rl-kpi-hint">{kpi.hint}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && <ErrorNote>{error}</ErrorNote>}
-      {rolesQ.error && <ErrorNote>{rolesQ.error}</ErrorNote>}
-
-      {creating && (
-        <section className="card rl-card rl-card-new">
-          <div className="rl-head rl-head-static">
-            <span className="rl-badge" aria-hidden><IconPlus size={18} /></span>
-            <div className="rl-head-main">
-              <div className="rl-name">New role</div>
-              <div className="rl-desc">Name it, choose what it can see, then switch on what it can do.</div>
-            </div>
-          </div>
-          <RoleEditor
-            role={null}
-            onClose={() => setCreating(false)}
-            onSaved={() => { setCreating(false); rolesQ.reload() }}
-            onError={setError}
-          />
-        </section>
-      )}
-
-      {rolesQ.loading ? (
-        <Loading />
-      ) : roles.length === 0 ? (
-        <EmptyState
-          icon={<IconUsers size={22} />}
-          title="No roles yet"
-          body="The four built-in roles appear the first time this page loads. If none are here, the workspace could not be read."
-        />
-      ) : (
-        <div className="rl-list">
-          {roles.map((role) => {
-            const open = !closed.has(role.id)
-            const on = Object.values(role.permissions).filter(Boolean).length
-            return (
-              <section className={`card rl-card level-${role.base_role}`} key={role.id}>
-                <button
-                  className="rl-head"
-                  onClick={() => toggle(role.id)}
-                  aria-expanded={open}
-                >
-                  <span className="rl-badge" aria-hidden>{role.name.charAt(0).toUpperCase()}</span>
-                  <div className="rl-head-main">
-                    <div className="rl-name">
-                      {role.name}
-                      <span className="rl-level">{LEVEL_LABEL[role.base_role] ?? role.base_role}</span>
-                      {role.is_builtin && <span className="rl-tag">Built-in</span>}
-                    </div>
-                    {role.description && <div className="rl-desc">{role.description}</div>}
-                  </div>
-                  <div className="rl-facts">
-                    <span className="rl-fact">
-                      <span className="rl-fact-label">Can see</span>
-                      {SCOPES.find((s) => s.value === role.data_scope)?.label ?? role.data_scope}
-                    </span>
-                    <span className="rl-fact">
-                      <span className="rl-fact-label">Permissions</span>
-                      <span className="rl-fact-meter">
-                        {on} / {total}
-                        <span className="rl-mini-bar" aria-hidden><span style={{ width: `${(on / total) * 100}%` }} /></span>
-                      </span>
-                    </span>
-                    <span className="rl-fact">
-                      <span className="rl-fact-label">People</span>
-                      {role.member_count}
-                    </span>
-                  </div>
-                  <IconChevronDown size={16} className="rl-chevron" />
-                </button>
-
-                {open && (
-                  <RoleEditor
-                    role={role}
-                    onClose={() => toggle(role.id)}
-                    onSaved={() => rolesQ.reload()}
-                    onError={setError}
-                  />
-                )}
-              </section>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+const GROUP_ICON: Record<string, (p: { size?: number }) => JSX.Element> = {
+  overview: IconDashboard, people: IconUsers, masters: IconGrid, hrms: IconUsers,
+  time: IconClock, assets: IconBuilding, helpdesk: IconLifebuoy, crm: IconStar,
+  erp: IconCard, settings: IconGear,
 }
 
-function RoleEditor({
-  role,
-  onClose,
-  onSaved,
-  onError,
-}: {
-  role: OrgRole | null
-  onClose: () => void
-  onSaved: () => void
-  onError: (m: string | null) => void
-}) {
-  const [name, setName] = useState(role?.name ?? '')
-  const [description, setDescription] = useState(role?.description ?? '')
-  const [baseRole, setBaseRole] = useState(role?.base_role ?? 'employee')
-  const [scope, setScope] = useState(role?.data_scope ?? 'self')
-  const [perms, setPerms] = useState<Record<string, boolean>>(role?.permissions ?? {})
+/* Chip labels: the permission's own label is a sentence, too long for a chip.
+   The full description stays in the chip's tooltip. */
+const SHORT: Record<string, string> = {
+  can_view_screenshots: 'View screenshots',
+  can_approve_timesheets: 'Approve timesheets',
+  can_export_data: 'Export data',
+  can_manage_projects: 'Manage projects',
+  can_approve_leave: 'Approve leave',
+  can_approve_regularization: 'Approve regularisation',
+  can_punch_anywhere: 'Punch from anywhere',
+  can_manage_assets: 'Manage assets',
+  can_manage_onboarding: 'Manage onboarding',
+  can_manage_helpdesk: 'Manage helpdesk',
+  can_manage_people: 'Manage people',
+  can_issue_letters: 'Issue letters',
+  can_approve_expenses: 'Approve expenses',
+  can_reimburse_expenses: 'Reimburse',
+  can_approve_loans: 'Approve loans',
+  can_disburse_loans: 'Disburse loans',
+  can_manage_payroll: 'Run payroll',
+  can_manage_performance: 'Manage reviews',
+  can_manage_engagement: 'Post announcements',
+  can_manage_erp_masters: 'Maintain masters',
+  can_verify_vendors: 'Verify vendors',
+  can_manage_procurement: 'Run procurement',
+  can_approve_purchases: 'Approve purchases',
+  can_manage_inventory: 'Move stock',
+  can_approve_stock: 'Approve stock',
+  can_manage_sales_orders: 'Raise orders',
+  can_approve_sales_orders: 'Approve orders',
+  can_manage_billing: 'Bill',
+  can_approve_billing: 'Approve billing',
+}
+
+const DESCRIPTION: Record<string, string> = Object.fromEntries(
+  [...PERMISSIONS, ...ERP_PERMISSIONS].map((p) => [p.key, p.description]),
+)
+
+interface Draft {
+  name: string
+  description: string
+  base_role: string
+  data_scope: string
+  permissions: Record<string, boolean>
+  rights: MenuRights
+}
+
+function allMenus(groups: MenuGroup[]): MenuDef[] {
+  return groups.flatMap((g) => g.menus)
+}
+
+function fullRow(menu: MenuDef, on: boolean): MenuRight {
+  const row: MenuRight = { access: on }
+  for (const a of menu.actions) row[a] = on
+  return row
+}
+
+function draftOf(role: OrgRole | null, groups: MenuGroup[]): Draft {
+  const menus = allMenus(groups)
+  // Never limited by menu: it reaches everything, so that is what it shows.
+  const rights: MenuRights = {}
+  for (const m of menus) {
+    rights[m.key] = role?.menu_rights
+      ? { ...fullRow(m, false), ...role.menu_rights[m.key] }
+      : fullRow(m, role !== null)
+  }
+  return {
+    name: role?.name ?? '',
+    description: role?.description ?? '',
+    base_role: role?.base_role ?? 'employee',
+    data_scope: role?.data_scope ?? 'self',
+    permissions: { ...(role?.permissions ?? {}) },
+    rights,
+  }
+}
+
+export default function Roles() {
+  const rolesQ = useQuery<OrgRole[]>('org-roles', () => api.get<OrgRole[]>('/roles'))
+  const menusQ = useQuery<MenuGroup[]>('org-role-menus', () => api.get<MenuGroup[]>('/roles/menus'))
+  const roles = rolesQ.data ?? []
+  const groups = menusQ.data ?? []
+
+  // 'new' while a role is being created.
+  const [selected, setSelected] = useState<string | null>(null)
+  const role = selected === 'new' ? null : roles.find((r) => r.id === selected) ?? roles[0] ?? null
+  const creating = selected === 'new'
+
+  const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    setName(role?.name ?? '')
-    setDescription(role?.description ?? '')
-    setBaseRole(role?.base_role ?? 'employee')
-    setScope(role?.data_scope ?? 'self')
-    setPerms(role?.permissions ?? {})
-  }, [role])
+  const baseline = useMemo(
+    () => (groups.length ? draftOf(creating ? null : role, groups) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [role?.id, role, creating, groups],
+  )
+  useEffect(() => { setDraft(baseline); setError(null) }, [baseline])
 
-  /* A built-in's name and level are fixed. Its permissions and scope are not:
-     companies genuinely want a Manager who cannot see screenshots. None of them
-     want a Manager whose level is quietly Administrator — the coarse checks read
-     that, and it would hand out settings from a screen about approving leave. */
-  const locked = Boolean(role?.is_builtin)
+  const dirty = Boolean(draft && baseline && JSON.stringify(draft) !== JSON.stringify(baseline))
+  const isOwner = !creating && role?.base_role === 'owner'
+
+  /* The name, description, level and scope live in a dialog rather than on the
+     page: they are set once when a role is made and rarely touched after, and
+     the menu matrix is what this page is for. A new role opens straight into
+     it, since a role cannot be saved without a name. */
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  function pick(id: string) {
+    if (dirty && !window.confirm('Discard the changes you made to this role?')) return
+    setSaved(false)
+    setSelected(id)
+    setDetailsOpen(id === 'new')
+  }
 
   async function save() {
-    onError(null)
+    if (!draft) return
     setBusy(true)
+    setError(null)
     try {
-      const body = {
-        name, description,
-        base_role: baseRole,
-        data_scope: scope,
-        permissions: perms,
+      const body: Record<string, unknown> = {
+        name: draft.name,
+        description: draft.description,
+        base_role: draft.base_role,
+        data_scope: draft.data_scope,
+        permissions: draft.permissions,
       }
-      if (role) await api.patch(`/roles/${role.id}`, body)
-      else await api.post('/roles', body)
-      onSaved()
+      if (!isOwner) body.menu_rights = draft.rights
+      if (creating) {
+        const made = await api.post<OrgRole>('/roles', body)
+        setSelected(made.id)
+      } else if (role) {
+        await api.patch(`/roles/${role.id}`, body)
+      }
+      rolesQ.reload()
+      setSaved(true)
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Could not save the role.')
+      setError(err instanceof Error ? err.message : 'Could not save the role.')
     } finally {
       setBusy(false)
     }
   }
 
   async function remove() {
-    if (!role) return
-    onError(null)
+    if (!role || role.is_builtin) return
+    const held = role.member_count
+    if (!window.confirm(`Delete the role “${role.name}”?${held ? `\n\n${held} ${held === 1 ? 'person holds' : 'people hold'} it and will fall back to their own permissions.` : ''}`)) return
     setBusy(true)
     try {
       await api.del(`/roles/${role.id}`)
-      onSaved()
+      setSelected(null)
+      rolesQ.reload()
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Could not delete the role.')
+      setError(err instanceof Error ? err.message : 'Could not delete the role.')
     } finally {
       setBusy(false)
     }
   }
 
-  const allOn = ALL_KEYS.every((k) => perms[k])
-  const setMany = (keys: readonly string[], on: boolean) => {
-    const next = { ...perms }
-    for (const k of keys) next[k] = on
-    setPerms(next)
-  }
+  if (rolesQ.error || menusQ.error) return <ErrorNote>{rolesQ.error ?? menusQ.error}</ErrorNote>
+  if ((rolesQ.loading && !rolesQ.data) || (menusQ.loading && !menusQ.data) || !draft) return <Loading />
 
   return (
-    <div className={role ? 'rl-editor' : 'card rl-editor rl-editor-new'}>
-      <div className="rl-layout">
-        <div className="rl-matrix-wrap">
-          <div className="rl-matrix-head">
-            <div>
-              <h3 className="rl-set-head">Can do</h3>
-              <p className="rl-set-hint">
-                Everything not switched on is off. A permission added to the product later
-                stays off for every role until somebody turns it on here.
-              </p>
-            </div>
-            <span className="rl-count">
-              {ALL_KEYS.filter((k) => perms[k]).length} / {ALL_KEYS.length} on
-            </span>
-          </div>
-
-          <div className="rl-matrix">
-            {MODULES.map((m) => (
-              <ModuleRow key={m.key} module={m} perms={perms} busy={busy}
-                         setOne={(k, on) => setPerms({ ...perms, [k]: on })} setMany={setMany} />
-            ))}
-          </div>
-        </div>
-
-        <aside className="rl-side">
-          <label className="rl-field">
-            <span className="rl-field-label">Name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={locked || busy}
-              maxLength={80}
-              placeholder="Finance Officer"
-            />
-            {locked && <span className="rl-field-hint">Built-in roles cannot be renamed.</span>}
-          </label>
-
-          <label className="rl-field">
-            <span className="rl-field-label">Description</span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={busy}
-              maxLength={300}
-              rows={3}
-              placeholder="Approves and pays expense claims company-wide. Manages nobody."
-            />
-          </label>
-
-          <div className="rl-panel">
-            <span className="rl-field-label">Access</span>
-            <label className={`rl-radio${allOn ? ' is-on' : ''}`}>
-              <input type="radio" name={`access-${role?.id ?? 'new'}`} checked={allOn} disabled={busy}
-                     onChange={() => setMany(ALL_KEYS, true)} />
-              <span>All access<small>Every permission below, switched on.</small></span>
-            </label>
-            <label className={`rl-radio${!allOn ? ' is-on' : ''}`}>
-              <input type="radio" name={`access-${role?.id ?? 'new'}`} checked={!allOn} disabled={busy}
-                     onChange={() => setMany(ALL_KEYS, false)} />
-              <span>Limit access<small>Only what is switched on, module by module.</small></span>
-            </label>
-          </div>
-
-          {/* Level and scope together, because the interesting roles are the ones
-              where they disagree — Standard level with company scope is a
-              reviewer who administers nothing. */}
-          <fieldset className="rl-panel">
-            <legend className="rl-field-label">Level</legend>
-            {BASE_ROLES.map((option) => (
-              <label className={`rl-radio${baseRole === option.value ? ' is-on' : ''}`} key={option.value}>
-                <input
-                  type="radio"
-                  name={`base-${role?.id ?? 'new'}`}
-                  checked={baseRole === option.value}
-                  disabled={locked || busy}
-                  onChange={() => setBaseRole(option.value)}
-                />
-                <span>{option.label}<small>{option.hint}</small></span>
-              </label>
-            ))}
-          </fieldset>
-
-          <fieldset className="rl-panel">
-            <legend className="rl-field-label">Can see</legend>
-            {SCOPES.map((option) => (
-              <label className={`rl-radio${scope === option.value ? ' is-on' : ''}`} key={option.value}>
-                <input
-                  type="radio"
-                  name={`scope-${role?.id ?? 'new'}`}
-                  checked={scope === option.value}
-                  disabled={busy}
-                  onChange={() => setScope(option.value)}
-                />
-                <span>{option.label}<small>{option.hint}</small></span>
-              </label>
-            ))}
-          </fieldset>
-        </aside>
-      </div>
-
-      <div className="rl-actions">
-        <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={() => void save()}>
-          {busy ? 'Saving…' : role ? 'Save role' : 'Create role'}
+    <div className="page rp">
+      {/* No page heading: the module tab above already reads "Role &
+          Permission", and the role tabs below are the first thing to act on. */}
+      <nav className="rp-tabs" aria-label="Roles">
+        {roles.map((r) => {
+          const on = !creating && role?.id === r.id
+          return (
+            <button key={r.id} type="button" className={`rp-tab${on ? ' is-on' : ''}`}
+                    aria-current={on ? 'true' : undefined} onClick={() => pick(r.id)}>
+              <span className={`rp-tab-badge level-${r.base_role}`} aria-hidden>{r.name.charAt(0).toUpperCase()}</span>
+              <span className="rp-tab-text">
+                <span className="rp-tab-name">{r.name}</span>
+                <span className="rp-tab-meta">{r.member_count} {r.member_count === 1 ? 'person' : 'people'}</span>
+              </span>
+            </button>
+          )
+        })}
+        <button type="button" className={`rp-tab rp-tab-new${creating ? ' is-on' : ''}`} onClick={() => pick('new')}>
+          <IconPlus size={15} /> New role
         </button>
-        <button className="btn" disabled={busy} onClick={onClose}>Cancel</button>
-        {role && !role.is_builtin && (
-          <button className="btn btn-danger" disabled={busy} onClick={() => void remove()}>
-            Delete role
-          </button>
-        )}
-        {role && role.member_count > 0 && (
-          /* Beside the save button on purpose. Saving is not a draft — it
-             changes what these people can do the moment it lands. */
-          <span className="rl-warn">
-            {role.member_count} {role.member_count === 1 ? 'person holds' : 'people hold'} this
-            role. Saving changes what they can do immediately.
+        <button type="button" className="rp-tab rp-tab-details" onClick={() => setDetailsOpen(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+          </svg>
+          Role details
+        </button>
+      </nav>
+
+      {error && <div className="rp-error"><ErrorNote>{error}</ErrorNote></div>}
+
+      {detailsOpen && (
+        <Details draft={draft} setDraft={setDraft} role={role} creating={creating} busy={busy}
+                 onDelete={() => { setDetailsOpen(false); void remove() }}
+                 onClose={() => setDetailsOpen(false)} />
+      )}
+
+      <MenuMatrix
+        groups={groups}
+        draft={draft}
+        setDraft={setDraft}
+        locked={isOwner || busy}
+      />
+
+      {(dirty || saved) && (
+        <div className={`rp-savebar${dirty ? '' : ' is-saved'}`} role="region" aria-label="Save changes">
+          <span className="rp-savebar-text">
+            {!dirty ? 'Saved.' : creating ? 'New role — not saved yet.'
+              : role && role.member_count > 0
+                ? `${role.member_count} ${role.member_count === 1 ? 'person holds' : 'people hold'} this role. Saving changes what they can do immediately.`
+                : 'You have unsaved changes.'}
           </span>
-        )}
-      </div>
+          {dirty && (
+            <>
+              <button className="btn" disabled={busy} onClick={() => setDraft(baseline)}>Discard</button>
+              <button className="btn btn-primary" disabled={busy || !draft.name.trim()} onClick={() => void save()}>
+                {busy ? 'Saving…' : creating ? 'Create role' : 'Save changes'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-/* ------------------------------------------------------- module matrix --- */
+/* ------------------------------------------------------------- details --- */
 
-type Column = 'manage' | 'approve' | 'financial' | 'sensitive'
-
-const COLUMNS: Array<{ key: Column; label: string }> = [
-  { key: 'manage', label: 'Manage' },
-  { key: 'approve', label: 'Approve' },
-  { key: 'financial', label: 'Financial' },
-  { key: 'sensitive', label: 'Sensitive' },
-]
-
-interface ModuleDef {
-  key: string
-  label: string
-  perms: Array<{ key: string; col: Column }>
-}
-
-/* Every permission sits in exactly one module and one column. The column is
-   the kind of power it grants, so a row of switches answers the four questions
-   somebody asks about a role in a module: may they operate it, sign things
-   off, move money, see the sensitive part. */
-const MODULES: ModuleDef[] = [
-  { key: 'people', label: 'People & HR', perms: [
-    { key: 'can_manage_people', col: 'manage' },
-    { key: 'can_manage_onboarding', col: 'manage' },
-    { key: 'can_issue_letters', col: 'approve' },
-  ] },
-  { key: 'attendance', label: 'Attendance & Leave', perms: [
-    { key: 'can_approve_leave', col: 'approve' },
-    { key: 'can_approve_regularization', col: 'approve' },
-    { key: 'can_punch_anywhere', col: 'sensitive' },
-  ] },
-  { key: 'payroll', label: 'Payroll & Expenses', perms: [
-    { key: 'can_approve_expenses', col: 'approve' },
-    { key: 'can_approve_loans', col: 'approve' },
-    { key: 'can_manage_payroll', col: 'financial' },
-    { key: 'can_reimburse_expenses', col: 'financial' },
-    { key: 'can_disburse_loans', col: 'financial' },
-  ] },
-  { key: 'time', label: 'Time & Projects', perms: [
-    { key: 'can_manage_projects', col: 'manage' },
-    { key: 'can_approve_timesheets', col: 'approve' },
-    { key: 'can_view_screenshots', col: 'sensitive' },
-    { key: 'can_export_data', col: 'sensitive' },
-  ] },
-  { key: 'workplace', label: 'Workplace', perms: [
-    { key: 'can_manage_assets', col: 'manage' },
-    { key: 'can_manage_helpdesk', col: 'manage' },
-    { key: 'can_manage_performance', col: 'manage' },
-    { key: 'can_manage_engagement', col: 'manage' },
-  ] },
-  { key: 'erp-masters', label: 'ERP · Masters & Vendors', perms: [
-    { key: 'can_manage_erp_masters', col: 'manage' },
-    { key: 'can_verify_vendors', col: 'approve' },
-  ] },
-  { key: 'erp-procurement', label: 'ERP · Procurement', perms: [
-    { key: 'can_manage_procurement', col: 'manage' },
-    { key: 'can_approve_purchases', col: 'approve' },
-  ] },
-  { key: 'erp-inventory', label: 'ERP · Inventory', perms: [
-    { key: 'can_manage_inventory', col: 'manage' },
-    { key: 'can_approve_stock', col: 'approve' },
-  ] },
-  { key: 'erp-sales', label: 'ERP · Sales', perms: [
-    { key: 'can_manage_sales_orders', col: 'manage' },
-    { key: 'can_approve_sales_orders', col: 'approve' },
-  ] },
-  { key: 'erp-billing', label: 'ERP · Billing', perms: [
-    { key: 'can_manage_billing', col: 'financial' },
-    { key: 'can_approve_billing', col: 'approve' },
-  ] },
-]
-
-const PERM_INFO: Record<string, { label: string; description: string }> = Object.fromEntries(
-  [...PERMISSIONS, ...ERP_PERMISSIONS].map((p) => [
-    p.key, { label: p.label.replace(/^ERP · /, ''), description: p.description },
-  ]),
-)
-
-/* A permission no module claims still gets a row, so one added to the lists
-   later is never silently missing from this screen. */
-const CLAIMED = new Set(MODULES.flatMap((m) => m.perms.map((p) => p.key)))
-const UNCLAIMED = Object.keys(PERM_INFO).filter((k) => !CLAIMED.has(k))
-if (UNCLAIMED.length) {
-  MODULES.push({ key: 'other', label: 'Other', perms: UNCLAIMED.map((key) => ({ key, col: 'manage' as Column })) })
-}
-const ALL_KEYS = MODULES.flatMap((m) => m.perms.map((p) => p.key))
-
-type Fill = 'all' | 'some' | 'none'
-function fill(keys: string[], perms: Record<string, boolean>): Fill {
-  const n = keys.filter((k) => perms[k]).length
-  return n === 0 ? 'none' : n === keys.length ? 'all' : 'some'
-}
-
-function ModuleRow({
-  module: m, perms, busy, setOne, setMany,
+function Details({
+  draft, setDraft, role, creating, busy, onDelete, onClose,
 }: {
-  module: ModuleDef
-  perms: Record<string, boolean>
+  draft: Draft
+  setDraft: (d: Draft) => void
+  role: OrgRole | null
+  creating: boolean
   busy: boolean
-  setOne: (key: string, on: boolean) => void
-  setMany: (keys: readonly string[], on: boolean) => void
+  onDelete: () => void
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const keys = m.perms.map((p) => p.key)
-  const state = fill(keys, perms)
-  const n = m.perms.length
+  // A built-in's name and level are fixed; its rights and scope are not.
+  const locked = !creating && Boolean(role?.is_builtin)
+  const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="rp-modal-backdrop" onMouseDown={onClose}>
+    <section className="rp-modal" role="dialog" aria-modal="true" aria-label="Role details"
+             onMouseDown={(e) => e.stopPropagation()}>
+      <header className="rp-modal-head">
+        <div>
+          <h2 className="rp-modal-title">{creating ? 'New role' : 'Role details'}</h2>
+          <p className="rp-modal-sub">
+            {creating ? 'Name the role and decide how far it can see. Choose its menus after.'
+              : 'Changes here are saved with the menu permissions, from the bar at the bottom.'}
+          </p>
+        </div>
+        <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+               strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </header>
+      <div className="rp-details-grid">
+        <label className="rp-field">
+          <span>Role name</span>
+          <input value={draft.name} onChange={(e) => set({ name: e.target.value })}
+                 disabled={locked || busy} maxLength={80} placeholder="Finance Officer" />
+        </label>
+        <label className="rp-field rp-field-wide">
+          <span>Description</span>
+          <input value={draft.description} onChange={(e) => set({ description: e.target.value })}
+                 disabled={busy} maxLength={300} placeholder="Approves and pays expense claims company-wide." />
+        </label>
+        <label className="rp-field">
+          <span>Level</span>
+          {locked ? (
+            <input value={LEVEL_LABEL[draft.base_role] ?? draft.base_role} disabled />
+          ) : (
+            <select value={draft.base_role} onChange={(e) => set({ base_role: e.target.value })} disabled={busy}>
+              {BASE_ROLES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
+        </label>
+        <label className="rp-field">
+          <span>Can see</span>
+          <select value={draft.data_scope} onChange={(e) => set({ data_scope: e.target.value })} disabled={busy}>
+            {SCOPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="rp-details-foot">
+        {role && !creating && (
+          <span className="rp-details-tags">
+            <span className="rp-chip-static">{LEVEL_LABEL[role.base_role] ?? role.base_role}</span>
+            {role.is_builtin && <span className="rp-chip-static">Built-in · name and level fixed</span>}
+          </span>
+        )}
+        {role && !creating && !role.is_builtin && (
+          <button className="btn btn-sm rp-delete" disabled={busy} onClick={onDelete}>Delete role</button>
+        )}
+        <button className="btn btn-primary btn-sm rp-modal-done" onClick={onClose}
+                disabled={creating && !draft.name.trim()}>
+          {creating ? 'Continue to menus' : 'Done'}
+        </button>
+      </div>
+    </section>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------- matrix --- */
+
+function MenuMatrix({
+  groups, draft, setDraft, locked,
+}: {
+  groups: MenuGroup[]
+  draft: Draft
+  setDraft: (d: Draft) => void
+  locked: boolean
+}) {
+  const [q, setQ] = useState('')
+  const menus = allMenus(groups)
+
+  function setRow(menu: MenuDef, row: MenuRight, perms?: Record<string, boolean>) {
+    setDraft({
+      ...draft,
+      rights: { ...draft.rights, [menu.key]: row },
+      permissions: perms ? { ...draft.permissions, ...perms } : draft.permissions,
+    })
+  }
+
+  function setRowAll(menu: MenuDef, value: boolean) {
+    setRow(menu, fullRow(menu, value), Object.fromEntries(menu.rights.map((k) => [k, value])))
+  }
+
+  function setEverything(value: boolean) {
+    const rights: MenuRights = {}
+    const perms: Record<string, boolean> = { ...draft.permissions }
+    for (const m of menus) {
+      rights[m.key] = fullRow(m, value)
+      for (const k of m.rights) perms[k] = value
+    }
+    setDraft({ ...draft, rights, permissions: perms })
+  }
+
+  const needle = q.trim().toLowerCase()
+  const matches = (m: MenuDef) =>
+    !needle || m.label.toLowerCase().includes(needle) || m.key.includes(needle) ||
+    m.rights.some((k) => (SHORT[k] ?? k).toLowerCase().includes(needle))
+  const shown = groups
+    .map((g) => ({ ...g, menus: g.menus.filter(matches) }))
+    .filter((g) => g.menus.length > 0)
 
   return (
-    <div className={`rl-mod${open ? ' is-open' : ''}`}>
-      <div className="rl-mod-head">
-        <input
-          type="checkbox"
-          className="rl-mod-check"
-          checked={state === 'all'}
-          ref={(el) => { if (el) el.indeterminate = state === 'some' }}
-          disabled={busy}
-          onChange={() => setMany(keys, state !== 'all')}
-          aria-label={`Every permission in ${m.label}`}
-        />
-        <div className="rl-mod-title">
-          <span className="rl-mod-name">{m.label}</span>
-          <button type="button" className="rl-mod-more" onClick={() => setOpen(!open)} aria-expanded={open}>
-            {open ? 'Hide' : 'Show'} {n} permission{n === 1 ? '' : 's'}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
+    <section className="card rp-matrix">
+      <div className="rp-matrix-head">
+        <span className="rp-matrix-icon" aria-hidden><IconShield size={18} /></span>
+        <div className="rp-matrix-titles">
+          <h2>Menus &amp; permissions</h2>
         </div>
-        {COLUMNS.map((c) => {
-          const colKeys = m.perms.filter((p) => p.col === c.key).map((p) => p.key)
-          const s = fill(colKeys, perms)
+        <div className="rp-matrix-tools">
+          <label className="rp-search">
+            <IconSearch size={15} />
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)}
+                   placeholder="Find a menu or permission" aria-label="Find a menu or permission" />
+          </label>
+          <button className="btn rp-outline" disabled={locked} onClick={() => setEverything(true)}>Allow all</button>
+          <button className="btn rp-outline" disabled={locked} onClick={() => setEverything(false)}>Clear</button>
+        </div>
+      </div>
+
+
+      <div className="rp-groups">
+        {shown.length === 0 && <p className="rp-empty">No menu or permission matches “{q.trim()}”.</p>}
+        {shown.map((g) => {
+          const Icon = GROUP_ICON[g.key] ?? IconGrid
+          const opened = g.menus.filter((m) => draft.rights[m.key]?.access).length
           return (
-            <div className="rl-col" key={c.key}>
-              <span className="rl-col-label">{c.label}</span>
-              {colKeys.length ? (
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={s === 'all' ? 'true' : s === 'some' ? 'mixed' : 'false'}
-                  aria-label={`${m.label}: ${c.label}`}
-                  className={`rl-switch is-${s}`}
-                  disabled={busy}
-                  onClick={() => setMany(colKeys, s !== 'all')}
-                  title={s === 'some' ? 'Partly on' : undefined}
-                >
-                  <span className="rl-switch-knob" />
-                </button>
-              ) : (
-                <span className="rl-switch-na" title="Nothing of this kind in this module">—</span>
-              )}
+            <div className="rp-group is-open" key={g.key}>
+              <div className="rp-group-title">
+                <span className="rp-group-icon" aria-hidden><Icon size={16} /></span>
+                <span className="rp-group-text">
+                  <b>{g.label}</b>
+                </span>
+                <span className={`rp-group-count${opened === g.menus.length ? ' is-full' : opened === 0 ? ' is-none' : ''}`}>
+                  {opened}/{g.menus.length} menus
+                </span>
+              </div>
+              <div className="rp-table" role="table" aria-label={g.label}>
+                <div className="rp-row rp-row-head" role="row">
+                  <span role="columnheader">Menu</span>
+                  <span role="columnheader" className="c">Access</span>
+                  <span role="columnheader" className="c">View</span>
+                  <span role="columnheader" className="c">Add</span>
+                  <span role="columnheader" className="c">Edit</span>
+                  <span role="columnheader" className="c">Delete</span>
+                  <span role="columnheader">Other rights</span>
+                  <span role="columnheader" className="r">Select all</span>
+                </div>
+                {g.menus.map((m) => (
+                  <MenuRow key={m.key} menu={m} icon={<Icon size={15} />} row={draft.rights[m.key] ?? { access: false }}
+                           perms={draft.permissions} locked={locked} setRow={setRow} setRowAll={setRowAll} />
+                ))}
+              </div>
             </div>
           )
         })}
       </div>
+    </section>
+  )
+}
 
-      {open && (
-        <div className="rl-mod-body">
-          {m.perms.map((p) => {
-            const info = PERM_INFO[p.key]
-            return (
-              <div className="rl-mod-row" key={p.key}>
-                <div className="rl-mod-perm">
-                  <span className="rl-perm-label">{info?.label ?? p.key}</span>
-                  {info && <span className="rl-perm-desc">{info.description}</span>}
-                </div>
-                {COLUMNS.map((c) => (
-                  <div className={`rl-cell${c.key === p.col ? ' is-live' : ''}`} key={c.key}>
-                    {c.key === p.col && (
-                      <input
-                        type="checkbox"
-                        checked={Boolean(perms[p.key])}
-                        disabled={busy}
-                        onChange={(e) => setOne(p.key, e.target.checked)}
-                        aria-label={info?.label ?? p.key}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      )}
+function MenuRow({
+  menu, icon, row, perms, locked, setRow, setRowAll,
+}: {
+  menu: MenuDef
+  icon: ReactNode
+  row: MenuRight
+  perms: Record<string, boolean>
+  locked: boolean
+  setRow: (menu: MenuDef, row: MenuRight, perms?: Record<string, boolean>) => void
+  setRowAll: (menu: MenuDef, value: boolean) => void
+}) {
+  const off = !row.access
+  return (
+    <div className={`rp-row${menu.parent ? ' is-child' : ''}${off ? ' is-off' : ''}`} role="row">
+      <span className="rp-menu" role="cell">
+        <span className="rp-menu-icon" aria-hidden>{icon}</span>
+        <span className="rp-menu-text">
+          <span className="rp-menu-name">{menu.label}</span>
+          {menu.note && <span className="rp-menu-path">{menu.note}</span>}
+        </span>
+      </span>
+
+      <span className="c" role="cell">
+        <button type="button" role="switch" aria-checked={row.access} aria-label={`Access to ${menu.label}`}
+                className={`rp-switch${row.access ? ' is-on' : ''}`} disabled={locked}
+                onClick={() => {
+                  // Closing a menu takes everything inside it with it.
+                  if (row.access) setRow(menu, fullRow(menu, false), Object.fromEntries(menu.rights.map((k) => [k, false])))
+                  else setRow(menu, { ...row, access: true })
+                }}>
+          <span className="rp-switch-knob" />
+        </button>
+      </span>
+
+      {/* View is what Access grants: a menu you can open is one you can read. */}
+      <span className="c" role="cell">
+        <input type="checkbox" className="rp-check" checked={row.access} disabled readOnly
+               aria-label={`View ${menu.label}`} title="Comes with Access" />
+      </span>
+
+      {ACTIONS.map((a) => (
+        <span className="c" role="cell" key={a}>
+          {menu.actions.includes(a) ? (
+            <input type="checkbox" className="rp-check" checked={Boolean(row[a])} disabled={locked || off}
+                   aria-label={`${a} in ${menu.label}`}
+                   onChange={(e) => setRow(menu, { ...row, [a]: e.target.checked })} />
+          ) : <span className="rp-na" title="Nothing to change on this menu">—</span>}
+        </span>
+      ))}
+
+      <span className="rp-rights" role="cell">
+        {menu.rights.length === 0 && <span className="rp-na">—</span>}
+        {menu.rights.map((k) => (
+          <button type="button" key={k} className={`rp-chip${perms[k] ? ' is-on' : ''}`}
+                  aria-pressed={Boolean(perms[k])} disabled={locked || off} title={DESCRIPTION[k]}
+                  onClick={() => setRow(menu, row, { [k]: !perms[k] })}>
+            {SHORT[k] ?? k}
+          </button>
+        ))}
+      </span>
+
+      <span className="r rp-selectall" role="cell">
+        <button type="button" className="rp-mini" disabled={locked} onClick={() => setRowAll(menu, true)}>All</button>
+        <button type="button" className="rp-mini" disabled={locked} onClick={() => setRowAll(menu, false)}>None</button>
+      </span>
     </div>
   )
 }

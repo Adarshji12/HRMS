@@ -272,20 +272,6 @@ DEFAULT_INDUSTRIES = [
     "Real Estate", "Hospitality", "Logistics", "Professional Services",
 ]
 
-#: India's states, with the GST state code that decides CGST+SGST against IGST.
-#: Seeded because the product sells here first and an empty geography master
-#: makes the quotation builder unusable on day one. A workspace selling
-#: elsewhere adds its own; nothing here is privileged.
-DEFAULT_STATES: list[tuple[str, str]] = [
-    ("Andhra Pradesh", "37"), ("Assam", "18"), ("Bihar", "10"), ("Chhattisgarh", "22"),
-    ("Delhi", "07"), ("Goa", "30"), ("Gujarat", "24"), ("Haryana", "06"),
-    ("Himachal Pradesh", "02"), ("Jammu and Kashmir", "01"), ("Jharkhand", "20"),
-    ("Karnataka", "29"), ("Kerala", "32"), ("Madhya Pradesh", "23"), ("Maharashtra", "27"),
-    ("Odisha", "21"), ("Punjab", "03"), ("Rajasthan", "08"), ("Tamil Nadu", "33"),
-    ("Telangana", "36"), ("Uttar Pradesh", "09"), ("Uttarakhand", "05"), ("West Bengal", "19"),
-]
-
-
 #: The opportunity pipeline a new workspace opens with: (name, behaviour,
 #: probability, forecast bucket, days before stale, colour).
 DEFAULT_OPPORTUNITY_STAGES: list[tuple[str, str, int, str | None, int, str]] = [
@@ -419,11 +405,11 @@ def ensure_defaults(db: Session, org_id: uuid.UUID) -> None:
     if not db.scalar(select(func.count()).select_from(CrmCountry).where(
         CrmCountry.org_id == org_id
     )):
-        india = CrmCountry(org_id=org_id, name="India", iso2="IN", dial_code="+91")
-        db.add(india)
-        db.flush()
-        for name, code in DEFAULT_STATES:
-            db.add(CrmState(org_id=org_id, country_id=india.id, name=name, gst_code=code))
+        # Every state, union territory and district, rather than the 23
+        # states it used to start with — see services/crm_geography.
+        from app.services.crm_geography import load_india
+
+        load_india(db, org_id)
 
     _ensure_sales_defaults(db, org_id)
     db.commit()
@@ -833,6 +819,10 @@ def list_leads(
     source_id: uuid.UUID | None = None,
     owner_id: uuid.UUID | None = None,
     product_id: uuid.UUID | None = None,
+    industry_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    district_id: uuid.UUID | None = None,
+    city_id: uuid.UUID | None = None,
     behaviour: str | None = None,
     follow_up: str | None = None,
     date_from: date | None = None,
@@ -868,6 +858,17 @@ def list_leads(
         stmt = stmt.where(CrmLead.source_id == source_id)
     if product_id:
         stmt = stmt.where(CrmLead.product_id == product_id)
+    if industry_id:
+        stmt = stmt.where(CrmLead.industry_id == industry_id)
+    if state_id:
+        stmt = stmt.where(CrmLead.state_id == state_id)
+    # A lead has no district of its own; it sits in one through its city.
+    if district_id:
+        stmt = stmt.where(CrmLead.city_id.in_(
+            select(CrmCity.id).where(CrmCity.org_id == viewer.org_id, CrmCity.district_id == district_id)
+        ))
+    if city_id:
+        stmt = stmt.where(CrmLead.city_id == city_id)
     if owner_id:
         stmt = stmt.where(CrmLead.owner_id == owner_id)
     if behaviour:

@@ -1,8 +1,7 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, type FormEvent } from 'react'
 import '../styles/org.css'
 import { api } from '../lib/api'
-import { Dialog } from './crm/parts'
+import { MemberPicker } from './masters/DepartmentMaster'
 import { useQuery } from '../lib/useQuery'
 import { canAdminister, useAuth } from '../lib/auth'
 import type { Department, Designation, Team, User, WorkSchedule } from '../lib/types'
@@ -356,95 +355,6 @@ function useCreate(path: string, onSaved: () => void) {
   return { busy, error, create }
 }
 
-/** Picks existing employees for a department that is still being filled in.
- *  It only collects the selection — the form assigns them once the department
- *  exists. Anyone already in another department is moved, and the row says so. */
-function MemberPicker({
-  people,
-  initial,
-  onClose,
-  onDone,
-}: {
-  people: User[]
-  initial: string[]
-  onClose: () => void
-  onDone: (ids: string[]) => void
-}) {
-  const [query, setQuery] = useState('')
-  const [picked, setPicked] = useState<Set<string>>(new Set(initial))
-
-  const candidates = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return people.filter(
-      (p) =>
-        !q ||
-        p.full_name.toLowerCase().includes(q) ||
-        p.email.toLowerCase().includes(q) ||
-        (p.employee_code ?? '').toLowerCase().includes(q),
-    )
-  }, [people, query])
-
-  function toggle(id: string) {
-    setPicked((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  // Dialog's styles are scoped under .crm, so the shell carries it here.
-  return (
-    <div className="crm">
-      <Dialog
-        title="Add employees"
-        subtitle="They join this department when it is created. Anyone already in another department is moved."
-        onClose={onClose}
-        footer={
-          <>
-            <Link to="/employees" className="btn btn-sm">New employee</Link>
-            <button type="button" className="btn" onClick={onClose}>Cancel</button>
-            <button type="button" className="btn btn-primary" onClick={() => onDone([...picked])}>
-              {picked.size ? `Select ${picked.size}` : 'Select none'}
-            </button>
-          </>
-        }
-      >
-        <div className="org-pick">
-          <input
-            className="org-pick-search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            // The picker renders inside the department form, where Enter would submit it.
-            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-            placeholder="Search by name, email or code"
-            autoFocus
-          />
-          <div className="org-pick-list">
-            {candidates.map((p) => (
-              <label key={p.id} className="crm-check org-pick-row">
-                <input type="checkbox" checked={picked.has(p.id)} onChange={() => toggle(p.id)} />
-                <span>
-                  <b>{p.full_name}</b>
-                  <span className="muted-sm">
-                    {' '}· {p.employee_code ?? p.email}
-                    {p.department_name && ` · now in ${p.department_name}`}
-                  </span>
-                </span>
-              </label>
-            ))}
-            {candidates.length === 0 && (
-              <div className="muted-sm org-pick-empty">
-                {query ? 'Nobody matches that search.' : 'No employees yet.'}
-              </div>
-            )}
-          </div>
-        </div>
-      </Dialog>
-    </div>
-  )
-}
-
 /* --------------------------------------------------------------- forms --- */
 
 function DepartmentForm({
@@ -612,16 +522,16 @@ function TeamForm({
 }
 
 function DesignationForm({ onSaved }: { onSaved: () => void }) {
-  const [form, setForm] = useState({ name: '', level: 20 })
+  const [form, setForm] = useState({ name: '', level: 1 })
   const { busy, error, create } = useCreate('/org/designations', onSaved)
 
   return (
     <FormCard
       title="Add designation"
-      hint="Seniority orders people in reports. Higher is more senior."
+      hint="Seniority orders people in reports. Level 1 is the most senior."
       onSubmit={(e) => {
         e.preventDefault()
-        void create(form, () => setForm({ name: '', level: 20 }))
+        void create(form, () => setForm({ name: '', level: 1 }))
       }}
       busy={busy}
       error={error}
@@ -640,7 +550,7 @@ function DesignationForm({ onSaved }: { onSaved: () => void }) {
         Seniority level
         <input
           type="number"
-          min={0}
+          min={1}
           max={100}
           value={form.level}
           onChange={(e) => setForm({ ...form, level: Number(e.target.value) })}

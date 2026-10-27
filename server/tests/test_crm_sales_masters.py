@@ -164,7 +164,9 @@ def test_employee_cannot_write_sales_masters(client, acme):
 
 def test_districts_sit_under_their_state(client, acme, globex):
     states = {s["name"]: s["id"] for s in _get(client, acme, "states")}
-    r = _post(client, acme, "districts", {"name": "Pune", "state_id": states["Maharashtra"]})
+    # A name of our own: a new workspace already holds every real district
+    # (services/crm_geography), Pune among them.
+    r = _post(client, acme, "districts", {"name": "Test District", "state_id": states["Maharashtra"]})
     assert r.status_code == 201, r.text
     pune = r.json()
     assert pune["state_name"] == "Maharashtra"
@@ -172,13 +174,18 @@ def test_districts_sit_under_their_state(client, acme, globex):
     listed = client.get(
         f"/api/v1/crm/masters/districts?parent_id={states['Maharashtra']}", headers=acme.headers()
     ).json()
-    assert [d["name"] for d in listed] == ["Pune"]
+    names = [d["name"] for d in listed]
+    assert "Test District" in names and "Pune" in names
+    karnataka = client.get(
+        f"/api/v1/crm/masters/districts?parent_id={states['Karnataka']}", headers=acme.headers()
+    ).json()
+    assert "Test District" not in [d["name"] for d in karnataka]
 
     r = _post(client, acme, "cities", {
         "name": "Hinjewadi", "state_id": states["Maharashtra"], "district_id": pune["id"],
     })
     assert r.status_code == 201, r.text
-    assert r.json()["district_name"] == "Pune"
+    assert r.json()["district_name"] == "Test District"
 
     # A district of Maharashtra cannot hold a city in Karnataka.
     r = _post(client, acme, "cities", {

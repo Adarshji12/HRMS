@@ -11,15 +11,16 @@
  * card is also the filter for its window.
  */
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
 import '../../styles/followups.css'
+import '../../styles/hrdash.css'
 import { useQuery } from '../../lib/useQuery'
 import { relativeTime } from '../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { IconCheck, IconSearch } from '../../components/Icons'
+import { IconAlert, IconCalendar, IconCheck, IconClock, IconSearch, IconSheet } from '../../components/Icons'
 import {
   crm,
   crmError,
@@ -119,39 +120,36 @@ export default function MyFollowUps() {
     )
   }
 
-  const cards: Array<{ key: Window; label: string; value: number; tone: string; hint: string }> = [
-    { key: '', label: 'All pending', value: c.all, tone: 'brand', hint: 'Everything still owed' },
-    { key: 'overdue', label: 'Overdue', value: c.overdue, tone: 'bad', hint: c.overdue ? 'Call these first' : 'Nothing late' },
-    { key: 'today', label: 'Due today', value: c.today, tone: 'warn', hint: 'Before the day ends' },
-    { key: 'week', label: 'Next 7 days', value: c.week, tone: 'idle', hint: 'Including anything late' },
-    { key: 'upcoming', label: 'Upcoming', value: c.upcoming, tone: 'good', hint: 'Not yet due' },
+  const cards: Array<{ key: Window; label: string; value: number; tone: string; hint: string; icon: ReactNode }> = [
+    { key: '', label: 'All pending', value: c.all, tone: 'brand', hint: 'Everything still owed', icon: <IconSheet size={16} /> },
+    { key: 'overdue', label: 'Overdue', value: c.overdue, tone: c.overdue ? 'bad' : 'idle', hint: c.overdue ? 'Call these first' : 'Nothing late', icon: <IconAlert size={16} /> },
+    { key: 'today', label: 'Due today', value: c.today, tone: 'warn', hint: 'Before the day ends', icon: <IconClock size={16} /> },
+    { key: 'week', label: 'Next 7 days', value: c.week, tone: 'idle', hint: 'Including anything late', icon: <IconCalendar size={16} /> },
+    { key: 'upcoming', label: 'Upcoming', value: c.upcoming, tone: 'good', hint: 'Not yet due', icon: <IconCheck size={16} /> },
   ]
 
   return (
-    <CrmPage
-      title="My Follow-ups"
-      subtitle="Everything you promised to get back to, in the order it is due"
-    >
-      <div className="vs-strip fu-strip" role="group" aria-label="Follow-up summary">
+    <CrmPage>
+      <div className="hrd-kpis crm-kpis" role="group" aria-label="Follow-up summary">
         {cards.map((card) => {
           const on = status === 'pending' && window === card.key
           return (
             <button
               key={card.key || 'all'}
               type="button"
-              className={`vs-stat tone-${card.tone}${on ? ' is-on' : ''}${card.value ? ' has-value' : ''}`}
+              className={`hrd-kpi cu-kpi tone-${card.tone}${on ? ' is-on' : ''}`}
               aria-pressed={on}
               onClick={() => {
                 setStatus('pending')
                 setWindow(card.key)
               }}
             >
-              <span className="vs-stat-label">
-                <span className="vs-stat-dot" aria-hidden />
-                {card.label}
+              <span className="hrd-kpi-top">
+                <span className="hrd-kpi-label">{card.label}</span>
+                <span className="hrd-kpi-icon" aria-hidden>{card.icon}</span>
               </span>
-              <span className="vs-stat-value">{pending.data ? card.value : '–'}</span>
-              <span className="vs-stat-hint">{card.hint}</span>
+              <span className="hrd-kpi-value">{pending.data ? card.value : '–'}</span>
+              <span className="hrd-kpi-hint">{card.hint}</span>
             </button>
           )
         })}
@@ -163,7 +161,8 @@ export default function MyFollowUps() {
         </div>
       )}
 
-      <section className="card vs-card">
+      <section className="card vs-card fu-card">
+        {/* Status tabs, search and owner on one line. */}
         <div className="fu-head">
           <div className="fu-tabs" role="tablist" aria-label="Status">
             {STATUSES.map((s) => (
@@ -182,9 +181,8 @@ export default function MyFollowUps() {
               </button>
             ))}
           </div>
-        </div>
 
-        <div className="vs-toolbar">
+          <div className="fu-tools">
           <div className="crm-search vs-search">
             <IconSearch size={15} />
             <input
@@ -214,6 +212,7 @@ export default function MyFollowUps() {
               Clear all
             </button>
           )}
+          </div>
         </div>
 
         <div style={{ opacity: rows.refetching ? 0.6 : 1 }}>

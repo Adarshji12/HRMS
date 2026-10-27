@@ -4,7 +4,7 @@
  * what billing needs beside them: credit terms, the hold, delivery sites. */
 
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconPlus, IconSearch } from '../../components/Icons'
@@ -13,6 +13,7 @@ import {
   type CustomerAccount, type Item, type Vendor, type Warehouse,
 } from './api'
 import { DateText, Dialog, Drawer, ErpPage, ErpState, Facts, Field, Note, ReasonDialog, Tabs, useAccess, useRun } from './parts'
+import { MasterTrail } from '../masters/MasterBack'
 
 type Tab = 'items' | 'warehouses' | 'vendors' | 'customers'
 
@@ -21,27 +22,53 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'vendors', label: 'Vendors' }, { key: 'customers', label: 'Customer accounts' },
 ]
 
-/* Opened from the ERP rail: all four lists as tabs. Opened from the Master
-   menu with `?tab=`: that one list on its own page, the way each Master card
-   row opens a single list. */
+/* Opened from the ERP rail (/erp/masters): all four lists as tabs. Opened from
+   the Master menu (/masters/erp/<list>): that one list on its own page, inside
+   the Master section rather than the ERP module, the way each Master card row
+   opens a single list. */
 export default function ErpMasters() {
   const [params] = useSearchParams()
-  const only = TABS.find((t) => t.key === params.get('tab'))
+  const { tab: routeTab } = useParams()
+  const only = TABS.find((t) => t.key === routeTab)
   const [picked, setTab] = useState<Tab>('items')
+  // The old Master links were /erp/masters?tab=…, which opened inside ERP.
+  const legacy = TABS.find((t) => t.key === params.get('tab'))
+  if (!routeTab && legacy) return <Navigate to={`/masters/erp/${legacy.key}`} replace />
+  if (routeTab && !only) return <Navigate to="/masters" replace />
   const tab = only?.key ?? picked
   return (
-    <ErpPage
-      title={only ? only.label : 'Masters'}
-      subtitle={only
-        ? <><Link to="/masters">Master</Link> / ERP Master</>
-        : 'Created once, referenced everywhere — and deactivated, never deleted, once in use'}
-    >
-      {!only && <Tabs value={tab} onChange={setTab} items={TABS} />}
-      {tab === 'items' && <Items />}
-      {tab === 'warehouses' && <Warehouses />}
-      {tab === 'vendors' && <Vendors />}
-      {tab === 'customers' && <Customers />}
-    </ErpPage>
+    <>
+      {/* Only the Master section's single-list view gets the way back; the ERP
+          menu opens the tabbed page, and there "back to Master" would be a detour. */}
+      {only && (
+        <MasterTrail crumbs={[
+          { label: 'Master', to: '/masters' },
+          { label: 'ERP Master', to: '/masters' },
+          { label: only.label },
+        ]} />
+      )}
+      {only ? (
+        /* Opened from Master: the list alone, under the Back button — its
+           name is in the top bar. */
+        <div className="crm">
+          {tab === 'items' && <Items />}
+          {tab === 'warehouses' && <Warehouses />}
+          {tab === 'vendors' && <Vendors />}
+          {tab === 'customers' && <Customers />}
+        </div>
+      ) : (
+        <ErpPage
+          title="Masters"
+          subtitle="Created once, referenced everywhere — and deactivated, never deleted, once in use"
+        >
+          <Tabs value={tab} onChange={setTab} items={TABS} />
+          {tab === 'items' && <Items />}
+          {tab === 'warehouses' && <Warehouses />}
+          {tab === 'vendors' && <Vendors />}
+          {tab === 'customers' && <Customers />}
+        </ErpPage>
+      )}
+    </>
   )
 }
 

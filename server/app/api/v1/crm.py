@@ -29,10 +29,11 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, audit
 from app.api.tenancy import CurrentTenant
 from app.schemas import crm as S
 from app.services import crm as svc
+from app.services import crm_geography
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
@@ -277,6 +278,21 @@ def write_settings(
     return read_settings(viewer, db, request)
 
 
+@router.post("/geography/india")
+def load_india_geography(viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    """Add India's 36 states and union territories, their districts and cities.
+
+    Only what is missing is added, so it is safe to press twice; renamed or
+    deactivated rows a company already has are left as they are.
+    """
+    svc.require_admin_crm(viewer)
+    added = crm_geography.load_india(db, viewer.org_id)
+    audit(db, org_id=viewer.org_id, actor=viewer, action="crm.geography_loaded", request=request,
+          detail=added)
+    db.commit()
+    return added
+
+
 @router.post("/settings/intake-token", response_model=S.CrmSettingsOut)
 def rotate_intake_token(
     viewer: CurrentUser, db: DbSession, request: Request
@@ -341,6 +357,10 @@ def list_leads(
     source_id: uuid.UUID | None = None,
     owner_id: uuid.UUID | None = None,
     product_id: uuid.UUID | None = None,
+    industry_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    district_id: uuid.UUID | None = None,
+    city_id: uuid.UUID | None = None,
     behaviour: str | None = None,
     follow_up: str | None = Query(default=None, pattern=r"^(today|overdue|upcoming|none)$"),
     date_from: date | None = None,
@@ -351,7 +371,8 @@ def list_leads(
     svc.ensure_defaults(db, viewer.org_id)
     return svc.list_leads(
         db, viewer, q=q, status_id=status_id, source_id=source_id, owner_id=owner_id,
-        product_id=product_id, behaviour=behaviour, follow_up=follow_up,
+        product_id=product_id, industry_id=industry_id, state_id=state_id,
+        district_id=district_id, city_id=city_id, behaviour=behaviour, follow_up=follow_up,
         date_from=date_from, date_to=date_to, page=page, page_size=page_size,
     )
 
@@ -378,14 +399,22 @@ def export_leads(
     status_id: uuid.UUID | None = None,
     source_id: uuid.UUID | None = None,
     owner_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    industry_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    district_id: uuid.UUID | None = None,
+    city_id: uuid.UUID | None = None,
     behaviour: str | None = None,
+    follow_up: str | None = Query(default=None, pattern=r"^(today|overdue|upcoming|none)$"),
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> Response:
     """The current view as CSV — same scope, same filters, no more rows."""
     csv_text = svc.export_leads_csv(
         db, viewer, q=q, status_id=status_id, source_id=source_id, owner_id=owner_id,
-        behaviour=behaviour, date_from=date_from, date_to=date_to,
+        product_id=product_id, industry_id=industry_id, state_id=state_id,
+        district_id=district_id, city_id=city_id, behaviour=behaviour,
+        follow_up=follow_up, date_from=date_from, date_to=date_to,
     )
     return Response(
         content=csv_text,

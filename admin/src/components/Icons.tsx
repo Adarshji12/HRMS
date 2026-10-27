@@ -248,7 +248,7 @@ export const IconMail = (p: P) => (
   </Svg>
 )
 
-/* The app launcher's nine dots. Circles with an explicit fill rather than the
+/* Nine dots in a grid. Circles with an explicit fill rather than the
    sheet's stroke, because a 1.7px-stroked ring at r=1.1 renders as a smudge —
    this is the one glyph in the set that is solid by nature. */
 export const IconGrid = (p: P) => (
@@ -297,5 +297,67 @@ export const IconEdit = (p: P) => (
   <Svg {...p}>
     <path d="M16.5 3.8a2.1 2.1 0 0 1 3 3L8 18.3l-4 1 1-4Z" />
     <path d="m14.5 5.8 3 3" />
+  </Svg>
+)
+
+/* A bin — delete this record. Same convention as IconEdit: the button that
+   holds it carries the label. */
+export const IconTrash = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 7h16M9.5 7V4.5h5V7" />
+    <path d="M6 7l.9 12.1A1.5 1.5 0 0 0 8.4 20.5h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7" />
+    <path d="M10 11v6M14 11v6" />
+  </Svg>
+)
+
+/* A briefcase — a job title, as opposed to IconBuilding's department. */
+export const IconBriefcase = (p: P) => (
+  <Svg {...p}>
+    <rect x="3.5" y="7" width="17" height="12.5" rx="2" />
+    <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
+    <path d="M3.5 12.5h17" />
+  </Svg>
+)
+
+/* Back — return to the screen this one was opened from. */
+export const IconArrowLeft = (p: P) => (
+  <Svg {...p}><path d="M19 12H5.5M11 6l-6 6 6 6" /></Svg>
+)
+
+/* A shield — access control. */
+export const IconShield = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3.5 19 6v5.6c0 4.4-2.9 7.6-7 8.9-4.1-1.3-7-4.5-7-8.9V6Z" />
+  </Svg>
+)
+
+/* A handset — a phone number. */
+export const IconPhone = (p: P) => (
+  <Svg {...p}>
+    <path d="M5.5 4h3l1.5 4-2 1.3a10.5 10.5 0 0 0 6.7 6.7L16 14l4 1.5v3a1.5 1.5 0 0 1-1.6 1.5A15.5 15.5 0 0 1 4 5.6 1.5 1.5 0 0 1 5.5 4Z" />
+  </Svg>
+)
+
+/* A map pin — a place. */
+export const IconPin = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" />
+    <circle cx="12" cy="10" r="2.3" />
+  </Svg>
+)
+
+/* A calendar page — a date to book. */
+export const IconCalendar = (p: P) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+    <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+  </Svg>
+)
+
+/* An arrow into a tray — bring a file in. The mirror of IconDownload. */
+export const IconUpload = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+    <path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" />
   </Svg>
 )

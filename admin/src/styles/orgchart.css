@@ -27,7 +27,7 @@
   position: relative;
   display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
   margin-bottom: 16px;
-  padding: 22px 24px 22px 28px;
+  padding: 16px 20px 16px 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
@@ -39,11 +39,11 @@
 .hier-hero::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand); }
 .hier-hero-text { min-width: 0; flex: 1 1 380px; }
 .hier-eyebrow {
-  font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+  font-size: 11px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
   color: var(--action, var(--brand));
 }
-.hier-title { margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
-.hier-sub { margin: 6px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); max-width: 70ch; }
+.hier-title { margin: 3px 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
+.hier-sub { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); max-width: 70ch; }
 
 /* ----------------------------------------------------------------- kpis --- */
 
@@ -54,8 +54,8 @@
 .hier-kpi {
   --tone: var(--text-muted);
   position: relative; overflow: hidden;
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 14px 16px 13px 18px;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 11px 14px 10px 16px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -69,15 +69,15 @@
 .hier-kpi.tone-warn { --tone: var(--status-warn); }
 .hier-kpi-label {
   display: inline-flex; align-items: center; gap: 7px;
-  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  font-size: 11px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
   color: var(--text-secondary); white-space: nowrap;
 }
 .hier-kpi-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
 .hier-kpi-value {
-  font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em;
+  font-size: 21px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums; color: var(--text-primary);
 }
-.hier-kpi-hint { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hier-kpi-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) {
   .hier-hero { padding: 18px 16px 18px 20px; }
   .hier-title { font-size: 21px; }
@@ -264,10 +264,10 @@
 .oc-card {
   position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center; text-align: center;
-  width: 216px;
-  padding: 18px 14px 14px;
+  width: 176px;
+  padding: 14px 12px 12px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface-1);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px -6px rgba(0, 0, 0, 0.12);
   cursor: grab;
@@ -280,7 +280,7 @@
 }
 .oc-card::before {
   content: ''; position: absolute; left: -1px; right: -1px; top: -1px; height: 4px;
-  border-radius: 14px 14px 0 0; background: var(--brand);
+  border-radius: 12px 12px 0 0; background: var(--brand);
 }
 .oc-card:active { cursor: grabbing; }
 .oc-card:hover {
@@ -289,39 +289,39 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 28px -10px rgba(0, 0, 0, 0.22);
 }
 
-.oc-avatar { display: inline-flex; margin-bottom: 10px; border-radius: 50%; box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 5px var(--brand-soft); }
-.oc-avatar .avatar { width: 48px; height: 48px; font-size: 16px; }
+.oc-avatar { display: inline-flex; margin-bottom: 8px; border-radius: 50%; box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 5px var(--brand-soft); }
+.oc-avatar .avatar { width: 38px; height: 38px; font-size: 13px; }
 
 .oc-body { display: flex; flex-direction: column; align-items: center; min-width: 0; width: 100%; gap: 2px; }
 .oc-name {
   max-width: 100%;
-  font-size: 14px; font-weight: 650; letter-spacing: -0.005em;
+  font-size: 13px; font-weight: 650; letter-spacing: -0.005em;
   color: var(--text-primary); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .oc-name:hover { color: var(--brand-ink, var(--brand)); text-decoration: underline; }
 .oc-role {
   max-width: 100%;
-  font-size: 12px; color: var(--text-secondary);
+  font-size: 11.5px; color: var(--text-secondary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.oc-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; max-width: 100%; }
+.oc-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 6px; max-width: 100%; }
 .oc-tag {
   max-width: 100%;
   padding: 1px 8px; border-radius: var(--radius-pill);
   background: var(--brand-soft); color: var(--brand-ink, var(--brand));
-  font-size: 10.5px; font-weight: 600;
+  font-size: 10px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .oc-tag-code { background: var(--surface-2); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 .oc-foot {
-  display: flex; justify-content: center; gap: 14px; width: calc(100% + 28px);
-  margin: 12px -14px -14px; padding: 8px 10px;
+  display: flex; justify-content: center; gap: 12px; width: calc(100% + 24px);
+  margin: 10px -12px -12px; padding: 6px 8px;
   border-top: 1px solid var(--border);
-  border-radius: 0 0 14px 14px;
+  border-radius: 0 0 12px 12px;
   background: var(--surface-2);
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: 11px; color: var(--text-muted);
 }
 .oc-foot strong { color: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 2px; }
 
@@ -539,3 +539,29 @@
 @media (prefers-reduced-motion: reduce) {
   .oc-card { transition: none; }
 }
+
+/* The unassigned panel is gone; the chart takes the full width. */
+.hier-work { grid-template-columns: minmax(0, 1fr); }
+.hier-canvas { min-height: 420px; max-height: calc(100vh - 290px); }
+/* .card's padding (styles.css loads later) inset the toolbar and canvas. */
+.card.hier-stage { padding: 0; }
+
+/* ------------------------------------------- fit the window, no page scroll --- */
+.hier-hero { padding: 12px 18px 12px 22px; margin-bottom: 10px; }
+.hier-title { font-size: 18px; margin-top: 1px; }
+.hier-eyebrow { font-size: 10.5px; }
+.hier-actions .btn { height: 34px; padding: 0 14px; }
+.hier-kpis { gap: 10px; margin-bottom: 10px; }
+.hier-kpi { padding: 8px 14px 8px 16px; gap: 1px; }
+.hier-kpi-value { font-size: 18px; }
+.hier-toolbar { padding: 8px 16px; }
+/* The chart is the scroller; the page around it should not be. */
+.hier-canvas {
+  min-height: 320px;
+  height: calc(100vh - var(--hier-offset, 360px));
+  max-height: none;
+}
+.main:has(> .hier), .main:has(.hier) { padding-bottom: 18px; }
+.hier-canvas { --hier-offset: 396px; min-height: 240px; }
+/* A little page scroll is fine; give the chart the room. */
+.hier-canvas { --hier-offset: 300px; min-height: 440px; }

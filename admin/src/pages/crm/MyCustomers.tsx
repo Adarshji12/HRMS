@@ -11,18 +11,27 @@
  * through to add one line.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
+import '../../styles/hrdash.css'
+import '../../styles/leads.css'
 import { useQuery } from '../../lib/useQuery'
-import { dateTime, shortDate } from '../../lib/format'
-import { EmptyState, ErrorNote, Loading } from '../../components/ui'
+import { dateTime } from '../../lib/format'
+import { Avatar, EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
   IconAlert,
+  IconCalendar,
   IconCheck,
   IconClock,
+  IconClose,
+  IconDownload,
+  IconEdit,
+  IconFilter,
   IconPlus,
+  IconReturn,
   IconSearch,
+  IconUpload,
   IconUsers,
 } from '../../components/Icons'
 import {
@@ -38,15 +47,25 @@ import {
 import {
   CrmPage,
   Dialog,
-  Drawer,
   Field,
   MasterSelect,
   OwnerSelect,
-  Stat,
   StateText,
-  Stats,
   WhatsAppButton,
 } from './parts'
+
+type Created = '' | 'today' | '7d' | '30d' | 'year'
+
+function inCreated(iso: string, created: Created): boolean {
+  if (!created) return true
+  const when = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  if (created === '7d') start.setDate(start.getDate() - 6)
+  if (created === '30d') start.setDate(start.getDate() - 29)
+  if (created === 'year') start.setMonth(0, 1)
+  return when >= start
+}
 
 export default function MyCustomers() {
   const [params, setParams] = useSearchParams()
@@ -57,6 +76,30 @@ export default function MyCustomers() {
   const [adding, setAdding] = useState(false)
   const [openId, setOpenId] = useState<string | null>(params.get('open'))
   const [rowError] = useState<string | null>(null)
+  const [created, setCreated] = useState<Created>('')
+  const [typeF, setTypeF] = useState('')
+  const [industryF, setIndustryF] = useState('')
+  const [sourceF, setSourceF] = useState('')
+  const [stateF, setStateF] = useState('')
+  const [cityF, setCityF] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  /* The Filters popover closes on a click outside it or on Escape. */
+  useEffect(() => {
+    if (!showFilters) return
+    const onDown = (e: MouseEvent) => {
+      if (!filterRef.current?.contains(e.target as Node)) setShowFilters(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowFilters(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [showFilters])
 
   const rows = useQuery<Customer[]>(
     `crm-customers-${q}-${status}-${renewal}-${managerId}`,
@@ -72,7 +115,42 @@ export default function MyCustomers() {
   // Counters read the unfiltered list, so switching the "renewal due" filter on
   // does not change the number the filter is counting.
   const all = useQuery<Customer[]>('crm-customers-all', () => crm.customers({}))
-  const list = rows.data ?? []
+  /* The server filters by search, status, manager and renewal; the date and
+     the popover's fields are applied here to the list it returned, which is
+     the whole roster rather than a page of it. */
+  const list = (rows.data ?? []).filter((row) =>
+    inCreated(row.created_at, created) &&
+    (!typeF || row.customer_type === typeF) &&
+    (!industryF || row.industry_id === industryF) &&
+    (!sourceF || row.source_id === sourceF) &&
+    (!stateF || row.state_id === stateF) &&
+    (!cityF || row.city_id === cityF))
+  const moreCount = [renewal, typeF, industryF, sourceF, stateF, cityF].filter(Boolean).length
+  const filtered = Boolean(q || status || managerId || created || moreCount)
+  const clearAll = () => {
+    setQ(''); setStatus(''); setRenewal(''); setManagerId(''); setCreated('')
+    setTypeF(''); setIndustryF(''); setSourceF(''); setStateF(''); setCityF('')
+  }
+
+  function exportCsv() {
+    const cols: Array<[string, (c: Customer) => string]> = [
+      ['Customer ID', (c) => c.code], ['Name', (c) => c.name], ['Company', (c) => c.company ?? ''],
+      ['Mobile', (c) => c.mobile], ['Email', (c) => c.email ?? ''], ['Type', (c) => c.customer_type ?? ''],
+      ['Industry', (c) => c.industry_name ?? ''], ['Source', (c) => c.source_name ?? ''],
+      ['City', (c) => c.city_name ?? ''], ['State', (c) => c.state_name ?? ''],
+      ['Manager', (c) => c.manager_name ?? ''], ['Status', (c) => c.status],
+      ['Plan', (c) => c.primary_plan?.product_name ?? ''], ['Renewal', (c) => c.primary_plan?.renewal_on ?? ''],
+      ['Added', (c) => c.created_at.slice(0, 10)],
+    ]
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`
+    const text = [cols.map(([h]) => esc(h)).join(','), ...list.map((c) => cols.map(([, f]) => esc(f(c))).join(','))].join('\r\n')
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `customers-${todayISO()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
   const everyone = all.data ?? []
   const dueSoon = everyone.filter(
     (row) =>
@@ -96,49 +174,44 @@ export default function MyCustomers() {
     )
   }
 
-  return (
-    <CrmPage
-      title="My Customers"
-      subtitle="Everyone who bought — from conversion to renewal"
-      actions={
-        <button className="btn btn-primary" onClick={() => setAdding(true)}>
-          <IconPlus size={15} /> Add Customer
-        </button>
-      }
-    >
-      <Stats>
-        <Stat label="Customers" value={everyone.length} icon={<IconUsers size={16} />} />
-        <Stat
-          label="Active"
-          value={everyone.filter((row) => row.status === 'active').length}
-          icon={<IconCheck size={16} />}
-          tone="var(--status-good)"
-          toned
-        />
-        <Stat
-          label="Renewal due"
-          value={dueSoon}
-          meta={dueSoon ? 'within 30 days' : 'nothing lapsing'}
-          icon={<IconClock size={16} />}
-          tone="var(--status-warn)"
-          toned={dueSoon > 0}
-        />
-        <Stat
-          label="Expired"
-          value={expired}
-          meta={expired ? 'renewal date passed' : undefined}
-          icon={<IconAlert size={16} />}
-          tone="var(--status-critical)"
-          toned={expired > 0}
-        />
-        <Stat
-          label="On hold"
-          value={everyone.filter((row) => row.status === 'on_hold').length}
-          icon={<IconClock size={16} />}
-        />
-      </Stats>
+  const active = everyone.filter((row) => row.status === 'active').length
+  const types = [...new Set(everyone.map((row) => row.customer_type).filter((t): t is string => Boolean(t)))].sort()
+  const onHold = everyone.filter((row) => row.status === 'on_hold').length
 
-      <div className="crm-bar">
+  // The HR Dashboard's KPI cards. Renewal and expiry only turn amber or red
+  // when there is something to act on — a red zero is an alarm about nothing.
+  const kpis: Array<{ label: string; value: number; hint: string; tone: string; icon: ReactNode; pick?: () => void }> = [
+    { label: 'Customers', value: everyone.length, hint: 'Everyone who bought', tone: 'brand', icon: <IconUsers size={16} />,
+      pick: () => { setStatus(''); setRenewal('') } },
+    { label: 'Active', value: active, hint: everyone.length ? `${Math.round((active / everyone.length) * 100)}% of customers` : 'No customers yet',
+      tone: 'good', icon: <IconCheck size={16} />, pick: () => { setStatus('active'); setRenewal('') } },
+    { label: 'Renewal due', value: dueSoon, hint: dueSoon ? 'Within 30 days' : 'Nothing lapsing', tone: dueSoon > 0 ? 'warn' : 'idle',
+      icon: <IconClock size={16} />, pick: () => { setStatus(''); setRenewal('due') } },
+    { label: 'Expired', value: expired, hint: expired ? 'Renewal date passed' : 'All plans current', tone: expired > 0 ? 'bad' : 'idle',
+      icon: <IconAlert size={16} />, pick: () => { setStatus(''); setRenewal('expired') } },
+    { label: 'On hold', value: onHold, hint: 'Paused accounts', tone: 'idle', icon: <IconReturn size={16} />,
+      pick: () => { setStatus('on_hold'); setRenewal('') } },
+  ]
+
+  return (
+    <div className="crm hrd">
+      {/* Each card is also a filter: a number you can click straight into. */}
+      <div className="hrd-kpis erd-kpis" role="group" aria-label="Customer summary">
+        {kpis.map((k) => (
+          <button key={k.label} type="button" className={`hrd-kpi tone-${k.tone} cu-kpi`} onClick={k.pick}>
+            <span className="hrd-kpi-top">
+              <span className="hrd-kpi-label">{k.label}</span>
+              <span className="hrd-kpi-icon" aria-hidden>{k.icon}</span>
+            </span>
+            <span className="hrd-kpi-value">{k.value}</span>
+            <span className="hrd-kpi-hint">{k.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* One toolbar: search and the everyday filters, the rest behind
+          Filters, then export, import and Add Customer. */}
+      <div className="crm-bar ml-toolbar cu-toolbar">
         <div className="crm-search">
           <IconSearch size={15} />
           <input
@@ -150,31 +223,94 @@ export default function MyCustomers() {
           />
         </div>
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="on_hold">On hold</option>
           <option value="expired">Expired</option>
           <option value="churned">Churned</option>
         </select>
-        <select value={renewal} onChange={(event) => setRenewal(event.target.value)} aria-label="Renewal">
-          <option value="">All time</option>
-          <option value="due">Renewal due</option>
-          <option value="expired">Renewal passed</option>
-        </select>
-        <OwnerSelect value={managerId} onChange={setManagerId} placeholder="Any manager" />
-        {(q || status || renewal || managerId) && (
+        <label className="cu-date" title="When the customer was added">
+          <IconCalendar size={14} />
+          <select value={created} onChange={(event) => setCreated(event.target.value as Created)} aria-label="Added">
+            <option value="">All time</option>
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="year">This year</option>
+          </select>
+        </label>
+        <OwnerSelect value={managerId} onChange={setManagerId} placeholder="All Managers" />
+
+        <div className="ml-filter" ref={filterRef}>
           <button
-            className="filter-reset"
-            onClick={() => {
-              setQ('')
-              setStatus('')
-              setRenewal('')
-              setManagerId('')
-            }}
+            className={`crm-tab ml-filter-btn${moreCount ? ' is-active' : ''}${showFilters ? ' is-open' : ''}`}
+            onClick={() => setShowFilters((open) => !open)}
+            aria-expanded={showFilters}
+            aria-haspopup="dialog"
           >
-            Clear filters
+            <IconFilter size={14} /> Filters
+            {moreCount > 0 && <span className="ml-filter-count">{moreCount}</span>}
+          </button>
+          {showFilters && (
+            <div className="ml-pop cu-pop" role="dialog" aria-label="Filter customers">
+              <label className="ml-pop-field">
+                <span>Renewal</span>
+                <select value={renewal} onChange={(event) => setRenewal(event.target.value)}>
+                  <option value="">Any renewal</option>
+                  <option value="due">Due in 30 days</option>
+                  <option value="expired">Renewal passed</option>
+                </select>
+              </label>
+              <label className="ml-pop-field">
+                <span>Customer type</span>
+                <select value={typeF} onChange={(event) => setTypeF(event.target.value)}>
+                  <option value="">All types</option>
+                  {types.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+              <label className="ml-pop-field">
+                <span>Industry</span>
+                <MasterSelect kind="industries" value={industryF} onChange={setIndustryF} placeholder="All industries" />
+              </label>
+              <label className="ml-pop-field">
+                <span>Source</span>
+                <MasterSelect kind="sources" value={sourceF} onChange={setSourceF} placeholder="All sources" />
+              </label>
+              <label className="ml-pop-field">
+                <span>State</span>
+                <MasterSelect kind="states" value={stateF} placeholder="All states"
+                              onChange={(v) => { setStateF(v); setCityF('') }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>City</span>
+                <MasterSelect kind="cities" parentId={stateF} value={cityF} onChange={setCityF} placeholder="All cities" />
+              </label>
+              <button type="button" className="ml-pop-reset" disabled={moreCount === 0}
+                      onClick={() => { setRenewal(''); setTypeF(''); setIndustryF(''); setSourceF(''); setStateF(''); setCityF('') }}>
+                Reset filters
+              </button>
+            </div>
+          )}
+        </div>
+
+        {filtered && (
+          <button className="filter-reset" onClick={clearAll}>
+            <IconClose size={13} /> Clear
           </button>
         )}
+
+        <span className="crm-push" />
+        <button className="ml-icon-btn" onClick={exportCsv} disabled={list.length === 0}
+                title="Export this view as CSV" aria-label="Export this view as CSV">
+          <IconDownload size={15} />
+        </button>
+        <button className="ml-icon-btn" onClick={() => setImporting(true)}
+                title="Import customers from a CSV file" aria-label="Import customers from a CSV file">
+          <IconUpload size={15} />
+        </button>
+        <button className="btn btn-primary ml-add" onClick={() => setAdding(true)}>
+          <IconPlus size={14} /> Add Customer
+        </button>
       </div>
 
       {rowError && (
@@ -183,7 +319,7 @@ export default function MyCustomers() {
         </div>
       )}
 
-      <section className="card" style={{ opacity: rows.refetching ? 0.6 : 1 }}>
+      <section className="hrd-panel" style={{ opacity: rows.refetching ? 0.6 : 1 }}>
         {list.length === 0 ? (
           rows.loading ? (
             <Loading />
@@ -221,9 +357,12 @@ export default function MyCustomers() {
                     <tr key={row.id}>
                       <td className="crm-code">{row.code}</td>
                       <td>
-                        <button className="link-btn" onClick={() => setOpenId(row.id)}>
-                          <div className="crm-strong">{row.name}</div>
-                          {row.company && <div className="crm-sub">{row.company}</div>}
+                        <button className="link-btn cu-person" onClick={() => setOpenId(row.id)}>
+                          <Avatar name={row.name} small />
+                          <span>
+                            <span className="crm-strong">{row.name}</span>
+                            {row.company && <span className="crm-sub">{row.company}</span>}
+                          </span>
                         </button>
                       </td>
                       <td className="crm-nowrap">
@@ -273,8 +412,13 @@ export default function MyCustomers() {
                       </td>
                       <td>
                         <div className="crm-row-actions">
-                          <button className="link-btn" onClick={() => setOpenId(row.id)}>
-                            Open
+                          <button
+                            className="crm-icon-btn"
+                            onClick={() => setOpenId(row.id)}
+                            title="Edit this customer"
+                            aria-label={`Edit ${row.name}`}
+                          >
+                            <IconEdit size={15} />
                           </button>
                         </div>
                       </td>
@@ -292,6 +436,12 @@ export default function MyCustomers() {
         )}
       </section>
 
+      {importing && (
+        <ImportCustomersDialog
+          onClose={() => setImporting(false)}
+          onDone={() => { rows.reload(); all.reload() }}
+        />
+      )}
       {adding && (
         <CustomerForm
           onClose={() => setAdding(false)}
@@ -307,7 +457,8 @@ export default function MyCustomers() {
       )}
 
       {openId && (
-        <CustomerDrawer
+        <CustomerEditor
+          key={openId}
           customerId={openId}
           onClose={() => {
             setOpenId(null)
@@ -319,7 +470,7 @@ export default function MyCustomers() {
           }}
         />
       )}
-    </CrmPage>
+    </div>
   )
 }
 
@@ -329,10 +480,13 @@ function CustomerForm({
   customer,
   onClose,
   onSaved,
+  extras,
 }: {
   customer?: Customer
   onClose: () => void
   onSaved: (row: Customer) => void
+  /** Shown under the fields when editing: the customer's plans and calls. */
+  extras?: ReactNode
 }) {
   const [code, setCode] = useState(customer?.code ?? '')
   const [name, setName] = useState(customer?.name ?? '')
@@ -398,7 +552,9 @@ function CustomerForm({
   return (
     <Dialog
       title={customer ? `Edit ${customer.name}` : 'Add Customer'}
-      subtitle="Products and services are added on the customer's own record, which opens next."
+      subtitle={customer
+        ? `${customer.code} · ${customer.mobile}`
+        : 'Products and services are added next, once the customer is saved.'}
       onClose={onClose}
       footer={
         <>
@@ -531,14 +687,19 @@ function CustomerForm({
         <Field label="Address" wide>
           <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={3} />
         </Field>
+
+        {extras && <div className="crm-form-wide">{extras}</div>}
       </div>
     </Dialog>
   )
 }
 
-/* ----------------------------------------------------------------- drawer --- */
+/* ----------------------------------------------------------------- editor --- */
 
-function CustomerDrawer({
+/** One customer, in one dialog: the Edit customer form, and under it what they
+ *  bought and the latest calls. The row's edit icon, its name, a new customer
+ *  and a renewal link all open this; there is no separate record panel. */
+function CustomerEditor({
   customerId,
   onClose,
   onChanged,
@@ -550,18 +711,57 @@ function CustomerDrawer({
   const detail = useQuery<CustomerDetail>(`crm-customer-${customerId}`, () =>
     crm.customer(customerId),
   )
-  const [editing, setEditing] = useState(false)
+  const customer = detail.data
+
+  if (!customer) {
+    return (
+      <Dialog title="Customer" onClose={onClose}>
+        <div className="crm-form">
+          <div className="crm-form-wide">
+            {detail.error ? <ErrorNote>{detail.error}</ErrorNote> : <Loading />}
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
+  return (
+    <CustomerForm
+      customer={customer}
+      onClose={onClose}
+      onSaved={() => {
+        onChanged()
+        onClose()
+      }}
+      extras={
+        <CustomerRecord
+          customer={customer}
+          onChanged={() => {
+            detail.reload()
+            onChanged()
+          }}
+        />
+      }
+    />
+  )
+}
+
+/** The part of a customer that is not a field: their plans and recent calls. */
+function CustomerRecord({
+  customer,
+  onChanged,
+}: {
+  customer: CustomerDetail
+  onChanged: () => void
+}) {
   const [planEditing, setPlanEditing] = useState<CustomerPlan | null>(null)
   const [addingPlan, setAddingPlan] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const customer = detail.data
 
   async function removePlan(plan: CustomerPlan) {
     setError(null)
     try {
       await crm.deletePlan(plan.id)
-      detail.reload()
       onChanged()
     } catch (err) {
       setError(crmError(err, 'That plan could not be removed'))
@@ -569,163 +769,109 @@ function CustomerDrawer({
   }
 
   return (
-    <Drawer
-      title={customer?.name ?? 'Customer'}
-      meta={customer ? `${customer.code} · ${customer.mobile}` : undefined}
-      onClose={onClose}
-      footer={
-        customer && (
-          <>
-            <button className="btn btn-sm" onClick={() => setEditing(true)}>
-              Edit details
-            </button>
-            <button className="btn btn-sm btn-primary" onClick={() => setAddingPlan(true)}>
-              Add a plan
-            </button>
-            <WhatsAppButton mobile={customer.whatsapp ?? customer.mobile} />
-          </>
-        )
-      }
-    >
-      {!customer ? (
-        <Loading />
-      ) : (
-        <>
-          {error && <ErrorNote>{error}</ErrorNote>}
+    <div className="cu-record">
+      {error && <ErrorNote>{error}</ErrorNote>}
 
-          <div className="crm-facts" style={{ padding: 0 }}>
-            <div>
-              <div className="crm-fact-label">Status</div>
-              <div className="crm-fact-value">
-                <StateText value={customer.status} />
-              </div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Account manager</div>
-              <div className="crm-fact-value">{customer.manager_name ?? '—'}</div>
-            </div>
-            <div>
-              <div className="crm-fact-label">GSTIN</div>
-              <div className="crm-fact-value">{customer.gstin ?? '—'}</div>
-            </div>
-            <div>
-              <div className="crm-fact-label">Since</div>
-              <div className="crm-fact-value">{shortDate(customer.created_at)}</div>
-            </div>
-          </div>
-
-          {customer.converted_from_lead_id && (
-            <div className="notice notice-ok">This account started as a lead.</div>
-          )}
-
-          <div>
-            <div className="crm-field-label" style={{ marginBottom: 6 }}>
-              Products &amp; plans
-            </div>
-            {customer.plans.length === 0 ? (
-              <p className="empty">Nothing recorded. Add what they bought so renewals can be tracked.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Period</th>
-                      <th className="crm-num">Amount</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customer.plans.map((plan) => (
-                      <tr key={plan.id}>
-                        <td>
-                          <div className="crm-strong">{plan.product_name}</div>
-                          <div className="crm-sub">{plan.plan_name ?? '—'}</div>
-                        </td>
-                        <td className="crm-sub">
-                          {plan.start_on} → {plan.end_on ?? 'perpetual'}
-                          <div className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : ''}>
-                            renews {inDays(plan.days_to_renewal)}
-                          </div>
-                        </td>
-                        <td className="crm-num">
-                          {rupees(plan.amount)}
-                          <div className="crm-sub">
-                            <StateText value={plan.payment_status} />
-                          </div>
-                        </td>
-                        <td>
-                          <div className="crm-row-actions">
-                            <button className="link-btn" onClick={() => setPlanEditing(plan)}>
-                              Edit
-                            </button>
-                            <button className="link-btn" onClick={() => removePlan(plan)}>
-                              Remove
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {customer.interactions.length > 0 && (
-            <div>
-              <div className="crm-field-label" style={{ marginBottom: 6 }}>
-                Recent calls
-              </div>
-              <div className="crm-timeline">
-                {customer.interactions.slice(0, 8).map((row) => (
-                  <div className="crm-event" key={row.id}>
-                    <span className="crm-event-dot" />
-                    <div>
-                      <div className="crm-event-body">
-                        {row.disposition_name ?? 'Call'} — {row.remarks ?? 'no remarks'}
-                      </div>
-                      <div className="crm-event-when">
-                        {row.direction} · {row.staff_name ?? 'unknown'} · {dateTime(row.created_at)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {editing && (
-            <CustomerForm
-              customer={customer}
-              onClose={() => setEditing(false)}
-              onSaved={() => {
-                setEditing(false)
-                detail.reload()
-                onChanged()
-              }}
-            />
-          )}
-
-          {(addingPlan || planEditing) && (
-            <PlanForm
-              customerId={customer.id}
-              plan={planEditing}
-              onClose={() => {
-                setAddingPlan(false)
-                setPlanEditing(null)
-              }}
-              onSaved={() => {
-                setAddingPlan(false)
-                setPlanEditing(null)
-                detail.reload()
-                onChanged()
-              }}
-            />
-          )}
-        </>
+      {customer.converted_from_lead_id && (
+        <div className="notice notice-ok">This account started as a lead.</div>
       )}
-    </Drawer>
+
+      <div>
+        <div className="cu-record-head">
+          <span className="crm-field-label">Products &amp; plans</span>
+          <button type="button" className="btn btn-sm" onClick={() => setAddingPlan(true)}>
+            <IconPlus size={14} /> Add a plan
+          </button>
+        </div>
+        {customer.plans.length === 0 ? (
+          <p className="empty">Nothing recorded. Add what they bought so renewals can be tracked.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Period</th>
+                  <th className="crm-num">Amount</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {customer.plans.map((plan) => (
+                  <tr key={plan.id}>
+                    <td>
+                      <div className="crm-strong">{plan.product_name}</div>
+                      <div className="crm-sub">{plan.plan_name ?? '—'}</div>
+                    </td>
+                    <td className="crm-sub">
+                      {plan.start_on} → {plan.end_on ?? 'perpetual'}
+                      <div className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : ''}>
+                        renews {inDays(plan.days_to_renewal)}
+                      </div>
+                    </td>
+                    <td className="crm-num">
+                      {rupees(plan.amount)}
+                      <div className="crm-sub">
+                        <StateText value={plan.payment_status} />
+                      </div>
+                    </td>
+                    <td>
+                      <div className="crm-row-actions">
+                        <button type="button" className="link-btn" onClick={() => setPlanEditing(plan)}>
+                          Edit
+                        </button>
+                        <button type="button" className="link-btn" onClick={() => removePlan(plan)}>
+                          Remove
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {customer.interactions.length > 0 && (
+        <div>
+          <div className="cu-record-head">
+            <span className="crm-field-label">Recent calls</span>
+          </div>
+          <div className="crm-timeline">
+            {customer.interactions.slice(0, 8).map((row) => (
+              <div className="crm-event" key={row.id}>
+                <span className="crm-event-dot" />
+                <div>
+                  <div className="crm-event-body">
+                    {row.disposition_name ?? 'Call'} — {row.remarks ?? 'no remarks'}
+                  </div>
+                  <div className="crm-event-when">
+                    {row.direction} · {row.staff_name ?? 'unknown'} · {dateTime(row.created_at)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(addingPlan || planEditing) && (
+        <PlanForm
+          customerId={customer.id}
+          plan={planEditing}
+          onClose={() => {
+            setAddingPlan(false)
+            setPlanEditing(null)
+          }}
+          onSaved={() => {
+            setAddingPlan(false)
+            setPlanEditing(null)
+            onChanged()
+          }}
+        />
+      )}
+    </div>
   )
 }
 
@@ -865,6 +1011,122 @@ function PlanForm({
         <Field label="Notes" wide>
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
         </Field>
+      </div>
+    </Dialog>
+  )
+}
+
+/* ------------------------------------------------------------- import --- */
+
+/** One quoted-CSV line into cells. */
+function csvCells(line: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++ }
+      else if (ch === '"') quoted = false
+      else cur += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') { out.push(cur); cur = '' }
+    else cur += ch
+  }
+  out.push(cur)
+  return out.map((c) => c.trim())
+}
+
+const IMPORT_COLUMNS = ['name', 'mobile', 'company', 'email', 'whatsapp', 'customer_type', 'gstin', 'pincode', 'address'] as const
+
+/** Customers from a CSV, one create per row. There is no bulk endpoint for
+ *  customers, so each row goes through the same create the form uses — with
+ *  the same validation — and the result says which rows did not make it. */
+function ImportCustomersDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [rows, setRows] = useState<Array<Record<string, string>>>([])
+  const [fileName, setFileName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ ok: number; failed: Array<{ row: number; reason: string }> } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function read(file: File) {
+    setError(null)
+    setResult(null)
+    setFileName(file.name)
+    const text = await file.text()
+    const lines = text.split(/\r?\n/).filter((l) => l.trim())
+    if (lines.length < 2) { setRows([]); setError('The file has no rows under its header.'); return }
+    const head = csvCells(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, ''))
+    if (!head.includes('name') || !head.includes('mobile')) {
+      setRows([])
+      setError('The first line must be a header with at least "name" and "mobile" columns.')
+      return
+    }
+    setRows(lines.slice(1).map((line) => {
+      const cells = csvCells(line)
+      return Object.fromEntries(head.map((h, i) => [h, cells[i] ?? '']))
+    }))
+  }
+
+  async function run() {
+    setBusy(true)
+    const failed: Array<{ row: number; reason: string }> = []
+    let ok = 0
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      const body: Record<string, string | null> = {}
+      for (const key of IMPORT_COLUMNS) body[key] = r[key]?.trim() || null
+      try {
+        await crm.createCustomer(body)
+        ok++
+      } catch (err) {
+        failed.push({ row: i + 2, reason: crmError(err, 'Rejected') })
+      }
+    }
+    setBusy(false)
+    setResult({ ok, failed })
+    if (ok) onDone()
+  }
+
+  return (
+    <Dialog
+      title="Import customers"
+      subtitle="A CSV with a header row. name and mobile are required; company, email, whatsapp, customer_type, gstin, pincode and address are read when present."
+      onClose={onClose}
+      footer={
+        result ? (
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        ) : (
+          <>
+            <button className="btn" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => void run()} disabled={busy || rows.length === 0}>
+              {busy ? 'Importing…' : `Import ${rows.length || ''} customer${rows.length === 1 ? '' : 's'}`}
+            </button>
+          </>
+        )
+      }
+    >
+      <div className="crm-form">
+        {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
+        <Field label="File" wide>
+          <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f) }} />
+        </Field>
+        {fileName && !result && rows.length > 0 && (
+          <p className="crm-form-wide crm-sub">{rows.length} row{rows.length === 1 ? '' : 's'} read from {fileName}.</p>
+        )}
+        {result && (
+          <div className="crm-form-wide">
+            <p><strong>{result.ok}</strong> customer{result.ok === 1 ? '' : 's'} added.</p>
+            {result.failed.length > 0 && (
+              <>
+                <p className="crm-sub">{result.failed.length} row{result.failed.length === 1 ? '' : 's'} skipped:</p>
+                <ul className="cu-import-fails">
+                  {result.failed.slice(0, 20).map((f) => <li key={f.row}>Line {f.row}: {f.reason}</li>)}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </Dialog>
   )

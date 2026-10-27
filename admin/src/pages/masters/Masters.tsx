@@ -8,7 +8,8 @@
  * rebuilt, so there is still one place each is edited.
  *
  * Sales Master and Product Master are not on this screen: they are worked in
- * daily rather than set once, so each has its own page (MasterHub.tsx).
+ * daily rather than set once, so each has its own page (MasterHub.tsx) at
+ * /sales-master and /product-master. They are no longer linked from here.
  *
  * Administrator-only, like the writes behind it: the dropdowns these fill are
  * readable by everybody, but editing them changes everybody's pipeline.
@@ -51,7 +52,6 @@ function rowsOf(group: MasterGroup): Row[] {
 }
 
 const ON_MENU = MASTER_GROUPS.filter((g) => !g.path)
-const OWN_PAGE = MASTER_GROUPS.filter((g) => g.path)
 
 export default function Masters() {
   const [q, setQ] = useState('')
@@ -65,42 +65,22 @@ export default function Masters() {
     })
     .filter(({ rows }) => rows.length > 0)
 
-  const totalLists = ON_MENU.reduce((n, g) => n + rowsOf(g).length, 0)
-
   return (
     <div className="crm mh">
-      <header className="mh-head">
-        <div className="mh-head-text">
-          <span className="mh-eyebrow">Configuration</span>
-          <h1 className="mh-title">Master</h1>
-          <p className="mh-sub">
-            Every reference list your team picks from, grouped by what it describes —
-            {' '}{totalLists} lists in {ON_MENU.length} groups.
-          </p>
-        </div>
-        <div className="crm-search mh-search">
-          <IconSearch size={15} />
+      {/* No heading: the page's name is in the top bar. Just the search. */}
+      <header className="mst-bar">
+        <label className="mst-search">
+          <IconSearch size={16} />
           <input
             type="search"
             value={q}
             onChange={(event) => setQ(event.target.value)}
-            placeholder="Find a master list…"
+            placeholder="Search master lists — country, lead source, vendor…"
             aria-label="Find a master list"
           />
-        </div>
+          {q && <button type="button" className="mst-search-x" onClick={() => setQ('')} aria-label="Clear search">×</button>}
+        </label>
       </header>
-
-      {OWN_PAGE.length > 0 && (
-        <div className="mh-shortcuts">
-          <span className="mh-shortcuts-label">On their own pages</span>
-          {OWN_PAGE.map((g) => (
-            <Link key={g.key} to={g.path!} className="mh-chip">
-              {g.title}
-              <IconChevronRight size={13} />
-            </Link>
-          ))}
-        </div>
-      )}
 
       {groups.length === 0 ? (
         <div className="card mh-empty">
@@ -110,7 +90,7 @@ export default function Masters() {
       ) : (
         <div className="mh-grid">
           {groups.map(({ group, rows, total }) => (
-            <section key={group.key} className="mh-card">
+            <section key={group.key} className="mh-card mst-card">
               <header className="mh-card-head">
                 <span className="mh-card-icon" aria-hidden>{GROUP_ICON[group.key] ?? <IconFolder size={18} />}</span>
                 <div className="mh-card-text">
@@ -118,17 +98,15 @@ export default function Masters() {
                     {group.title}
                     <span className="mh-card-badge">{total} {total === 1 ? 'list' : 'lists'}</span>
                   </h2>
-                  <p className="mh-card-desc">{group.description}</p>
                 </div>
               </header>
               <ul className="mh-rows">
                 {rows.map((row) => (
                   <li key={row.key}>
                     <Link to={row.to} className="mh-row">
+                      <span className="mst-row-dot" aria-hidden />
                       <span className="mh-row-label">{row.label}</span>
-                      {row.kind
-                        ? <MasterCount kind={row.kind} />
-                        : <span className="mh-row-meta">Own screen</span>}
+                      {row.kind && <MasterCount kind={row.kind} />}
                       <IconChevronRight size={15} />
                     </Link>
                   </li>

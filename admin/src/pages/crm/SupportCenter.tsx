@@ -14,29 +14,34 @@
  * them, so "I rang last Tuesday and someone said…" is answerable.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../../styles/crm.css'
 import { useQuery } from '../../lib/useQuery'
 import { dateTime } from '../../lib/format'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconInfo, IconLifebuoy, IconStar } from '../../components/Icons'
+import {
+  IconCalendar,
+  IconCheck,
+  IconMail,
+  IconPhone,
+  IconPin,
+  IconSearch,
+  IconUsers,
+} from '../../components/Icons'
 import {
   crm,
   crmError,
   inDays,
-  rupees,
   type Customer,
   type CustomerDetail,
   type Disposition,
+  type Interaction,
 } from './api'
-import { CrmPage, CustomerPicker, DueDate, Field, StateText, WhatsAppButton } from './parts'
-
-type Tab = 'plans' | 'visits' | 'cross-sell'
+import { Assignee, CustomerPicker, DuePill, Field, StateText, WhatsAppButton } from './parts'
 
 export default function SupportCenter() {
   const [picked, setPicked] = useState<Customer | null>(null)
-  const [tab, setTab] = useState<Tab>('plans')
 
   const detail = useQuery<CustomerDetail | null>(
     `crm-support-${picked?.id ?? 'none'}`,
@@ -47,168 +52,72 @@ export default function SupportCenter() {
 
   const customer = detail.data ?? null
 
+  /* The period the counts and the history cover. Picked in the select and
+     applied with Set, so stepping through the options does not refetch. */
+  const [periodDraft, setPeriodDraft] = useState<Period>('today')
+  const [period, setPeriod] = useState<Period>('today')
+  const recent = useQuery<Interaction[]>('crm-support-recent', () => crm.interactions({ limit: 500 }))
+  const inPeriod = (recent.data ?? []).filter((row) => withinPeriod(row.created_at, period))
+  const counts = {
+    logged: inPeriod.length,
+    open: inPeriod.filter((row) => row.status === 'open').length,
+    closed: inPeriod.filter((row) => row.status === 'closed').length,
+  }
+
+  async function openCustomer(customerId: string) {
+    try {
+      const full = await crm.customer(customerId)
+      setPicked(full)
+    } catch {
+      /* Left where it was; the desk only changes on success. */
+    }
+  }
+
   return (
-    <CrmPage
-      title="My Support Center"
-      subtitle="Find the customer, see everything, log the call — without leaving the page"
-    >
-      <section className="card" style={{ padding: 14, marginBottom: 16 }}>
-        <div className="crm-bar" style={{ marginBottom: 0 }}>
-          <div style={{ flex: '1 1 340px', minWidth: 240 }}>
-            <CustomerPicker
-              value={picked}
-              onPick={(next) => {
-                setPicked(next)
-                setTab('plans')
-              }}
-              placeholder="Search Customer ID, mobile number or email…"
-              autoFocus
-            />
-          </div>
-          <div className="crm-push crm-sub" style={{ display: 'flex', gap: 16 }}>
-            <span>
-              Logged today <strong>{summary.data?.logged_today ?? 0}</strong>
-            </span>
-            <span>
-              Open <strong>{summary.data?.open ?? 0}</strong>
-            </span>
-            <span>
-              Closed <strong>{summary.data?.closed ?? 0}</strong>
-            </span>
-          </div>
+    /* No page heading: "My Support Desk" is the tab above. One bar on top —
+       find the caller, the period, the counts — then the customer and the
+       log form side by side, and the call history across the bottom. */
+    <div className="crm sd-page">
+      <div className="card sd-bar">
+        <div className="sd-bar-search">
+          <IconSearch size={16} />
+          <CustomerPicker
+            value={picked}
+            onPick={(next) => {
+              setPicked(next)
+            }}
+            placeholder="Search Customer ID, mobile number or email…"
+            autoFocus
+          />
         </div>
-      </section>
+        <div className="sd-bar-period">
+          <select value={periodDraft} onChange={(e) => setPeriodDraft(e.target.value as Period)} aria-label="Period">
+            {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+          <button type="button" className="btn sd-bar-set" onClick={() => setPeriod(periodDraft)}
+                  disabled={periodDraft === period}>
+            Set
+          </button>
+        </div>
+        <div className="sd-bar-counts" aria-label="Calls in this period">
+          <span>Logged {PERIODS.find((p) => p.key === period)?.short} <strong>{counts.logged}</strong></span>
+          <span>Open <strong className="is-open">{counts.open}</strong></span>
+          <span>Closed <strong className="is-closed">{counts.closed}</strong></span>
+        </div>
+      </div>
 
       <div className="crm-desk">
-        <div style={{ display: 'grid', gap: 14, minWidth: 0 }}>
-          <section className="card">
-            <div className="crm-ident">
-              <div style={{ minWidth: 0 }}>
-                <div className={customer ? 'crm-ident-name' : 'crm-ident-name crm-muted'}>
-                  {customer ? customer.name : 'No customer selected'}
-                </div>
-                <div className="crm-sub">
-                  {customer
-                    ? `${customer.code}${customer.company ? ` · ${customer.company}` : ''}`
-                    : 'Search above to load a customer'}
-                </div>
-              </div>
-              <div className="crm-ident-actions">
-                {customer && <StateText value={customer.status} />}
-                <WhatsAppButton mobile={customer?.whatsapp ?? customer?.mobile ?? null} />
-                {customer && (
-                  <Link className="btn btn-sm" to={`/crm/customers?open=${customer.id}`}>
-                    Full record
-                  </Link>
-                )}
-              </div>
-            </div>
-            <div className="crm-facts">
-              <div>
-                <div className="crm-fact-label">Mobile</div>
-                <div className="crm-fact-value">{customer?.mobile ?? '—'}</div>
-              </div>
-              <div>
-                <div className="crm-fact-label">Email</div>
-                <div className="crm-fact-value">{customer?.email ?? '—'}</div>
-              </div>
-              <div>
-                <div className="crm-fact-label">Account manager</div>
-                <div className="crm-fact-value">{customer?.manager_name ?? '—'}</div>
-              </div>
-              <div>
-                <div className="crm-fact-label">Location</div>
-                <div className="crm-fact-value">
-                  {[customer?.city_name, customer?.state_name].filter(Boolean).join(', ') || '—'}
-                </div>
-              </div>
-            </div>
-          </section>
+        <div className="sd-main">
+          {picked && !customer && detail.error ? (
+            <ErrorNote>{crmError(detail.cause, 'That customer could not be loaded')}</ErrorNote>
+          ) : picked && !customer ? (
+            <section className="card"><Loading label="Loading the customer…" /></section>
+          ) : customer ? (
+            <Profile customer={customer} onClear={() => setPicked(null)} />
+          ) : (
+            <EmptyProfile />
+          )}
 
-          <section className="card">
-            <div className="crm-tabs" style={{ padding: 14, marginBottom: 0 }}>
-              <button
-                className={`crm-tab${tab === 'plans' ? ' crm-tab-on' : ''}`}
-                onClick={() => setTab('plans')}
-              >
-                <IconStar size={14} /> Plans
-              </button>
-              <button
-                className={`crm-tab${tab === 'visits' ? ' crm-tab-on' : ''}`}
-                onClick={() => setTab('visits')}
-              >
-                <IconInfo size={14} /> Visits
-              </button>
-              <button
-                className={`crm-tab${tab === 'cross-sell' ? ' crm-tab-on' : ''}`}
-                onClick={() => setTab('cross-sell')}
-              >
-                <IconLifebuoy size={14} /> Cross-Sell
-              </button>
-            </div>
-
-            {!customer ? (
-              <p className="empty">
-                {tab === 'plans'
-                  ? 'Search a customer to see their plans and renewal dates.'
-                  : tab === 'visits'
-                    ? 'Search a customer to see the field calls booked with them.'
-                    : 'Search a customer to see what they have not bought yet.'}
-              </p>
-            ) : tab === 'plans' ? (
-              <PlansTable customer={customer} />
-            ) : tab === 'visits' ? (
-              <VisitsTable customer={customer} />
-            ) : (
-              <CrossSell customer={customer} />
-            )}
-          </section>
-
-          <section className="card">
-            <div className="crm-panel-head">
-              <h2 className="crm-panel-title">Last Support History</h2>
-            </div>
-            {!customer ? (
-              <p className="empty">Search a customer to see every call the desk has had with them.</p>
-            ) : customer.interactions.length === 0 ? (
-              <p className="empty">Nobody has logged a call with this customer yet.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Ticket</th>
-                      <th>Date &amp; time</th>
-                      <th>Type</th>
-                      <th>Disposition</th>
-                      <th>Status</th>
-                      <th>Remarks</th>
-                      <th>Staff</th>
-                      <th>Follow-up</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customer.interactions.map((row) => (
-                      <tr key={row.id}>
-                        <td className="crm-code">{row.ticket_no}</td>
-                        <td className="crm-nowrap">{dateTime(row.created_at)}</td>
-                        <td>{row.direction === 'inbound' ? 'Inbound' : 'Outbound'}</td>
-                        <td>{row.disposition_name ?? <span className="crm-muted">—</span>}</td>
-                        <td>
-                          <StateText value={row.status} />
-                        </td>
-                        <td>{row.remarks ?? <span className="crm-muted">—</span>}</td>
-                        <td>{row.staff_name ?? <span className="crm-muted">—</span>}</td>
-                        <td className="crm-nowrap">
-                          <DueDate iso={row.follow_up_due_at} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </div>
 
         <LogPanel
@@ -216,147 +125,208 @@ export default function SupportCenter() {
           onLogged={() => {
             detail.reload()
             summary.reload()
+            recent.reload()
           }}
         />
       </div>
-    </CrmPage>
-  )
-}
 
-function PlansTable({ customer }: { customer: CustomerDetail }) {
-  if (customer.plans.length === 0) {
-    return <p className="empty">This customer has no plans recorded. Add one on their record.</p>
-  }
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Product / Service</th>
-            <th>Plan</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Renewal</th>
-            <th className="crm-num">Payment</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {customer.plans.map((plan) => (
-            <tr key={plan.id}>
-              <td className="crm-strong">{plan.product_name}</td>
-              <td>{plan.plan_name ?? <span className="crm-muted">—</span>}</td>
-              <td className="crm-nowrap">{plan.start_on}</td>
-              <td className="crm-nowrap">{plan.end_on ?? '—'}</td>
-              <td className="crm-nowrap">
-                {plan.renewal_on ?? '—'}
-                <div
-                  className={
-                    plan.days_to_renewal !== null && plan.days_to_renewal < 0
-                      ? 'crm-due-over'
-                      : 'crm-sub'
-                  }
-                >
-                  {inDays(plan.days_to_renewal)}
-                </div>
-              </td>
-              <td className="crm-num">
-                {rupees(plan.amount)}
-                <div className="crm-sub">
-                  <StateText value={plan.payment_status} />
-                </div>
-              </td>
-              <td>
-                <StateText value={plan.status} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <HistoryTable
+        rows={customer ? customer.interactions : inPeriod}
+        loading={!customer && recent.loading && !recent.data}
+        scope={customer ? `${customer.name}` : PERIODS.find((p) => p.key === period)?.label ?? ''}
+        showCustomer={!customer}
+        onOpen={openCustomer}
+      />
     </div>
   )
 }
 
-function VisitsTable({ customer }: { customer: CustomerDetail }) {
-  if (customer.visits.length === 0) {
-    return <p className="empty">No field calls booked with this customer.</p>
-  }
+/* ------------------------------------------------------------ period --- */
+
+type Period = 'today' | '7d' | '30d' | 'all'
+const PERIODS: Array<{ key: Period; label: string; short: string }> = [
+  { key: 'today', label: 'Logged today', short: 'today' },
+  { key: '7d', label: 'Last 7 days', short: '· 7 days' },
+  { key: '30d', label: 'Last 30 days', short: '· 30 days' },
+  { key: 'all', label: 'All time', short: '' },
+]
+
+function withinPeriod(iso: string, period: Period): boolean {
+  if (period === 'all') return true
+  const when = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  if (period === '7d') start.setDate(start.getDate() - 6)
+  if (period === '30d') start.setDate(start.getDate() - 29)
+  return when >= start
+}
+
+/* ------------------------------------------------------- empty states --- */
+
+/** The profile card before anybody is searched — the same shape, dashed out,
+ *  so the desk never jumps when a customer loads into it. */
+function EmptyProfile() {
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Visit no</th>
-            <th>Type</th>
-            <th>Scheduled</th>
-            <th>Employee</th>
-            <th>Status</th>
-            <th>Outcome</th>
-          </tr>
-        </thead>
-        <tbody>
-          {customer.visits.map((visit) => (
-            <tr key={visit.id}>
-              <td className="crm-code">{visit.visit_no}</td>
-              <td>{visit.visit_type_name ?? '—'}</td>
-              <td className="crm-nowrap">{dateTime(visit.scheduled_at)}</td>
-              <td>{visit.employee_name ?? <span className="crm-muted">Unassigned</span>}</td>
-              <td>
-                <StateText value={visit.status} />
-              </td>
-              <td>{visit.outcome ?? <span className="crm-muted">—</span>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <section className="card sd-profile is-empty">
+      <div className="sd-profile-head">
+        <span className="sd-avatar" aria-hidden>—</span>
+        <div className="sd-profile-name">
+          <h2>No customer selected</h2>
+          <span className="crm-sub">Search above to load a customer</span>
+        </div>
+      </div>
+      <div className="sd-facts">
+        <Fact icon={<IconPhone size={14} />} label="Mobile" value={null} />
+        <Fact icon={<IconMail size={14} />} label="Email" value={null} />
+        <Fact icon={<IconUsers size={14} />} label="Account manager" value={null} />
+        <Fact icon={<IconPin size={14} />} label="Location" value={null} />
+      </div>
+    </section>
   )
 }
 
-/** What this customer has not bought.
- *
- * Derived in the browser from two lists the page already has rather than a
- * server endpoint of its own: it is a set difference over a catalogue of a few
- * dozen products, and a "recommendations" API would be a new thing to maintain
- * that answered exactly this question. */
-function CrossSell({ customer }: { customer: CustomerDetail }) {
-  const products = useQuery('crm-products-all', () => crm.masters('products'))
-  const owned = useMemo(
-    () => new Set(customer.plans.map((plan) => plan.product_id).filter(Boolean) as string[]),
-    [customer.plans],
-  )
-  const rest = (products.data ?? []).filter((product) => product.is_active && !owned.has(product.id))
+/* ------------------------------------------------------------ history --- */
 
-  if (products.loading) return <Loading />
-  if (rest.length === 0) {
-    return <p className="empty">This customer already has everything on the catalogue.</p>
-  }
+/** The call history across the bottom: every call in the period before a
+ *  customer is chosen, that customer's calls once one is. */
+function HistoryTable({ rows, loading, scope, showCustomer, onOpen }: {
+  rows: Interaction[]
+  loading: boolean
+  scope: string
+  showCustomer: boolean
+  onOpen: (customerId: string) => void
+}) {
+  const cols = showCustomer ? 9 : 8
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Product / Service</th>
-            <th className="crm-num">List rate</th>
-            <th style={{ textAlign: 'right' }}>Offer it</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rest.map((product) => (
-            <tr key={product.id}>
-              <td className="crm-strong">{product.name}</td>
-              <td className="crm-num">{rupees((product as { rate?: string }).rate ?? '0')}</td>
-              <td>
-                <div className="crm-row-actions">
-                  <Link className="btn btn-sm" to={`/crm/quotations/new?customer=${customer.id}`}>
-                    Quote it
-                  </Link>
-                </div>
-              </td>
+    <section className="card sd-panel sd-history-card">
+      <div className="sd-panel-head">
+        <h2>Last Support History</h2>
+        <span className="crm-sub">{scope} · {rows.length} call{rows.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className="table-wrap sd-history-wrap">
+        <table className="sd-table sd-history-table">
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Date &amp; time</th>
+              {showCustomer && <th>Customer</th>}
+              <th>Type</th>
+              <th>Disposition</th>
+              <th>Status</th>
+              <th>Remarks</th>
+              <th>Staff</th>
+              <th>Follow-up</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={cols} className="sd-empty-cell">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={cols} className="sd-empty-cell">No support calls in this period.</td></tr>
+            ) : rows.map((row) => (
+              <tr key={row.id}>
+                <td className="crm-code">{row.ticket_no}</td>
+                <td className="crm-nowrap">{dateTime(row.created_at)}</td>
+                {showCustomer && (
+                  <td>
+                    <button type="button" className="sd-recent-customer" onClick={() => onOpen(row.customer_id)}
+                            title="Open this customer on the desk">
+                      {row.customer_name ?? 'Customer'}
+                    </button>
+                  </td>
+                )}
+                <td>
+                  <span className={`sd-dir is-${row.direction}`}>
+                    {row.direction === 'inbound' ? '↓ Inbound' : '↑ Outbound'}
+                  </span>
+                </td>
+                <td>{row.disposition_name ?? <span className="crm-muted">—</span>}</td>
+                <td><StateText value={row.status} /></td>
+                <td className="sd-remarks" title={row.remarks ?? undefined}>
+                  {row.remarks ?? <span className="crm-muted">—</span>}
+                </td>
+                <td className="crm-nowrap">{row.staff_name ?? <span className="crm-muted">—</span>}</td>
+                <td className="crm-nowrap">
+                  {row.follow_up_due_at ? <DuePill iso={row.follow_up_due_at} /> : <span className="crm-muted">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+/** The loaded customer: who they are, how to reach them, and the three facts a
+ *  caller asks about first — what is active, when it renews, what is open. */
+function Profile({ customer, onClear }: { customer: CustomerDetail; onClear: () => void }) {
+  const initials = customer.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join('')
+  const active = customer.plans.filter((plan) => plan.status === 'active').length
+  const next = customer.plans
+    .filter((plan) => plan.renewal_on && plan.days_to_renewal !== null)
+    .sort((a, b) => (a.days_to_renewal ?? 0) - (b.days_to_renewal ?? 0))[0]
+  const open = customer.interactions.filter((row) => row.status === 'open').length
+
+  return (
+    <section className="card sd-profile">
+      <div className="sd-profile-head">
+        <span className="sd-avatar" aria-hidden>{initials}</span>
+        <div className="sd-profile-name">
+          <h2>{customer.name}</h2>
+          <span className="crm-sub">
+            <span className="crm-code">{customer.code}</span>
+            {customer.company ? ` · ${customer.company}` : ''}
+          </span>
+        </div>
+        <div className="sd-profile-actions">
+          <StateText value={customer.status} />
+          <WhatsAppButton mobile={customer.whatsapp ?? customer.mobile} />
+          <Link className="btn btn-sm" to={`/crm/customers?open=${customer.id}`}>Full record</Link>
+          <button type="button" className="sd-clear" onClick={onClear}
+                  title="Clear — back to all calls" aria-label="Clear the customer">×</button>
+        </div>
+      </div>
+
+      <div className="sd-facts">
+        <Fact icon={<IconPhone size={14} />} label="Mobile" value={customer.mobile} />
+        <Fact icon={<IconMail size={14} />} label="Email" value={customer.email && <span title={customer.email}>{customer.email}</span>} />
+        <Fact icon={<IconUsers size={14} />} label="Account manager"
+              value={customer.manager_name && <Assignee name={customer.manager_name} />} />
+        <Fact icon={<IconPin size={14} />} label="Location"
+              value={[customer.city_name, customer.state_name].filter(Boolean).join(', ')} />
+      </div>
+
+      <div className="sd-quick">
+        <div className="sd-quick-item">
+          <span className="sd-quick-label">Active plans</span>
+          <span className="sd-quick-value">{active}</span>
+        </div>
+        <div className={`sd-quick-item${next && (next.days_to_renewal ?? 0) < 0 ? ' is-late' : ''}`}>
+          <span className="sd-quick-label"><IconCalendar size={13} /> Next renewal</span>
+          <span className="sd-quick-value">
+            {next ? <>{next.renewal_on}<small>{inDays(next.days_to_renewal)}</small></> : '—'}
+          </span>
+        </div>
+        <div className={`sd-quick-item${open > 0 ? ' is-warn' : ''}`}>
+          <span className="sd-quick-label">Open tickets</span>
+          <span className="sd-quick-value">{open}</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Fact({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
+  return (
+    <div className="sd-fact">
+      <span className="sd-fact-label">{icon}{label}</span>
+      <span className="sd-fact-value">{value || <span className="crm-muted">—</span>}</span>
     </div>
   )
 }
@@ -413,46 +383,44 @@ function LogPanel({
   }
 
   return (
-    <section className="card" style={{ alignSelf: 'start', position: 'sticky', top: 12 }}>
-      <div className="crm-panel-head">
-        <h2 className="crm-panel-title">Log Interaction</h2>
+    <section className="card sd-log">
+      <div className="sd-log-head">
+        <span className="sd-log-icon" aria-hidden><IconPhone size={16} /></span>
+        <div>
+          <h2>Log interaction</h2>
+          <span className="crm-sub">
+            {customer ? <>For <b>{customer.name}</b></> : 'Load a customer to log the call'}
+          </span>
+        </div>
       </div>
-      <div className="crm-log">
+      <div className="sd-log-body">
         {error && <ErrorNote>{error}</ErrorNote>}
         {saved && (
-          <div className="notice notice-ok">
-            Logged as {saved}.{' '}
-            <button className="link-btn" onClick={() => setSaved(null)}>
-              Dismiss
-            </button>
+          <div className="sd-saved">
+            <IconCheck size={15} />
+            <span>Logged as <b>{saved}</b></span>
+            <button className="link-btn" onClick={() => setSaved(null)}>Dismiss</button>
           </div>
         )}
 
-        <div className="crm-log-row">
-          <span className="crm-log-label">Interaction type</span>
-          <div className="crm-choice">
-            <button
-              className={direction === 'inbound' ? 'crm-choice-on' : ''}
-              onClick={() => setDirection('inbound')}
-            >
-              Inbound
+        <div className="sd-log-row">
+          <span className="crm-field-label">Interaction type</span>
+          <div className="sd-choice" role="radiogroup" aria-label="Interaction type">
+            <button type="button" role="radio" aria-checked={direction === 'inbound'}
+                    className={direction === 'inbound' ? 'is-on' : ''} onClick={() => setDirection('inbound')}>
+              ↓ Inbound
             </button>
-            <button
-              className={direction === 'outbound' ? 'crm-choice-on' : ''}
-              onClick={() => setDirection('outbound')}
-            >
-              Outbound
+            <button type="button" role="radio" aria-checked={direction === 'outbound'}
+                    className={direction === 'outbound' ? 'is-on' : ''} onClick={() => setDirection('outbound')}>
+              ↑ Outbound
             </button>
           </div>
         </div>
 
-        <div className="crm-grid-2">
+        <div className="sd-grid-2">
           <Field label="Disposition">
-            <select
-              value={dispositionId}
-              onChange={(event) => setDispositionId(event.target.value)}
-            >
-              <option value="">—</option>
+            <select value={dispositionId} onChange={(event) => setDispositionId(event.target.value)}>
+              <option value="">Select…</option>
               {(dispositions.data ?? [])
                 .filter((row) => row.is_active)
                 .map((row) => (
@@ -475,18 +443,18 @@ function LogPanel({
             value={remarks}
             onChange={(event) => setRemarks(event.target.value)}
             rows={5}
-            placeholder={customer ? 'What was said?' : 'Search a customer first'}
+            placeholder={customer ? 'What was said? What was promised?' : 'Search a customer first'}
             disabled={!customer}
           />
         </Field>
 
         <button
-          className="btn btn-primary"
+          className="btn btn-primary sd-log-save"
           onClick={save}
           disabled={!customer || busy}
           title={customer ? undefined : 'Load a customer first'}
         >
-          {busy ? 'Saving…' : 'Save Interaction'}
+          {busy ? 'Saving…' : 'Save interaction'}
         </button>
       </div>
     </section>

@@ -7,7 +7,7 @@ import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -58,6 +58,10 @@ from app.schemas.common import (
 )
 from app.services import hrsettings as hr_settings
 from app.services import agentdist, hierarchy, mailconfig, reports, storage
+from app.services import attendance as attendance_svc
+from app.services import corehr as corehr_svc
+from app.services import employee_io
+from app.schemas.corehr import ConfirmationIn
 from app.services import roles as role_svc, subscriptions as subs
 from app.services.classifier import seed_default_rules
 
@@ -540,6 +544,18 @@ def list_employees(viewer: CurrentUser, db: DbSession) -> list[User]:
 def create_employee(
     payload: UserCreate, admin: AdminUser, request: Request, db: DbSession
 ) -> User:
+    user = _create_employee(db, admin, payload, request)
+    db.commit()
+    return user
+
+
+def _create_employee(db, admin: User, payload: UserCreate, request: Request) -> User:
+    """Create one employee, flushed but not committed.
+
+    Shared by the single-hire endpoint and the spreadsheet import, so seats,
+    the employee-ID series, role checks and the audit line are the same rules
+    whichever way somebody is added.
+    """
     email = payload.email.lower()
     if db.scalar(select(User).where(User.org_id == admin.org_id, User.email == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email exists")
@@ -641,7 +657,6 @@ def create_employee(
     db.flush()
     audit(db, org_id=admin.org_id, actor=admin, action="employee.created", request=request,
           target_type="user", target_id=str(user.id))
-    db.commit()
     return user
 
 
@@ -1235,6 +1250,142 @@ def screenshots_csv(
             ]
         )
     return _csv_response(buf, f"screenshots-{start.isoformat()}-to-{end.isoformat()}.csv")
+
+
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xlsx_response(content: bytes, filename: str) -> Response:
+    return Response(content, media_type=_XLSX,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/employees/template.xlsx")
+def employees_template(admin: AdminUser, db: DbSession) -> Response:
+    """The sample file to fill in: headers, an example row, and drop-downs
+    built from this company's departments, designations, teams and roles."""
+    return _xlsx_response(employee_io.template(employee_io.lookups(db, admin.org_id)),
+                          "employees-import-sample.xlsx")
+
+
+@router.get("/employees/export.xlsx")
+def employees_xlsx(viewer: CurrentUser, db: DbSession) -> Response:
+    """The roster as Excel, in the import's own columns — so it can be edited
+    and imported elsewhere. Same scope and permission as the CSV export."""
+    deny_unless(viewer, "can_export_data", "export data")
+    scope = visible_user_ids(db, viewer)
+    stmt = select(User).where(User.org_id == viewer.org_id)
+    if scope is not None:
+        stmt = stmt.where(User.id.in_(scope))
+    people = db.scalars(stmt.order_by(User.full_name)).all()
+    everyone = {u.id: u for u in db.scalars(select(User).where(User.org_id == viewer.org_id)).all()}
+    profiles = employee_io.profiles_for(db, [u.id for u in people])
+    content = employee_io.export(people, employee_io.lookups(db, viewer.org_id), everyone, profiles)
+    return _xlsx_response(content, "employees.xlsx")
+
+
+@router.post("/employees/import")
+async def import_employees(
+    admin: AdminUser,
+    request: Request,
+    db: DbSession,
+    file: UploadFile = File(...),
+    commit: bool = Query(default=False),
+) -> dict:
+    """Check an employee spreadsheet, and with ``commit=true`` create its rows.
+
+    Without ``commit`` nothing is written: every row comes back as ready, an
+    error with its reasons, or skipped. With it, the ready rows are created —
+    each in its own savepoint, so one that the server still refuses (out of
+    seats, say) does not undo the others — and managers named by email are
+    linked once everybody in the file exists.
+    """
+    content = await file.read()
+    try:
+        rows = employee_io.read_rows(content, file.filename or "")
+    except employee_io.FileRefused as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+
+    lk = employee_io.lookups(db, admin.org_id)
+    checked = employee_io.check(rows, lk, can_people=corehr_svc.is_people_admin(admin))
+    created = 0
+    made: dict[str, User] = {}
+
+    if commit:
+        org = db.get(Organization, admin.org_id)
+        for item in checked:
+            if item.state != "ready":
+                continue
+            # The account first, committed on its own the way a single hire is.
+            try:
+                user = _create_employee(db, admin, UserCreate(**item.values), request)
+                db.commit()
+            except HTTPException as exc:
+                db.rollback()
+                detail = exc.detail
+                item.errors.append(detail.get("message", str(detail)) if isinstance(detail, dict) else str(detail))
+                continue
+            except ValueError as exc:  # a value UserCreate still refuses
+                db.rollback()
+                item.errors.append(str(exc).splitlines()[0])
+                continue
+            made[item.email] = user
+            created += 1
+
+            # Then the HR record, through the same services its own screens
+            # use. Checked already, so a failure here is rare; it is reported
+            # on the row rather than undoing an account that now exists.
+            steps = []
+            if item.profile is not None:
+                steps.append(("personal details", lambda u=user, it=item: corehr_svc.update_profile(
+                    db, admin, u.id, it.profile, request=request)))
+            if item.employment is not None:
+                steps.append(("employment terms", lambda u=user, it=item: corehr_svc.update_employment(
+                    db, admin, u.id, it.employment, request=request)))
+            if item.probation_months > 0:
+                steps.append(("probation", lambda u=user: corehr_svc.set_confirmation(
+                    db, admin, u.id, ConfirmationIn(status="probation", note="Started at import."),
+                    request=request)))
+            if item.shift_id is not None:
+                def assign(u=user, it=item):
+                    attendance_svc.assign_shift(db, org, u.id, it.shift_id, it.values["joined_on"])
+                    db.commit()
+                steps.append(("shift", assign))
+            for label, run in steps:
+                try:
+                    run()
+                except Exception as exc:  # noqa: BLE001 — reported on the row, never swallowed
+                    db.rollback()
+                    message = getattr(exc, "message", None) or str(exc).splitlines()[0]
+                    item.warnings.append(f"Created, but the {label} were not saved: {message}")
+
+        by_email = {**lk.users_by_email, **made}
+        for item in checked:
+            user = made.get(item.email)
+            if user is not None and item.manager_email and item.manager_email in by_email:
+                user.manager_id = by_email[item.manager_email].id
+        if created:
+            audit(db, org_id=admin.org_id, actor=admin, action="employee.imported", request=request,
+                  detail={"created": created, "rows": len(checked)})
+        db.commit()
+
+    def state(item) -> str:
+        if commit and item.state == "ready":
+            return "created" if item.email in made else "error"
+        return item.state
+
+    out = [
+        {"row": i.row, "name": i.name, "email": i.email, "state": state(i),
+         "messages": [i.skipped] if i.skipped else (i.errors or i.warnings)}
+        for i in checked
+    ]
+    return {
+        "rows": out,
+        "ready": sum(1 for r in out if r["state"] == "ready"),
+        "errors": sum(1 for r in out if r["state"] == "error"),
+        "skipped": sum(1 for r in out if r["state"] == "skipped"),
+        "created": created,
+    }
 
 
 @router.get("/employees/export.csv")

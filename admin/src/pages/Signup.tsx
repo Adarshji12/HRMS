@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import '../styles/signup.css'
-import Brand from '../components/Brand'
+import AuthShell from '../components/AuthShell'
 import { ErrorNote } from '../components/ui'
 import { BASE_DOMAIN } from '../lib/tenant'
 import {
@@ -169,7 +169,7 @@ export default function Signup() {
           key: order.razorpay_key_id,
           amount: order.amount,
           currency: order.currency,
-          name: 'MyDeskTime',
+          name: 'LRS Services',
           description: `${order.quote.plan_name} · ${order.quote.employees} employees`,
           order_id: order.order_id,
           prefill: {
@@ -213,9 +213,12 @@ export default function Signup() {
   const stepIndex = STEPS.findIndex((s) => s.id === step)
 
   return (
-    <div className="signup-wrap">
+    <AuthShell wide>
       <div className="signup-card">
-        <Brand size={34} />
+        <h1 className="auth-title">Create your workspace</h1>
+        <p className="auth-sub">
+          Set up HR, payroll, attendance and operations for your company in a few minutes.
+        </p>
 
         <ol className="stepper">
           {STEPS.map((s, index) => (
@@ -224,9 +227,10 @@ export default function Signup() {
               className={`step ${index === stepIndex ? 'step-current' : ''} ${
                 index < stepIndex ? 'step-done' : ''
               }`}
+              aria-current={index === stepIndex ? 'step' : undefined}
             >
               <span className="step-dot">{index < stepIndex ? '✓' : index + 1}</span>
-              {s.label}
+              <span className="step-label">{s.label}</span>
             </li>
           ))}
         </ol>
@@ -240,6 +244,9 @@ export default function Signup() {
         {step === 'company' && (
           <section>
             <h1 className="signup-title">Tell us about your company</h1>
+            <p className="page-sub signup-lead">
+              The workspace address is where your team will sign in.
+            </p>
             <div className="settings-grid">
               <label className="setting">
                 Company name *
@@ -338,7 +345,7 @@ export default function Signup() {
         {step === 'admin' && (
           <section>
             <h1 className="signup-title">Create the administrator account</h1>
-            <p className="page-sub" style={{ marginTop: 0 }}>
+            <p className="page-sub signup-lead">
               This account owns the workspace and can add everyone else.
             </p>
             <div className="settings-grid">
@@ -389,6 +396,9 @@ export default function Signup() {
         {step === 'plan' && (
           <section>
             <h1 className="signup-title">Choose your plan</h1>
+            <p className="page-sub signup-lead">
+              The price is worked out for your team size, GST included, before you pay.
+            </p>
             <div className="plan-grid">
               {plans.map((plan) => (
                 <button
@@ -487,6 +497,7 @@ export default function Signup() {
         {step === 'pay' && (
           <section>
             <h1 className="signup-title">Review and confirm</h1>
+            <p className="page-sub signup-lead">Check the details once before the workspace is created.</p>
             <dl className="review">
               <div><dt>Company</dt><dd>{company.name}</dd></div>
               <div><dt>Workspace</dt><dd>{company.slug}.{BASE_DOMAIN}</dd></div>
@@ -527,11 +538,10 @@ export default function Signup() {
           </section>
         )}
 
-        <p className="signup-foot">
-          Already have a workspace? <a href="/login">Sign in</a>
-        </p>
+        <div className="auth-divider">Already have a workspace?</div>
+        <p className="auth-alt"><a href="/login">Sign in to your account →</a></p>
       </div>
-    </div>
+    </AuthShell>
   )
 }
 
@@ -564,9 +574,8 @@ function Nav({
 
 function Done({ complete }: { complete: SignupComplete }) {
   return (
-    <div className="signup-wrap">
+    <AuthShell wide>
       <div className="signup-card" style={{ textAlign: 'center' }}>
-        <Brand size={34} />
         <div className="done-tick">✓</div>
         <h1 className="signup-title">Your workspace is ready</h1>
         <p className="page-sub">
@@ -591,6 +600,6 @@ function Done({ complete }: { complete: SignupComplete }) {
           Next: add employees, then install the desktop agent on their machines.
         </p>
       </div>
-    </div>
+    </AuthShell>
   )
 }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import require_module
+from app.api.deps import enforce_menu_rights, require_module
 
 from app.api.v1 import (
     roles,
@@ -42,7 +42,9 @@ from app.api.v1 import (
     timesheets,
 )
 
-api_router = APIRouter(prefix="/api/v1")
+# Per-menu Add / Edit / Delete, checked once for every route rather than in
+# each handler. It only refuses; see deps.enforce_menu_rights.
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(enforce_menu_rights)])
 api_router.include_router(auth.router)
 api_router.include_router(agent.router)
 api_router.include_router(admin.router)

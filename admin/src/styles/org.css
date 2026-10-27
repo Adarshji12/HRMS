@@ -371,3 +371,114 @@
 .org-pick-row:hover { background: var(--surface-2, var(--page)); }
 
 .org-pick-empty { padding: 16px 10px; }
+
+/* ------------------------------------------------- department master --- */
+
+.dm-card { padding: 0; overflow: hidden; }
+
+.dm-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--crm-hair-soft, var(--border));
+}
+
+.dm-tile {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  color: var(--status-good);
+  background: color-mix(in srgb, var(--status-good) 14%, transparent);
+}
+
+.dm-heading { min-width: 0; }
+.dm-heading .crm-sub { margin: 2px 0 0; }
+.dm-title { margin: 0; font-size: var(--text-lg, 15px); font-weight: 650; }
+
+.dm-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dm-search { width: 220px; max-width: 100%; }
+
+.dm-count { font-weight: 650; }
+
+.dm-delete { color: var(--status-critical); }
+.dm-delete:hover { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 10%, transparent); }
+
+.dm-error { padding: 12px 16px 0; }
+
+.dm-members {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .dm-tools { margin-left: 0; width: 100%; }
+  .dm-search { flex: 1; width: auto; }
+}
+
+/* Designation Master: the violet tile and the level chip. */
+.dm-tile-violet {
+  color: #7c3aed;
+  background: color-mix(in srgb, #7c3aed 13%, transparent);
+}
+
+.dm-level {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: #7c3aed;
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dm-tile-violet,
+  :root:not([data-theme="light"]) .dm-level { color: #a78bfa; }
+}
+:root[data-theme="dark"] .dm-tile-violet,
+:root[data-theme="dark"] .dm-level { color: #a78bfa; }
+
+/* ------------------------------------- department / designation: compact --- */
+
+/* The card hugs its table — the global `.card` padding no longer creeps in
+   around the head and the rows — with a one-line head and slim rows, like the
+   other Master lists. */
+.crm .card.dm-card { padding: 0; }
+.crm .dm-head { padding: 10px 14px; gap: 10px; }
+.crm .dm-tile { width: 32px; height: 32px; border-radius: 8px; }
+.crm .dm-tile svg { width: 16px; height: 16px; }
+.crm .dm-title { font-size: 14px; }
+/* The tile and the top bar already say what this list is. */
+.crm .dm-heading .crm-sub { display: none; }
+.crm .dm-tools { gap: 8px; }
+.crm .dm-search { width: 200px; }
+.crm .dm-search input { height: 32px; font-size: 12.5px; border-radius: 8px; }
+.crm .dm-tools .btn { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.crm .dm-tools .crm-sub { font-size: 12px; }
+
+.crm .dm-card .table-wrap { margin: 0; }
+.crm .dm-card thead th {
+  padding-top: 8px; padding-bottom: 8px; font-size: 10.5px;
+  background: var(--surface-2);
+}
+.crm .dm-card tbody td { padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
+.crm .dm-card th:first-child, .crm .dm-card td:first-child { padding-left: 14px; }
+.crm .dm-card th:last-child, .crm .dm-card td:last-child { padding-right: 14px; }

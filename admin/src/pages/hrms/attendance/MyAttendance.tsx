@@ -436,14 +436,6 @@ export default function MyAttendance() {
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">My attendance</h1>
-          <p className="page-sub">
-            Your punches, and how each day was classified.
-          </p>
-        </div>
-      </div>
 
       <PunchCard
         today={todayQ.data}
