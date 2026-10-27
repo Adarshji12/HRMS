@@ -50,7 +50,7 @@ services:
     # database is behind the code. The free plan has no preDeployCommand, so
     # migrate at start. Safe only with one instance: on a paid plan with
     # replicas, move this back to preDeployCommand so they cannot race.
-    dockerCommand: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+    dockerCommand: sh ./start.sh
     envVars:
       - key: ENVIRONMENT
         value: production

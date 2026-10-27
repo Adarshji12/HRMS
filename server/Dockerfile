@@ -35,6 +35,7 @@ WORKDIR /app
 COPY --chown=hrdesktimesol:hrdesktimesol alembic.ini ./
 COPY --chown=hrdesktimesol:hrdesktimesol alembic ./alembic
 COPY --chown=hrdesktimesol:hrdesktimesol app ./app
+COPY --chown=hrdesktimesol:hrdesktimesol start.sh ./
 
 # Screenshots land here when STORAGE_BACKEND=local. Mount a volume over it, or
 # switch to S3 — a container filesystem is not somewhere to keep evidence.
