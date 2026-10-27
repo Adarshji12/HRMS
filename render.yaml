@@ -67,49 +67,19 @@ services:
       # note at the top of this file.
       - key: RUN_JOBS_IN_PROCESS
         value: "true"
-      # --- object storage: the one section you must fill in -----------------
-      # Cloudflare R2 is the natural pairing (10 GB free). Set the four values
-      # below in the Render dashboard rather than committing them.
+      # Render's start port; the image's uvicorn listens on 8000.
+      - key: PORT
+        value: "8000"
+      # --- object storage ---------------------------------------------------
+      # Local disk for now: desktop-agent screenshots are lost on each deploy
+      # or wake. To keep them, set STORAGE_BACKEND=s3 and add S3_BUCKET,
+      # S3_ENDPOINT_URL, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY in the
+      # Render dashboard (Cloudflare R2 has a free tier).
       - key: STORAGE_BACKEND
-        value: s3
-      - key: S3_BUCKET
-        sync: false
-      - key: S3_ENDPOINT_URL
-        sync: false
-      - key: S3_ACCESS_KEY_ID
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
+        value: local
       # Browsers reach the API from the console's origin. Set this to the
       # static site's URL once Render has assigned it.
       - key: CORS_ORIGINS
         sync: false
 
-  # ----------------------------------------------------------- console ---
-  - type: web
-    name: hrdesktimesol-console
-    runtime: static
-    rootDir: admin
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      # Deliberately NOT set to the API's URL.
-      #
-      # The rewrite below keeps every call same-origin, which is what the
-      # console was written for and what keeps the bearer token off a second
-      # host — no CORS preflight, no third-party-cookie questions. VITE_API_BASE
-      # exists for hosts that cannot rewrite; Render can, so it stays empty.
-      - key: VITE_API_BASE
-        value: ""
-    routes:
-      # Same-origin proxy to the API. Must come before the SPA fallback:
-      # routes match in order, and a catch-all above this would swallow /api.
-      - type: rewrite
-        source: /api/*
-        destination: https://hrdesktimesol-api.onrender.com/api/*
-      # Client-side routing. Every unmatched path is the app, not a 404 — the
-      # router owns /leave, /payroll and the rest, and the server has no such
-      # files to serve.
-      - type: rewrite
-        source: /*
-        destination: /index.html
+  # The console is hosted on Vercel (admin/vercel.json proxies /api here).

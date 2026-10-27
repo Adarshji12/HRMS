@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _server_root() -> Path:
@@ -40,6 +41,16 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(SERVER_ROOT / 'hrdesktimesol.db').as_posix()}"
 
     secret_key: str = "dev-only-insecure-key-change-me"
+
+    @field_validator("database_url")
+    @classmethod
+    def _psycopg_driver(cls, value: str) -> str:
+        # Hosts such as Render hand out postgres:// or postgresql:// URLs, which
+        # SQLAlchemy maps to psycopg2 — not installed. Name psycopg 3 explicitly.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix):]
+        return value
     #: bcrypt cost factor. 12 is the production value and the default.
     #:
     #: Exists to be lowered *by the test suite only* — hashing is deliberately
