@@ -7,7 +7,7 @@
 #   compose service   free-tier answer
 #   ---------------   ----------------------------------------------------
 #   db                Render PostgreSQL (free, 1 GB)
-#   migrate           preDeployCommand on the API service
+#   migrate           run at container start, before uvicorn
 #   api               Web Service, Docker, one uvicorn worker
 #   console           Static Site — free, no spin-down, on a CDN
 #   jobs              RUN_JOBS_IN_PROCESS=true, a thread inside the API
@@ -47,10 +47,10 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     # The schema is owned by Alembic, and main.py refuses to boot when the
-    # database is behind the code. Running it here rather than in the image's
-    # CMD keeps the "N replicas must not race each other" rule from the
-    # Dockerfile true if this ever leaves the free plan.
-    preDeployCommand: alembic upgrade head
+    # database is behind the code. The free plan has no preDeployCommand, so
+    # migrate at start. Safe only with one instance: on a paid plan with
+    # replicas, move this back to preDeployCommand so they cannot race.
+    dockerCommand: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
     envVars:
       - key: ENVIRONMENT
         value: production
