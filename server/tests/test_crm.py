@@ -915,3 +915,19 @@ def test_visit_can_be_deleted(client, acme):
     assert client.delete(f"/api/v1/crm/visits/{visit['id']}", headers=acme.headers()).status_code == 204
     rows = client.get("/api/v1/crm/visits", headers=acme.headers()).json()
     assert all(r["id"] != visit["id"] for r in rows)
+
+
+def test_item_categories_are_a_master_list(client, acme):
+    created = client.post(
+        "/api/v1/crm/masters/item-categories", json={"name": "Cameras"}, headers=acme.headers()
+    )
+    assert created.status_code == 201, created.text
+    assert [r["name"] for r in _masters(client, acme, "item-categories")] == ["Cameras"]
+
+
+def test_item_companies_are_a_master_list(client, acme):
+    created = client.post(
+        "/api/v1/crm/masters/item-companies", json={"name": "Hikvision"}, headers=acme.headers()
+    )
+    assert created.status_code == 201, created.text
+    assert [r["name"] for r in _masters(client, acme, "item-companies")] == ["Hikvision"]

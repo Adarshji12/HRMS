@@ -17,20 +17,21 @@
  * block here changes this quotation only, and the page says so.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import { useQuery } from '../../lib/useQuery'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconPlus, IconReturn, IconSheet } from '../../components/Icons'
+import { IconChevronDown, IconEdit, IconPlus, IconReturn, IconSheet } from '../../components/Icons'
+import QuotationPreview from './QuotationPreview'
 import {
   crm,
   crmError,
   daysFromTodayISO,
   rupees,
   todayISO,
+  type Customer,
   type Product,
-  type PlanRow,
   type Quotation,
   type QuotationLine,
 } from './api'
@@ -67,7 +68,6 @@ export default function QuotationEditor() {
   )
 
   const products = useQuery<Product[]>('crm-products-all', () => crm.masters<Product>('products'))
-  const plans = useQuery<PlanRow[]>('crm-plans-all', () => crm.masters<PlanRow>('plans'))
   /* Terms, validity, the default GST rate and the company's own GST state —
      the last read here only to tell the person which way the document will be
      taxed *before* they save; the decision itself is the server's. Readable by
@@ -92,8 +92,20 @@ export default function QuotationEditor() {
   const [terms, setTerms] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()])
-  const [leadId, setLeadId] = useState<string | null>(null)
+  const [leadId, setLeadId] = useState<string | null>(params.get('lead'))
   const [customerId, setCustomerId] = useState<string | null>(params.get('customer'))
+  /* The Customer name field lists CRM › My Customers as you type. */
+  const myCustomers = useQuery<Customer[]>('crm-customers-all', () => crm.customers({}))
+  /* Detailed / Proposal only — see the setup's style. */
+  const [subject, setSubject] = useState('')
+  const [letterBody, setLetterBody] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('')
+  const [deliveryTerms, setDeliveryTerms] = useState('')
+  const [warrantyTerms, setWarrantyTerms] = useState('')
+  /* Raised from a lead or customer, the party block arrives filled in and
+     shows as a summary; Edit opens the fields. */
+  const [editingParty, setEditingParty] = useState(!params.get('lead') && !params.get('customer'))
+  const [previewing, setPreviewing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<Quotation | null>(null)
@@ -119,14 +131,43 @@ export default function QuotationEditor() {
     setShipping(row.shipping_address ?? '')
     setTerms(row.terms ?? '')
     setNotes(row.notes ?? '')
+    setSubject(row.subject ?? '')
+    setLetterBody(row.letter_body ?? '')
+    setPaymentTerms(row.payment_terms ?? '')
+    setDeliveryTerms(row.delivery_terms ?? '')
+    setWarrantyTerms(row.warranty_terms ?? '')
     setLeadId(row.lead_id)
     setCustomerId(row.customer_id)
+    setEditingParty(!row.lead_id && !row.customer_id)
     setLines(
       row.lines.length
         ? row.lines.map((line) => ({ ...line, key: line.id ?? Math.random().toString(36).slice(2) }))
         : [emptyLine()],
     )
   }, [existing.data])
+
+  /* Picking a customer from My Customers fills the party block from them;
+     clearing the pick leaves what is typed, but no longer tied to anyone. */
+  function pickCustomer(id: string) {
+    const c = (myCustomers.data ?? []).find((x) => x.id === id) ?? null
+    if (!c) {
+      setCustomerId(null)
+      setEditingParty(true)
+      return
+    }
+    setCustomerId(c.id)
+    setCustomerName(c.name)
+    setCompanyName(c.company ?? '')
+    setGstin(c.gstin ?? '')
+    setMobile(c.mobile)
+    setWhatsapp(c.whatsapp ?? '')
+    setEmail(c.email ?? '')
+    setCity(c.city_name ?? '')
+    setState(c.state_name ?? '')
+    setPincode(c.pincode ?? '')
+    setBilling(c.address ?? '')
+    setEditingParty(false)
+  }
 
   /* A quotation opened from a customer starts with their details on it. */
   useEffect(() => {
@@ -151,6 +192,40 @@ export default function QuotationEditor() {
       })
   }, [customerId, isNew, saved])
 
+  /* A quotation opened from a lead starts with the lead's details, and with
+     the product the lead asked about already on the first line. */
+  const [leadProduct, setLeadProduct] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isNew || !leadId || customerId || saved) return
+    void crm
+      .lead(leadId)
+      .then((lead) => {
+        setCustomerName(lead.name)
+        setCompanyName(lead.company ?? '')
+        setMobile(lead.mobile)
+        setWhatsapp(lead.whatsapp ?? '')
+        setEmail(lead.email ?? '')
+        setCity(lead.city_name ?? '')
+        setState(lead.state_name ?? '')
+        setPincode(lead.pincode ?? '')
+        setBilling(lead.address ?? '')
+        setLeadProduct(lead.product_id)
+      })
+      .catch(() => setEditingParty(true))
+  }, [leadId, customerId, isNew, saved])
+
+  useEffect(() => {
+    if (!leadProduct || !products.data) return
+    const first = lines[0]
+    if (lines.length === 1 && first && !first.product_id && !first.name) applyProduct(first.key, leadProduct)
+    setLeadProduct(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadProduct, products.data])
+
+  const setup = defaults.data?.setup ?? null
+  const style = saved?.style ?? setup?.style ?? 'simple'
+  const detailed = style === 'detailed'
+
   useEffect(() => {
     if (isNew && defaults.data?.terms && !terms) setTerms(defaults.data.terms)
   }, [defaults.data, isNew, terms])
@@ -162,6 +237,14 @@ export default function QuotationEditor() {
     if (!isNew || seeded || !defaults.data) return
     setSeeded(true)
     setValidUntil(daysFromTodayISO(defaults.data.validity_days))
+    const templates = defaults.data.setup
+    if (templates?.style === 'detailed') {
+      setSubject(templates.letter_subject ?? '')
+      setLetterBody(templates.letter_body ?? '')
+      setPaymentTerms(templates.payment_terms ?? '')
+      setDeliveryTerms(templates.delivery_terms ?? '')
+      setWarrantyTerms(templates.warranty_terms ?? '')
+    }
     const gst = defaults.data.default_gst
     setLines((current) =>
       current.map((line) => (!line.product_id && !line.name && line.gst_percent === '0' ? { ...line, gst_percent: gst } : line)),
@@ -217,18 +300,7 @@ export default function QuotationEditor() {
     })
   }
 
-  function applyPlan(key: string, planId: string) {
-    const plan = (plans.data ?? []).find((row) => row.id === planId)
-    const line = lines.find((row) => row.key === key)
-    patchLine(key, {
-      plan_id: planId || null,
-      rate: plan ? plan.price : line?.rate ?? '0',
-      gst_percent: plan?.gst_percent ?? line?.gst_percent ?? '0',
-      name: line?.name || `${plan?.product_name ?? ''} ${plan?.name ?? ''}`.trim(),
-    })
-  }
-
-  async function save(nextStatus?: string) {
+  async function save(nextStatus?: string, thenPreview = false) {
     setBusy(true)
     setError(null)
     const body = {
@@ -249,6 +321,12 @@ export default function QuotationEditor() {
       shipping_address: sameShipping ? null : shipping || null,
       terms: terms || null,
       notes: notes || null,
+      style,
+      subject: subject || null,
+      letter_body: letterBody || null,
+      payment_terms: paymentTerms || null,
+      delivery_terms: deliveryTerms || null,
+      warranty_terms: warrantyTerms || null,
       lines: lines
         .filter((line) => line.name.trim())
         .map((line) => ({
@@ -277,6 +355,7 @@ export default function QuotationEditor() {
           : [emptyLine()],
       )
       if (!saved) navigate(`/crm/quotations/${final.id}`, { replace: true })
+      if (thenPreview) setPreviewing(true)
     } catch (err) {
       setError(crmError(err, 'That quotation could not be saved'))
     } finally {
@@ -325,9 +404,9 @@ export default function QuotationEditor() {
               {saved ? <StateText value={saved.status} /> : <span className="qe-draft">Draft</span>}
             </div>
             <div className="crm-field-hint">
-              {saved
-                ? 'The number is fixed once saved, so it is never used twice.'
-                : 'A number is reserved when you save.'}
+              {detailed ? 'Detailed / Proposal' : 'Simple'} quotation
+              {' · '}
+              {saved ? 'number fixed once saved' : 'a number is reserved when you save'}
             </div>
           </div>
           <div className="crm-doc-dates">
@@ -347,12 +426,20 @@ export default function QuotationEditor() {
                 disabled={decided}
               />
             </Field>
-            <button className="btn qe-back" onClick={() => navigate('/crm/quotations')}>
+            <button className="btn qe-back" onClick={() => navigate('/crm/quotations?all')}>
               <IconReturn size={14} /> All quotations
             </button>
-            <button className="btn btn-primary" onClick={() => save()} disabled={busy || decided}>
-              {busy ? 'Saving…' : saved ? 'Save changes' : 'Save as Draft'}
-            </button>
+            <SaveMenu
+              busy={busy}
+              decided={decided}
+              label={busy ? 'Saving…' : saved ? 'Save changes' : 'Save as Draft'}
+              onSave={() => save()}
+              // Marks it Sent and opens the document to print or share as PDF.
+              onSend={() => save(saved?.status === 'sent' ? undefined : 'sent', true)}
+              // The preview is the server's document, so it saves first —
+              // an answered quotation is shown as it stands.
+              onPreview={() => (decided && saved ? setPreviewing(true) : save(undefined, true))}
+            />
             {saved && (
               <select
                 value=""
@@ -377,13 +464,57 @@ export default function QuotationEditor() {
           <h2 className="crm-panel-title">Customer details</h2>
           <span className="crm-field-hint">
             {leadId || customerId
-              ? 'Copied from the record — edits here change this quotation only.'
-              : 'Typed by hand. Raise from a lead or customer to fill these in.'}
+              ? `Fetched from the ${leadId ? 'lead' : 'customer'} — edits change this quotation only.`
+              : 'Type a name to pick from My Customers, or fill the details by hand.'}
           </span>
+          {state && (
+            <span className={`qe-tax${interstate ? ' is-inter' : ''}`}>
+              {interstate ? 'IGST · inter-state' : homeState ? 'CGST + SGST · same state' : 'Set your company state for the tax split'}
+            </span>
+          )}
+          {!editingParty && !decided && (
+            <button className="btn btn-sm crm-panel-link" onClick={() => setEditingParty(true)}>
+              <IconEdit size={14} /> Edit details
+            </button>
+          )}
         </div>
+        {!editingParty ? (
+          <div className="qe-party">
+            <div className="qe-party-who">
+              <b>{customerName || '—'}</b>
+              {companyName && <span>{companyName}</span>}
+            </div>
+            <dl className="qe-party-facts">
+              <div><dt>Mobile</dt><dd>{mobile || '—'}</dd></div>
+              <div><dt>Email</dt><dd>{email || '—'}</dd></div>
+              <div><dt>GSTIN</dt><dd>{gstin || '—'}</dd></div>
+              <div>
+                <dt>Place of supply</dt>
+                <dd>
+                  {[city, state, pincode].filter(Boolean).join(', ') || '—'}
+                  {interstate && <span className="crm-field-warn"> · IGST</span>}
+                </dd>
+              </div>
+              <div className="qe-party-wide"><dt>Billing address</dt><dd>{billing || '—'}</dd></div>
+            </dl>
+          </div>
+        ) : (
         <div className="crm-grid-4 qe-body">
           <Field label="Customer name">
-            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={decided} />
+            {leadId || decided ? (
+              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={decided} />
+            ) : (
+              <NameCombo
+                value={customerName}
+                customers={myCustomers.data ?? []}
+                onType={(text) => {
+                  setCustomerName(text)
+                  // A typed name is no longer the picked customer.
+                  if (customerId) setCustomerId(null)
+                }}
+                onPick={pickCustomer}
+              />
+            )}
           </Field>
           <Field label="Company">
             <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} disabled={decided} />
@@ -403,27 +534,15 @@ export default function QuotationEditor() {
           <Field label="City">
             <input value={city} onChange={(e) => setCity(e.target.value)} disabled={decided} />
           </Field>
-          <Field
-            label="State"
-            hint={
-              interstate ? (
-                <span className="crm-field-warn">
-                  Differs from your company state — IGST applies.
-                </span>
-              ) : homeState ? (
-                'Same state as your company — CGST and SGST apply.'
-              ) : (
-                'Set your company state in Settings → Company profile so the tax split is decided for you.'
-              )
-            }
-          >
+          <Field label="State">
             <input value={state} onChange={(e) => setState(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Pincode">
             <input value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Billing address" wide>
-            <textarea value={billing} onChange={(e) => setBilling(e.target.value)} rows={2} disabled={decided} />
+            <textarea value={billing} onChange={(e) => setBilling(e.target.value)} rows={1} disabled={decided}
+              placeholder="Building, street, area" />
           </Field>
           <div className="crm-field crm-form-wide">
             <label className="crm-check">
@@ -448,6 +567,7 @@ export default function QuotationEditor() {
             )}
           </div>
         </div>
+        )}
       </section>
 
       <section className="card qe-card">
@@ -471,7 +591,7 @@ export default function QuotationEditor() {
               <tr>
                 <th style={{ width: 28 }}>#</th>
                 <th>Product / Service</th>
-                <th>Plan</th>
+                <th>HSN / SAC</th>
                 <th>Qty</th>
                 <th>Rate (₹)</th>
                 <th>Discount</th>
@@ -524,20 +644,14 @@ export default function QuotationEditor() {
                       </div>
                     </td>
                     <td>
-                      <select
-                        value={line.plan_id ?? ''}
-                        onChange={(event) => applyPlan(line.key, event.target.value)}
-                        disabled={decided || !line.product_id}
-                      >
-                        <option value="">{line.product_id ? '—' : 'Pick a product first'}</option>
-                        {(plans.data ?? [])
-                          .filter((plan) => plan.product_id === line.product_id)
-                          .map((plan) => (
-                            <option key={plan.id} value={plan.id}>
-                              {plan.name}
-                            </option>
-                          ))}
-                      </select>
+                      <input
+                        className="crm-line-hsn"
+                        value={line.hsn_sac ?? ''}
+                        onChange={(event) => patchLine(line.key, { hsn_sac: event.target.value || null })}
+                        placeholder="From product"
+                        maxLength={16}
+                        disabled={decided}
+                      />
                     </td>
                     <td>
                       <input
@@ -613,8 +727,45 @@ export default function QuotationEditor() {
         </div>
       </section>
 
+      {detailed && (
+        <section className="card qe-card">
+          <div className="crm-panel-head">
+            <h2 className="crm-panel-title">Proposal letter</h2>
+            <span className="crm-field-hint">
+              Printed above the items. {'{customer}'}, {'{company}'}, {'{number}'} and {'{date}'} are filled in.
+            </span>
+          </div>
+          <div className="qe-body qe-letter">
+            <Field label="Subject">
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={decided}
+                     maxLength={200} placeholder="Quotation for …" />
+            </Field>
+            <Field label="Covering letter">
+              <textarea value={letterBody} onChange={(e) => setLetterBody(e.target.value)} rows={4}
+                        disabled={decided} />
+            </Field>
+          </div>
+        </section>
+      )}
+
       <section className="card qe-card qe-foot">
-        <div className="qe-notes">
+        <div className={`qe-notes${detailed ? ' is-detailed' : ''}`}>
+          {detailed && (
+            <>
+              <Field label="Payment terms">
+                <textarea value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} rows={3}
+                          disabled={decided} />
+              </Field>
+              <Field label="Delivery terms">
+                <textarea value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} rows={3}
+                          disabled={decided} />
+              </Field>
+              <Field label="Warranty">
+                <textarea value={warrantyTerms} onChange={(e) => setWarrantyTerms(e.target.value)} rows={3}
+                          disabled={decided} />
+              </Field>
+            </>
+          )}
           <Field label="Terms &amp; conditions" hint="Defaults from CRM Settings.">
             <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={3} disabled={decided} />
           </Field>
@@ -688,6 +839,143 @@ export default function QuotationEditor() {
         </div>
       </section>
       </div>
+      {previewing && saved && (
+        <QuotationPreview quotation={saved} setup={setup} onClose={() => setPreviewing(false)} />
+      )}
     </CrmPage>
+  )
+}
+
+
+/** The Customer name field: type freely, or pick one of My Customers from the
+ *  list that opens under it — picking fills the rest of the party block. */
+function NameCombo({ value, customers, onType, onPick }: {
+  value: string
+  customers: Customer[]
+  onType: (text: string) => void
+  onPick: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [at, setAt] = useState(0)
+  const q = value.trim().toLowerCase()
+  const shown = customers
+    .filter((c) => !q || [c.name, c.company, c.mobile, c.code, c.city_name].some((v) => v?.toLowerCase().includes(q)))
+    .slice(0, 8)
+  const pick = (c: Customer) => { onPick(c.id); setOpen(false) }
+  const box = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  // A click anywhere outside closes the list, whatever has focus.
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [open])
+  return (
+    <div className={`qe-combo${open ? ' is-open' : ''}`} ref={box}>
+      <input
+        ref={input}
+        value={value}
+        placeholder="Type or pick a customer"
+        // Not "off": Chrome ignores that and lays its saved-address popup over the list.
+        autoComplete="one-time-code"
+        name="qe-customer-search"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        onChange={(e) => { onType(e.target.value); setOpen(true); setAt(0) }}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' || e.key === 'Tab') { if (open && e.key === 'Escape') e.preventDefault(); setOpen(false); return }
+          if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true); return }
+          if (!open || !shown.length) return
+          if (e.key === 'ArrowDown') { e.preventDefault(); setAt((n) => Math.min(n + 1, shown.length - 1)) }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setAt((n) => Math.max(n - 1, 0)) }
+          if (e.key === 'Enter') { e.preventDefault(); pick(shown[at]) }
+        }}
+      />
+      <button type="button" className="qe-combo-caret" tabIndex={-1} aria-label={open ? 'Close the list' : 'Open the list'}
+        onMouseDown={(e) => {
+          // Keep focus in the box; the arrow only opens and closes the list.
+          e.preventDefault()
+          if (open) { setOpen(false); return }
+          input.current?.focus()
+          setOpen(true)
+        }} />
+      {open && (
+        <ul className="qe-combo-list" role="listbox">
+          {shown.length === 0 ? (
+            <li className="qe-combo-empty">{customers.length ? 'No match — the name is used as typed' : 'No customers yet — add them in My Customers'}</li>
+          ) : shown.map((c, n) => (
+            <li key={c.id} role="option" aria-selected={n === at} className={n === at ? 'is-at' : ''}
+              onMouseEnter={() => setAt(n)} onMouseDown={(e) => { e.preventDefault(); pick(c) }}>
+              <b>{c.name}</b>
+              <small>{[c.code, c.company, c.mobile, c.city_name].filter(Boolean).join(' · ')}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+
+const SvgSave = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M7 3v5h8V3M7 21v-7h10v7" />
+  </svg>
+)
+const SvgSend = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+  </svg>
+)
+const SvgEye = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+/** Save as Draft, with Save & Send and Preview under the arrow. */
+function SaveMenu({ busy, decided, label, onSave, onSend, onPreview }: {
+  busy: boolean
+  decided: boolean
+  label: string
+  onSave: () => void
+  onSend: () => void
+  onPreview: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const act = (fn: () => void) => () => { setOpen(false); fn() }
+  return (
+    <div className="qe-save" ref={root}>
+      <button className="btn btn-primary qe-save-main" onClick={onSave} disabled={busy || decided}>
+        <SvgSave /> {label}
+      </button>
+      <button className="btn btn-primary qe-save-caret" onClick={() => setOpen((v) => !v)} disabled={busy}
+        aria-haspopup="menu" aria-expanded={open} aria-label="More save options">
+        <IconChevronDown size={15} />
+      </button>
+      {open && (
+        <div className="qe-save-menu" role="menu">
+          <button role="menuitem" className="is-main" onClick={act(onSave)} disabled={decided}><SvgSave /> {label}</button>
+          <button role="menuitem" onClick={act(onSend)} disabled={decided}><SvgSend /> Save &amp; Send</button>
+          <hr />
+          <button role="menuitem" onClick={act(onPreview)}><SvgEye /> Preview</button>
+          <p>Send and Preview save the quotation first. Send marks it Sent and opens the document to print or share as PDF.</p>
+        </div>
+      )}
+    </div>
   )
 }

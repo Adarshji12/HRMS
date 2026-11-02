@@ -678,3 +678,63 @@ export function LeadName({ lead }: { lead: Lead }) {
     </div>
   )
 }
+
+/* Form pieces shared by the lead and customer forms (lf- in crm.css). A section is a titled group on a two-column grid; a
+   field is a label (with a red mark when required), the control, and one line
+   under it — the hint, or the error once there is one. */
+
+export function LfSection({ icon, title, note, children }: {
+  icon: ReactNode
+  title: string
+  note: string
+  children: ReactNode
+}) {
+  return (
+    <section className="lf-section">
+      <header className="lf-section-head">
+        <span className="lf-section-icon" aria-hidden>{icon}</span>
+        <div>
+          <h3>{title}</h3>
+          <p>{note}</p>
+        </div>
+      </header>
+      <div className="lf-grid">{children}</div>
+    </section>
+  )
+}
+
+export function LfField({ label, required, hint, error, wide, aside, children }: {
+  label: string
+  required?: boolean
+  hint?: ReactNode
+  error?: string
+  wide?: boolean
+  aside?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className={`lf-field${wide ? ' is-wide' : ''}${error ? ' is-bad' : ''}`}>
+      <div className="lf-label-row">
+        <span className="lf-label">{label}{required && <span className="lf-req"> *</span>}</span>
+        {aside}
+      </div>
+      {children}
+      {error ? <span className="lf-error">{error}</span> : hint ? <span className="lf-hint">{hint}</span> : null}
+    </div>
+  )
+}
+
+export function LfInput({ icon, prefix, bad, children }: {
+  icon?: ReactNode
+  prefix?: string
+  bad?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className={`lf-input${bad ? ' is-bad' : ''}`}>
+      {icon && <span className="lf-input-icon" aria-hidden>{icon}</span>}
+      {prefix && <span className="lf-input-prefix" aria-hidden>{prefix}</span>}
+      {children}
+    </div>
+  )
+}

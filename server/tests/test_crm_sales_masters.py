@@ -200,3 +200,28 @@ def test_districts_sit_under_their_state(client, acme, globex):
 
     foreign = _get(client, globex, "states")[0]["id"]
     assert _post(client, acme, "districts", {"name": "X", "state_id": foreign}).status_code == 422
+
+
+def test_plan_code_cycle_and_description(client, acme):
+    product = _post(client, acme, "products", {"name": "10KVA UPS", "rate": "45000", "gst_percent": "18",
+                                                 "hsn_sac": "85044010", "description": "Double conversion"})
+    assert product.status_code == 201, product.text
+    product = product.json()
+    assert product["hsn_sac"] == "85044010" and product["description"] == "Double conversion"
+    plan = _post(client, acme, "plans", {"product_id": product["id"], "name": "Gold", "code": "AMC-GOLD-12",
+                                           "billing_cycle": "monthly", "price": "4999", "description": "4 visits"})
+    assert plan.status_code == 201, plan.text
+    plan = plan.json()
+    assert plan["code"] == "AMC-GOLD-12" and plan["billing_cycle"] == "monthly" and plan["description"] == "4 visits"
+    assert plan["duration_days"] is None
+    # A cycle that is not one of ours is refused.
+    bad = _post(client, acme, "plans", {"product_id": product["id"], "name": "X", "billing_cycle": "weekly"})
+    assert bad.status_code == 422
+
+
+def test_plan_term_comes_from_cycle_unless_days_are_given():
+    from app.models import CrmPlan
+
+    assert CrmPlan(billing_cycle="monthly").term_days == 30
+    assert CrmPlan(billing_cycle="yearly", duration_days=45).term_days == 45
+    assert CrmPlan(billing_cycle="one_time").term_days is None

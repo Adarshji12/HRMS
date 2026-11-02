@@ -13,6 +13,7 @@ cannot. Everything else checks a capability.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Query, Request, Response, status
 
@@ -59,7 +60,20 @@ def write_settings(payload: S.SettingsIn, viewer: CurrentUser, db: DbSession, re
 
         raise ErpError("permission_denied", "Only an administrator changes ERP settings.", 403)
     row = get_settings(db, viewer.org_id)
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    # Each account keeps an id so an invoice can name it; exactly one is the
+    # default once there are any.
+    accounts = data.pop("bank_accounts") or []
+    for account in accounts:
+        account["id"] = account.get("id") or uuid.uuid4().hex[:12]
+    if accounts and not any(a["is_default"] for a in accounts):
+        accounts[0]["is_default"] = True
+    seen_default = False
+    for account in accounts:
+        account["is_default"] = account["is_default"] and not seen_default
+        seen_default = seen_default or account["is_default"]
+    data["bank_accounts"] = accounts
+    for field, value in data.items():
         setattr(row, field, value)
     record_audit(db, viewer, "settings.saved", row, request=request, detail=payload.model_dump(mode="json"))
     db.commit()
@@ -87,6 +101,11 @@ def update_warehouse(row_id: uuid.UUID, payload: S.WarehouseIn, viewer: CurrentU
     return masters.save_warehouse(db, viewer, payload, row_id, request=request)
 
 
+@router.delete("/warehouses/{row_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_warehouse(row_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    masters.delete_warehouse(db, viewer, row_id, request=request)
+
+
 @router.get("/items")
 def list_items(viewer: CurrentUser, db: DbSession, q: str | None = None, active_only: bool = False,
                item_type: str | None = None) -> list[dict]:
@@ -101,6 +120,11 @@ def create_item(payload: S.ItemIn, viewer: CurrentUser, db: DbSession, request: 
 @router.put("/items/{row_id}")
 def update_item(row_id: uuid.UUID, payload: S.ItemIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return masters.save_item(db, viewer, payload, row_id, request=request)
+
+
+@router.delete("/items/{row_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_item(row_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    masters.delete_item(db, viewer, row_id, request=request)
 
 
 @router.get("/vendors")
@@ -303,6 +327,11 @@ def list_pos(viewer: CurrentUser, db: DbSession, status: str | None = None, vend
     return purchase.list_purchase_orders(db, viewer, status=status, vendor_id=vendor_id, q=q)
 
 
+@router.get("/purchase-orders/next-number")
+def po_next_number(viewer: CurrentUser, db: DbSession, on: date | None = None) -> dict:
+    return purchase.peek_po_number(db, viewer, on)
+
+
 @router.get("/purchase-orders/{po_id}")
 def get_po(po_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
     return purchase.get_purchase_order(db, viewer, po_id)
@@ -483,6 +512,26 @@ def list_sales_orders(viewer: CurrentUser, db: DbSession, status: str | None = N
     return sales.list_orders(db, viewer, status=status, customer_id=customer_id, q=q)
 
 
+@router.get("/sales-orders/next-number")
+def so_next_number(viewer: CurrentUser, db: DbSession, on: date | None = None) -> dict:
+    return sales.peek_order_number(db, viewer, on)
+
+
+@router.post("/sales-orders/{so_id}/attachments", status_code=status.HTTP_201_CREATED)
+def so_add_attachment(so_id: uuid.UUID, payload: S.AttachmentIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return sales.add_attachment(db, viewer, so_id, payload, request=request)
+
+
+@router.get("/sales-orders/{so_id}/attachments/{att_id}")
+def so_get_attachment(so_id: uuid.UUID, att_id: str, viewer: CurrentUser, db: DbSession) -> dict:
+    return sales.get_attachment(db, viewer, so_id, att_id)
+
+
+@router.delete("/sales-orders/{so_id}/attachments/{att_id}")
+def so_remove_attachment(so_id: uuid.UUID, att_id: str, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return sales.remove_attachment(db, viewer, so_id, att_id, request=request)
+
+
 @router.get("/sales-orders/{so_id}")
 def get_sales_order(so_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
     return sales.get_order(db, viewer, so_id)
@@ -607,6 +656,11 @@ def invoice_ageing(viewer: CurrentUser, db: DbSession) -> dict:
     return billing.ageing(db, viewer)
 
 
+@router.get("/invoices/next-number")
+def invoice_next_number(viewer: CurrentUser, db: DbSession, kind: str = "service", on: date | None = None) -> dict:
+    return billing.peek_number(db, viewer, kind, on)
+
+
 @router.get("/invoices/{invoice_id}")
 def get_invoice(invoice_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
     return billing.get_invoice(db, viewer, invoice_id)
@@ -671,6 +725,17 @@ def list_receipts(viewer: CurrentUser, db: DbSession, customer_id: uuid.UUID | N
 @router.post("/receipts", status_code=status.HTTP_201_CREATED)
 def record_receipt(payload: S.ReceiptIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return billing.record_receipt(db, viewer, payload, request=request)
+
+
+@router.patch("/receipts/{receipt_id}")
+def correct_receipt(receipt_id: uuid.UUID, payload: S.ReceiptCorrectionIn, viewer: CurrentUser, db: DbSession,
+                    request: Request) -> dict:
+    return billing.correct_receipt(db, viewer, receipt_id, payload, request=request)
+
+
+@router.get("/receipts/{receipt_id}/proof")
+def receipt_proof(receipt_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
+    return billing.receipt_proof(db, viewer, receipt_id)
 
 
 @router.post("/receipts/{receipt_id}/reverse")

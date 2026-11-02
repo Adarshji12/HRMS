@@ -6,17 +6,17 @@
    every document uses, and the reason prompt behind every cancel, reject and
    reversal (the PRD requires a reason on all of them, and so does the server). */
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import { useQuery } from '../../lib/useQuery'
 import { shortDate } from '../../lib/format'
-import { IconClose, IconPlus } from '../../components/Icons'
+import { IconClose, IconPlus, IconSearch } from '../../components/Icons'
 import { CrmPage, Dialog, Field } from '../crm/parts'
 import { erp, erpError, qtyText, rupees, type Access, type Capability, type ChainStep, type Item } from './api'
 
 export { Dialog, Drawer, Field, Stat, Stats } from '../crm/parts'
 
-export function ErpPage(props: { title: string; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
+export function ErpPage(props: { title?: string; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return <CrmPage {...props} />
 }
 
@@ -274,11 +274,15 @@ export function LineEditor({ lines, onChange, priced = true, items, rateFrom = '
                     <select value={l.item_id} onChange={(e) => {
                       const item = items.find((i) => i.id === e.target.value)
                       set(l.key, item
-                        ? { item_id: item.id, description: item.name, rate: item[rateFrom], gst_percent: item.gst_percent }
+                        ? {
+                          item_id: item.id, description: item.name, rate: item[rateFrom],
+                          gst_percent: rateFrom === 'standard_cost' ? item.purchase_gst_percent ?? item.gst_percent : item.gst_percent,
+                        }
                         : { item_id: '' })
                     }}>
                       <option value="">— free text —</option>
-                      {items.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
+                      {items.filter((i) => i.id === l.item_id || (rateFrom === 'standard_cost' ? i.can_be_purchased : i.can_be_sold) !== false)
+                        .map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
                     </select>
                     <input value={l.description} placeholder="Description" onChange={(e) => set(l.key, { description: e.target.value })} />
                   </td>
@@ -345,6 +349,102 @@ export function LinesTable({ lines, extra }: {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+
+export interface PickOption {
+  value: string
+  label: string
+  /** A second, quieter line: a code, a GSTIN, a city. */
+  hint?: string
+  /** Shown on the right, e.g. a status. */
+  tag?: string
+  disabled?: boolean
+}
+
+/** A dropdown you can type into: a button that opens a searchable list.
+ *  Arrow keys, Enter and Escape work as in a native select. */
+export function SearchSelect({ value, onChange, options, placeholder = 'Select…', empty = 'Nothing found', clearable, invalid, label, footer }: {
+  value: string
+  onChange: (value: string) => void
+  options: PickOption[]
+  placeholder?: string
+  empty?: ReactNode
+  clearable?: boolean
+  invalid?: boolean
+  label?: string
+  footer?: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [at, setAt] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const chosen = options.find((o) => o.value === value)
+  const needle = q.trim().toLowerCase()
+  const shown = options.filter((o) => !needle || `${o.label} ${o.hint ?? ''} ${o.tag ?? ''}`.toLowerCase().includes(needle))
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [open])
+  useEffect(() => { listRef.current?.querySelector('.is-at')?.scrollIntoView({ block: 'nearest' }) }, [at, open])
+
+  function openList() {
+    setQ('')
+    setAt(Math.max(0, options.findIndex((o) => o.value === value)))
+    setOpen(true)
+  }
+  function pick(o: PickOption) {
+    if (o.disabled) return
+    onChange(o.value)
+    setOpen(false)
+  }
+  function key(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((n) => Math.min(shown.length - 1, n + 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((n) => Math.max(0, n - 1)) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (shown[at]) pick(shown[at]) }
+    else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
+  }
+
+  return (
+    <div className={`ss${open ? ' is-open' : ''}${invalid ? ' is-invalid' : ''}`} ref={root}>
+      <button type="button" className="ss-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={label}
+        onClick={() => (open ? setOpen(false) : openList())}
+        onKeyDown={(e) => { if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openList() } }}>
+        {chosen ? (
+          <span className="ss-val"><b>{chosen.label}</b>{chosen.hint && <small>{chosen.hint}</small>}</span>
+        ) : <span className="ss-ph">{placeholder}</span>}
+        {clearable && chosen && (
+          <span role="button" tabIndex={-1} className="ss-clear" aria-label="Clear"
+            onClick={(e) => { e.stopPropagation(); onChange('') }}><IconClose size={12} /></span>
+        )}
+        <i className="ss-caret" aria-hidden />
+      </button>
+      {open && (
+        <div className="ss-pop">
+          <div className="ss-search">
+            <IconSearch size={14} />
+            <input autoFocus value={q} placeholder="Type to search…" onKeyDown={key}
+              onChange={(e) => { setQ(e.target.value); setAt(0) }} aria-label={label ? `Search ${label}` : 'Search'} />
+          </div>
+          <ul className="ss-list" role="listbox" ref={listRef}>
+            {shown.length === 0 ? <li className="ss-empty">{empty}</li> : shown.map((o, n) => (
+              <li key={o.value} role="option" aria-selected={o.value === value} aria-disabled={o.disabled}
+                className={`${n === at ? 'is-at' : ''}${o.value === value ? ' is-on' : ''}${o.disabled ? ' is-off' : ''}`}
+                onMouseEnter={() => setAt(n)} onMouseDown={(e) => { e.preventDefault(); pick(o) }}>
+                <span className="ss-opt"><b>{o.label}</b>{o.hint && <small>{o.hint}</small>}</span>
+                {o.tag && <em className="ss-tag">{o.tag}</em>}
+              </li>
+            ))}
+          </ul>
+          {footer && <div className="ss-foot">{footer}</div>}
+        </div>
+      )}
     </div>
   )
 }

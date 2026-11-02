@@ -72,6 +72,7 @@ const DESCRIPTIONS: Record<string, string> = {
   '/erp/purchase-orders': 'Orders raised with vendors',
   '/erp/inventory': 'Stock levels, receipts and movements',
   '/erp/sales-orders': 'Customer orders and dispatch',
+  '/erp/invoices': 'Tax invoices raised to customers',
   '/erp/billing': 'Invoices, receipts and dues',
   '/erp/masters': 'Items, warehouses, vendors and accounts',
   '/erp/settings': 'Numbering, approvals and ERP preferences',

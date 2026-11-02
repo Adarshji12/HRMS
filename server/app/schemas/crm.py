@@ -207,21 +207,33 @@ class ProductIn(NamedIn):
     )
 
 
+PLAN_CYCLE = r"^(monthly|quarterly|half_yearly|yearly|one_time)$"
+
+
 class PlanOut(MasterOut):
     product_id: uuid.UUID
     product_name: str | None = None
+    code: str | None = None
+    billing_cycle: str = "yearly"
     duration_days: int | None = None
     price: Decimal
     gst_percent: Decimal | None = None
+    description: str | None = None
 
 
 class PlanIn(NamedIn):
     name: str = Field(min_length=1, max_length=120)
     product_id: uuid.UUID
-    #: None means perpetual — a one-off sale with no renewal date.
+    code: str | None = Field(default=None, max_length=40)
+    billing_cycle: str = Field(default="yearly", pattern=PLAN_CYCLE)
+    #: Overrides the cycle's term — a 45-day trial. None with a one-time
+    #: cycle means perpetual: a one-off sale with no renewal date.
     duration_days: int | None = Field(default=None, ge=1, le=36500)
     price: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999.99"))
     gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    description: str | None = Field(default=None, max_length=2000)
+
+    _blank = field_validator("code", "description", "duration_days", "gst_percent", mode="before")(_blank_to_none)
 
 
 class DispositionOut(MasterOut):
@@ -309,6 +321,24 @@ class CompetitorIn(NamedIn):
     notes: str | None = Field(default=None, max_length=4000)
 
     _blank = field_validator("website", "notes", mode="before")(_blank_to_none)
+
+
+class ItemCategoryOut(MasterOut):
+    sort_order: int = 0
+
+
+class ItemCategoryIn(NamedIn):
+    name: str = Field(min_length=1, max_length=80)
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+
+class ItemCompanyOut(MasterOut):
+    sort_order: int = 0
+
+
+class ItemCompanyIn(NamedIn):
+    name: str = Field(min_length=1, max_length=80)
+    sort_order: int = Field(default=0, ge=0, le=999)
 
 
 class ContactDesignationOut(MasterOut):
@@ -477,6 +507,9 @@ class QuotationDefaults(BaseModel):
     default_gst: Decimal
     validity_days: int
     terms: str | None = None
+    #: The letterhead, style and templates, so the editor can show the right
+    #: fields and the preview can print the document as the customer gets it.
+    setup: QuotationSetupOut | None = None
 
 
 class CrmSettingsOut(ORMModel):
@@ -873,6 +906,8 @@ class CustomerDetailOut(CustomerOut):
     plans: list[CustomerPlanOut] = []
     interactions: list["InteractionOut"] = []
     visits: list["VisitOut"] = []
+    follow_ups: list["FollowUpOut"] = []
+    quotations: list["QuotationRowOut"] = []
 
 
 class CustomerIn(CrmBase):
@@ -1140,6 +1175,12 @@ class QuotationOut(QuotationRowOut):
     is_interstate: bool
     terms: str | None = None
     notes: str | None = None
+    style: str = "simple"
+    subject: str | None = None
+    letter_body: str | None = None
+    payment_terms: str | None = None
+    delivery_terms: str | None = None
+    warranty_terms: str | None = None
     sent_at: datetime | None = None
     decided_at: datetime | None = None
     lines: list[QuotationLineOut] = []
@@ -1164,6 +1205,13 @@ class QuotationIn(CrmBase):
     shipping_address: str | None = None
     terms: str | None = None
     notes: str | None = None
+    #: Blank on a new quotation takes the style set in CRM Settings.
+    style: str | None = Field(default=None, pattern=r"^(simple|detailed)$")
+    subject: str | None = Field(default=None, max_length=200)
+    letter_body: str | None = Field(default=None, max_length=4000)
+    payment_terms: str | None = Field(default=None, max_length=2000)
+    delivery_terms: str | None = Field(default=None, max_length=2000)
+    warranty_terms: str | None = Field(default=None, max_length=2000)
     #: Replaces the whole set on every save. A quotation is edited as a document,
     #: not row by row, and per-line PATCH endpoints would need line ids the
     #: console does not have for rows it has just invented.
@@ -1172,6 +1220,7 @@ class QuotationIn(CrmBase):
     _blank = field_validator(
         "customer_name", "company", "gstin", "mobile", "whatsapp", "email", "city",
         "state", "pincode", "billing_address", "shipping_address", "terms", "notes",
+        "subject", "letter_body", "payment_terms", "delivery_terms", "warranty_terms",
         mode="before",
     )(_blank_to_none)
 

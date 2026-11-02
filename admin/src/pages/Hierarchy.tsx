@@ -310,26 +310,6 @@ export default function Hierarchy() {
 
   return (
     <div className="hier">
-      <div className="hier-hero">
-        <div className="hier-hero-text">
-          <span className="hier-eyebrow">Organisation</span>
-          <h1 className="hier-title">Reporting hierarchy</h1>
-        </div>
-        {editable && (
-          <div className="hier-actions">
-            <button className="btn" onClick={() => setDialog({ manager: null })}>
-              Assign top-level manager
-            </button>
-            <button className="btn" onClick={() => setDialog({ manager: undefined, from: '' })}>
-              Mass transfer
-            </button>
-            <button className="btn btn-primary" onClick={() => setDialog({ manager: undefined })}>
-              <IconPlus size={15} /> Assign manager
-            </button>
-          </div>
-        )}
-      </div>
-
       <div className="hier-kpis" role="group" aria-label="Hierarchy summary">
         {kpis.map((kpi) => (
           <div key={kpi.label} className={`hier-kpi tone-${kpi.tone}`}>
@@ -416,6 +396,20 @@ export default function Hierarchy() {
               <button className="btn" onClick={exportCsv} title="Download the whole chart as CSV">
                 <IconDownload size={15} /> Export
               </button>
+
+              {editable && (
+                <>
+                  <button className="btn" onClick={() => setDialog({ manager: null })}>
+                    Assign top-level manager
+                  </button>
+                  <button className="btn" onClick={() => setDialog({ manager: undefined, from: '' })}>
+                    Mass transfer
+                  </button>
+                  <button className="btn btn-primary" onClick={() => setDialog({ manager: undefined })}>
+                    <IconPlus size={15} /> Assign manager
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

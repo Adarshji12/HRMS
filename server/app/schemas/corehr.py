@@ -71,12 +71,14 @@ class EmployeeProfileIn(BaseModel):
 
     current_address: str | None = Field(default=None, max_length=1000)
     current_city: str | None = Field(default=None, max_length=120)
+    current_district: str | None = Field(default=None, max_length=120)
     current_state: str | None = Field(default=None, max_length=120)
     current_postal_code: str | None = Field(default=None, max_length=20)
     current_country: str | None = Field(default=None, min_length=2, max_length=2)
 
     permanent_address: str | None = Field(default=None, max_length=1000)
     permanent_city: str | None = Field(default=None, max_length=120)
+    permanent_district: str | None = Field(default=None, max_length=120)
     permanent_state: str | None = Field(default=None, max_length=120)
     permanent_postal_code: str | None = Field(default=None, max_length=20)
     permanent_country: str | None = Field(default=None, min_length=2, max_length=2)
@@ -150,8 +152,9 @@ class EmployeeProfileIn(BaseModel):
 
     @field_validator(
         "blood_group", "nationality", "alternate_phone",
-        "current_address", "current_city", "current_state", "current_postal_code",
-        "permanent_address", "permanent_city", "permanent_state", "permanent_postal_code",
+        "current_address", "current_city", "current_district", "current_state", "current_postal_code",
+        "permanent_address", "permanent_city", "permanent_district", "permanent_state",
+        "permanent_postal_code",
         "emergency_name", "emergency_relationship", "emergency_phone",
         "pf_number", "esi_number", "bank_name", "bank_branch",
         "bank_account", "bank_account_name",
@@ -241,12 +244,14 @@ class EmployeeProfileOut(ORMModel):
 
     current_address: str | None = None
     current_city: str | None = None
+    current_district: str | None = None
     current_state: str | None = None
     current_postal_code: str | None = None
     current_country: str | None = None
 
     permanent_address: str | None = None
     permanent_city: str | None = None
+    permanent_district: str | None = None
     permanent_state: str | None = None
     permanent_postal_code: str | None = None
     permanent_country: str | None = None

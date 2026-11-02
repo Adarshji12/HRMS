@@ -29,6 +29,7 @@ import {
   IconMail,
   IconPhone,
   IconPin,
+  IconPlus,
   IconSheet,
   IconStar,
   IconTrash,
@@ -73,6 +74,9 @@ export default function LeadDetail() {
         </div>
         <div className="ldp-head-actions">
           <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
+          <Link className="btn" to={`/crm/quotations/new?lead=${lead.id}`}>
+            <IconSheet size={14} /> Add quotation
+          </Link>
           {!lead.customer_id && (
             <button className="btn btn-primary" onClick={() => setConverting(true)}>Convert to customer</button>
           )}
@@ -119,9 +123,12 @@ export default function LeadDetail() {
         <aside className="ldp-side">
           <StatusUpdate lead={lead} onSaved={detail.reload} />
           <NextFollowUp leadId={lead.id} open={open} onSaved={detail.reload} />
-          {lead.quotations.length > 0 && (
-            <section className="card ldp-card">
-              <CardHead icon={<IconSheet size={16} />} title="Quotations" />
+          <section className="card ldp-card">
+            <CardHead icon={<IconSheet size={16} />} title="Quotations"
+                      action={<Link className="btn btn-sm" to={`/crm/quotations/new?lead=${lead.id}`}><IconPlus size={14} /> Add</Link>} />
+            {lead.quotations.length === 0 ? (
+              <p className="crm-sub ldp-empty-note">No quotation yet.</p>
+            ) : (
               <ul className="ldp-list">
                 {lead.quotations.map((q) => (
                   <li key={q.id}>
@@ -130,8 +137,8 @@ export default function LeadDetail() {
                   </li>
                 ))}
               </ul>
-            </section>
-          )}
+            )}
+          </section>
         </aside>
       </div>
 

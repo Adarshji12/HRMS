@@ -156,10 +156,33 @@ def qty(value: Any) -> Decimal:
     return Decimal(str(value or 0)).quantize(MILLI, rounding=ROUND_HALF_UP)
 
 
-def price_line(quantity: Any, rate: Any, gst_percent: Any) -> dict[str, Decimal]:
-    """One line's arithmetic. Rounded per line, as a printed document shows it."""
+def line_value(quantity: Any, rate: Any, discount_percent: Any = 0, discount_amount: Any = 0,
+               bill_discount_percent: Any = 0, discount2_percent: Any = 0, discount2_amount: Any = 0) -> Decimal:
+    """A line's value after its own discounts and the bill's percentage, before
+    any rupee bill discount and before GST. Not rounded."""
     q = qty(quantity)
-    taxable = money(q * money(rate))
+    gross = q * money(rate)
+    after = gross - gross * Decimal(str(discount_percent or 0)) / Decimal("100") - money(discount_amount)
+    after = max(after, ZERO)
+    # The second discount comes off what the first left.
+    after = max(after - after * Decimal(str(discount2_percent or 0)) / Decimal("100") - money(discount2_amount), ZERO)
+    return after - after * Decimal(str(bill_discount_percent or 0)) / Decimal("100")
+
+
+def price_line(quantity: Any, rate: Any, gst_percent: Any, discount_percent: Any = 0,
+               discount_amount: Any = 0, bill_discount_percent: Any = 0,
+               discount2_percent: Any = 0, discount2_amount: Any = 0, bill_share: Any = 0) -> dict[str, Decimal]:
+    """One line's arithmetic. Rounded per line, as a printed document shows it.
+
+    Discounts come off before GST is charged on what is left: the line's own
+    (a percentage, a rupee amount, or both), then the bill's percentage, then
+    the line's share of any rupee discount on the whole bill.
+    """
+    q = qty(quantity)
+    after = line_value(quantity, rate, discount_percent, discount_amount, bill_discount_percent,
+                       discount2_percent, discount2_amount)
+    after = max(after - money(bill_share), ZERO)
+    taxable = money(after)
     tax = money(taxable * Decimal(str(gst_percent or 0)) / Decimal("100"))
     return {"quantity": q, "rate": money(rate), "taxable_value": taxable,
             "tax_amount": tax, "amount": money(taxable + tax)}
@@ -197,8 +220,25 @@ def fiscal_year(on: date) -> str:
     return f"{start % 100:02d}-{(start + 1) % 100:02d}"
 
 
-def next_number(db: Session, org_id: uuid.UUID, prefix: str, on: date) -> str:
+def peek_number(db: Session, org_id: uuid.UUID, prefix: str, on: date, *, dashed: bool = False) -> str:
+    """What ``next_number`` would hand out, without taking it."""
+    period = fiscal_year(on)
+    row = db.scalar(select(ErpCounter).where(
+        ErpCounter.org_id == org_id, ErpCounter.series == prefix, ErpCounter.period == period,
+    ))
+    n = (row.last_number if row else 0) + 1
+    if dashed:
+        start = on.year if on.month >= 4 else on.year - 1
+        return f"{prefix}-{start}-{(start + 1) % 100:02d}-{n:04d}"
+    return f"{prefix}/{period}/{n:04d}"
+
+
+def next_number(db: Session, org_id: uuid.UUID, prefix: str, on: date, *, dashed: bool = False) -> str:
     """``PO/26-27/0001``. Resets each fiscal year, which is what a GST series does.
+
+    ``dashed`` is the invoice style, ``INV-2026-27-0001``: the full year, no
+    slashes, and exactly the 16 characters GST allows an invoice number. The
+    counter is the same either way, so switching style does not restart it.
 
     No lock, as in ``services.crm.next_number``: every document table carries a
     unique constraint on its number, so a concurrent collision fails the second
@@ -213,6 +253,9 @@ def next_number(db: Session, org_id: uuid.UUID, prefix: str, on: date) -> str:
         db.add(row)
     row.last_number += 1
     db.flush()
+    if dashed:
+        start = on.year if on.month >= 4 else on.year - 1
+        return f"{prefix}-{start}-{(start + 1) % 100:02d}-{row.last_number:04d}"
     return f"{prefix}/{period}/{row.last_number:04d}"
 
 

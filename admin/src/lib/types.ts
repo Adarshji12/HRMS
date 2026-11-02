@@ -494,12 +494,14 @@ export interface EmployeeProfile {
 
   current_address: string | null
   current_city: string | null
+  current_district?: string | null
   current_state: string | null
   current_postal_code: string | null
   current_country: string | null
 
   permanent_address: string | null
   permanent_city: string | null
+  permanent_district?: string | null
   permanent_state: string | null
   permanent_postal_code: string | null
   permanent_country: string | null

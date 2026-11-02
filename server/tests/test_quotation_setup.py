@@ -158,3 +158,20 @@ def test_the_proposal_letterhead_and_letter_round_trip(client, acme):
             "/api/v1/crm/settings", json={"quotation_setup": bad}, headers=acme.headers()
         )
         assert response.status_code == 422, bad
+
+
+def test_a_quotation_keeps_the_style_it_was_raised_in(client, acme):
+    _save_setup(client, acme, style="detailed", payment_terms="50% advance")
+    defaults = client.get("/api/v1/crm/quotation-defaults", headers=acme.headers()).json()
+    assert defaults["setup"]["style"] == "detailed"
+    assert defaults["setup"]["payment_terms"] == "50% advance"
+
+    row = _quote(client, acme, subject="Quotation for CCTV", payment_terms="50% advance")
+    assert row["style"] == "detailed"
+    assert row["subject"] == "Quotation for CCTV"
+
+    # Switching the setting back does not reshape a quotation already raised.
+    _save_setup(client, acme, style="simple")
+    again = client.get(f"/api/v1/crm/quotations/{row['id']}", headers=acme.headers()).json()
+    assert again["style"] == "detailed"
+    assert again["payment_terms"] == "50% advance"

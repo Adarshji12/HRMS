@@ -1,0 +1,146 @@
+/* The printed invoice: an A4 sheet on a grey desk, and a print stylesheet
+   that leaves only the sheet. Black on white with one accent colour — the
+   quotation letterhead's — so it prints well in mono too. Prefixed ip-. */
+
+.ip-backdrop {
+  position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column;
+  background: color-mix(in srgb, #0b1620 72%, transparent);
+}
+.ip-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 18px;
+  background: var(--surface-1); border-bottom: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.ip-bar b { font-size: 14px; }
+.ip-bar select { height: 34px; }
+.ip-bar .btn { gap: 6px; }
+.ip-gap { flex: 1; }
+.ip-scroll { flex: 1; overflow: auto; padding: 24px 0 40px; }
+
+.ip-sheet {
+  --ip-accent: #0b3a63;
+  --ip-line: #c9d2da;
+  --ip-ink: #111a22;
+  --ip-soft: #f2f5f8;
+  position: relative; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm 12mm 10mm;
+  background: #fff; color: var(--ip-ink); box-shadow: 0 10px 40px rgba(0, 0, 0, .35);
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 10.5pt; line-height: 1.35;
+}
+.ip-watermark {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  font-size: 110pt; font-weight: 800; letter-spacing: .1em; color: rgba(200, 30, 30, .07); transform: rotate(-28deg);
+}
+.ip-pre { white-space: pre-line; }
+.ip-strong { font-weight: 700; }
+.ip-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Letterhead */
+.ip-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  padding-bottom: 8px; border-bottom: 3px solid var(--ip-accent);
+}
+.ip-org { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.ip-logo { width: 64px; height: 64px; object-fit: contain; }
+.ip-org-name { font-size: 17pt; font-weight: 800; color: var(--ip-accent); line-height: 1.15; }
+.ip-org-line { font-size: 9pt; color: #44515c; }
+.ip-tagline { font-style: italic; }
+.ip-title { text-align: right; flex: none; }
+.ip-title h1 { margin: 0; font-size: 18pt; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ip-accent); }
+.ip-copy {
+  display: inline-block; margin-top: 4px; padding: 1px 8px; border: 1px solid var(--ip-accent); border-radius: 3px;
+  font-size: 8pt; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ip-accent);
+}
+
+/* Invoice facts */
+.ip-meta { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ip-line); border-top: 0; }
+.ip-meta dl { margin: 0; padding: 6px 10px; display: grid; gap: 2px; }
+.ip-meta dl + dl { border-left: 1px solid var(--ip-line); }
+.ip-meta dl > div { display: grid; grid-template-columns: 34mm 1fr; }
+.ip-meta dt { color: #5b6872; font-size: 9pt; }
+.ip-meta dd { margin: 0; font-size: 9.5pt; }
+
+/* Parties */
+.ip-parties { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ip-line); border-top: 0; }
+.ip-parties > div { padding: 7px 10px; }
+.ip-parties > div + div { border-left: 1px solid var(--ip-line); }
+.ip-parties h4, .ip-foot h4 {
+  margin: 0 0 3px; font-size: 8pt; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ip-accent);
+}
+.ip-parties b { font-size: 11pt; }
+.ip-parties p { margin: 1px 0 0; font-size: 9pt; }
+
+/* Lines */
+.ip-sheet table.ip-lines, .ip-sheet table.ip-hsn { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
+.ip-sheet table.ip-lines { margin-top: 8px; }
+.ip-lines { margin-top: 8px; font-size: 9pt; }
+.ip-sheet table.ip-lines thead th, .ip-sheet table.ip-hsn thead th {
+  background: var(--ip-accent) !important; color: #fff !important; font-weight: 700; font-size: 7.5pt; text-transform: uppercase;
+  letter-spacing: .03em; padding: 5px 5px !important; text-align: left; border: 1px solid var(--ip-accent) !important;
+  white-space: normal; line-height: 1.2; height: auto;
+}
+.ip-sheet table.ip-lines td, .ip-sheet table.ip-hsn td {
+  padding: 4px 5px !important; border: 1px solid var(--ip-line) !important; vertical-align: top;
+  font-size: 8.5pt; color: var(--ip-ink); height: auto; overflow-wrap: anywhere;
+}
+.ip-sheet table.ip-lines tbody tr:nth-child(even) td { background: var(--ip-soft); }
+.ip-sheet table tbody tr:hover td { background: inherit; }
+.ip-sheet table.ip-lines td.ip-desc { overflow-wrap: normal; }
+.ip-lines small { color: #5b6872; }
+
+/* HSN summary + totals */
+.ip-sums { display: grid; grid-template-columns: 1fr 64mm; gap: 10px; margin-top: 8px; align-items: start; }
+.ip-hsn { font-size: 8.5pt; }
+.ip-sheet table.ip-hsn thead th { background: #44515c !important; border-color: #44515c !important; }
+.ip-words { margin: 6px 0 0; font-size: 9pt; }
+.ip-totals { margin: 0; border: 1px solid var(--ip-line); }
+.ip-totals > div { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 9.5pt; }
+.ip-totals > div + div { border-top: 1px solid var(--ip-line); }
+.ip-totals dt { color: #44515c; }
+.ip-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ip-totals .ip-grand { background: var(--ip-accent); color: #fff; font-size: 11.5pt; font-weight: 800; }
+.ip-totals .ip-grand dt { color: #fff; }
+.ip-totals .ip-due { font-weight: 800; }
+
+/* Bank, terms, signature */
+.ip-foot { display: grid; grid-template-columns: 1fr 64mm; gap: 10px; margin-top: 10px; border-top: 1px solid var(--ip-line); padding-top: 8px; }
+.ip-foot-left { display: grid; gap: 8px; align-content: start; }
+.ip-foot p { margin: 1px 0 0; font-size: 9pt; }
+.ip-bank { padding: 6px 8px; border: 1px dashed var(--ip-line); border-radius: 4px; }
+.ip-sign { display: grid; grid-template-rows: auto 1fr auto; text-align: center; font-size: 9pt; min-height: 34mm; }
+.ip-stamp { display: grid; place-items: center; }
+.ip-stamp img { max-width: 34mm; max-height: 24mm; object-fit: contain; }
+.ip-sign-line { border-top: 1px solid var(--ip-ink); padding-top: 3px; font-weight: 600; }
+.ip-note { margin-top: 10px; text-align: center; font-size: 8pt; color: #7a8791; }
+
+/* Transport details band */
+.ip-transport {
+  display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 6px 10px; border: 1px solid var(--ip-line); border-top: 0;
+  background: var(--ip-soft); font-size: 9pt;
+}
+.ip-transport span { color: #5b6872; margin-right: 4px; }
+
+/* Multi-page: the lines table repeats its header on each page, a row is
+   never cut in two, and the summary, bank/terms and signature move whole. */
+.ip-paged thead { display: table-header-group; }
+.ip-paged tr, .ip-hsn tr { break-inside: avoid; page-break-inside: avoid; }
+.ip-sums, .ip-foot, .ip-parties, .ip-meta, .ip-head { break-inside: avoid; page-break-inside: avoid; }
+.ip-note { break-before: avoid; }
+
+@media print {
+  /* Top and bottom margins on every page, so a second page does not start
+     against the edge; the page number sits in the bottom margin. */
+  @page {
+    size: A4; margin: 10mm 0 14mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt 'Segoe UI', Arial, sans-serif; color: #7a8791; margin-right: 12mm; }
+  }
+  /* Everything but the sheet is gone from the layout, not just invisible. */
+  html, body.ip-open { background: #fff !important; }
+  body.ip-open > *:not(.ip-backdrop) { display: none !important; }
+  body.ip-open .ip-backdrop { position: static; background: none; display: block; }
+  body.ip-open .ip-bar { display: none !important; }
+  body.ip-open .ip-scroll { overflow: visible; padding: 0; }
+  body.ip-open .ip-sheet {
+    margin: 0; box-shadow: none; min-height: 0; padding-top: 0; padding-bottom: 0;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body.ip-open .ip-watermark { position: fixed; }
+}

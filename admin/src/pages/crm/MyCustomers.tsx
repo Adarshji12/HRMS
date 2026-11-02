@@ -12,33 +12,42 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/hrdash.css'
 import '../../styles/leads.css'
 import { useQuery } from '../../lib/useQuery'
-import { dateTime } from '../../lib/format'
 import { Avatar, EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
   IconAlert,
+  IconArrowLeft,
+  IconBriefcase,
+  IconBuilding,
   IconCalendar,
+  IconCard,
   IconCheck,
   IconClock,
   IconClose,
   IconDownload,
   IconEdit,
   IconFilter,
+  IconMail,
+  IconPhone,
+  IconPin,
   IconPlus,
   IconReturn,
   IconSearch,
+  IconSheet,
   IconTrash,
   IconUpload,
+  IconUser,
   IconUsers,
 } from '../../components/Icons'
 import {
   crm,
   crmError,
   inDays,
+  localToISO,
   rupees,
   todayISO,
   type Customer,
@@ -49,6 +58,9 @@ import {
   CrmPage,
   Dialog,
   Field,
+  LfField,
+  LfInput,
+  LfSection,
   MasterSelect,
   OwnerSelect,
   StateText,
@@ -177,6 +189,30 @@ export default function MyCustomers() {
     } catch (err) {
       setRowError(crmError(err, 'That customer could not be deleted'))
     }
+  }
+
+  if (openId) {
+    const close = () => {
+      setOpenId(null)
+      if (params.get('open')) setParams({}, { replace: true })
+    }
+    const changed = () => {
+      rows.reload()
+      all.reload()
+    }
+    return (
+      <CustomerProfile key={openId} customerId={openId} onBack={close} onChanged={changed}
+        onDelete={async (c) => {
+          if (!window.confirm(`Delete ${c.name}? Their plans, calls and follow-ups go with them. This cannot be undone.`)) return
+          try {
+            await crm.deleteCustomer(c.id)
+            changed()
+            close()
+          } catch (err) {
+            window.alert(crmError(err, 'That customer could not be deleted'))
+          }
+        }} />
+    )
   }
 
   if (rows.error && !rows.data) {
@@ -428,8 +464,8 @@ export default function MyCustomers() {
                           <button
                             className="crm-icon-btn"
                             onClick={() => setOpenId(row.id)}
-                            title="Edit this customer"
-                            aria-label={`Edit ${row.name}`}
+                            title="Open this customer"
+                            aria-label={`Open ${row.name}`}
                           >
                             <IconEdit size={15} />
                           </button>
@@ -477,21 +513,331 @@ export default function MyCustomers() {
         />
       )}
 
-      {openId && (
-        <CustomerEditor
-          key={openId}
-          customerId={openId}
-          onClose={() => {
-            setOpenId(null)
-            if (params.get('open')) setParams({}, { replace: true })
-          }}
-          onChanged={() => {
-            rows.reload()
-            all.reload()
-          }}
-        />
-      )}
     </div>
+  )
+}
+
+/* -------------------------------------------------------------- profile --- */
+
+const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
+const fmtDateTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
+
+function CpCard({ title, icon, badge, action, children }: {
+  title: string; icon?: ReactNode; badge?: ReactNode; action?: ReactNode; children: ReactNode
+}) {
+  return (
+    <section className="card ldp-card cp-card">
+      <div className="ldp-card-head">
+        {icon && <span className="ldp-card-icon" aria-hidden>{icon}</span>}
+        <h2 className="ldp-card-title">{title}</h2>
+        {badge}
+        {action && <div className="ldp-card-action cp-actions">{action}</div>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function CpFact({ icon, label, value, wide, mono }: { icon?: ReactNode; label: string; value: ReactNode; wide?: boolean; mono?: boolean }) {
+  return (
+    <div className={`ldp-fact${wide ? ' is-wide' : ''}`}>
+      <span className="ldp-fact-label">{icon}{label}</span>
+      <span className={`ldp-fact-value${mono ? ' cp-mono' : ''}`}>{value === null || value === undefined || value === '' ? '—' : value}</span>
+    </div>
+  )
+}
+
+function CpEmpty({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
+  return (
+    <div className="cp-empty">
+      <span aria-hidden>{icon}</span>
+      <b>{title}</b>
+      <p>{body}</p>
+    </div>
+  )
+}
+
+/** A customer, opened from My Customers: who they are, what they hold, and
+ *  every call, follow-up, visit and quotation — one page, newest first. */
+function CustomerProfile({ customerId, onBack, onChanged, onDelete }: {
+  customerId: string
+  onBack: () => void
+  onChanged: () => void
+  onDelete: (c: CustomerDetail) => void
+}) {
+  const navigate = useNavigate()
+  const detail = useQuery<CustomerDetail>(`crm-customer-${customerId}`, () => crm.customer(customerId))
+  const [planEditing, setPlanEditing] = useState<CustomerPlan | null>(null)
+  const [addingPlan, setAddingPlan] = useState(false)
+  const [booking, setBooking] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const c = detail.data
+  const reload = () => { detail.reload(); onChanged() }
+
+  async function act(fn: () => Promise<unknown>, fail: string) {
+    setError(null)
+    try {
+      await fn()
+      reload()
+    } catch (err) {
+      setError(crmError(err, fail))
+    }
+  }
+
+  if (!c) {
+    return (
+      <div className="crm ldp cp">
+        <button type="button" className="btn" onClick={onBack}><IconArrowLeft size={15} /> My Customers</button>
+        {detail.error ? <ErrorNote>{detail.error}</ErrorNote> : <Loading />}
+      </div>
+    )
+  }
+
+  // An API that predates these lists sends none — show them as empty.
+  const followUps = c.follow_ups ?? []
+  const quotations = c.quotations ?? []
+  const openFollowUps = followUps.filter((f) => f.status === 'pending')
+  const place = [c.city_name, c.state_name, c.pincode].filter(Boolean).join(', ')
+
+  return (
+    <div className="crm ldp cp">
+      <header className="cp-head">
+        <button type="button" className="cp-back" onClick={onBack}><IconArrowLeft size={15} /> My Customers</button>
+        <span className="cp-sep" aria-hidden />
+        <h1 className="cp-name">{c.name}</h1>
+        <StateText value={c.status} />
+        {c.converted_from_lead_id && (
+          <button type="button" className="cp-lead" onClick={() => navigate(`/crm/leads/${c.converted_from_lead_id}`)}>
+            <IconReturn size={13} /> Converted from lead
+          </button>
+        )}
+        <span className="cp-gap" />
+        <WhatsAppButton mobile={c.whatsapp ?? c.mobile} />
+        <button type="button" className="btn" onClick={() => setEditing(true)}><IconEdit size={14} /> Edit</button>
+        <button type="button" className="btn btn-primary" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Product / Service</button>
+        <button type="button" className="crm-icon-btn crm-icon-danger" title="Delete customer" aria-label={`Delete ${c.name}`} onClick={() => onDelete(c)}>
+          <IconTrash size={15} />
+        </button>
+      </header>
+      {error && <div className="cp-error"><ErrorNote>{error}</ErrorNote></div>}
+
+      <div className="cp-stack">
+        <CpCard title="Customer details">
+          <div className="ldp-facts">
+            <CpFact icon={<IconSheet size={14} />} label="Customer ID" value={c.code} mono />
+            <CpFact icon={<IconPhone size={14} />} label="Mobile" value={c.mobile} mono />
+            <CpFact icon={<IconPhone size={14} />} label="WhatsApp" value={c.whatsapp ?? c.mobile} mono />
+            <CpFact icon={<IconMail size={14} />} label="Email" value={c.email} />
+            <CpFact icon={<IconBuilding size={14} />} label="Company" value={c.company} />
+            <CpFact icon={<IconUser size={14} />} label="Account manager" value={c.manager_name} />
+            <CpFact icon={<IconCalendar size={14} />} label={c.converted_from_lead_id ? 'Conversion date' : 'Customer since'} value={fmtDate(c.created_at)} />
+            <CpFact icon={<IconPin size={14} />} label="Location" value={place} />
+            <CpFact icon={<IconUser size={14} />} label="Customer type" value={c.customer_type} />
+            <CpFact icon={<IconBriefcase size={14} />} label="Lead source" value={c.source_name} />
+            <CpFact icon={<IconBriefcase size={14} />} label="Industry" value={c.industry_name} />
+            <CpFact icon={<IconSheet size={14} />} label="GSTIN" value={c.gstin} mono />
+            <CpFact label="Address" value={c.address} wide />
+            {c.notes && <CpFact label="Notes" value={c.notes} wide />}
+          </div>
+        </CpCard>
+
+        <CpCard title="Products & services" badge={<span className="cp-count">{c.plans.length ? c.plans.length : 'none yet'}</span>}
+          action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Product / Service</button>}>
+          {c.plans.length === 0 ? (
+            <CpEmpty icon={<IconBriefcase size={22} />} title="Nothing assigned yet"
+              body="Assign a product or service from your master to start the plan and renewal clock." />
+          ) : (
+            <div className="table-wrap"><table className="cp-table">
+              <thead><tr><th>Product / service</th><th>Plan</th><th>Period</th><th>Renewal</th><th className="crm-num">Amount</th><th>Payment</th><th className="cp-c-act" /></tr></thead>
+              <tbody>{c.plans.map((plan) => (
+                <tr key={plan.id}>
+                  <td className="crm-strong">{plan.product_name}</td>
+                  <td>{plan.plan_name ?? <span className="crm-muted">—</span>}</td>
+                  <td className="crm-sub">{fmtDate(plan.start_on)} → {plan.end_on ? fmtDate(plan.end_on) : 'Perpetual'}</td>
+                  <td className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : plan.days_to_renewal !== null && plan.days_to_renewal <= 30 ? 'crm-due-today' : ''}>
+                    {plan.end_on ? inDays(plan.days_to_renewal) : '—'}
+                  </td>
+                  <td className="crm-num">{rupees(plan.amount)}</td>
+                  <td><StateText value={plan.payment_status} /></td>
+                  <td className="cp-c-act">
+                    <div className="crm-row-actions">
+                      <button type="button" className="crm-icon-btn" title="Edit" aria-label="Edit plan" onClick={() => setPlanEditing(plan)}><IconEdit size={14} /></button>
+                      <button type="button" className="crm-icon-btn crm-icon-danger" title="Remove" aria-label="Remove plan"
+                        onClick={() => { if (window.confirm(`Remove ${plan.product_name} from ${c.name}?`)) void act(() => crm.deletePlan(plan.id), 'That plan could not be removed') }}>
+                        <IconTrash size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </CpCard>
+
+        <CpCard title="Support History" badge={<span className="cp-count">{c.interactions.length}</span>}
+          action={<button type="button" className="btn btn-sm" onClick={() => navigate('/crm/support')}><IconUsers size={14} /> Support desk</button>}>
+          {c.interactions.length === 0 ? (
+            <CpEmpty icon={<IconPhone size={22} />} title="No calls logged yet" body="Calls logged on the Support desk for this customer appear here." />
+          ) : (
+            <div className="table-wrap"><table className="cp-table">
+              <thead><tr><th>Logged</th><th>Ticket</th><th>Direction</th><th>Disposition</th><th>Remarks</th><th>Status</th><th>Handled by</th><th>Follow-up</th></tr></thead>
+              <tbody>{c.interactions.map((i) => (
+                <tr key={i.id}>
+                  <td className="cp-nowrap">{fmtDateTime(i.created_at)}</td>
+                  <td className="cp-mono crm-strong">{i.ticket_no}</td>
+                  <td><span className={`cp-pill is-${i.direction}`}>{i.direction === 'inbound' ? 'Inbound' : 'Outbound'}</span></td>
+                  <td>{i.disposition_name ? <span className="cp-pill is-disp">{i.disposition_name}</span> : <span className="crm-muted">—</span>}</td>
+                  <td className="cp-remarks">{i.remarks || <span className="crm-muted">—</span>}</td>
+                  <td><span className={`cp-pill is-${i.status}`}>{i.status === 'open' ? 'Open' : 'Closed'}</span></td>
+                  <td>{i.staff_name ?? <span className="crm-muted">—</span>}</td>
+                  <td className="cp-nowrap">{i.follow_up_due_at ? fmtDateTime(i.follow_up_due_at) : <span className="crm-muted">—</span>}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </CpCard>
+
+        <CpCard title="Follow-up History" badge={openFollowUps.length > 0 ? <span className="cp-count is-warn">{openFollowUps.length} open</span> : undefined}
+          action={<>
+            <button type="button" className="btn btn-sm" onClick={() => navigate('/crm/follow-ups')}><IconCalendar size={14} /> All follow-ups</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setBooking(true)}><IconPlus size={14} /> Add</button>
+          </>}>
+          {followUps.length === 0 ? (
+            <CpEmpty icon={<IconCalendar size={22} />} title="No follow-ups yet" body="Book one with Add — it lands on the owner's follow-up list." />
+          ) : (
+            <ul className="cp-fu">
+              {followUps.map((f) => (
+                <li key={f.id} className={`is-${f.status}`}>
+                  <div className="cp-fu-main">
+                    <div className="cp-fu-top">
+                      <b className={f.is_overdue && f.status === 'pending' ? 'cp-over' : ''}>
+                        {f.is_overdue && f.status === 'pending' ? 'Overdue · ' : ''}{fmtDateTime(f.due_at)}
+                      </b>
+                      <span className={`cp-pill is-fu-${f.status}`}>{f.status === 'pending' ? 'Pending' : f.status === 'done' ? 'Done' : 'Cancelled'}</span>
+                    </div>
+                    {f.purpose && <span className="cp-fu-purpose">{f.purpose}</span>}
+                    {(f.outcome || f.notes) && <span className="cp-fu-notes">{f.outcome ?? f.notes}</span>}
+                    <small>{f.owner_name ?? 'Unassigned'}{f.completed_at ? ` · done ${fmtDateTime(f.completed_at)}` : ''}</small>
+                  </div>
+                  <div className="crm-row-actions">
+                    {f.status === 'pending' && (
+                      <button type="button" className="crm-icon-btn cp-ok" title="Mark done" aria-label="Mark follow-up done"
+                        onClick={() => void act(() => crm.completeFollowUp(f.id, {}), 'That follow-up could not be closed')}><IconCheck size={14} /></button>
+                    )}
+                    <button type="button" className="crm-icon-btn crm-icon-danger" title="Delete" aria-label="Delete follow-up"
+                      onClick={() => { if (window.confirm('Delete this follow-up?')) void act(() => crm.deleteFollowUp(f.id), 'That follow-up could not be deleted') }}>
+                      <IconTrash size={14} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CpCard>
+
+        <CpCard title="Visit History" badge={c.visits.length ? <span className="cp-count">{c.visits.length}</span> : undefined}
+          action={<button type="button" className="btn btn-sm" onClick={() => navigate('/crm/visits')}><IconPin size={14} /> All visits</button>}>
+          {c.visits.length === 0 ? (
+            <CpEmpty icon={<IconPin size={22} />} title="No visits recorded yet" body="Book one from My Visits and it appears here with its start and end confirmation." />
+          ) : (
+            <div className="table-wrap"><table className="cp-table">
+              <thead><tr><th>Visit</th><th>Scheduled</th><th>Type</th><th>Purpose</th><th>Assigned to</th><th>Status</th><th>Outcome</th></tr></thead>
+              <tbody>{c.visits.map((v) => (
+                <tr key={v.id}>
+                  <td className="cp-mono crm-strong">{v.visit_no}</td>
+                  <td className="cp-nowrap">{fmtDateTime(v.scheduled_at)}</td>
+                  <td>{v.visit_type_name ?? <span className="crm-muted">—</span>}</td>
+                  <td className="cp-remarks">{v.purpose ?? <span className="crm-muted">—</span>}</td>
+                  <td>{v.employee_name ?? <span className="crm-muted">—</span>}</td>
+                  <td><StateText value={v.status} /></td>
+                  <td className="cp-remarks">{v.outcome ?? <span className="crm-muted">—</span>}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </CpCard>
+
+        <CpCard title="Quotations" icon={<IconSheet size={16} />} badge={quotations.length ? <span className="cp-count">{quotations.length}</span> : undefined}
+          action={<button type="button" className="btn btn-primary btn-sm" onClick={() => navigate(`/crm/quotations/new?customer=${c.id}`)}><IconPlus size={14} /> New quotation</button>}>
+          {quotations.length === 0 ? (
+            <CpEmpty icon={<IconSheet size={22} />} title="No quotations yet" body="Raise one with New quotation — the customer's details come across on their own." />
+          ) : (
+            <div className="table-wrap"><table className="cp-table">
+              <thead><tr><th>Quotation</th><th>Date</th><th>Valid until</th><th className="crm-num">Amount</th><th>Status</th><th>Prepared by</th></tr></thead>
+              <tbody>{quotations.map((q) => (
+                <tr key={q.id} className="cp-link-row" onClick={() => navigate(`/crm/quotations/${q.id}`)}>
+                  <td className="cp-mono crm-strong">{q.number ?? 'Draft'}</td>
+                  <td>{fmtDate(q.quote_date)}</td>
+                  <td>{fmtDate(q.valid_until)}</td>
+                  <td className="crm-num crm-strong">{rupees(q.grand_total)}</td>
+                  <td><StateText value={q.status} /></td>
+                  <td>{q.created_by_name ?? <span className="crm-muted">—</span>}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </CpCard>
+      </div>
+
+      {(addingPlan || planEditing) && (
+        <PlanForm customerId={c.id} plan={planEditing}
+          onClose={() => { setAddingPlan(false); setPlanEditing(null) }}
+          onSaved={() => { setAddingPlan(false); setPlanEditing(null); reload() }} />
+      )}
+      {editing && (
+        <CustomerForm customer={c} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); reload() }} />
+      )}
+      {booking && <BookFollowUp customerId={c.id} onClose={() => setBooking(false)} onSaved={() => { setBooking(false); reload() }} />}
+    </div>
+  )
+}
+
+/** Book a follow-up against the customer — the same booking a lead page makes. */
+function BookFollowUp({ customerId, onClose, onSaved }: { customerId: string; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(todayISO())
+  const [time, setTime] = useState('10:00')
+  const [purpose, setPurpose] = useState('')
+  const [notes, setNotes] = useState('')
+  const [ownerId, setOwnerId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await crm.createFollowUp({
+        customer_id: customerId, due_at: localToISO(`${date}T${time || '10:00'}`),
+        purpose: purpose.trim() || null, notes: notes.trim() || null, owner_id: ownerId || null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(crmError(err, 'That follow-up could not be booked'))
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog title="Add follow-up" onClose={onClose} footer={
+      <>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !date} onClick={() => void save()}>{busy ? 'Booking…' : 'Book follow-up'}</button>
+      </>
+    }>
+      <div className="ldp-form">
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <div className="ldp-two">
+          <label className="ldp-field"><span>Date</span><input type="date" value={date} min={todayISO()} onChange={(e) => setDate(e.target.value)} /></label>
+          <label className="ldp-field"><span>Time</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+        </div>
+        <label className="ldp-field"><span>Purpose</span>
+          <input value={purpose} maxLength={300} onChange={(e) => setPurpose(e.target.value)} placeholder="Renewal call, update call, payment reminder…" /></label>
+        <label className="ldp-field"><span>Remarks</span>
+          <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What's the plan for this follow-up?" /></label>
+        <label className="ldp-field"><span>Assign to</span>
+          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Whoever manages the customer" /></label>
+      </div>
+    </Dialog>
   )
 }
 
@@ -502,12 +848,15 @@ function CustomerForm({
   onClose,
   onSaved,
   extras,
+  page,
 }: {
   customer?: Customer
   onClose: () => void
   onSaved: (row: Customer) => void
-  /** Shown under the fields when editing: the customer's plans and calls. */
+  /** Shown beside the fields when editing: the customer's plans and calls. */
   extras?: ReactNode
+  /** Editing opens as a full page rather than a dialog. */
+  page?: boolean
 }) {
   const [code, setCode] = useState(customer?.code ?? '')
   const [name, setName] = useState(customer?.name ?? '')
@@ -529,6 +878,7 @@ function CustomerForm({
   const [address, setAddress] = useState(customer?.address ?? '')
   const [managerId, setManagerId] = useState(customer?.manager_id ?? '')
   const [status, setStatus] = useState(customer?.status ?? 'active')
+  const [notes, setNotes] = useState(customer?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -558,6 +908,7 @@ function CustomerForm({
       address: address || null,
       manager_id: managerId || null,
       status,
+      notes: notes.trim() || null,
     }
     try {
       const saved = customer
@@ -570,332 +921,263 @@ function CustomerForm({
     }
   }
 
-  return (
-    <Dialog
-      title={customer ? `Edit ${customer.name}` : 'Add Customer'}
-      subtitle={customer
-        ? `${customer.code} · ${customer.mobile}`
-        : 'Products and services are added next, once the customer is saved.'}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={save}
-            disabled={busy || !name.trim() || !mobile.trim()}
-          >
-            {busy ? 'Saving…' : 'Save Customer'}
-          </button>
-        </>
-      }
-    >
-      <div className="crm-form">
-        {error && (
-          <div className="crm-form-wide">
-            <ErrorNote>{error}</ErrorNote>
-          </div>
-        )}
-        <Field label="Customer ID" hint="Your own reference — generated when left blank.">
-          <input value={code} onChange={(event) => setCode(event.target.value)} disabled={Boolean(customer)} />
-        </Field>
-        <Field label="Customer name *">
-          <input value={name} onChange={(event) => setName(event.target.value)} autoFocus required />
-        </Field>
+  // Checked as the person types, shown once they have left the field.
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const touch = (key: string) => () => setTouched((t) => ({ ...t, [key]: true }))
+  const digits = (s: string) => s.replace(/\D/g, '')
+  const phoneBad = (s: string) => s.trim() !== '' && (digits(s).length < 10 || digits(s).length > 15)
+  const mobileBad = phoneBad(mobile)
+  const whatsappBad = !sameNumber && phoneBad(whatsapp)
+  const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  const gstinBad = gstin.trim() !== '' && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(gstin.trim())
+  const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
+  const ready = name.trim() !== '' && mobile.trim() !== ''
+    && !mobileBad && !whatsappBad && !emailBad && !gstinBad && !pincodeBad
 
-        <Field label="Company name">
-          <input value={company} onChange={(event) => setCompany(event.target.value)} />
-        </Field>
-        <Field label="Mobile number *">
-          <input value={mobile} onChange={(event) => setMobile(event.target.value)} required />
-        </Field>
+  const form = (
+      <form className="lf" id="crm-customer-form" noValidate
+            onSubmit={(event) => { event.preventDefault(); if (ready && !busy) save() }}>
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <LfSection icon={<IconBuilding size={16} />} title="Customer" note="Who the account is, and where it stands.">
+          <LfField label="Customer name" required>
+            <LfInput icon={<IconUser size={15} />}>
+              <input value={name} onChange={(event) => setName(event.target.value)}
+                     placeholder="e.g. Rahul Sharma" autoFocus required />
+            </LfInput>
+          </LfField>
+          <LfField label="Company name">
+            <LfInput icon={<IconBriefcase size={15} />}>
+              <input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Company / firm name" />
+            </LfInput>
+          </LfField>
+          <LfField label="Customer ID"
+                   hint={customer ? 'Fixed once the customer is created.' : 'Your own reference — generated when left blank.'}>
+            <LfInput prefix="#">
+              <input value={code} onChange={(event) => setCode(event.target.value)} disabled={Boolean(customer)}
+                     placeholder="Auto-generated" />
+            </LfInput>
+          </LfField>
+          <LfField label="Customer type">
+            <select value={type} onChange={(event) => setType(event.target.value)}>
+              <option value="">Select type</option>
+              {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {type && !CUSTOMER_TYPES.includes(type) && <option value={type}>{type}</option>}
+            </select>
+          </LfField>
+          <LfField label="Status" wide>
+            <div className="lf-pills" role="radiogroup" aria-label="Status">
+              {CUSTOMER_STATUSES.map((s) => (
+                <button key={s.key} type="button" role="radio" aria-checked={status === s.key}
+                        className={`lf-pill tone-${s.tone}${status === s.key ? ' is-on' : ''}`}
+                        onClick={() => setStatus(s.key)}>
+                  <i aria-hidden /> {s.label}
+                </button>
+              ))}
+            </div>
+          </LfField>
+        </LfSection>
 
-        <div className="crm-field">
-          <span className="crm-field-label">WhatsApp number</span>
-          <input
-            value={sameNumber ? '' : whatsapp}
-            onChange={(event) => setWhatsapp(event.target.value)}
-            placeholder="Same as mobile"
-            disabled={sameNumber}
-          />
-          <label className="crm-check">
-            <input
-              type="checkbox"
-              checked={sameNumber}
-              onChange={(event) => setSameNumber(event.target.checked)}
+        <LfSection icon={<IconPhone size={16} />} title="Contact" note="How the desk and the account manager reach them.">
+          <LfField label="Mobile number" required
+                   error={touched.mobile && mobileBad ? 'Enter a 10-digit mobile number.' : undefined}>
+            <LfInput icon={<IconPhone size={15} />} bad={touched.mobile && mobileBad}>
+              <input value={mobile} onChange={(event) => setMobile(event.target.value)} onBlur={touch('mobile')}
+                     placeholder="98765 43210" inputMode="tel" required />
+            </LfInput>
+          </LfField>
+          <LfField label="Email" error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
+            <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
+                     placeholder="name@company.com" />
+            </LfInput>
+          </LfField>
+          <LfField label="WhatsApp number" wide
+                   error={touched.whatsapp && whatsappBad ? 'Enter a 10-digit WhatsApp number.' : undefined}
+                   aside={
+                     <label className="lf-switch">
+                       <input type="checkbox" checked={sameNumber} onChange={(event) => setSameNumber(event.target.checked)} />
+                       <span className="lf-switch-track" aria-hidden><span /></span>
+                       Same as mobile
+                     </label>
+                   }>
+            <LfInput icon={<IconPhone size={15} />} bad={touched.whatsapp && whatsappBad}>
+              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(event.target.value)}
+                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="tel"
+                     placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
+            </LfInput>
+          </LfField>
+        </LfSection>
+
+        <LfSection icon={<IconSheet size={16} />} title="Business & tax" note="Classification, ownership and GST for their quotations.">
+          <LfField label="Industry">
+            <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
+          </LfField>
+          <LfField label="Lead source">
+            <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
+          </LfField>
+          <LfField label="Account manager" hint="Left empty, the account is yours.">
+            <OwnerSelect value={managerId} onChange={setManagerId} placeholder="You" />
+          </LfField>
+          <LfField label="GSTIN"
+                   error={touched.gstin && gstinBad ? 'A GSTIN is 15 characters, like 27AAAAA0000A1Z5.' : undefined}
+                   hint="Decides the tax treatment on their quotations.">
+            <LfInput icon={<IconCard size={15} />} bad={touched.gstin && gstinBad}>
+              <input value={gstin} onChange={(event) => setGstin(event.target.value.toUpperCase())} onBlur={touch('gstin')}
+                     placeholder="27AAAAA0000A1Z5" maxLength={15} className="lf-mono" />
+            </LfInput>
+          </LfField>
+        </LfSection>
+
+        <LfSection icon={<IconPin size={16} />} title="Address" note="Billing address, and where visits are planned.">
+          <LfField label="Country">
+            <MasterSelect
+              kind="countries"
+              value={countryId}
+              onChange={(next) => {
+                setCountryId(next)
+                setStateId('')
+                setCityId('')
+              }}
+              placeholder="Select country"
             />
-            Same number for WhatsApp
-          </label>
-        </div>
-        <Field label="Email">
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-        </Field>
+          </LfField>
+          <LfField label="State">
+            <MasterSelect
+              kind="states"
+              value={stateId}
+              onChange={(next) => {
+                setStateId(next)
+                setCityId('')
+              }}
+              parentId={countryId}
+              placeholder="Select state"
+            />
+          </LfField>
+          <LfField label="City" hint={stateId ? undefined : 'Pick a state first.'}>
+            <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId} placeholder="Select city" />
+          </LfField>
+          <LfField label="Pincode" error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
+            <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
+              <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
+                     placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
+            </LfInput>
+          </LfField>
+          <LfField label="Address" wide>
+            <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
+                      placeholder="Building, street, area, landmark" />
+          </LfField>
+        </LfSection>
 
-        <Field label="Customer type">
-          <input
-            value={type}
-            onChange={(event) => setType(event.target.value)}
-            placeholder="Not set"
-            list="crm-customer-types"
-          />
-          <datalist id="crm-customer-types">
-            <option value="Enterprise" />
-            <option value="SMB" />
-            <option value="Individual" />
-            <option value="Reseller" />
-          </datalist>
-        </Field>
-        <Field label="Industry">
-          <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Not set" />
-        </Field>
-
-        <Field label="Lead source">
-          <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Not set" />
-        </Field>
-        <Field label="GSTIN" hint="Decides the tax treatment on their quotations.">
-          <input
-            value={gstin}
-            onChange={(event) => setGstin(event.target.value.toUpperCase())}
-            placeholder="27AAAAA0000A1Z5"
-          />
-        </Field>
-
-        <Field label="Country">
-          <MasterSelect
-            kind="countries"
-            value={countryId}
-            onChange={(next) => {
-              setCountryId(next)
-              setStateId('')
-              setCityId('')
-            }}
-          />
-        </Field>
-        <Field label="State">
-          <MasterSelect
-            kind="states"
-            value={stateId}
-            onChange={(next) => {
-              setStateId(next)
-              setCityId('')
-            }}
-            parentId={countryId}
-            placeholder="Not set"
-          />
-        </Field>
-
-        <Field label="City">
-          <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId} placeholder="Not set" />
-        </Field>
-        <Field label="Pincode">
-          <input value={pincode} onChange={(event) => setPincode(event.target.value)} />
-        </Field>
-
-        <Field label="Account manager">
-          <OwnerSelect value={managerId} onChange={setManagerId} placeholder="You" />
-        </Field>
-        <Field label="Status">
-          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-            <option value="active">Active</option>
-            <option value="on_hold">On hold</option>
-            <option value="expired">Expired</option>
-            <option value="churned">Churned</option>
-          </select>
-        </Field>
-
-        <Field label="Address" wide>
-          <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={3} />
-        </Field>
-
-        {extras && <div className="crm-form-wide">{extras}</div>}
-      </div>
-    </Dialog>
+        <LfSection icon={<IconSheet size={16} />} title="Notes" note="Anything the team should know about this account.">
+          {customer && (
+            <LfField label={customer.converted_from_lead_id ? 'Conversion date' : 'Customer since'}>
+              <input value={new Date(customer.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                     readOnly disabled className="lf-readonly" />
+            </LfField>
+          )}
+          <LfField label="Notes" wide>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={4000}
+                      placeholder="Preferences, history, special terms…" />
+          </LfField>
+        </LfSection>
+        {extras && !page && <div className="lf-extras">{extras}</div>}
+      </form>
   )
-}
 
-/* ----------------------------------------------------------------- editor --- */
-
-/** One customer, in one dialog: the Edit customer form, and under it what they
- *  bought and the latest calls. The row's edit icon, its name, a new customer
- *  and a renewal link all open this; there is no separate record panel. */
-function CustomerEditor({
-  customerId,
-  onClose,
-  onChanged,
-}: {
-  customerId: string
-  onClose: () => void
-  onChanged: () => void
-}) {
-  const detail = useQuery<CustomerDetail>(`crm-customer-${customerId}`, () =>
-    crm.customer(customerId),
-  )
-  const customer = detail.data
-
-  if (!customer) {
+  if (page && customer) {
+    const plan = customer.primary_plan
     return (
-      <Dialog title="Customer" onClose={onClose}>
-        <div className="crm-form">
-          <div className="crm-form-wide">
-            {detail.error ? <ErrorNote>{detail.error}</ErrorNote> : <Loading />}
+      <div className="cup">
+        <header className="cup-head">
+          <button type="button" className="btn cup-back" onClick={onClose}>
+            <IconArrowLeft size={15} /> All customers
+          </button>
+          <div className="cup-id">
+            <Avatar name={name || customer.name} />
+            <div>
+              <h1>{name || customer.name}</h1>
+              <p>
+                <span className="crm-code">{customer.code}</span>
+                {company && <> · {company}</>}
+                {mobile && <> · {mobile}</>}
+              </p>
+            </div>
+            <StateText value={status} />
           </div>
+        </header>
+
+        <div className="cup-body">
+          <div className="cup-main">{form}</div>
+          <aside className="cup-side">
+            <section className="cup-card cup-facts">
+              <h3>Account summary</h3>
+              <dl>
+                <div><dt>Customer since</dt><dd>{customer.created_at.slice(0, 10)}</dd></div>
+                <div><dt>Account manager</dt><dd>{customer.manager_name ?? 'Unassigned'}</dd></div>
+                <div><dt>Current plan</dt><dd>{plan?.product_name ?? 'None yet'}</dd></div>
+                <div>
+                  <dt>Next renewal</dt>
+                  <dd className={plan?.days_to_renewal !== null && plan?.days_to_renewal !== undefined && plan.days_to_renewal < 0 ? 'crm-due-over' : ''}>
+                    {plan?.renewal_on ? <>{plan.renewal_on} <small>({inDays(plan.days_to_renewal)})</small></> : '—'}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            {extras}
+          </aside>
         </div>
-      </Dialog>
+
+        <footer className="cup-foot">
+          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
+          {error && <span className="error">{error}</span>}
+          <span className="crm-push" />
+          <button className="btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary lf-save" type="submit" form="crm-customer-form" disabled={busy || !ready}>
+            <IconCheck size={15} /> {busy ? 'Saving…' : 'Save changes'}
+          </button>
+        </footer>
+      </div>
     )
   }
 
   return (
-    <CustomerForm
-      customer={customer}
+    <Dialog
+      title={customer ? `Edit ${customer.name}` : 'Add new customer'}
+      subtitle={customer
+        ? <><span className="crm-code">{customer.code}</span> · {customer.mobile}</>
+        : 'Products and services are added next, once the customer is saved.'}
       onClose={onClose}
-      onSaved={() => {
-        onChanged()
-        onClose()
-      }}
-      extras={
-        <CustomerRecord
-          customer={customer}
-          onChanged={() => {
-            detail.reload()
-            onChanged()
-          }}
-        />
-      }
-    />
-  )
-}
-
-/** The part of a customer that is not a field: their plans and recent calls. */
-function CustomerRecord({
-  customer,
-  onChanged,
-}: {
-  customer: CustomerDetail
-  onChanged: () => void
-}) {
-  const [planEditing, setPlanEditing] = useState<CustomerPlan | null>(null)
-  const [addingPlan, setAddingPlan] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function removePlan(plan: CustomerPlan) {
-    setError(null)
-    try {
-      await crm.deletePlan(plan.id)
-      onChanged()
-    } catch (err) {
-      setError(crmError(err, 'That plan could not be removed'))
-    }
-  }
-
-  return (
-    <div className="cu-record">
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      {customer.converted_from_lead_id && (
-        <div className="notice notice-ok">This account started as a lead.</div>
-      )}
-
-      <div>
-        <div className="cu-record-head">
-          <span className="crm-field-label">Products &amp; plans</span>
-          <button type="button" className="btn btn-sm" onClick={() => setAddingPlan(true)}>
-            <IconPlus size={14} /> Add a plan
+      footer={
+        <>
+          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
+          <button className="btn" type="button" onClick={onClose}>
+            Cancel
           </button>
-        </div>
-        {customer.plans.length === 0 ? (
-          <p className="empty">Nothing recorded. Add what they bought so renewals can be tracked.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Period</th>
-                  <th className="crm-num">Amount</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {customer.plans.map((plan) => (
-                  <tr key={plan.id}>
-                    <td>
-                      <div className="crm-strong">{plan.product_name}</div>
-                      <div className="crm-sub">{plan.plan_name ?? '—'}</div>
-                    </td>
-                    <td className="crm-sub">
-                      {plan.start_on} → {plan.end_on ?? 'perpetual'}
-                      <div className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : ''}>
-                        renews {inDays(plan.days_to_renewal)}
-                      </div>
-                    </td>
-                    <td className="crm-num">
-                      {rupees(plan.amount)}
-                      <div className="crm-sub">
-                        <StateText value={plan.payment_status} />
-                      </div>
-                    </td>
-                    <td>
-                      <div className="crm-row-actions">
-                        <button type="button" className="link-btn" onClick={() => setPlanEditing(plan)}>
-                          Edit
-                        </button>
-                        <button type="button" className="link-btn" onClick={() => removePlan(plan)}>
-                          Remove
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {customer.interactions.length > 0 && (
-        <div>
-          <div className="cu-record-head">
-            <span className="crm-field-label">Recent calls</span>
-          </div>
-          <div className="crm-timeline">
-            {customer.interactions.slice(0, 8).map((row) => (
-              <div className="crm-event" key={row.id}>
-                <span className="crm-event-dot" />
-                <div>
-                  <div className="crm-event-body">
-                    {row.disposition_name ?? 'Call'} — {row.remarks ?? 'no remarks'}
-                  </div>
-                  <div className="crm-event-when">
-                    {row.direction} · {row.staff_name ?? 'unknown'} · {dateTime(row.created_at)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(addingPlan || planEditing) && (
-        <PlanForm
-          customerId={customer.id}
-          plan={planEditing}
-          onClose={() => {
-            setAddingPlan(false)
-            setPlanEditing(null)
-          }}
-          onSaved={() => {
-            setAddingPlan(false)
-            setPlanEditing(null)
-            onChanged()
-          }}
-        />
-      )}
-    </div>
+          <button className="btn btn-primary lf-save" type="submit" form="crm-customer-form" disabled={busy || !ready}>
+            <IconCheck size={15} /> {busy ? 'Saving…' : customer ? 'Save changes' : 'Save customer'}
+          </button>
+        </>
+      }
+    >
+      {form}
+    </Dialog>
   )
 }
 
+const CUSTOMER_TYPES = ['Enterprise', 'SMB', 'Individual', 'Reseller']
+
+const CUSTOMER_STATUSES: Array<{ key: Customer['status']; label: string; tone: string }> = [
+  { key: 'active', label: 'Active', tone: 'good' },
+  { key: 'on_hold', label: 'On hold', tone: 'warn' },
+  { key: 'expired', label: 'Expired', tone: 'idle' },
+  { key: 'churned', label: 'Churned', tone: 'bad' },
+]
+
+/* ----------------------------------------------------------------- editor --- */
+
+/** One customer, on one full page: the Edit customer form, and beside it what
+ *  they bought and the latest calls. The row's edit icon, its name, a new
+ *  customer and a renewal link all open this; there is no separate panel. */
 function PlanForm({
   customerId,
   plan,

@@ -14,7 +14,8 @@ import { DecideBar, ErpPage, Money } from './parts'
 
 const LINK: Record<PendingApproval['kind'], string> = {
   purchase_requisition: '/erp/requisitions',
-  purchase_order: '/erp/purchase-orders',
+  // ?open= opens that very order, not a fresh PO form.
+  purchase_order: '/erp/purchase-orders?open=',
   stock_adjustment: '/erp/inventory',
   sales_order: '/erp/sales-orders',
   credit_note: '/erp/billing',
@@ -49,7 +50,7 @@ export default function ErpApprovals() {
                 {q.data.map((row) => (
                   <tr key={`${row.kind}-${row.id}`}>
                     <td>
-                      <div className="crm-strong">{FLOW_LABEL[row.kind]} <Link to={LINK[row.kind]}>{row.number}</Link></div>
+                      <div className="crm-strong">{FLOW_LABEL[row.kind]} <Link to={LINK[row.kind].endsWith('=') ? `${LINK[row.kind]}${row.id}` : LINK[row.kind]}>{row.number}</Link></div>
                       {row.level && <div className="crm-sub">{row.level}</div>}
                     </td>
                     <td>{row.title}</td>

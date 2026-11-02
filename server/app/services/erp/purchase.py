@@ -62,7 +62,10 @@ from app.services.erp.common import (
     kernel_decide,
     may,
     money,
+    company_state,
     next_number,
+    peek_number,
+    split_tax,
     price_line,
     qty,
     record_audit,
@@ -80,6 +83,25 @@ def _now() -> datetime:
 def reset_chain(db: Session, record_id: uuid.UUID) -> None:
     """See the module docstring."""
     db.execute(delete(WorkflowStep).where(WorkflowStep.record_id == record_id))
+
+
+def _waiting_on(db: Session, po: ErpPurchaseOrder, chain: list[dict]) -> list[str]:
+    """Who a submitted order is waiting on, by name — never a hardcoded list.
+    With an approval chain, its open rung's reviewer; without one, whoever
+    holds the approve-purchases capability, the buyer who raised it excepted."""
+    if po.status != PoStatus.SUBMITTED.value:
+        return []
+    if chain:
+        rung = next((s for s in chain if s["status"] == "pending"), None)
+        if rung is None:
+            return []
+        if rung.get("reviewer_name"):
+            return [rung["reviewer_name"]]
+        return [str(rung.get("reviewer_rule") or "").replace("_", " ").capitalize() or "The next approver"]
+    from app.services.erp.common import may
+
+    people = db.scalars(select(User).where(User.org_id == po.org_id, User.is_active.is_(True), User.id != po.created_by))
+    return sorted(u.full_name or u.email for u in people if may(u, "can_approve_purchases"))[:6]
 
 
 def _chain(db: Session, record_id: uuid.UUID) -> list[dict]:
@@ -485,6 +507,7 @@ def _po_out(db: Session, po: ErpPurchaseOrder) -> dict:
         ErpItem.id.in_([line.item_id for line in po.lines if line.item_id])))}
     today = date.today()
     due = po.committed_date or po.expected_date
+    chain = _chain(db, po.id)
     return {
         **row_dict(po),
         "vendor_name": vendor.legal_name if vendor else None,
@@ -493,7 +516,8 @@ def _po_out(db: Session, po: ErpPurchaseOrder) -> dict:
         "created_by_name": names.get(po.created_by),
         "reviewed_by_name": names.get(po.reviewed_by),
         "is_overdue": bool(due and due < today and PoStatus(po.status).is_receivable),
-        "chain": _chain(db, po.id),
+        "chain": chain,
+        "waiting_on": _waiting_on(db, po, chain),
         "lines": [
             {**row_dict(line),
              "item_code": items[line.item_id].code if line.item_id in items else None,
@@ -549,6 +573,9 @@ def _apply_po(db: Session, viewer: User, po: ErpPurchaseOrder, payload: S.Purcha
     if payload.warehouse_id:
         stock.active_warehouse(db, viewer.org_id, payload.warehouse_id)
     settings = get_settings(db, viewer.org_id)
+    if payload.expected_date and payload.expected_date < (payload.order_date or date.today()):
+        raise ErpError("bad_dates", "Expected delivery cannot be before the PO date.")
+    po.company = (payload.company or "").strip() or None
     for field in ("vendor_id", "requisition_id", "sales_order_id", "project_id", "warehouse_id",
                   "expected_date", "payment_terms", "delivery_terms", "ld_percent_per_week",
                   "ld_cap_percent", "notes"):
@@ -557,6 +584,7 @@ def _apply_po(db: Session, viewer: User, po: ErpPurchaseOrder, payload: S.Purcha
     po.terms = payload.terms if payload.terms is not None else settings.po_terms
     po.payment_terms = payload.payment_terms or f"{vendor.payment_terms_days} days"
     po.freight = money(payload.freight)
+    po.other_charges = money(payload.other_charges)
     po.is_interstate = is_interstate(db, viewer.org_id, vendor.state)
 
     po.lines.clear()
@@ -575,21 +603,35 @@ def _apply_po(db: Session, viewer: User, po: ErpPurchaseOrder, payload: S.Purcha
                     f"{req.number}: only {(req_line.quantity - req_line.ordered_qty).normalize()} "
                     f"of “{req_line.description}” is left to order.",
                 )
-        gst = line.gst_percent if line.gst_percent is not None else (item.gst_percent if item else Decimal("18"))
-        priced = price_line(line.quantity, line.rate, gst)
+        gst = line.gst_percent if line.gst_percent is not None else (
+            item.purchase_gst_percent if item else Decimal("18"))
+        priced = price_line(line.quantity, line.rate, gst, line.discount_percent)
         po.lines.append(ErpPurchaseOrderLine(
             org_id=viewer.org_id, item_id=item.id if item else None,
             requisition_line_id=line.requisition_line_id,
             description=line.description or item.name,
             hsn_sac=line.hsn_sac or (item.hsn_sac if item else None),
             uom=line.uom or (item.uom if item else "Nos"), gst_percent=gst, sort_order=order,
+            discount_percent=line.discount_percent,
             **priced,
         ))
         sub += priced["taxable_value"]
         tax += priced["tax_amount"]
     po.sub_total = money(sub)
     po.tax_total = money(tax)
-    po.grand_total = money(sub + tax + po.freight)
+    for key, value in split_tax(po.tax_total, interstate=po.is_interstate).items():
+        setattr(po, key, value)
+    po.grand_total = money(sub + tax + po.freight + po.other_charges)
+
+
+def peek_po_number(db: Session, viewer: User, on: date | None = None) -> dict:
+    """The number the next new PO would get — shown on the form. Read only:
+    the counter moves when the draft is saved."""
+    require(viewer, "can_manage_procurement")
+    # The company's state goes with it, so the form can split GST as the
+    # server will: CGST + SGST within the state, IGST across states.
+    return {"number": peek_number(db, viewer.org_id, "PO", on or date.today()),
+            "company_state": company_state(db, viewer.org_id)}
 
 
 def save_purchase_order(
@@ -916,16 +958,16 @@ def post_receipt(db: Session, viewer: User, payload: S.GoodsReceiptIn, request: 
             stock.move(
                 db, viewer, item=item, warehouse_id=warehouse.id, quantity=accepted,
                 kind=MovementKind.GRN, ref_type="goods_receipt", ref_id=grn.id, ref_number=grn.number,
-                condition=line.condition, unit_cost=po_line.rate, serials=serials,
+                condition=line.condition, unit_cost=po_line.net_rate, serials=serials,
             )
         grn.lines.append(ErpGoodsReceiptLine(
             org_id=viewer.org_id, po_line_id=po_line.id, item_id=po_line.item_id,
             description=po_line.description, received_qty=received, accepted_qty=accepted,
-            rejected_qty=rejected, condition=line.condition, unit_cost=po_line.rate,
+            rejected_qty=rejected, condition=line.condition, unit_cost=po_line.net_rate,
             serials=serials or None,
         ))
         po_line.received_qty = qty(po_line.received_qty + accepted)
-        accepted_value += accepted * po_line.rate
+        accepted_value += accepted * po_line.net_rate
 
     # Liquidated damages — FR-06.14. Whole weeks late, each costing the PO's
     # percentage of what arrived late, capped.

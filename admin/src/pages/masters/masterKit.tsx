@@ -19,6 +19,7 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconCheck, IconPlus } from '../../components/Icons'
 import { crm, crmError } from '../crm/api'
 import { Dialog, Field, MasterSelect, OwnerSelect } from '../crm/parts'
+import { BILLING_CYCLES, PlanForm, PRODUCT_CATEGORIES, ProductForm } from './ProductPlanForms'
 
 /* ---------------------------------------------------------- master shapes --- */
 
@@ -47,15 +48,11 @@ export interface ListDef {
   fields: MasterField[]
   /** Filter the list by a parent chosen above it — states by country, and so on. */
   parent?: { kind: string; label: string; field: string }
+  /** Keep "Master" in the name on cards and crumbs, where it is the list's
+      own name rather than a suffix (Company Master). */
+  keepMaster?: boolean
 }
 
-const PRODUCT_CATEGORIES = [
-  { value: 'product', label: 'Product' },
-  { value: 'service', label: 'Service' },
-  { value: 'implementation', label: 'Implementation' },
-  { value: 'support_amc', label: 'Support / AMC' },
-  { value: 'recurring', label: 'Recurring / subscription' },
-]
 
 const FORECAST_CATEGORIES = [
   { value: 'commit', label: 'Commit' },
@@ -69,6 +66,7 @@ const VALUE_LABELS: Record<string, Record<string, string>> = {
   category: Object.fromEntries(PRODUCT_CATEGORIES.map((o) => [o.value, o.label])),
   forecast_category: Object.fromEntries(FORECAST_CATEGORIES.map((o) => [o.value, o.label])),
   outcome: { lost: 'Lost', no_decision: 'No decision' },
+  billing_cycle: Object.fromEntries(BILLING_CYCLES.map((o) => [o.value, o.label])),
 }
 
 export const LISTS: ListDef[] = [
@@ -191,50 +189,44 @@ export const LISTS: ListDef[] = [
     kind: 'products',
     label: 'Product / Service',
     description:
-      'What you sell. The rate and GST here are the starting point for a quotation line — the line keeps whatever it was saved with afterwards.',
+      'What you sell. The rate, GST and HSN/SAC here are the starting point for a quotation line — the line keeps whatever it was saved with afterwards.',
     columns: [
       { key: 'name', label: 'Product / Service' },
-      { key: 'category', label: 'Category' },
-      { key: 'oem', label: 'OEM' },
-      { key: 'hsn_sac', label: 'HSN / SAC' },
-      { key: 'rate', label: 'Rate' },
+      { key: 'rate', label: 'Basic rate' },
       { key: 'gst_percent', label: 'GST %' },
+      { key: 'hsn_sac', label: 'HSN / SAC' },
       { key: 'plan_count', label: 'Plans' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
-      { key: 'description', label: 'Description', kind: 'text' },
-      {
-        key: 'category',
-        label: 'Revenue category',
-        kind: 'select',
-        hint: 'Which part of an opportunity\'s value this counts towards — the PRD amount split.',
-        options: PRODUCT_CATEGORIES,
-      },
-      { key: 'oem', label: 'OEM / brand', kind: 'text', placeholder: 'Cisco, Microsoft…' },
-      { key: 'hsn_sac', label: 'HSN / SAC', kind: 'text' },
-      { key: 'unit', label: 'Unit', kind: 'text', placeholder: 'licence, hour, unit' },
-      { key: 'rate', label: 'Rate (₹)', kind: 'number' },
+      { key: 'name', label: 'Product name', kind: 'text' },
+      { key: 'rate', label: 'Basic rate (₹)', kind: 'number' },
       { key: 'gst_percent', label: 'GST %', kind: 'number' },
+      { key: 'hsn_sac', label: 'HSN / SAC code', kind: 'text' },
+      { key: 'description', label: 'Description', kind: 'text' },
     ],
   },
   {
     kind: 'plans',
     label: 'Plan Master',
+    keepMaster: true,
     description:
       'A priced term of a product. The duration is what a renewal date is worked out from; leave it blank for a one-off sale with no renewal.',
     columns: [
       { key: 'name', label: 'Plan' },
+      { key: 'code', label: 'Code' },
       { key: 'product_name', label: 'Product' },
-      { key: 'duration_days', label: 'Days' },
+      { key: 'billing_cycle', label: 'Billing cycle' },
       { key: 'price', label: 'Price' },
+      { key: 'duration_days', label: 'Days' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
       { key: 'product_id', label: 'Product', kind: 'parent', parentKind: 'products' },
-      { key: 'duration_days', label: 'Duration in days', kind: 'number', hint: 'Blank = perpetual.' },
+      { key: 'name', label: 'Plan name', kind: 'text' },
+      { key: 'code', label: 'Plan code', kind: 'text' },
       { key: 'price', label: 'Price (₹)', kind: 'number' },
-      { key: 'gst_percent', label: 'GST % (optional)', kind: 'number' },
+      { key: 'billing_cycle', label: 'Billing cycle', kind: 'select', options: BILLING_CYCLES },
+      { key: 'duration_days', label: 'Duration in days', kind: 'number' },
+      { key: 'description', label: 'Description', kind: 'text' },
     ],
     parent: { kind: 'products', label: 'Product', field: 'product_id' },
   },
@@ -386,6 +378,27 @@ export const LISTS: ListDef[] = [
     ],
   },
   {
+    kind: 'item-categories',
+    label: 'Item Categories',
+    description: 'Groups for ERP items. The item form picks its category from this list.',
+    columns: [{ key: 'name', label: 'Category' }],
+    fields: [
+      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'sort_order', label: 'Order', kind: 'number' },
+    ],
+  },
+  {
+    kind: 'item-companies',
+    label: 'Company Master',
+    keepMaster: true,
+    description: 'Makes / OEMs whose products you stock. The item form picks its company from this list.',
+    columns: [{ key: 'name', label: 'Company' }],
+    fields: [
+      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'sort_order', label: 'Order', kind: 'number' },
+    ],
+  },
+  {
     kind: 'contact-designations',
     label: 'Contact Designations',
     description: 'Job titles of the people you deal with at a customer — not your own staff\'s designations.',
@@ -530,7 +543,18 @@ export function MasterTable({ list }: { list: ListDef }) {
         </div>
       )}
 
-      {(adding || editing) && (
+      {(adding || editing) && (list.kind === 'products' || list.kind === 'plans') && (() => {
+        const Form = list.kind === 'products' ? ProductForm : PlanForm
+        return (
+          <Form
+            row={editing}
+            defaultParentId={parentId}
+            onClose={() => { setAdding(false); setEditing(null) }}
+            onSaved={() => { setAdding(false); setEditing(null); rows.reload() }}
+          />
+        )
+      })()}
+      {(adding || editing) && list.kind !== 'products' && list.kind !== 'plans' && (
         <MasterForm
           list={list}
           row={editing}
@@ -828,14 +852,14 @@ export const MASTER_GROUPS: MasterGroup[] = [
   {
     key: 'lead',
     title: 'Lead Master',
-    description: 'How a lead is described from the moment it is captured.',
-    kinds: ['statuses', 'sources', 'campaigns', 'industries'],
+    description: 'How a lead is described from the moment it is captured, and what it is interested in buying.',
+    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'products', 'plans'],
   },
   {
     key: 'erp',
     title: 'ERP Master',
     description: 'Items, warehouses, vendors and customer accounts for purchase, stock and billing.',
-    kinds: [],
+    kinds: ['item-categories', 'item-companies'],
     links: [
       { label: 'Items', to: '/masters/erp/items' },
       { label: 'Warehouses', to: '/masters/erp/warehouses' },
@@ -849,13 +873,6 @@ export const MASTER_GROUPS: MasterGroup[] = [
     description: 'What the opportunity pipeline, forecast and win/loss analysis stand on.',
     kinds: ['opportunity-stages', 'lost-reasons', 'competitors', 'territories', 'contact-designations'],
     path: '/sales-master',
-  },
-  {
-    key: 'product',
-    title: 'Product Master',
-    description: 'What you sell, at what rate and GST, and the plans it renews on.',
-    kinds: ['products', 'plans'],
-    path: '/product-master',
   },
   {
     key: 'service',
@@ -877,5 +894,5 @@ export const MASTER_GROUPS: MasterGroup[] = [
 
 /** A list's label without the trailing "Master", for use on a card. */
 export function shortLabel(list: ListDef): string {
-  return list.label.replace(/\s+Master$/, '')
+  return list.keepMaster ? list.label : list.label.replace(/\s+Master$/, '')
 }

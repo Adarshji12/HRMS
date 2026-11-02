@@ -14,7 +14,7 @@
  * them, so "I rang last Tuesday and someone said…" is answerable.
  */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../../styles/crm.css'
 import { useQuery } from '../../lib/useQuery'
@@ -23,20 +23,24 @@ import { ErrorNote, Loading } from '../../components/ui'
 import {
   IconCalendar,
   IconCheck,
+  IconFolder,
   IconMail,
   IconPhone,
   IconPin,
   IconSearch,
+  IconStar,
   IconUsers,
 } from '../../components/Icons'
 import {
   crm,
   crmError,
   inDays,
+  rupees,
   type Customer,
   type CustomerDetail,
   type Disposition,
   type Interaction,
+  type Product,
 } from './api'
 import { Assignee, CustomerPicker, DuePill, Field, StateText, WhatsAppButton } from './parts'
 
@@ -118,6 +122,7 @@ export default function SupportCenter() {
             <EmptyProfile />
           )}
 
+          <CustomerTabs customer={customer} />
         </div>
 
         <LogPanel
@@ -319,6 +324,168 @@ function Profile({ customer, onClear }: { customer: CustomerDetail; onClear: () 
         </div>
       </div>
     </section>
+  )
+}
+
+/* --------------------------------------------- plans, visits, cross-sell --- */
+
+type Tab = 'plans' | 'visits' | 'cross-sell'
+
+/** What a caller asks about after "who am I speaking to": what they bought and
+ *  when it renews, which field visits are booked, and what they have not bought
+ *  yet. The tables keep their headers with no customer loaded, so the desk has
+ *  the same shape before and after a search. */
+function CustomerTabs({ customer }: { customer: CustomerDetail | null }) {
+  const [tab, setTab] = useState<Tab>('plans')
+  const tabs: Array<{ key: Tab; label: string; icon: ReactNode; count?: number }> = [
+    { key: 'plans', label: 'Plans', icon: <IconFolder size={14} />, count: customer?.plans.length },
+    { key: 'visits', label: 'Visits', icon: <IconPin size={14} />, count: customer?.visits.length },
+    { key: 'cross-sell', label: 'Cross-Sell', icon: <IconStar size={14} /> },
+  ]
+  return (
+    <section className="card sd-tabcard">
+      <div className="sd-seg" role="tablist" aria-label="Customer details">
+        {tabs.map((t) => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key}
+                  className={tab === t.key ? 'is-on' : ''} onClick={() => setTab(t.key)}>
+            {t.icon} {t.label}
+            {t.count ? <span className="sd-seg-count">{t.count}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div className="table-wrap sd-tab-wrap">
+        {tab === 'plans' ? <PlansTable customer={customer} />
+          : tab === 'visits' ? <VisitsTable customer={customer} />
+            : <CrossSell customer={customer} />}
+      </div>
+    </section>
+  )
+}
+
+function EmptyRow({ cols, children }: { cols: number; children: ReactNode }) {
+  return <tr><td colSpan={cols} className="sd-empty-cell">{children}</td></tr>
+}
+
+function PlansTable({ customer }: { customer: CustomerDetail | null }) {
+  return (
+    <table className="sd-table">
+      <thead>
+        <tr>
+          <th>Product / Service</th>
+          <th>Plan</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Renewal</th>
+          <th className="crm-num">Payment</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {!customer ? (
+          <EmptyRow cols={7}>Search a customer to see their plans and renewal dates.</EmptyRow>
+        ) : customer.plans.length === 0 ? (
+          <EmptyRow cols={7}>This customer has no plans recorded. Add one on their record.</EmptyRow>
+        ) : customer.plans.map((plan) => (
+          <tr key={plan.id}>
+            <td className="crm-strong">{plan.product_name}</td>
+            <td>{plan.plan_name ?? <span className="crm-muted">—</span>}</td>
+            <td className="crm-nowrap">{plan.start_on}</td>
+            <td className="crm-nowrap">{plan.end_on ?? <span className="crm-muted">—</span>}</td>
+            <td className="crm-nowrap">
+              {plan.renewal_on ?? <span className="crm-muted">—</span>}
+              {plan.renewal_on && (
+                <div className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : 'crm-sub'}>
+                  {inDays(plan.days_to_renewal)}
+                </div>
+              )}
+            </td>
+            <td className="crm-num">
+              {rupees(plan.amount)}
+              <div className="crm-sub"><StateText value={plan.payment_status} /></div>
+            </td>
+            <td><StateText value={plan.status} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function VisitsTable({ customer }: { customer: CustomerDetail | null }) {
+  return (
+    <table className="sd-table">
+      <thead>
+        <tr>
+          <th>Visit no</th>
+          <th>Type</th>
+          <th>Scheduled</th>
+          <th>Employee</th>
+          <th>Status</th>
+          <th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        {!customer ? (
+          <EmptyRow cols={6}>Search a customer to see the field visits booked with them.</EmptyRow>
+        ) : customer.visits.length === 0 ? (
+          <EmptyRow cols={6}>No field visits booked with this customer.</EmptyRow>
+        ) : customer.visits.map((visit) => (
+          <tr key={visit.id}>
+            <td className="crm-code">{visit.visit_no}</td>
+            <td>{visit.visit_type_name ?? <span className="crm-muted">—</span>}</td>
+            <td className="crm-nowrap">{dateTime(visit.scheduled_at)}</td>
+            <td>{visit.employee_name ?? <span className="crm-muted">Unassigned</span>}</td>
+            <td><StateText value={visit.status} /></td>
+            <td>{visit.outcome ?? <span className="crm-muted">—</span>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/** What this customer has not bought: the active catalogue minus the products
+ *  on their plans. A set difference over a few dozen products, so it is worked
+ *  out here rather than given an endpoint of its own. */
+function CrossSell({ customer }: { customer: CustomerDetail | null }) {
+  const products = useQuery<Product[]>('crm-products-all', () => crm.masters<Product>('products'),
+    { enabled: Boolean(customer) })
+  const owned = useMemo(
+    () => new Set((customer?.plans ?? []).map((plan) => plan.product_id).filter(Boolean) as string[]),
+    [customer],
+  )
+  const rest = (products.data ?? []).filter((product) => product.is_active && !owned.has(product.id))
+  return (
+    <table className="sd-table">
+      <thead>
+        <tr>
+          <th>Product / Service</th>
+          <th>Description</th>
+          <th className="crm-num">List rate</th>
+          <th className="crm-num">Offer it</th>
+        </tr>
+      </thead>
+      <tbody>
+        {!customer ? (
+          <EmptyRow cols={4}>Search a customer to see what they have not bought yet.</EmptyRow>
+        ) : products.loading && !products.data ? (
+          <EmptyRow cols={4}>Loading…</EmptyRow>
+        ) : !(products.data ?? []).some((product) => product.is_active) ? (
+          <EmptyRow cols={4}>No products in the catalogue yet. Add them under CRM masters.</EmptyRow>
+        ) : rest.length === 0 ? (
+          <EmptyRow cols={4}>This customer already has everything on the catalogue.</EmptyRow>
+        ) : rest.map((product) => (
+          <tr key={product.id}>
+            <td className="crm-strong">{product.name}</td>
+            <td className="sd-remarks">{product.description ?? <span className="crm-muted">—</span>}</td>
+            <td className="crm-num">{rupees(product.rate)}</td>
+            <td className="crm-num">
+              <Link className="btn btn-sm" to={`/crm/quotations/new?customer=${customer.id}`}>Quote it</Link>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

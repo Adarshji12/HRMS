@@ -21,14 +21,6 @@ export default function Login() {
   // is the address; anywhere else the server finds it from the account.
   const fromHost = slugFromHostname()
 
-  // Signup belongs to the marketing host, not a tenant's. Linking to /signup
-  // from acme.example.com would start a new company inside Acme's address bar.
-  const signupUrl = fromHost
-    ? `${window.location.protocol}//${BASE_DOMAIN}${
-        window.location.port ? `:${window.location.port}` : ''
-      }/signup?from=${encodeURIComponent(fromHost)}`
-    : '/signup'
-
   async function signIn(slug?: string) {
     setBusy(true)
     setError(null)
@@ -132,11 +124,6 @@ export default function Login() {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
-
-      <div className="auth-divider">New to the platform?</div>
-      <p className="auth-alt">
-        <a href={signupUrl}>Create a workspace for your company →</a>
-      </p>
     </AuthShell>
   )
 }

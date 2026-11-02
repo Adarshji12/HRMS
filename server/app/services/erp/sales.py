@@ -56,6 +56,7 @@ from app.services.erp.common import (
     require,
     require_reason,
     row_dict,
+    split_tax,
     user_names,
 )
 
@@ -75,7 +76,7 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
     from app.models.erp import ErpInvoice
     from app.services import chains
 
-    names = user_names(db, so.org_id, [so.created_by, so.reviewed_by])
+    names = user_names(db, so.org_id, [so.created_by, so.reviewed_by, so.salesperson_id])
     items = {i.id: i for i in db.scalars(select(ErpItem).where(
         ErpItem.id.in_([line.item_id for line in so.lines if line.item_id])))}
     dispatches = list(db.scalars(select(ErpDispatch).where(
@@ -89,6 +90,9 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
         **row_dict(so),
         "created_by_name": names.get(so.created_by),
         "reviewed_by_name": names.get(so.reviewed_by),
+        "salesperson_name": names.get(so.salesperson_id),
+        # The files themselves are fetched one at a time.
+        "attachments": [{k: v for k, v in a.items() if k != "data"} for a in (so.attachments or [])],
         "quotation_number": quotation.number if quotation else None,
         "site_name": site.name if site else None,
         "chain": [row_dict(s) for s in steps],
@@ -154,6 +158,23 @@ def get_order(db: Session, viewer: User, so_id: uuid.UUID) -> dict:
     return _order_out(db, _get(db, viewer, so_id))
 
 
+def _known_state(db: Session, org_id: uuid.UUID, place: str | None) -> str | None:
+    """The place of supply, checked against the States master when the company
+    keeps one — GST turns on it, so a typo must not quietly become inter-state."""
+    from app.models.crm import CrmState
+
+    value = (place or "").strip()
+    if not value:
+        return None
+    names = list(db.scalars(select(CrmState.name).where(CrmState.org_id == org_id, CrmState.is_active.is_(True))))
+    if not names:
+        return value
+    match = next((n for n in names if n.lower() == value.lower()), None)
+    if match is None:
+        raise ErpError("bad_place_of_supply", f"“{value}” is not a state in Master › States — pick the place of supply from the list.")
+    return match
+
+
 def _apply(db: Session, viewer: User, so: ErpSalesOrder, payload: S.SalesOrderIn) -> None:
     customer = get_owned(db, CrmCustomer, viewer.org_id, payload.customer_id, "customer")
     account = masters.ensure_account(db, viewer.org_id, customer.id)
@@ -165,13 +186,24 @@ def _apply(db: Session, viewer: User, so: ErpSalesOrder, payload: S.SalesOrderIn
         raise ErpError("future_po", "The customer's PO cannot be dated in the future.")
     so.customer_id = customer.id
     so.customer_name = account.legal_name or customer.company or customer.name
+    if payload.required_by and payload.required_by < (payload.order_date or date.today()):
+        raise ErpError("bad_dates", "The delivery date cannot be before the order date.")
+    if payload.salesperson_id:
+        person = db.get(User, payload.salesperson_id)
+        if person is None or person.org_id != viewer.org_id:
+            raise ErpError("bad_salesperson", "That salesperson is not in this company.")
     for field in ("quotation_id", "site_id", "project_id", "customer_po_number", "customer_po_date",
-                  "customer_po_value", "required_by", "deviation_note", "notes"):
+                  "customer_po_value", "required_by", "deviation_note", "notes", "salesperson_id",
+                  "order_type", "priority", "delivery_mode", "freight_terms"):
         setattr(so, field, getattr(payload, field))
+    for field in ("reference", "delivery_terms", "transporter_name", "delivery_instructions", "terms", "internal_notes"):
+        setattr(so, field, (getattr(payload, field) or "").strip() or None)
+    so.freight = money(payload.freight)
+    so.other_charges = money(payload.other_charges)
     so.order_date = payload.order_date or date.today()
     so.billing_address = payload.billing_address or account.billing_address
     so.shipping_address = payload.shipping_address or account.shipping_address or so.billing_address
-    so.place_of_supply = payload.place_of_supply or account.billing_state
+    so.place_of_supply = _known_state(db, viewer.org_id, payload.place_of_supply) or account.billing_state
     so.payment_terms = payload.payment_terms or f"{account.credit_days} days"
     so.is_interstate = is_interstate(db, viewer.org_id, so.place_of_supply)
 
@@ -187,17 +219,27 @@ def _apply(db: Session, viewer: User, so: ErpSalesOrder, payload: S.SalesOrderIn
         fulfilment = line.fulfilment or ("stock" if item and item.is_stocked else "service")
         if fulfilment != "service" and (item is None or not item.is_stocked):
             raise ErpError("needs_item", "Only a stocked item can be fulfilled from stock or procured.")
-        priced = price_line(line.quantity, line.rate, gst)
+        priced = price_line(line.quantity, line.rate, gst, line.discount_percent)
         so.lines.append(ErpSalesOrderLine(
             org_id=viewer.org_id, item_id=item.id if item else None,
             description=line.description or item.name, hsn_sac=line.hsn_sac or (item.hsn_sac if item else None),
             uom=line.uom or (item.uom if item else "Nos"), gst_percent=gst, fulfilment=fulfilment,
-            sort_order=order, **priced,
+            sort_order=order, discount_percent=line.discount_percent, **priced,
         ))
         sub += priced["taxable_value"]
         tax += priced["tax_amount"]
+    # Freight and other charges are part of the supply: taxable, at the rate
+    # asked for or else the highest rate on the items.
+    charges = so.freight + so.other_charges
+    rate = payload.charges_gst_percent if payload.charges_gst_percent is not None else max(
+        (line.gst_percent for line in so.lines), default=Decimal("18"))
+    so.charges_gst_percent = rate
+    sub += charges
+    tax += money(charges * rate / Decimal("100"))
     so.sub_total = money(sub)
     so.tax_total = money(tax)
+    for key, value in split_tax(so.tax_total, interstate=so.is_interstate).items():
+        setattr(so, key, value)
     so.grand_total = money(sub + tax)
 
     so.milestones.clear()
@@ -220,6 +262,58 @@ def _apply(db: Session, viewer: User, so: ErpSalesOrder, payload: S.SalesOrderIn
         so.has_deviation = False
     if payload.customer_po_value is not None and money(payload.customer_po_value) != so.grand_total:
         so.has_deviation = True
+
+
+def peek_order_number(db: Session, viewer: User, on: date | None = None) -> dict:
+    """The number the next new order would get — shown on the form, not taken."""
+    from app.services.erp.common import company_state, peek_number
+
+    require(viewer, "can_manage_sales_orders")
+    return {"number": peek_number(db, viewer.org_id, "SO", on or date.today()),
+            "company_state": company_state(db, viewer.org_id)}
+
+
+def add_attachment(db: Session, viewer: User, so_id: uuid.UUID, payload: S.AttachmentIn,
+                   request: Request | None = None) -> dict:
+    """The customer's PO copy, a drawing, a signed BOQ. Kept while the order is
+    live; closed and cancelled orders are a record and take no more files."""
+    require(viewer, "can_manage_sales_orders")
+    so = _get(db, viewer, so_id)
+    if so.status in (SalesOrderStatus.CANCELLED.value, SalesOrderStatus.CLOSED.value):
+        raise ErpError("closed", f"This order is {so.status}.", 409)
+    files = list(so.attachments or [])
+    if len(files) >= 10:
+        raise ErpError("too_many", "An order holds up to 10 attachments.")
+    kind = payload.data.split(";", 1)[0].removeprefix("data:")
+    entry = {"id": uuid.uuid4().hex[:12], "name": payload.name.strip(), "type": kind,
+             "size": len(payload.data) * 3 // 4, "data": payload.data, "at": _now().isoformat(),
+             "by_name": viewer.full_name or viewer.email}
+    so.attachments = [*files, entry]
+    record_audit(db, viewer, "sales_order.attachment_added", so, request=request, detail={"name": entry["name"]})
+    db.commit()
+    return get_order(db, viewer, so.id)
+
+
+def get_attachment(db: Session, viewer: User, so_id: uuid.UUID, att_id: str) -> dict:
+    so = _get(db, viewer, so_id)
+    found = next((a for a in so.attachments or [] if a.get("id") == att_id), None)
+    if found is None:
+        raise ErpError("not_found", "No such attachment.", 404)
+    return {"name": found["name"], "data": found["data"]}
+
+
+def remove_attachment(db: Session, viewer: User, so_id: uuid.UUID, att_id: str,
+                      request: Request | None = None) -> dict:
+    require(viewer, "can_manage_sales_orders")
+    so = _get(db, viewer, so_id)
+    files = list(so.attachments or [])
+    found = next((a for a in files if a.get("id") == att_id), None)
+    if found is None:
+        raise ErpError("not_found", "No such attachment.", 404)
+    so.attachments = [a for a in files if a.get("id") != att_id] or None
+    record_audit(db, viewer, "sales_order.attachment_removed", so, request=request, detail={"name": found["name"]})
+    db.commit()
+    return get_order(db, viewer, so.id)
 
 
 def save_order(db: Session, viewer: User, payload: S.SalesOrderIn, so_id: uuid.UUID | None = None,
@@ -599,7 +693,7 @@ def create_dispatch(db: Session, viewer: User, payload: S.DispatchIn, request: R
         if line.reserved_qty <= 0:
             line.reserved_warehouse_id = None
         line.dispatched_qty = qty(line.dispatched_qty + quantity)
-        value += quantity * line.rate
+        value += quantity * line.net_rate
         d.lines.append(ErpDispatchLine(
             org_id=viewer.org_id, order_line_id=line.id, item_id=line.item_id,
             description=line.description, quantity=quantity, serials=serials or None,

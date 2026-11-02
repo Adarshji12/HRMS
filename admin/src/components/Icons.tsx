@@ -230,6 +230,14 @@ export const IconGauge = (p: P) => (
   </Svg>
 )
 
+export const IconPrinter = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 8.5V3.5h10v5" />
+    <path d="M7 17H5a1.5 1.5 0 0 1-1.5-1.5v-5A2 2 0 0 1 5.5 8.5h13a2 2 0 0 1 2 2v5A1.5 1.5 0 0 1 19 17h-2" />
+    <path d="M7 14h10v6.5H7z" />
+  </Svg>
+)
+
 export const IconDownload = (p: P) => (
   <Svg {...p}>
     <path d="M12 3.5v11M7.5 10.5 12 15l4.5-4.5" />

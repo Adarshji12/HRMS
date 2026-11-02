@@ -196,3 +196,10 @@
   .hr-field-grid { grid-template-columns: 1fr; }
   .hr-search { min-width: 0; width: 100%; }
 }
+
+.hr-same {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; cursor: pointer;
+}
+.hr-same input { width: auto; margin: 0; }

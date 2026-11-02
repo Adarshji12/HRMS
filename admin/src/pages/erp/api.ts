@@ -41,6 +41,7 @@ export interface Warehouse {
   code: string
   name: string
   kind: 'warehouse' | 'hub' | 'branch' | 'site' | 'engineer'
+  description?: string | null
   address: string | null
   state: string | null
   custodian_id: string | null
@@ -58,20 +59,31 @@ export interface Item {
   uom: string
   hsn_sac: string | null
   gst_percent: string
+  purchase_gst_percent: string
   make: string | null
   model: string | null
   part_number: string | null
   is_serialized: boolean
   warranty_months: number
+  weight_kg: string
+  volume_m3: string
   standard_cost: string
   sale_price: string
   reorder_level: string
   min_level: string
   max_level: string
   crm_product_id: string | null
+  image: string | null
+  barcode: string | null
+  tags: string[] | null
+  is_favorite: boolean
+  can_be_sold: boolean
+  can_be_purchased: boolean
+  track_inventory: boolean
   is_active: boolean
   available_qty: string
   below_reorder: boolean
+  is_stocked: boolean
 }
 
 export interface VendorBank {
@@ -157,15 +169,26 @@ export interface DocLine {
   item_id: string | null
   item_code?: string | null
   description: string
+  hsn_sac?: string | null
   uom?: string
   quantity: string
   rate?: string
+  discount_percent?: string
+  discount_amount?: string
+  discount2_percent?: string
+  discount2_amount?: string
+  free_qty?: string
+  is_charge?: boolean
+  cess_percent?: string
+  cess_amount?: string
   gst_percent?: string
   taxable_value?: string
   tax_amount?: string
   amount?: string
   is_serialized?: boolean
   is_stocked?: boolean
+  /** On a credit note: the invoice line it returns. */
+  source_line_id?: string | null
 }
 
 export interface Requisition {
@@ -243,6 +266,7 @@ export interface PurchaseOrder {
   order_date: string
   expected_date: string | null
   committed_date: string | null
+  company?: string | null
   payment_terms: string | null
   delivery_terms: string | null
   ld_percent_per_week: string
@@ -252,6 +276,10 @@ export interface PurchaseOrder {
   ld_waiver_reason: string | null
   sub_total: string
   tax_total: string
+  other_charges?: string
+  cgst?: string
+  sgst?: string
+  igst?: string
   freight: string
   grand_total: string
   terms: string | null
@@ -263,6 +291,13 @@ export interface PurchaseOrder {
   review_note: string | null
   closed_reason: string | null
   is_overdue: boolean
+  /** Who a submitted order is waiting on — the chain's reviewer, or the
+   *  people holding the approve-purchases capability. */
+  is_interstate: boolean
+  waiting_on?: string[]
+  created_at?: string
+  submitted_at?: string | null
+  reviewed_at?: string | null
   chain: ChainStep[]
   lines: (DocLine & { received_qty: string; pending_qty: string; hsn_sac: string | null })[]
   receipts: { id: string; number: string; received_on: string; status: string; days_late: number; ld_amount: string }[]
@@ -414,6 +449,25 @@ export interface SalesOrder {
   review_note: string | null
   closed_reason: string | null
   invoiced_total: string
+  salesperson_id?: string | null
+  salesperson_name?: string | null
+  order_type?: string
+  priority?: string
+  reference?: string | null
+  delivery_terms?: string | null
+  delivery_mode?: string | null
+  transporter_name?: string | null
+  freight_terms?: string | null
+  delivery_instructions?: string | null
+  terms?: string | null
+  internal_notes?: string | null
+  freight?: string
+  other_charges?: string
+  charges_gst_percent?: string | null
+  cgst?: string
+  sgst?: string
+  igst?: string
+  attachments?: { id: string; name: string; type: string; size: number; at: string; by_name: string }[]
   chain: ChainStep[]
   lines: (DocLine & {
     fulfilment: 'stock' | 'procure' | 'service'
@@ -451,6 +505,32 @@ export interface Dispatch {
   lines: { id: string; description: string; quantity: string; invoiced_qty: string; serials: string[] | null }[]
 }
 
+/** A payment against an invoice. Never deleted: a mistaken one is reversed,
+ *  and keeps who reversed it, when and why. */
+export interface InvoiceReceipt {
+  id: string
+  number: string
+  received_on: string
+  amount: string
+  tds_amount: string
+  mode: string
+  reference: string | null
+  notes?: string | null
+  status: 'posted' | 'reversed' | string
+  created_at?: string
+  created_by_name?: string | null
+  reverse_reason?: string | null
+  reversed_at?: string | null
+  reversed_by_name?: string | null
+  /** The company account it went into, as it was named then. */
+  deposit_account_id?: string | null
+  deposit_account?: string | null
+  has_proof?: boolean
+  proof_name?: string | null
+  /** Later corrections of the details, oldest first. */
+  corrections?: { at: string; by_name: string; reason: string; changes: Record<string, [unknown, unknown]> }[]
+}
+
 export interface Invoice {
   id: string
   number: string | null
@@ -459,6 +539,26 @@ export interface Invoice {
   customer_name: string
   gstin: string | null
   billing_address: string | null
+  shipping_address: string | null
+  salesperson_id: string | null
+  salesperson_name: string | null
+  recipient_bank: BankAccount | null
+  payment_reference: string | null
+  payment_ref_standard: boolean
+  delivery_date: string | null
+  bill_discount_percent: string
+  round_off: string
+  bill_discount_amount: string
+  cess_total: string
+  additional_discount: string
+  discount_reason: string | null
+  customer_po_number: string | null
+  reverse_charge: boolean
+  dispatch_doc_number: string | null
+  transporter_name: string | null
+  vehicle_number: string | null
+  eway_bill_number: string | null
+  lr_number: string | null
   place_of_supply: string | null
   sales_order_id: string | null
   order_number: string | null
@@ -479,6 +579,7 @@ export interface Invoice {
   days_overdue: number
   reason: string | null
   notes: string | null
+  terms: string | null
   status: 'draft' | 'submitted' | 'posted' | 'rejected' | 'cancelled'
   created_by: string
   created_by_name: string | null
@@ -488,8 +589,13 @@ export interface Invoice {
   cancel_reason: string | null
   chain: ChainStep[]
   lines: DocLine[]
-  receipts: { id: string; number: string; received_on: string; amount: string; tds_amount: string; mode: string; reference: string | null; status: string }[]
-  credit_notes: { id: string; number: string | null; status: string; grand_total: string }[]
+  receipts: InvoiceReceipt[]
+  credit_notes: {
+    id: string; number: string | null; status: string; grand_total: string
+    invoice_date?: string | null; reason?: string | null; created_by_name?: string | null; posted_at?: string | null
+  }[]
+  /** Per invoice line: what live credit notes have already returned. */
+  returned?: Record<string, { quantity: string; taxable_value: string }>
 }
 
 export interface Ageing {
@@ -518,6 +624,34 @@ export interface Dashboard {
   }
   sales: Record<string, number | string>
   billing: Record<string, number | string>
+  analytics: DashboardAnalytics
+}
+
+export interface DashboardAnalytics {
+  trend: { month: string; label: string; sales: string; purchases: string; collections: string }[]
+  kpis: {
+    sales_month: string
+    sales_last_month: string
+    purchases_month: string
+    purchases_last_month: string
+    collections_month: string
+    collections_last_month: string
+    sales_fy: string
+    dso_days: number | null
+  }
+  ageing: { bucket: string; amount: string }[]
+  top_customers: { name: string; total: string; invoices: number }[]
+  top_items: { name: string; quantity: string; total: string }[]
+  order_status: Record<string, number>
+  recent: {
+    kind: 'invoice' | 'credit_note' | 'sales_order' | 'purchase_order'
+    id: string
+    number: string | null
+    party: string | null
+    date: string
+    amount: string
+    status: string
+  }[]
 }
 
 export interface ErpSettingsRow {
@@ -528,6 +662,20 @@ export interface ErpSettingsRow {
   block_orders_overdue_days: number
   po_terms: string | null
   invoice_terms: string | null
+  bank_accounts: BankAccount[] | null
+}
+
+/** One of the company's own bank accounts, kept on ERP settings. */
+export interface BankAccount {
+  id?: string
+  label: string | null
+  bank_name: string
+  account_name: string | null
+  account_number: string
+  ifsc: string | null
+  branch: string | null
+  upi_id: string | null
+  is_default: boolean
 }
 
 /* ------------------------------------------------------------------ calls --- */
@@ -552,6 +700,8 @@ export const erp = {
   warehouses: (activeOnly = false) => api.get<Warehouse[]>(`${B}/warehouses${qs({ active_only: activeOnly || undefined })}`),
   saveWarehouse: (body: Body, id?: string) =>
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
+  deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
+  deleteItem: (id: string) => api.del(`${B}/items/${id}`),
 
   items: (p: { q?: string; active_only?: boolean; item_type?: string } = {}) => api.get<Item[]>(`${B}/items${qs(p)}`),
   saveItem: (body: Body, id?: string) =>
@@ -599,6 +749,7 @@ export const erp = {
 
   purchaseOrders: (p: { status?: string; q?: string } = {}) => api.get<PurchaseOrder[]>(`${B}/purchase-orders${qs(p)}`),
   purchaseOrder: (id: string) => api.get<PurchaseOrder>(`${B}/purchase-orders/${id}`),
+  nextPoNumber: (on: string) => api.get<{ number: string; company_state?: string | null }>(`${B}/purchase-orders/next-number${qs({ on })}`),
   savePurchaseOrder: (body: Body, id?: string) =>
     id ? api.put<PurchaseOrder>(`${B}/purchase-orders/${id}`, body) : api.post<PurchaseOrder>(`${B}/purchase-orders`, body),
   submitPurchaseOrder: (id: string) => api.post<PurchaseOrder>(`${B}/purchase-orders/${id}/submit`),
@@ -632,6 +783,10 @@ export const erp = {
   salesOrder: (id: string) => api.get<SalesOrder>(`${B}/sales-orders/${id}`),
   saveSalesOrder: (body: Body, id?: string) =>
     id ? api.put<SalesOrder>(`${B}/sales-orders/${id}`, body) : api.post<SalesOrder>(`${B}/sales-orders`, body),
+  nextSoNumber: (on: string) => api.get<{ number: string; company_state?: string | null }>(`${B}/sales-orders/next-number${qs({ on })}`),
+  addSoAttachment: (id: string, body: { name: string; data: string }) => api.post<SalesOrder>(`${B}/sales-orders/${id}/attachments`, body),
+  soAttachment: (id: string, attId: string) => api.get<{ name: string; data: string }>(`${B}/sales-orders/${id}/attachments/${attId}`),
+  removeSoAttachment: (id: string, attId: string) => api.del<SalesOrder>(`${B}/sales-orders/${id}/attachments/${attId}`),
   salesOrderFromQuotation: (quotationId: string) =>
     api.post<SalesOrder>(`${B}/sales-orders/from-quotation`, { quotation_id: quotationId }),
   salesOrderAction: (id: string, action: 'submit' | 'revise' | 'unreserve') =>
@@ -660,6 +815,8 @@ export const erp = {
   invoiceFromDispatch: (dispatchId: string) => api.post<Invoice>(`${B}/invoices/from-dispatch`, { dispatch_id: dispatchId }),
   invoiceFromMilestone: (milestoneId: string) =>
     api.post<Invoice>(`${B}/invoices/from-milestone`, { milestone_id: milestoneId }),
+  nextInvoiceNumber: (kind: string, on: string) =>
+    api.get<{ number: string; company_state: string | null }>(`${B}/invoices/next-number${qs({ kind, on })}`),
   postInvoice: (id: string) => api.post<Invoice>(`${B}/invoices/${id}/post`),
   cancelInvoice: (id: string, reason: string) => api.post<Invoice>(`${B}/invoices/${id}/cancel`, { reason }),
   deleteInvoice: (id: string) => api.del(`${B}/invoices/${id}`),
@@ -667,6 +824,8 @@ export const erp = {
   decideCreditNote: (id: string, approve: boolean, note?: string) =>
     api.post<Invoice>(`${B}/credit-notes/${id}/decide`, { approve, note }),
   recordReceipt: (body: Body) => api.post<Invoice>(`${B}/receipts`, body),
+  correctReceipt: (id: string, body: Body) => api.patch<Invoice>(`${B}/receipts/${id}`, body),
+  receiptProof: (id: string) => api.get<{ name: string; data: string }>(`${B}/receipts/${id}/proof`),
   reverseReceipt: (id: string, reason: string) => api.post<Invoice>(`${B}/receipts/${id}/reverse`, { reason }),
 }
 

@@ -11,7 +11,7 @@
  */
 
 import { useState, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/hrdash.css'
 import { useQuery } from '../../lib/useQuery'
@@ -44,7 +44,15 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: 'expired', label: 'Expired' },
 ]
 
+/** Quotation in the menu opens a new quotation; the list is "All quotations",
+ *  reached from the builder's button (?all). */
 export default function Quotations() {
+  const [params] = useSearchParams()
+  if (!params.has('all')) return <Navigate to="/crm/quotations/new" replace />
+  return <QuotationList />
+}
+
+function QuotationList() {
   const navigate = useNavigate()
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')

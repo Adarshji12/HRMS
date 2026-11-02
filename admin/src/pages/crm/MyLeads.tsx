@@ -22,16 +22,23 @@ import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
+  IconBriefcase,
+  IconCheck,
   IconClose,
   IconDownload,
   IconEdit,
   IconFilter,
   IconGrid,
+  IconMail,
+  IconPhone,
+  IconPin,
   IconPlus,
   IconSearch,
   IconSheet,
+  IconStar,
   IconTrash,
   IconUpload,
+  IconUser,
   IconUsers,
 } from '../../components/Icons'
 import {
@@ -54,6 +61,9 @@ import {
   Dialog,
   DuePill,
   DueDate,
+  LfField,
+  LfInput,
+  LfSection,
   Field,
   MasterSelect,
   OwnerSelect,
@@ -492,6 +502,14 @@ export default function MyLeads() {
                             >
                               <IconEdit size={15} />
                             </Link>
+                            <Link
+                              className="crm-icon-btn"
+                              to={`/crm/quotations/new?lead=${lead.id}`}
+                              title="Create quotation"
+                              aria-label={`Create a quotation for ${lead.name}`}
+                            >
+                              <IconSheet size={15} />
+                            </Link>
                             <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
                             <button
                               className="crm-icon-btn crm-icon-danger"
@@ -793,142 +811,148 @@ export function LeadForm({
     }
   }
 
+  // Checked as the person types, but only shown once they have left the field —
+  // a red "invalid" under a number that is half typed is noise, not help.
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const touch = (key: string) => () => setTouched((t) => ({ ...t, [key]: true }))
+  const digits = (s: string) => s.replace(/\D/g, '')
+  const mobileBad = mobile.trim() !== '' && (digits(mobile).length < 10 || digits(mobile).length > 15)
+  const whatsappBad = !sameNumber && whatsapp.trim() !== '' && (digits(whatsapp).length < 10 || digits(whatsapp).length > 15)
+  const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
+  const ready = name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad
+
   return (
     <Dialog
-      title={lead ? `Edit ${lead.name}` : 'Add Lead'}
+      title={lead ? `Edit ${lead.name}` : 'Add new lead'}
+      subtitle={lead
+        ? <>Lead <span className="crm-code">#{lead.code}</span> — change anything and save.</>
+        : 'Who they are, how to reach them, and where the lead came from.'}
       onClose={onClose}
       footer={
         <>
-          {error && <ErrorNote>{error}</ErrorNote>}
+          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
           <button className="btn" onClick={onClose} type="button">
             Cancel
           </button>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary lf-save"
             form="crm-lead-form"
             type="submit"
-            disabled={saving || !name.trim() || !mobile.trim()}
+            disabled={saving || !ready}
           >
-            {saving ? 'Saving…' : 'Save Lead'}
+            <IconCheck size={15} /> {saving ? 'Saving…' : lead ? 'Save changes' : 'Save lead'}
           </button>
         </>
       }
     >
-      <form className="crm-form" id="crm-lead-form" onSubmit={submit}>
-        <Field label="Name *">
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Full name"
-            autoFocus
-            required
-          />
-        </Field>
-        <Field label="Company">
-          <input
-            value={company}
-            onChange={(event) => setCompany(event.target.value)}
-            placeholder="Company / firm name"
-          />
-        </Field>
+      <form className="lf" id="crm-lead-form" onSubmit={submit} noValidate>
+        {error && <ErrorNote>{error}</ErrorNote>}
 
-        <Field label="Mobile *">
-          <input
-            value={mobile}
-            onChange={(event) => setMobile(event.target.value)}
-            placeholder="Mobile number"
-            required
-          />
-        </Field>
-        <Field label="Email">
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="email@example.com"
-          />
-        </Field>
+        <LfSection icon={<IconUser size={16} />} title="Contact details" note="The person you will be speaking to.">
+          <LfField label="Full name" required>
+            <LfInput icon={<IconUser size={15} />}>
+              <input value={name} onChange={(event) => setName(event.target.value)}
+                     placeholder="e.g. Rahul Sharma" autoFocus required />
+            </LfInput>
+          </LfField>
+          <LfField label="Company">
+            <LfInput icon={<IconBriefcase size={15} />}>
+              <input value={company} onChange={(event) => setCompany(event.target.value)}
+                     placeholder="Company / firm name" />
+            </LfInput>
+          </LfField>
 
-        <div className="crm-field">
-          <span className="crm-field-label">WhatsApp</span>
-          <input
-            value={sameNumber ? '' : whatsapp}
-            onChange={(event) => setWhatsapp(event.target.value)}
-            placeholder="Same as mobile"
-            disabled={sameNumber}
-          />
-          <label className="crm-check">
-            <input
-              type="checkbox"
-              checked={sameNumber}
-              onChange={(event) => setSameNumber(event.target.checked)}
+          <LfField label="Mobile number" required
+                   error={touched.mobile && mobileBad ? 'Enter a 10-digit mobile number.' : undefined}>
+            <LfInput icon={<IconPhone size={15} />} bad={touched.mobile && mobileBad}>
+              <input value={mobile} onChange={(event) => setMobile(event.target.value)} onBlur={touch('mobile')}
+                     placeholder="98765 43210" inputMode="tel" required />
+            </LfInput>
+          </LfField>
+          <LfField label="Email" error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
+            <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
+                     placeholder="name@company.com" />
+            </LfInput>
+          </LfField>
+
+          <LfField label="WhatsApp" wide
+                   error={touched.whatsapp && whatsappBad ? 'Enter a 10-digit WhatsApp number.' : undefined}
+                   aside={
+                     <label className="lf-switch">
+                       <input type="checkbox" checked={sameNumber}
+                              onChange={(event) => setSameNumber(event.target.checked)} />
+                       <span className="lf-switch-track" aria-hidden><span /></span>
+                       Same as mobile
+                     </label>
+                   }>
+            <LfInput icon={<IconPhone size={15} />} bad={touched.whatsapp && whatsappBad}>
+              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(event.target.value)}
+                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="tel"
+                     placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
+            </LfInput>
+          </LfField>
+        </LfSection>
+
+        <LfSection icon={<IconStar size={16} />} title="Lead details" note="Where it came from, what they want, and who owns it.">
+          <LfField label="Lead source">
+            <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
+          </LfField>
+          <LfField label="Lead owner">
+            <OwnerSelect value={ownerId} onChange={setOwnerId} />
+          </LfField>
+          <LfField label="Industry type">
+            <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
+          </LfField>
+          <LfField label="Product / service">
+            <MasterSelect kind="products" value={productId} onChange={setProductId} placeholder="Select product" />
+          </LfField>
+          {lead && (
+            <>
+              <LfField label="Stage">
+                <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} placeholder="Select stage" />
+              </LfField>
+              <LfField label="Expected value" hint="Optional — leave it blank rather than guessing.">
+                <LfInput prefix="₹">
+                  <input value={value ?? ''} onChange={(event) => setValue(event.target.value)}
+                         inputMode="decimal" placeholder="0.00" />
+                </LfInput>
+              </LfField>
+            </>
+          )}
+        </LfSection>
+
+        <LfSection icon={<IconPin size={16} />} title="Location" note="Used to route the lead and plan visits.">
+          <LfField label="State">
+            <MasterSelect
+              kind="states"
+              value={stateId}
+              onChange={(next) => {
+                setStateId(next)
+                // A city belongs to a state; keeping the old one would leave a
+                // lead in a city that is not in the state it claims.
+                setCityId('')
+              }}
+              parentId={countryId || undefined}
+              placeholder="Select state"
             />
-            Same number for WhatsApp
-          </label>
-        </div>
-        <Field label="Lead Source">
-          <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} />
-        </Field>
-
-        <Field label="Industry Type">
-          <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} />
-        </Field>
-        <Field label="Product / Service Type">
-          <MasterSelect kind="products" value={productId} onChange={setProductId} />
-        </Field>
-
-        <Field label="Lead Owner">
-          <OwnerSelect value={ownerId} onChange={setOwnerId} />
-        </Field>
-        <Field label="Pincode">
-          <input
-            value={pincode}
-            onChange={(event) => setPincode(event.target.value)}
-            placeholder="Pincode"
-          />
-        </Field>
-
-        <Field label="State">
-          <MasterSelect
-            kind="states"
-            value={stateId}
-            onChange={(next) => {
-              setStateId(next)
-              // A city belongs to a state; keeping the old one would leave a
-              // lead in a city that is not in the state it claims.
-              setCityId('')
-            }}
-            parentId={countryId || undefined}
-          />
-        </Field>
-        <Field label="City">
-          <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId} />
-        </Field>
-
-        {lead && (
-          <>
-            <Field label="Stage">
-              <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} />
-            </Field>
-            <Field label="Expected value" hint="Optional — leave it blank rather than guessing.">
-              <input
-                value={value ?? ''}
-                onChange={(event) => setValue(event.target.value)}
-                inputMode="decimal"
-                placeholder="0.00"
-              />
-            </Field>
-          </>
-        )}
-
-        <Field label="Address" wide>
-          <textarea
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-            rows={3}
-            placeholder="Full address"
-          />
-        </Field>
+          </LfField>
+          <LfField label="City" hint={stateId ? undefined : 'Pick a state first.'}>
+            <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId}
+                          placeholder="Select city" />
+          </LfField>
+          <LfField label="Pincode" error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
+            <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
+              <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
+                     placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
+            </LfInput>
+          </LfField>
+          <LfField label="Address" wide>
+            <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
+                      placeholder="Building, street, area, landmark" />
+          </LfField>
+        </LfSection>
       </form>
     </Dialog>
   )

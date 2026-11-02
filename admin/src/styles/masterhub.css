@@ -389,3 +389,8 @@
 .mh .mh-table tbody td { padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
 .mh .mh-table th:first-child, .mh .mh-table td:first-child { padding-left: 14px; }
 .mh .mh-table th:last-child, .mh .mh-table td:last-child { padding-right: 14px; }
+
+/* All of a family's lists on one row at laptop width — six fit at 150px. */
+.mh .mh-tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.mh .mh-tile { padding: 12px 14px; min-width: 0; }
+.mh .mh-tile-name, .mh .mh-tile-tag { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

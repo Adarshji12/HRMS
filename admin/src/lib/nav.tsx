@@ -330,9 +330,8 @@ export const NAV: NavGroup[] = [
       { to: '/crm/visits', label: 'My Visit', icon: IconGlobe },
       { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
       { to: '/crm/customers', label: 'My Customers', icon: IconBuilding },
-      /* `end` so the row does not stay lit while the builder is open on a
-         child route — the builder is its own place, not the list. */
-      { to: '/crm/quotations', label: 'Quatation', icon: IconSheet, end: true },
+      /* Opens a new quotation; the row stays lit in the builder and the list. */
+      { to: '/crm/quotations', label: 'Quatation', icon: IconSheet },
       { to: '/crm/settings', label: 'Setting', icon: IconGear, adminOnly: true },
     ],
   },
@@ -395,8 +394,8 @@ export const ERP_NAV_ITEMS: NavItem[] = [
   { to: '/erp/purchase-orders', label: 'Purchase Orders', icon: IconCard, end: true },
   { to: '/erp/inventory', label: 'Inventory', icon: IconFolder, end: true },
   { to: '/erp/sales-orders', label: 'Sales Orders', icon: IconChart, end: true },
+  { to: '/erp/invoices', label: 'Invoices', icon: IconSheet, end: true },
   { to: '/erp/billing', label: 'Billing', icon: IconCard, end: true },
-  { to: '/erp/masters', label: 'Masters', icon: IconBuilding, end: true },
   { to: '/erp/settings', label: 'Setting', icon: IconGear, end: true, adminOnly: true },
 ]
 
@@ -516,7 +515,13 @@ export function locate(
   access: NavAccess,
 ): { item: NavItem; heading?: string } | null {
   let best: { item: NavItem; heading?: string } | null = null
-  for (const entry of visibleItems(access)) {
+  /* HRMS and ERP keep their pages outside NAV (they open as their own
+     sections), so they are searched too, or their pages would have no crumb. */
+  const sections = [
+    ...itemsIn({ items: HRMS_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'HRMS' })),
+    ...itemsIn({ items: ERP_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'ERP' })),
+  ]
+  for (const entry of [...visibleItems(access), ...sections]) {
     const hit =
       entry.to === '/'
         ? pathname === '/'

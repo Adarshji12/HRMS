@@ -458,12 +458,27 @@ class CrmPlan(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("crm_products.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: The company's own reference for the plan, e.g. AMC-GOLD-12.
+    code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: monthly, quarterly, half_yearly, yearly or one_time. The renewal term
+    #: comes from here unless ``duration_days`` says otherwise.
+    billing_cycle: Mapped[str] = mapped_column(
+        String(20), default="yearly", server_default="yearly", nullable=False
+    )
     duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
     gst_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     product: Mapped["CrmProduct"] = relationship(back_populates="plans")
+
+    @property
+    def term_days(self) -> int | None:
+        """Days until renewal: the explicit duration, else the billing cycle's."""
+        if self.duration_days:
+            return self.duration_days
+        return {"monthly": 30, "quarterly": 91, "half_yearly": 182, "yearly": 365}.get(self.billing_cycle)
 
 
 class CrmDisposition(UUIDMixin, TimestampMixin, Base):
@@ -569,6 +584,43 @@ class CrmCompetitor(UUIDMixin, TimestampMixin, Base):
     website: Mapped[str | None] = mapped_column(String(200), nullable=True)
     #: What the sales team knows about them -- strengths, typical pricing.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmItemCategory(UUIDMixin, TimestampMixin, Base):
+    """A category for ERP items -- "Cameras", "Cables", "Software licences".
+
+    Kept with the other master lists so it is edited on the Master page like
+    them. Items store the category's *name*, as they always have, so renaming
+    or retiring one here never rewrites an item already saved.
+    """
+
+    __tablename__ = "crm_item_categories"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_item_categories_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class CrmItemCompany(UUIDMixin, TimestampMixin, Base):
+    """A company whose products you stock -- the make / OEM on an ERP item.
+
+    Items store the company's *name* in ``make``, as they always have, so
+    renaming or retiring one here never rewrites an item already saved.
+    """
+
+    __tablename__ = "crm_item_companies"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_item_companies_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
@@ -1274,6 +1326,17 @@ class CrmQuotation(UUIDMixin, TimestampMixin, Base):
 
     terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: The quotation style (CRM Settings -> Quotation) this document was raised
+    #: in, kept so changing the setting later does not reshape old quotations.
+    style: Mapped[str] = mapped_column(String(16), default="simple", nullable=False)
+    # Detailed / Proposal only: the covering letter and the extra terms. Seeded
+    # from the settings' templates and edited per quotation.
+    subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    letter_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warranty_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True

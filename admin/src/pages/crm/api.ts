@@ -256,6 +256,8 @@ export interface CustomerDetail extends Customer {
   plans: CustomerPlan[]
   interactions: Interaction[]
   visits: Visit[]
+  follow_ups: FollowUp[]
+  quotations: QuotationRow[]
 }
 
 export interface QuotationLine {
@@ -314,6 +316,13 @@ export interface Quotation extends QuotationRow {
   is_interstate: boolean
   terms: string | null
   notes: string | null
+  /** The style it was raised in (CRM Settings -> Quotation). */
+  style: 'simple' | 'detailed'
+  subject: string | null
+  letter_body: string | null
+  payment_terms: string | null
+  delivery_terms: string | null
+  warranty_terms: string | null
   sent_at: string | null
   decided_at: string | null
   lines: QuotationLine[]
@@ -425,6 +434,9 @@ export interface QuotationDefaults {
   default_gst: string
   validity_days: number
   terms: string | null
+  /** Style, letterhead and templates: which fields the editor shows, and
+      what the preview prints. */
+  setup: QuotationSetup | null
 }
 
 export interface TrendPoint {

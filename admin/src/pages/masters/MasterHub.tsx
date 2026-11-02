@@ -43,6 +43,8 @@ const TAGLINES: Record<string, string> = {
   industries: 'What the customer does',
   dispositions: 'How a support call ended',
   'visit-types': 'Kinds of field visit',
+  'item-categories': 'Groups for ERP items',
+  'item-companies': 'Makes / OEMs you stock',
 }
 
 /* Also the page behind every list on the Master menu (/masters/<kind>): the
@@ -62,6 +64,9 @@ export default function MasterHub({ groupKey }: { groupKey: string }) {
           tiles below say which lists it holds. */}
       <MasterTrail />
 
+      {/* No tiles on the ERP Master lists (Item Categories, Companies): the
+          card already picks the list, and the table below says what it is. */}
+      {group.kinds.length > 1 && !group.links?.length && (
       <nav className="mh-tiles" aria-label={`${group.title} lists`}>
         {group.kinds.map((k, i) => {
           const entry = byKind.get(k)
@@ -81,6 +86,7 @@ export default function MasterHub({ groupKey }: { groupKey: string }) {
           )
         })}
       </nav>
+      )}
 
       <div className="mh-table">
         {/* Districts and cities get the state-by-state mapping views (with

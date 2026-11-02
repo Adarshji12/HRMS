@@ -9,8 +9,9 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { ErrorNote, Loading } from '../../components/ui'
-import { erp, erpError, type ErpSettingsRow } from './api'
+import { erp, erpError, type BankAccount, type ErpSettingsRow } from './api'
 import { ErpPage, Field, Note, useRun } from './parts'
+import '../../styles/invoice.css'
 
 export default function ErpSettingsPage() {
   const { user } = useAuth()
@@ -52,6 +53,7 @@ export default function ErpSettingsPage() {
             <textarea disabled={!admin} rows={3} value={form.invoice_terms ?? ''} onChange={(e) => set('invoice_terms', e.target.value)} />
           </Field>
         </div>
+        <BankAccounts admin={admin} rows={form.bank_accounts ?? []} onChange={(rows) => set('bank_accounts', rows)} />
         {admin && (
           <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-primary" disabled={busy} onClick={() => void run(async () => { setForm(await erp.saveSettings(form)); setSaved(true) })}>Save settings</button>
@@ -61,5 +63,48 @@ export default function ErpSettingsPage() {
         )}
       </section>
     </ErpPage>
+  )
+}
+
+const BLANK_BANK: BankAccount = {
+  label: '', bank_name: '', account_name: '', account_number: '', ifsc: '', branch: '', upi_id: '', is_default: false,
+}
+
+/** The company's own accounts — offered as "Recipient bank" on an invoice. */
+function BankAccounts({ admin, rows, onChange }: {
+  admin: boolean
+  rows: BankAccount[]
+  onChange: (rows: BankAccount[]) => void
+}) {
+  const edit = (i: number, patch: Partial<BankAccount>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const makeDefault = (i: number) => onChange(rows.map((r, j) => ({ ...r, is_default: j === i })))
+  return (
+    <div className="erp-banks">
+      <div className="erp-banks-head">
+        <div>
+          <h3>Company bank accounts</h3>
+          <p>Shown as <b>Recipient bank</b> on invoices — where the customer pays. The default is picked for every new invoice.</p>
+        </div>
+        {admin && rows.length < 10 && (
+          <button type="button" className="btn btn-sm" onClick={() => onChange([...rows, { ...BLANK_BANK, is_default: rows.length === 0 }])}>
+            + Add account
+          </button>
+        )}
+      </div>
+      {rows.length === 0 ? <p className="crm-muted" style={{ margin: 0 }}>No bank accounts yet.</p> : rows.map((r, i) => (
+        <div className="erp-bank" key={r.id ?? i}>
+          <Field label="Bank name *"><input disabled={!admin} value={r.bank_name} onChange={(e) => edit(i, { bank_name: e.target.value })} placeholder="HDFC Bank" /></Field>
+          <Field label="Account name"><input disabled={!admin} value={r.account_name ?? ''} onChange={(e) => edit(i, { account_name: e.target.value })} placeholder="As on the account" /></Field>
+          <Field label="Account number *"><input disabled={!admin} value={r.account_number} onChange={(e) => edit(i, { account_number: e.target.value.replace(/\s/g, '') })} inputMode="numeric" /></Field>
+          <Field label="IFSC"><input disabled={!admin} value={r.ifsc ?? ''} onChange={(e) => edit(i, { ifsc: e.target.value.toUpperCase() })} placeholder="HDFC0001234" maxLength={11} /></Field>
+          <Field label="Branch"><input disabled={!admin} value={r.branch ?? ''} onChange={(e) => edit(i, { branch: e.target.value })} /></Field>
+          <Field label="UPI ID"><input disabled={!admin} value={r.upi_id ?? ''} onChange={(e) => edit(i, { upi_id: e.target.value })} placeholder="company@hdfcbank" /></Field>
+          <div className="erp-bank-actions">
+            <label className="crm-check"><input type="radio" disabled={!admin} checked={r.is_default} onChange={() => makeDefault(i)} /> Default</label>
+            {admin && <button type="button" className="btn btn-sm btn-danger" onClick={() => onChange(rows.filter((_, j) => j !== i))}>Remove</button>}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

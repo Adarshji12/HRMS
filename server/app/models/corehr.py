@@ -142,12 +142,14 @@ class EmployeeProfile(TimestampMixin, Base):
     # statutory paperwork asks for the permanent one specifically.
     current_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    current_district: Mapped[str | None] = mapped_column(String(120), nullable=True)
     current_state: Mapped[str | None] = mapped_column(String(120), nullable=True)
     current_postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     current_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
     permanent_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     permanent_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    permanent_district: Mapped[str | None] = mapped_column(String(120), nullable=True)
     permanent_state: Mapped[str | None] = mapped_column(String(120), nullable=True)
     permanent_postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     permanent_country: Mapped[str | None] = mapped_column(String(2), nullable=True)

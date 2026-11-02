@@ -82,18 +82,82 @@ def save_warehouse(
         get_owned(db, ErpWarehouse, viewer.org_id, row_id, "warehouse")
         if row_id else ErpWarehouse(org_id=viewer.org_id)
     )
-    for field, value in payload.model_dump().items():
-        setattr(row, field, value.strip().upper() if field == "code" else value)
+    # Only what was sent: the form asks for a name and a description, and an
+    # edit must not reset the kind, address or state set elsewhere.
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if field == "code":
+            value = (value or "").strip().upper() or None
+            if value is None:
+                continue
+        setattr(row, field, value)
+    if not row.code:
+        row.code = next_number(db, viewer.org_id, "WH", date.today()).replace("/", "-")
     db.add(row)
     db.flush()
     record_audit(db, viewer, "warehouse.saved", row, request=request, detail={"code": row.code})
-    _commit_unique(db, f"Warehouse code “{payload.code}” is already used.")
+    _commit_unique(db, f"Warehouse code “{row.code}” is already used.")
     return row_dict(row)
+
+
+def delete_warehouse(
+    db: Session, viewer: User, row_id: uuid.UUID, request: Request | None = None,
+) -> None:
+    """Remove a warehouse nothing has used yet.
+
+    Stock balances and movements cascade from the warehouse, so deleting one
+    that holds or held stock would quietly erase inventory. Any row in any
+    table pointing at it refuses the delete; switching it off is the way to
+    retire a warehouse with history."""
+    require(viewer, "can_manage_erp_masters")
+    row = get_owned(db, ErpWarehouse, viewer.org_id, row_id, "warehouse")
+    for table in ErpWarehouse.metadata.tables.values():
+        for fk in table.foreign_keys:
+            if fk.column.table.name != ErpWarehouse.__tablename__:
+                continue
+            used = db.execute(
+                select(func.count()).select_from(table).where(fk.parent == row.id)
+            ).scalar()
+            if used:
+                raise ErpError(
+                    "warehouse_in_use",
+                    f"“{row.name}” already has stock or documents against it, so it cannot be "
+                    "deleted.",
+                    409,
+                )
+    record_audit(db, viewer, "warehouse.deleted", row, request=request, detail={"code": row.code})
+    db.delete(row)
+    db.commit()
 
 
 # --------------------------------------------------------------------------- #
 # Items
 # --------------------------------------------------------------------------- #
+
+
+def delete_item(db: Session, viewer: User, row_id: uuid.UUID, request: Request | None = None) -> None:
+    """Remove an item nothing has used yet.
+
+    Document lines point at items with SET NULL, so deleting a used item would
+    not fail — it would quietly strip the item off old orders and invoices.
+    Any row in any table that points at it refuses the delete instead;
+    switching the item off is the way to retire one with history."""
+    require(viewer, "can_manage_erp_masters")
+    row = get_owned(db, ErpItem, viewer.org_id, row_id, "item")
+    for table in ErpItem.metadata.tables.values():
+        for fk in table.foreign_keys:
+            if fk.column.table.name != ErpItem.__tablename__:
+                continue
+            used = db.execute(select(func.count()).select_from(table).where(fk.parent == row.id)).scalar()
+            if used:
+                raise ErpError(
+                    "item_in_use",
+                    f"“{row.name}” is already on documents or in stock, so it cannot be deleted. "
+                    "Mark it inactive instead.",
+                    409,
+                )
+    record_audit(db, viewer, "item.deleted", row, request=request, detail={"code": row.code})
+    db.delete(row)
+    db.commit()
 
 
 def list_items(
@@ -105,13 +169,13 @@ def list_items(
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(
             ErpItem.code.ilike(like), ErpItem.name.ilike(like),
-            ErpItem.part_number.ilike(like), ErpItem.make.ilike(like),
+            ErpItem.part_number.ilike(like), ErpItem.make.ilike(like), ErpItem.barcode.ilike(like),
         ))
     if active_only:
         stmt = stmt.where(ErpItem.is_active.is_(True))
     if item_type:
         stmt = stmt.where(ErpItem.item_type == item_type)
-    rows = list(db.scalars(stmt.order_by(ErpItem.name).limit(1000)))
+    rows = list(db.scalars(stmt.order_by(ErpItem.is_favorite.desc(), ErpItem.name).limit(1000)))
     on_hand = dict(db.execute(
         select(ErpStockBalance.item_id, func.sum(ErpStockBalance.quantity - ErpStockBalance.reserved_qty))
         .where(ErpStockBalance.org_id == viewer.org_id, ErpStockBalance.condition == "good")
@@ -123,6 +187,7 @@ def list_items(
         out.append({
             **row_dict(row),
             "available_qty": str(available),
+            "is_stocked": row.is_stocked,
             "below_reorder": bool(row.is_stocked and row.reorder_level and available <= row.reorder_level),
         })
     return out
@@ -137,10 +202,30 @@ def save_item(
         get_owned(db, ErpItem, viewer.org_id, row_id, "item")
         if row_id else ErpItem(org_id=viewer.org_id)
     )
+    def held() -> bool:
+        return bool(db.scalar(select(func.coalesce(func.sum(ErpStockBalance.quantity), 0)).where(
+            ErpStockBalance.item_id == row.id)))
+
+    if row_id and row.is_stocked and not (payload.item_type == "goods" and payload.track_inventory) and held():
+        # Untracking stock that is on a shelf would strand it: still counted in
+        # the warehouse, but on an item nothing can receive or issue any more.
+        raise ErpError(
+            "item_in_stock",
+            "Inventory tracking cannot be turned off while the item has stock on hand.", 409,
+        )
+    if payload.barcode and payload.barcode.strip():
+        payload.barcode = payload.barcode.strip()
+        clash = db.scalar(select(ErpItem.code).where(
+            ErpItem.org_id == viewer.org_id, ErpItem.barcode == payload.barcode,
+            ErpItem.id != row.id if row_id else ErpItem.barcode.is_not(None)))
+        if clash:
+            raise ErpError("barcode_taken", f"Barcode {payload.barcode} is already on item {clash}.", 409)
+    else:
+        payload.barcode = None
+    if payload.is_serialized and payload.item_type == "goods" and not payload.track_inventory:
+        raise ErpError("untracked_serialized", "Serial numbers need inventory tracking on.")
     if row_id and row.is_serialized != payload.is_serialized:
-        held = db.scalar(select(func.coalesce(func.sum(ErpStockBalance.quantity), 0)).where(
-            ErpStockBalance.item_id == row.id))
-        if held:
+        if held():
             # Turning serial tracking on for stock that arrived without serials
             # would leave units nobody can dispatch; off, units whose serials are
             # suddenly untracked. Either way, it waits for an empty shelf.
@@ -150,6 +235,8 @@ def save_item(
             )
     if payload.item_type == "service" and payload.is_serialized:
         raise ErpError("service_serialized", "A service has no serial numbers.")
+    if payload.purchase_gst_percent is None:
+        payload.purchase_gst_percent = payload.gst_percent
     for field, value in payload.model_dump().items():
         setattr(row, field, value.strip().upper() if field == "code" else value)
     db.add(row)

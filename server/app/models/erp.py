@@ -292,6 +292,9 @@ class ErpSettings(UUIDMixin, TimestampMixin, Base):
     block_orders_overdue_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     po_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     invoice_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The company's own accounts, offered as an invoice's recipient bank:
+    #: ``[{id, label, bank_name, account_name, account_number, ifsc, branch, upi_id, is_default}]``.
+    bank_accounts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
@@ -314,6 +317,7 @@ class ErpWarehouse(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     #: warehouse | hub | branch | site | engineer
     kind: Mapped[str] = mapped_column(String(20), default="warehouse", nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     state: Mapped[str | None] = mapped_column(String(120), nullable=True)
     #: For an engineer's trunk stock.
@@ -342,13 +346,19 @@ class ErpItem(UUIDMixin, TimestampMixin, Base):
     category: Mapped[str | None] = mapped_column(String(80), nullable=True)
     uom: Mapped[str] = mapped_column(String(16), default="Nos", nullable=False)
     hsn_sac: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: Sales tax — what a sales order or invoice line defaults to.
     gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
+    #: Purchase tax — what a purchase order line defaults to.
+    purchase_gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
     make: Mapped[str | None] = mapped_column(String(80), nullable=True)
     model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     part_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     is_serialized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: Months of OEM warranty a received unit carries, for the serial's expiry.
     warranty_months: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Per unit, for freight and dispatch planning.
+    weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=ZERO, nullable=False)
+    volume_m3: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=ZERO, nullable=False)
     standard_cost: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     sale_price: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     reorder_level: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
@@ -357,11 +367,22 @@ class ErpItem(UUIDMixin, TimestampMixin, Base):
     crm_product_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("crm_products.id", ondelete="SET NULL"), nullable=True
     )
+    #: A small picture as a data URL, resized in the browser before upload.
+    image: Mapped[str | None] = mapped_column(Text, nullable=True)
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Offered on sales documents / on purchase documents.
+    can_be_sold: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_be_purchased: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Goods with this off are expensed on purchase — bought and sold, never
+    #: held in a warehouse (consumables, packing material).
+    track_inventory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     @property
     def is_stocked(self) -> bool:
-        return self.item_type == "goods"
+        return self.item_type == "goods" and self.track_inventory
 
 
 class ErpVendor(UUIDMixin, TimestampMixin, Base):
@@ -723,6 +744,8 @@ class ErpPurchaseOrder(UUIDMixin, TimestampMixin, Base):
     committed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     payment_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
     delivery_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    #: The make / OEM ordered from, out of the Company Master.
+    company: Mapped[str | None] = mapped_column(String(120), nullable=True)
     #: Liquidated damages, per the PO clause (FR-06.14): percent of the late
     #: value per week of delay, capped at ``ld_cap_percent`` of it.
     ld_percent_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
@@ -733,7 +756,12 @@ class ErpPurchaseOrder(UUIDMixin, TimestampMixin, Base):
     is_interstate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sub_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     tax_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    cgst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    sgst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    igst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     freight: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: Packing, loading, insurance… — added after tax, like freight.
+    other_charges: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     grand_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -774,11 +802,20 @@ class ErpPurchaseOrderLine(UUIDMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     received_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    #: Trade discount, off before GST.
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
     gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
     taxable_value: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    @property
+    def net_rate(self) -> Decimal:
+        """The rate after the line's discount — what a unit actually costs."""
+        if not self.discount_percent:
+            return self.rate
+        return (self.rate * (Decimal("100") - self.discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
 
     order: Mapped["ErpPurchaseOrder"] = relationship(back_populates="lines")
 
@@ -1100,6 +1137,32 @@ class ErpSalesOrder(UUIDMixin, TimestampMixin, Base):
     deviation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Who sold it — any user, for the sales register.
+    salesperson_id: Mapped[uuid.UUID | None] = _user_fk()
+    #: standard | project | service | amc | sample | export
+    order_type: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
+    #: normal | high | urgent
+    priority: Mapped[str] = mapped_column(String(10), default="normal", nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    #: courier | transport | hand | pickup | installation
+    delivery_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    transporter_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: paid | to_pay | included
+    freight_terms: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Never printed — for the team only.
+    internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: [{id, name, type, size, data, at, by_name}] — served one at a time.
+    attachments: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    freight: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    other_charges: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: GST on freight and other charges — by default the highest item rate.
+    charges_gst_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    cgst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    sgst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    igst: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     status: Mapped[str] = mapped_column(
         String(24), default=SalesOrderStatus.DRAFT.value, nullable=False, index=True
     )
@@ -1137,6 +1200,8 @@ class ErpSalesOrderLine(UUIDMixin, Base):
     uom: Mapped[str] = mapped_column(String(16), default="Nos", nullable=False)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    #: Trade discount, off before GST.
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
     gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
     taxable_value: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
@@ -1151,6 +1216,13 @@ class ErpSalesOrderLine(UUIDMixin, Base):
     dispatched_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     invoiced_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    @property
+    def net_rate(self) -> Decimal:
+        """The rate after the line's discount — what a unit actually sells for."""
+        if not self.discount_percent:
+            return self.rate
+        return (self.rate * (Decimal("100") - self.discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
 
     order: Mapped["ErpSalesOrder"] = relationship(back_populates="lines")
 
@@ -1281,6 +1353,36 @@ class ErpInvoice(UUIDMixin, TimestampMixin, Base):
     customer_name: Mapped[str] = mapped_column(String(200), nullable=False)
     gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
     billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shipping_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    salesperson_id: Mapped[uuid.UUID | None] = _user_fk()
+    #: A copy of the company account the customer pays into, taken from
+    #: settings when drafted — so editing the account later leaves it alone.
+    recipient_bank: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    #: "Standard communication": the payment reference is the invoice number,
+    #: filled in when the invoice is posted and numbered.
+    payment_ref_standard: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Off every item line before GST — never off a freight or other charge.
+    bill_discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
+    #: What rounding the net amount to the rupee added (or took away).
+    round_off: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: Compensation cess over all lines; part of the grand total.
+    cess_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: Rupee discounts on the whole bill, shared over the item lines before GST.
+    bill_discount_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    additional_discount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    discount_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: The customer's purchase order this bills against.
+    customer_po_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    #: GST payable by the recipient under reverse charge — printed on the invoice.
+    reverse_charge: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Transport, all optional: what the goods travelled under.
+    dispatch_doc_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    transporter_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    vehicle_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    eway_bill_number: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    lr_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     place_of_supply: Mapped[str | None] = mapped_column(String(120), nullable=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("erp_sales_orders.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1349,6 +1451,10 @@ class ErpInvoiceLine(UUIDMixin, Base):
     dispatch_line_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("erp_dispatch_lines.id", ondelete="SET NULL"), nullable=True
     )
+    #: On a credit note: the original invoice line this one returns.
+    source_line_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("erp_invoice_lines.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     item_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True
     )
@@ -1357,6 +1463,19 @@ class ErpInvoiceLine(UUIDMixin, Base):
     uom: Mapped[str] = mapped_column(String(16), default="Nos", nullable=False)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    #: Taken off the line before GST.
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: A second discount, off what the first left.
+    discount2_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
+    discount2_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: Units given free with the line — on the bill, not charged.
+    free_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    #: Freight, packing or another charge rather than an item line.
+    is_charge: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: GST compensation cess, on the same taxable value as GST.
+    cess_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=ZERO, nullable=False)
+    cess_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
     taxable_value: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
@@ -1397,3 +1516,16 @@ class ErpReceipt(UUIDMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(12), default="posted", nullable=False)
     created_by: Mapped[uuid.UUID | None] = _user_fk()
     reverse_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Who reversed it and when — the reversal is part of the payment's record.
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reversed_by: Mapped[uuid.UUID | None] = _user_fk()
+    #: The company account the money went into: its id in Settings and a
+    #: snapshot of its label, so renaming the account later rewrites nothing.
+    deposit_account_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    deposit_account: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: The payer's proof — a picture or a PDF, as a data URL. Served on its own,
+    #: never inside an invoice or a list.
+    proof: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proof_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    #: Every later correction of the details: [{at, by, by_name, reason, changes}].
+    corrections: Mapped[list | None] = mapped_column(JSON, nullable=True)

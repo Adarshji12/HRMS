@@ -11,12 +11,13 @@ place in the ERP where 0.1 + 0.2 stops being 0.3.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Condition = Literal["good", "quarantine", "defective", "doa", "rma", "demo", "scrap"]
 
@@ -38,8 +39,10 @@ class _In(BaseModel):
 
 
 class WarehouseIn(_In):
-    code: str = Field(min_length=1, max_length=24)
+    #: Blank on a new warehouse mints the next WH number.
+    code: str | None = Field(default=None, max_length=24)
     name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
     kind: Literal["warehouse", "hub", "branch", "site", "engineer"] = "warehouse"
     address: str | None = None
     state: str | None = None
@@ -56,18 +59,47 @@ class ItemIn(_In):
     uom: str = "Nos"
     hsn_sac: str | None = None
     gst_percent: Decimal = Field(default=Decimal("18"), ge=0, le=28)
+    #: Left out, purchases are taxed at the sales rate.
+    purchase_gst_percent: Decimal | None = Field(default=None, ge=0, le=28)
     make: str | None = None
     model: str | None = None
     part_number: str | None = None
     is_serialized: bool = False
     warranty_months: int = Field(default=0, ge=0, le=240)
+    weight_kg: Decimal = Field(default=Decimal("0"), ge=0)
+    volume_m3: Decimal = Field(default=Decimal("0"), ge=0)
     standard_cost: Decimal = Field(default=Decimal("0"), ge=0)
     sale_price: Decimal = Field(default=Decimal("0"), ge=0)
     reorder_level: Decimal = Field(default=Decimal("0"), ge=0)
     min_level: Decimal = Field(default=Decimal("0"), ge=0)
     max_level: Decimal = Field(default=Decimal("0"), ge=0)
     crm_product_id: uuid.UUID | None = None
+    #: A data URL; ~400 KB is far more than a resized thumbnail needs.
+    image: str | None = Field(default=None, max_length=400_000)
+    barcode: str | None = Field(default=None, max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    is_favorite: bool = False
+    can_be_sold: bool = True
+    can_be_purchased: bool = True
+    track_inventory: bool = True
     is_active: bool = True
+
+    @field_validator("image")
+    @classmethod
+    def _image_is_data_url(cls, value: str | None) -> str | None:
+        if value and not value.startswith("data:image/"):
+            raise ValueError("The image must be a picture.")
+        return value or None
+
+    @field_validator("tags")
+    @classmethod
+    def _clean_tags(cls, value: list[str]) -> list[str]:
+        seen: list[str] = []
+        for tag in value:
+            tag = tag.strip()[:40]
+            if tag and tag.lower() not in (t.lower() for t in seen):
+                seen.append(tag)
+        return seen
 
 
 class VendorIn(_In):
@@ -136,6 +168,18 @@ class CreditHoldIn(_In):
     reason: str | None = None
 
 
+class BankAccountIn(_In):
+    id: str | None = Field(default=None, max_length=40)
+    label: str | None = Field(default=None, max_length=80)
+    bank_name: str = Field(min_length=1, max_length=120)
+    account_name: str | None = Field(default=None, max_length=120)
+    account_number: str = Field(min_length=4, max_length=40)
+    ifsc: str | None = Field(default=None, max_length=16)
+    branch: str | None = Field(default=None, max_length=120)
+    upi_id: str | None = Field(default=None, max_length=80)
+    is_default: bool = False
+
+
 class SettingsIn(_In):
     grn_over_receipt_pct: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     allow_negative_stock: bool = False
@@ -144,6 +188,7 @@ class SettingsIn(_In):
     block_orders_overdue_days: int = Field(default=0, ge=0, le=365)
     po_terms: str | None = None
     invoice_terms: str | None = None
+    bank_accounts: list[BankAccountIn] = Field(default_factory=list, max_length=10)
 
 
 # --------------------------------------------------------------------------- #
@@ -210,6 +255,7 @@ class PoLineIn(_In):
     uom: str | None = None
     quantity: Decimal = Field(gt=0)
     rate: Decimal = Field(ge=0)
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     gst_percent: Decimal | None = Field(default=None, ge=0, le=28)
 
 
@@ -219,13 +265,15 @@ class PurchaseOrderIn(_In):
     sales_order_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
+    company: str | None = Field(default=None, max_length=120)
     order_date: date | None = None
     expected_date: date | None = None
-    payment_terms: str | None = None
-    delivery_terms: str | None = None
+    payment_terms: str | None = Field(default=None, max_length=160)
+    delivery_terms: str | None = Field(default=None, max_length=160)
     ld_percent_per_week: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     ld_cap_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     freight: Decimal = Field(default=Decimal("0"), ge=0)
+    other_charges: Decimal = Field(default=Decimal("0"), ge=0)
     terms: str | None = None
     notes: str | None = None
     lines: list[PoLineIn] = Field(min_length=1)
@@ -293,6 +341,7 @@ class SalesOrderLineIn(_In):
     uom: str | None = None
     quantity: Decimal = Field(gt=0)
     rate: Decimal = Field(ge=0)
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     gst_percent: Decimal | None = Field(default=None, ge=0, le=28)
     fulfilment: Literal["stock", "procure", "service"] | None = None
 
@@ -321,8 +370,43 @@ class SalesOrderIn(_In):
     payment_terms: str | None = None
     deviation_note: str | None = None
     notes: str | None = None
+    salesperson_id: uuid.UUID | None = None
+    order_type: Literal["standard", "project", "service", "amc", "sample", "export"] = "standard"
+    priority: Literal["normal", "high", "urgent"] = "normal"
+    reference: str | None = Field(default=None, max_length=80)
+    delivery_terms: str | None = Field(default=None, max_length=160)
+    delivery_mode: Literal["courier", "transport", "hand", "pickup", "installation"] | None = None
+    transporter_name: str | None = Field(default=None, max_length=120)
+    freight_terms: Literal["paid", "to_pay", "included"] | None = None
+    delivery_instructions: str | None = Field(default=None, max_length=2000)
+    terms: str | None = Field(default=None, max_length=4000)
+    internal_notes: str | None = Field(default=None, max_length=4000)
+    freight: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    other_charges: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    #: GST on the charges; None means the highest rate on the order's items.
+    charges_gst_percent: Decimal | None = None
     lines: list[SalesOrderLineIn] = Field(min_length=1)
+
+    @field_validator("charges_gst_percent")
+    @classmethod
+    def _charges_rate(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and value not in (Decimal(r) for r in ("0", "5", "12", "18", "28")):
+            raise ValueError("GST on charges must be 0, 5, 12, 18 or 28 %.")
+        return value
     milestones: list[MilestoneIn] = Field(default_factory=list)
+
+
+class AttachmentIn(_In):
+    name: str = Field(min_length=1, max_length=160)
+    #: A picture or a PDF, as a data URL — about 5 MB once encoded.
+    data: str = Field(min_length=10, max_length=7_000_000)
+
+    @field_validator("data")
+    @classmethod
+    def _kind(cls, value: str) -> str:
+        if not (value.startswith("data:image/") or value.startswith("data:application/pdf")):
+            raise ValueError("Attach a picture or a PDF.")
+        return value
 
 
 class FromQuotationIn(_In):
@@ -378,7 +462,17 @@ class InvoiceLineIn(_In):
     uom: str | None = None
     quantity: Decimal = Field(gt=0)
     rate: Decimal = Field(ge=0)
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    discount2_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    discount2_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    free_qty: Decimal = Field(default=Decimal("0"), ge=0)
     gst_percent: Decimal = Field(default=Decimal("18"), ge=0, le=28)
+    #: GST compensation cess, where the line attracts it.
+    cess_percent: Decimal = Field(default=Decimal("0"), ge=0, le=300)
+    #: Freight, packing, other charges: billed with GST, but the bill discount
+    #: does not come off them.
+    is_charge: bool = False
 
 
 class InvoiceIn(_In):
@@ -389,8 +483,57 @@ class InvoiceIn(_In):
     customer_id: uuid.UUID
     sales_order_id: uuid.UUID | None = None
     invoice_date: date | None = None
+    #: Left out, the customer's credit days from the invoice date.
+    due_date: date | None = None
     place_of_supply: str | None = None
     notes: str | None = None
+    #: Left out, the terms from ERP settings.
+    terms: str | None = None
+    #: Left out, the customer account's billing address.
+    billing_address: str | None = None
+    shipping_address: str | None = None
+    salesperson_id: uuid.UUID | None = None
+    #: The ``id`` of one of the bank accounts in ERP settings.
+    recipient_bank_id: str | None = None
+    payment_reference: str | None = Field(default=None, max_length=60)
+    payment_ref_standard: bool = False
+    delivery_date: date | None = None
+    bill_discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    bill_discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    additional_discount: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_reason: str | None = Field(default=None, max_length=200)
+    #: Round the net amount to the nearest rupee.
+    round_off: bool = False
+    customer_po_number: str | None = Field(default=None, max_length=60)
+    reverse_charge: bool = False
+    dispatch_doc_number: str | None = Field(default=None, max_length=40)
+    transporter_name: str | None = Field(default=None, max_length=120)
+    vehicle_number: str | None = Field(default=None, max_length=20)
+    eway_bill_number: str | None = Field(default=None, max_length=20)
+    lr_number: str | None = Field(default=None, max_length=40)
+
+    @field_validator("vehicle_number")
+    @classmethod
+    def _vehicle(cls, value: str | None) -> str | None:
+        """An Indian registration: MH12AB1234, DL3CAB1234, or the BH series
+        22BH1234AA. Spaces and hyphens are dropped; stored in capitals."""
+        if not value:
+            return None
+        plate = re.sub(r"[\s-]", "", value).upper()
+        if not re.fullmatch(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{4}|\d{2}BH\d{4}[A-Z]{1,2}", plate):
+            raise ValueError("Enter a vehicle number like MH12AB1234.")
+        return plate
+
+    @field_validator("eway_bill_number")
+    @classmethod
+    def _eway(cls, value: str | None) -> str | None:
+        """Twelve digits; spaces are dropped."""
+        if not value:
+            return None
+        digits = re.sub(r"\s", "", value)
+        if not re.fullmatch(r"\d{12}", digits):
+            raise ValueError("An e-way bill number is 12 digits.")
+        return digits
     lines: list[InvoiceLineIn] = Field(min_length=1)
 
 
@@ -404,11 +547,34 @@ class InvoiceFromMilestoneIn(_In):
     invoice_date: date | None = None
 
 
+class CreditReturnIn(_In):
+    """One returned line: which invoice line, and how many came back."""
+    source_line_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+
+
 class CreditNoteIn(_In):
     original_invoice_id: uuid.UUID
     reason: str = Field(min_length=1, max_length=120)
     invoice_date: date | None = None
-    lines: list[InvoiceLineIn] = Field(min_length=1)
+    #: Returned goods, priced from the original invoice's lines…
+    returns: list[CreditReturnIn] = Field(default_factory=list)
+    #: …or free-form credit lines (a rate dispute, an allowance).
+    lines: list[InvoiceLineIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _something(self) -> "CreditNoteIn":
+        if not self.returns and not self.lines:
+            raise ValueError("Select at least one returned item.")
+        if len({r.source_line_id for r in self.returns}) != len(self.returns):
+            raise ValueError("Each invoice line is returned once per credit note.")
+        return self
+
+
+def _proof_ok(value: str | None) -> str | None:
+    if value and not (value.startswith("data:image/") or value.startswith("data:application/pdf")):
+        raise ValueError("Payment proof must be a picture or a PDF.")
+    return value
 
 
 class ReceiptIn(_In):
@@ -417,5 +583,27 @@ class ReceiptIn(_In):
     amount: Decimal = Field(ge=0)
     tds_amount: Decimal = Field(default=Decimal("0"), ge=0)
     mode: Literal["neft", "rtgs", "cheque", "upi", "cash", "other"] = "neft"
-    reference: str | None = None
-    notes: str | None = None
+    reference: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=1000)
+    #: A bank account id from Settings, or "cash" for cash in hand.
+    deposit_account_id: str | None = Field(default=None, max_length=40)
+    #: About 2 MB once encoded.
+    proof: str | None = Field(default=None, max_length=2_800_000)
+    proof_name: str | None = Field(default=None, max_length=160)
+
+    _proof = field_validator("proof")(classmethod(lambda cls, v: _proof_ok(v)))
+
+
+class ReceiptCorrectionIn(_In):
+    """The details of a posted receipt that may be corrected. The money — amount,
+    TDS, date — is not here: a wrong amount is reversed and recorded again."""
+    reason: str = Field(min_length=3, max_length=300)
+    mode: Literal["neft", "rtgs", "cheque", "upi", "cash", "other"] | None = None
+    reference: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=1000)
+    deposit_account_id: str | None = Field(default=None, max_length=40)
+    proof: str | None = Field(default=None, max_length=2_800_000)
+    proof_name: str | None = Field(default=None, max_length=160)
+    remove_proof: bool = False
+
+    _proof = field_validator("proof")(classmethod(lambda cls, v: _proof_ok(v)))

@@ -7,9 +7,9 @@
  * (departments, ERP items and vendors) are linked from a card rather than
  * rebuilt, so there is still one place each is edited.
  *
- * Sales Master and Product Master are not on this screen: they are worked in
- * daily rather than set once, so each has its own page (MasterHub.tsx) at
- * /sales-master and /product-master. They are no longer linked from here.
+ * Sales Master is not on this screen: it is worked in daily rather than set
+ * once, so it has its own page (MasterHub.tsx) at /sales-master. Products and
+ * plans are on the Lead Master card.
  *
  * Administrator-only, like the writes behind it: the dropdowns these fill are
  * readable by everybody, but editing them changes everybody's pipeline.
@@ -42,12 +42,14 @@ const GROUP_ICON: Record<string, ReactNode> = {
 interface Row { key: string; label: string; to: string; kind?: string }
 
 function rowsOf(group: MasterGroup): Row[] {
+  // Linked screens first: on the ERP card, Item Categories follows the four
+  // ERP lists rather than leading them.
   return [
+    ...(group.links ?? []).map((link) => ({ key: link.to, label: link.label, to: link.to })),
     ...group.kinds.flatMap((kind) => {
       const list = byKind.get(kind)
       return list ? [{ key: kind, label: shortLabel(list), to: `/masters/${kind}`, kind }] : []
     }),
-    ...(group.links ?? []).map((link) => ({ key: link.to, label: link.label, to: link.to })),
   ]
 }
 

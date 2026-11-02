@@ -64,6 +64,8 @@ MASTER_SCHEMAS: dict[str, tuple[type, type]] = {
     "campaigns": (S.CampaignIn, S.CampaignOut),
     "competitors": (S.CompetitorIn, S.CompetitorOut),
     "contact-designations": (S.ContactDesignationIn, S.ContactDesignationOut),
+    "item-categories": (S.ItemCategoryIn, S.ItemCategoryOut),
+    "item-companies": (S.ItemCompanyIn, S.ItemCompanyOut),
     "lost-reasons": (S.LostReasonIn, S.LostReasonOut),
     "opportunity-stages": (S.OpportunityStageIn, S.OpportunityStageOut),
 }

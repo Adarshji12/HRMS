@@ -36,7 +36,7 @@ import ErpRfqs from './pages/erp/ErpRfqs'
 import ErpPurchaseOrders from './pages/erp/ErpPurchaseOrders'
 import ErpInventory from './pages/erp/ErpInventory'
 import ErpSalesOrders from './pages/erp/ErpSalesOrders'
-import ErpBilling from './pages/erp/ErpBilling'
+import ErpBilling, { ErpInvoices } from './pages/erp/ErpBilling'
 import ErpMasters from './pages/erp/ErpMasters'
 import ErpSettingsPage from './pages/erp/ErpSettingsPage'
 import NotificationSettings from './pages/NotificationSettings'
@@ -608,6 +608,7 @@ function Shell() {
           <Route path="/erp/purchase-orders" element={<ErpPurchaseOrders />} />
           <Route path="/erp/inventory" element={<ErpInventory />} />
           <Route path="/erp/sales-orders" element={<ErpSalesOrders />} />
+          <Route path="/erp/invoices" element={<ErpInvoices />} />
           <Route path="/erp/billing" element={<ErpBilling />} />
           <Route path="/erp/masters" element={<ErpMasters />} />
           <Route path="/erp/settings" element={<ErpSettingsPage />} />
@@ -875,7 +876,10 @@ function Shell() {
             path="/masters/:kind"
             element={isAdmin ? <MasterListPage /> : <Navigate to="/" replace />}
           />
-          {(['sales', 'product'] as const).flatMap((g) => [
+          {/* Products and plans now sit on the Lead Master card. */}
+          <Route path="/product-master" element={<Navigate to="/masters" replace />} />
+          <Route path="/product-master/:kind" element={<Navigate to="/masters" replace />} />
+          {(['sales'] as const).flatMap((g) => [
             <Route key={g} path={`/${g}-master`}
                    element={isAdmin ? <MasterHub key={g} groupKey={g} /> : <Navigate to="/" replace />} />,
             <Route key={`${g}-kind`} path={`/${g}-master/:kind`}

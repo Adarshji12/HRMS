@@ -76,6 +76,8 @@ from app.models import (
     CrmCampaign,
     CrmCompetitor,
     CrmContactDesignation,
+    CrmItemCategory,
+    CrmItemCompany,
     CustomerStatus,
     ForecastCategory,
     FollowUpStatus,
@@ -465,6 +467,8 @@ MASTER_MODELS: dict[str, Any] = {
     "campaigns": CrmCampaign,
     "competitors": CrmCompetitor,
     "contact-designations": CrmContactDesignation,
+    "item-categories": CrmItemCategory,
+    "item-companies": CrmItemCompany,
     "lost-reasons": CrmLostReason,
     "opportunity-stages": CrmOpportunityStage,
 }
@@ -777,6 +781,9 @@ def _quotation_out(row: CrmQuotation) -> S.QuotationOut:
         sub_total=row.sub_total, discount_total=row.discount_total,
         taxable_value=row.taxable_value, cgst=row.cgst, sgst=row.sgst, igst=row.igst,
         is_interstate=row.is_interstate, terms=row.terms, notes=row.notes,
+        style=row.style or "simple", subject=row.subject, letter_body=row.letter_body,
+        payment_terms=row.payment_terms, delivery_terms=row.delivery_terms,
+        warranty_terms=row.warranty_terms,
         sent_at=row.sent_at, decided_at=row.decided_at,
         lines=[_line_out(line) for line in row.lines],
     )
@@ -1736,11 +1743,28 @@ def customer_detail(db: Session, viewer: User, customer_id: uuid.UUID) -> S.Cust
         .order_by(CrmVisit.scheduled_at.desc())
         .limit(50)
     ).all()
+    # The customer page shows their follow-ups and quotations, as a lead's does.
+    follow_ups = db.scalars(
+        select(CrmFollowUp)
+        .where(CrmFollowUp.customer_id == row.id)
+        .options(selectinload(CrmFollowUp.owner), selectinload(CrmFollowUp.customer))
+        .order_by(CrmFollowUp.due_at.desc())
+        .limit(50)
+    ).all()
+    quotations = db.scalars(
+        select(CrmQuotation)
+        .where(CrmQuotation.customer_id == row.id)
+        .options(selectinload(CrmQuotation.creator))
+        .order_by(CrmQuotation.created_at.desc())
+        .limit(50)
+    ).all()
     return S.CustomerDetailOut(
         **_customer_out(row).model_dump(),
         plans=[_plan_out(p) for p in sorted(row.plans, key=lambda p: p.start_on, reverse=True)],
         interactions=[_interaction_out(i) for i in interactions],
         visits=[_visit_out(v) for v in visits],
+        follow_ups=[_follow_up_out(f) for f in follow_ups],
+        quotations=[_quotation_row_out(q) for q in quotations],
     )
 
 
@@ -1765,8 +1789,8 @@ def _plan_defaults(db: Session, org_id: uuid.UUID, payload: S.CustomerPlanIn) ->
             detail={"reason": "no_product", "message": "Say what the customer bought."},
         )
     end_on = payload.end_on
-    if end_on is None and plan is not None and plan.duration_days:
-        end_on = payload.start_on + timedelta(days=plan.duration_days)
+    if end_on is None and plan is not None and plan.term_days:
+        end_on = payload.start_on + timedelta(days=plan.term_days)
     return name, payload.plan_name or (plan.name if plan else None), end_on
 
 
@@ -2339,11 +2363,18 @@ def next_quotation_number(db: Session, org_id: uuid.UUID, on: date, *, peek: boo
 
 def quotation_defaults(db: Session, viewer: User) -> S.QuotationDefaults:
     settings = get_settings(db, viewer.org_id)
+    stored = settings.quotation_setup or {}
     return S.QuotationDefaults(
         home_state=_company_state(db, viewer.org_id),
         default_gst=quotation_setup(settings).default_gst,
         validity_days=settings.quotation_validity_days,
         terms=settings.quotation_terms,
+        setup=S.QuotationSetupOut(
+            **quotation_setup(settings).model_dump(),
+            has_logo=bool(stored.get("logo_key")),
+            has_stamp=bool(stored.get("stamp_key")),
+            images_version=stored.get("images_version"),
+        ),
     )
 
 
@@ -2536,8 +2567,11 @@ def _apply_quotation(
     for field in (
         "lead_id", "customer_id", "customer_name", "company", "gstin", "mobile", "whatsapp",
         "email", "city", "state", "pincode", "billing_address", "shipping_address", "notes",
+        "subject", "letter_body", "payment_terms", "delivery_terms", "warranty_terms",
     ):
         setattr(row, field, getattr(payload, field))
+    if payload.style:
+        row.style = payload.style
     row.quote_date = payload.quote_date
     row.valid_until = payload.valid_until or (
         payload.quote_date + timedelta(days=settings.quotation_validity_days)
@@ -2572,6 +2606,8 @@ def create_quotation(
         number=next_quotation_number(db, viewer.org_id, payload.quote_date),
         quote_date=payload.quote_date,
         created_by=viewer.id,
+        # Blank takes today's setting; after that the quotation keeps it.
+        style=payload.style or quotation_setup(get_settings(db, viewer.org_id)).style,
     )
     db.add(row)
     db.flush()
@@ -2661,7 +2697,9 @@ def duplicate_quotation(db: Session, viewer: User, quotation_id: uuid.UUID) -> S
         mobile=source.mobile, whatsapp=source.whatsapp, email=source.email,
         city=source.city, state=source.state, pincode=source.pincode,
         billing_address=source.billing_address, shipping_address=source.shipping_address,
-        terms=source.terms, notes=source.notes,
+        terms=source.terms, notes=source.notes, style=source.style, subject=source.subject,
+        letter_body=source.letter_body, payment_terms=source.payment_terms,
+        delivery_terms=source.delivery_terms, warranty_terms=source.warranty_terms,
         lines=[
             S.QuotationLineIn(
                 name=line.name, product_id=line.product_id, plan_id=line.plan_id,

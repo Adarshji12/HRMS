@@ -30,6 +30,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { Avatar, ErrorNote, Loading, Meter } from '../../../components/ui'
 import type { EmployeeProfile } from '../../../lib/types'
 import EmployeeDocuments from './EmployeeDocuments'
+import { crm, type CityRow, type Country, type StateRow } from '../../crm/api'
 import '../../../styles/people.css'
 
 /* What "complete" means, stated rather than inferred.
@@ -298,12 +299,16 @@ function PersonalSection({
       personal_email: profile.personal_email ?? '',
       alternate_phone: profile.alternate_phone ?? '',
       current_address: profile.current_address ?? '',
-      current_city: profile.current_city ?? '',
+      current_country: profile.current_country ?? '',
       current_state: profile.current_state ?? '',
+      current_district: profile.current_district ?? '',
+      current_city: profile.current_city ?? '',
       current_postal_code: profile.current_postal_code ?? '',
       permanent_address: profile.permanent_address ?? '',
-      permanent_city: profile.permanent_city ?? '',
+      permanent_country: profile.permanent_country ?? '',
       permanent_state: profile.permanent_state ?? '',
+      permanent_district: profile.permanent_district ?? '',
+      permanent_city: profile.permanent_city ?? '',
       permanent_postal_code: profile.permanent_postal_code ?? '',
       emergency_name: profile.emergency_name ?? '',
       emergency_relationship: profile.emergency_relationship ?? '',
@@ -314,10 +319,28 @@ function PersonalSection({
       // what "cleared on purpose" has to mean. Sending undefined instead would
       // leave the old value in place and the field would silently refuse to
       // empty.
-      await api.patch(`/people/${profile.user_id}`, body)
+      // "Same as current" sends the current address as the permanent one, so
+      // a record saved with the box ticked never keeps a stale second copy.
+      const extra = same
+        ? Object.fromEntries(
+            ADDRESS_PARTS.map((part) => [`permanent_${part}`, state.draft[`current_${part}`]]),
+          )
+        : {}
+      await api.patch(`/people/${profile.user_id}`, { ...body, ...extra })
       onSaved()
     },
   )
+
+  /* The permanent address is, for most people, the current one again. Asking
+     for it twice was the duplicate half of this form, so it hides behind a
+     tick that starts on when nothing different has been given. */
+  const [same, setSame] = useState(() =>
+    ADDRESS_PARTS.every((part) => {
+      const permanent = profile[`permanent_${part}`] ?? ''
+      return permanent === '' || permanent === (profile[`current_${part}`] ?? '')
+    }),
+  )
+  const geo = useGeography()
 
   const ro = !editable
   return (
@@ -361,39 +384,18 @@ function PersonalSection({
                onChange={(e) => state.set('alternate_phone', e.target.value)} />
       </Field>
 
-      <Field label="Current address">
-        <textarea rows={2} value={state.draft.current_address} disabled={ro}
-                  onChange={(e) => state.set('current_address', e.target.value)} />
-      </Field>
-      <Field label="City">
-        <input value={state.draft.current_city} disabled={ro}
-               onChange={(e) => state.set('current_city', e.target.value)} />
-      </Field>
-      <Field label="State">
-        <input value={state.draft.current_state} disabled={ro}
-               onChange={(e) => state.set('current_state', e.target.value)} />
-      </Field>
-      <Field label="PIN code">
-        <input value={state.draft.current_postal_code} disabled={ro}
-               onChange={(e) => state.set('current_postal_code', e.target.value)} />
-      </Field>
+      <AddressFields side="current" label="Current address" geo={geo} ro={ro}
+                     draft={state.draft} set={state.set} />
 
-      <Field label="Permanent address" hint="Statutory paperwork asks for this one specifically.">
-        <textarea rows={2} value={state.draft.permanent_address} disabled={ro}
-                  onChange={(e) => state.set('permanent_address', e.target.value)} />
-      </Field>
-      <Field label="City">
-        <input value={state.draft.permanent_city} disabled={ro}
-               onChange={(e) => state.set('permanent_city', e.target.value)} />
-      </Field>
-      <Field label="State">
-        <input value={state.draft.permanent_state} disabled={ro}
-               onChange={(e) => state.set('permanent_state', e.target.value)} />
-      </Field>
-      <Field label="PIN code">
-        <input value={state.draft.permanent_postal_code} disabled={ro}
-               onChange={(e) => state.set('permanent_postal_code', e.target.value)} />
-      </Field>
+      <label className="hr-field-wide hr-same">
+        <input type="checkbox" checked={same} disabled={ro}
+               onChange={(e) => setSame(e.target.checked)} />
+        Permanent address is the same as current
+      </label>
+      {!same && (
+        <AddressFields side="permanent" label="Permanent address" geo={geo} ro={ro}
+                       draft={state.draft} set={state.set} />
+      )}
 
       <Field label="Emergency contact">
         <input value={state.draft.emergency_name} disabled={ro}
@@ -408,6 +410,116 @@ function PersonalSection({
                onChange={(e) => state.set('emergency_phone', e.target.value)} />
       </Field>
     </SectionShell>
+  )
+}
+
+/* --- addresses ------------------------------------------------------------ */
+
+/** The parts of an address, stored by name (country by its two-letter code)
+ *  so a master row renamed later leaves the address as it was given. */
+const ADDRESS_PARTS = ['address', 'country', 'state', 'district', 'city', 'postal_code'] as const
+type AddressPart = (typeof ADDRESS_PARTS)[number]
+type AddressKey = `${'current' | 'permanent'}_${AddressPart}`
+
+interface DistrictRow { id: string; name: string; state_id: string; is_active: boolean }
+interface GeoCity extends CityRow { district_id: string | null }
+
+/** Country, state, district and city from the Geography master. */
+function useGeography() {
+  const countries = useQuery<Country[]>('geo-countries', () => crm.masters<Country>('countries'))
+  const states = useQuery<StateRow[]>('geo-states', () => crm.masters<StateRow>('states'))
+  const districts = useQuery<DistrictRow[]>('geo-districts', () => crm.masters<DistrictRow>('districts'))
+  const cities = useQuery<GeoCity[]>('geo-cities', () => crm.masters<GeoCity>('cities'))
+  return {
+    countries: (countries.data ?? []).filter((c) => c.is_active && c.iso2),
+    states: (states.data ?? []).filter((s) => s.is_active),
+    districts: (districts.data ?? []).filter((d) => d.is_active),
+    cities: (cities.data ?? []).filter((c) => c.is_active),
+  }
+}
+type Geography = ReturnType<typeof useGeography>
+
+/** A select over master names that still shows a value typed before the
+ *  master existed, so opening an old record never blanks a field. */
+function MasterSelect({
+  value, names, disabled, onChange,
+}: {
+  value: string
+  names: Array<{ value: string; label: string }>
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  const known = names.some((n) => n.value === value)
+  return (
+    <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <option value="">—</option>
+      {value && !known && <option value={value}>{value}</option>}
+      {names.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
+    </select>
+  )
+}
+
+function AddressFields({
+  side, label, geo, ro, draft, set,
+}: {
+  side: 'current' | 'permanent'
+  label: string
+  geo: Geography
+  ro: boolean
+  draft: Record<AddressKey, string>
+  set: (key: AddressKey, value: string) => void
+}) {
+  const key = (part: AddressPart) => `${side}_${part}` as AddressKey
+  const country = geo.countries.find((c) => c.iso2 === draft[key('country')])
+  const state = geo.states.find(
+    (s) => s.name === draft[key('state')] && (!country || s.country_id === country.id),
+  )
+  const district = state
+    ? geo.districts.find((d) => d.state_id === state.id && d.name === draft[key('district')])
+    : undefined
+
+  const states = country ? geo.states.filter((s) => s.country_id === country.id) : geo.states
+  const districts = state ? geo.districts.filter((d) => d.state_id === state.id) : []
+  const cities = state
+    ? geo.cities.filter((c) => c.state_id === state.id && (!district || c.district_id === district.id))
+    : []
+  const names = (rows: Array<{ name: string }>) => rows.map((r) => ({ value: r.name, label: r.name }))
+
+  /* Picking a place clears everything below it: a city left over from the
+     previous state is an address that does not exist. */
+  function pick(part: 'country' | 'state' | 'district', value: string) {
+    set(key(part), value)
+    const order: AddressPart[] = ['country', 'state', 'district', 'city']
+    for (const lower of order.slice(order.indexOf(part) + 1)) set(key(lower), '')
+  }
+
+  return (
+    <>
+      <Field label={label}>
+        <textarea rows={2} value={draft[key('address')]} disabled={ro}
+                  onChange={(e) => set(key('address'), e.target.value)} />
+      </Field>
+      <Field label="Country">
+        <MasterSelect value={draft[key('country')]} disabled={ro} onChange={(v) => pick('country', v)}
+                      names={geo.countries.map((c) => ({ value: c.iso2 ?? '', label: c.name }))} />
+      </Field>
+      <Field label="State">
+        <MasterSelect value={draft[key('state')]} disabled={ro} onChange={(v) => pick('state', v)}
+                      names={names(states)} />
+      </Field>
+      <Field label="District">
+        <MasterSelect value={draft[key('district')]} disabled={ro || !state}
+                      onChange={(v) => pick('district', v)} names={names(districts)} />
+      </Field>
+      <Field label="City">
+        <MasterSelect value={draft[key('city')]} disabled={ro || !state}
+                      onChange={(v) => set(key('city'), v)} names={names(cities)} />
+      </Field>
+      <Field label="PIN code">
+        <input value={draft[key('postal_code')]} disabled={ro} inputMode="numeric" maxLength={20}
+               onChange={(e) => set(key('postal_code'), e.target.value)} />
+      </Field>
+    </>
   )
 }
 
