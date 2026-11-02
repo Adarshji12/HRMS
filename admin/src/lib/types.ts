@@ -199,6 +199,9 @@ export interface User {
   team_name: string | null
   department_name: string | null
   designation_name: string | null
+  /** Who they report to, and the branch / office from their HR record. */
+  manager_name?: string | null
+  work_location?: string | null
 }
 
 export interface Department {

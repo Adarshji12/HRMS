@@ -206,3 +206,11 @@
   padding-top: 6px; padding-bottom: 6px; height: auto;
   font-size: 10px; font-weight: 650; letter-spacing: 0.06em; line-height: 16px;
 }
+
+/* Employees roster: designation, branch, reports to, joined, status. */
+.emp-table .emp-strong { font-weight: 600; color: var(--text-primary); }
+.emp-table .emp-nowrap { white-space: nowrap; }
+.emp-table .emp-code { margin-right: 6px; padding: 0 5px; border-radius: 4px; font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px; color: var(--text-secondary); background: var(--surface-2); }
+.emp-table .emp-notice { margin-top: 3px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.emp-table .emp-notice.is-pending { color: var(--status-warn); font-weight: 600; }

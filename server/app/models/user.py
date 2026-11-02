@@ -395,3 +395,13 @@ class User(UUIDMixin, TimestampMixin, Base):
     @property
     def designation_name(self) -> str | None:
         return self.designation.name if self.designation else None
+
+    @property
+    def manager_name(self) -> str | None:
+        """Who they report to — the roster's "Reports to"."""
+        return self.manager.full_name if self.manager else None
+
+    @property
+    def work_location(self) -> str | None:
+        """The branch / office from their HR record."""
+        return self.profile.work_location if self.profile else None

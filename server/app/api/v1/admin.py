@@ -16,6 +16,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import (
     OwnerUser,
@@ -533,7 +534,10 @@ def employee_day(
 
 @router.get("/employees", response_model=list[UserWithKeyOut])
 def list_employees(viewer: CurrentUser, db: DbSession) -> list[User]:
-    stmt = select(User).where(User.org_id == viewer.org_id).order_by(User.full_name)
+    # The roster shows names, not ids: load what they come from in one go.
+    stmt = (select(User).where(User.org_id == viewer.org_id).order_by(User.full_name)
+            .options(selectinload(User.manager), selectinload(User.profile), selectinload(User.team),
+                     selectinload(User.department), selectinload(User.designation)))
     allowed = visible_user_ids(db, viewer)
     if allowed is not None:
         stmt = stmt.where(User.id.in_(allowed))

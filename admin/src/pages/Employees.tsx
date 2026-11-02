@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useQuery } from '../lib/useQuery'
 import { canAdminister, useAuth } from '../lib/auth'
-import { dateTime } from '../lib/format'
+import { dateTime, shortDate } from '../lib/format'
 import type { Department, Team, User } from '../lib/types'
 import { Avatar, Empty, ErrorNote, Loading } from '../components/ui'
 import { ExportButton } from '../components/ExportButton'
@@ -23,7 +23,6 @@ export default function Employees() {
   const departments = useQuery<Department[]>('departments', () =>
     api.get<Department[]>('/org/departments'),
   )
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   /* undefined = closed. null = the generic version, opened from the header.
      A user = that person's key filled in, ready to send to them. */
   const [installFor, setInstallFor] = useState<User | null | undefined>(undefined)
@@ -236,11 +235,12 @@ export default function Employees() {
           <table className="emp-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Team</th>
+                <th>Employee</th>
                 <th>Designation</th>
-                <th>Monitoring notice</th>
-                <th>Enrollment key</th>
+                <th>Branch</th>
+                <th>Reports to</th>
+                <th>Joined</th>
+                <th>Status</th>
                 {isAdmin && <th style={{ textAlign: 'center' }}>Edit</th>}
               </tr>
             </thead>
@@ -258,13 +258,9 @@ export default function Employees() {
                           <Link className="row-link" to={`/employees/${employee.id}`}>
                             {employee.full_name}
                           </Link>
-                          {!employee.is_active && (
-                            <span className="badge" style={{ marginLeft: 8 }}>
-                              Disabled
-                            </span>
-                          )}
                         </div>
                         <div className="identity-meta">
+                          {employee.employee_code && <span className="emp-code">{employee.employee_code}</span>}
                           {employee.email}
                           {/* Two different records, deliberately reachable from
                               one row. `/employees/:id` is the account — role,
@@ -283,64 +279,36 @@ export default function Employees() {
                     </div>
                   </td>
                   <td>
-                    {employee.team_name ?? <span className="muted-sm">unassigned</span>}
-                    {employee.department_name && (
-                      <div className="muted-sm">{employee.department_name}</div>
+                    <div className="emp-strong">{employee.designation_name ?? <span className="muted-sm">{employee.role}</span>}</div>
+                    {(employee.department_name || employee.team_name) && (
+                      <div className="muted-sm">{[employee.department_name, employee.team_name].filter(Boolean).join(' · ')}</div>
                     )}
                   </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>
-                    {employee.designation_name ?? employee.role}
-                  </td>
-                  {/* Enrolment is refused until this is accepted, so a pending
-                      row is an actionable state, not a blank field. */}
+                  <td>{employee.work_location ?? <span className="muted-sm">—</span>}</td>
+                  <td>{employee.manager_name ?? <span className="muted-sm">—</span>}</td>
+                  <td className="emp-nowrap">{employee.joined_on ? shortDate(employee.joined_on) : <span className="muted-sm">—</span>}</td>
+                  {/* Active or disabled; and, until accepted, the monitoring
+                      notice — enrolment is refused until then, so it is an
+                      actionable state, not a blank field. */}
                   <td>
-                    {employee.notice_accepted_at ? (
-                      <span className="badge badge-ok" title={dateTime(employee.notice_accepted_at)}>
+                    {employee.is_active ? (
+                      <span className="badge badge-ok">
                         <span className="badge-dot" style={{ background: 'var(--status-good)' }} />
-                        Accepted
+                        Active
                       </span>
                     ) : (
-                      <span className="badge badge-warn">
-                        <span className="badge-dot" style={{ background: 'var(--status-warn)' }} />
-                        Pending
+                      <span className="badge">
+                        <span className="badge-dot" style={{ background: 'var(--text-muted)' }} />
+                        Disabled
                       </span>
                     )}
-                  </td>
-                  <td>
-                    <div className="btn-group">
-                      {revealed[employee.id] ? (
-                        <span className="key-chip">{employee.enrollment_key}</span>
-                      ) : (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          onClick={() => setRevealed((r) => ({ ...r, [employee.id]: true }))}
-                        >
-                          Reveal
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          onClick={async () => {
-                            await api.post(`/admin/employees/${employee.id}/rotate-key`)
-                            setRevealed((r) => ({ ...r, [employee.id]: true }))
-                            reload()
-                          }}
-                        >
-                          Rotate
-                        </button>
-                      )}
-                      {/* The key on its own is half of what this person needs.
-                          This is the key, the download and the steps together. */}
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        onClick={() => setInstallFor(employee)}
-                        title={`Download the agent and the setup steps for ${employee.full_name}`}
-                      >
-                        Set up
-                      </button>
+                    <div className={`emp-notice${employee.notice_accepted_at ? '' : ' is-pending'}`}
+                      title={employee.notice_accepted_at ? `Monitoring notice accepted ${dateTime(employee.notice_accepted_at)}` : 'Monitoring notice not accepted yet'}>
+                      {employee.notice_accepted_at ? 'Notice accepted' : 'Notice pending'}
                     </div>
                   </td>
+                  {/* The Agent key column (reveal / rotate / set up) is hidden for now;
+                      the keys themselves are unchanged. */}
                   {/* Opens the same ten-step form as Add employee, filled in. */}
                   {isAdmin && (
                     <td style={{ textAlign: 'center' }}>

@@ -72,6 +72,8 @@ class UserOut(ORMModel):
     team_name: str | None = None
     department_name: str | None = None
     designation_name: str | None = None
+    manager_name: str | None = None
+    work_location: str | None = None
     # Permissions restrict within the role; they never grant beyond it. See the
     # note on the columns in app.models.user.
     can_view_screenshots: bool = True
