@@ -46,7 +46,7 @@ import {
   type LeadDashboard as Dashboard,
   type TrendPoint,
 } from './api'
-import { MasterSelect, OwnerSelect } from './parts'
+import { MasterSelect, OwnerSelect, ThCaret } from './parts'
 
 const RANGES: Array<{ key: string; short: string; label: string; days: number }> = [
   { key: '7', short: '7D', label: 'Last 7 days', days: 6 },
@@ -266,12 +266,12 @@ export default function LeadDashboard({ overview = false }: { overview?: boolean
                 <table className="ld-team">
                   <thead>
                     <tr>
-                      <th style={{ width: 56 }}>Rank</th>
-                      <th>Owner</th>
-                      <th className="crm-num">Leads</th>
-                      <th className="crm-num">Converted</th>
-                      <th className="crm-num">Pending follow-ups</th>
-                      <th style={{ width: '26%' }}>Conversion</th>
+                      <th style={{ width: 56 }}>Rank <ThCaret /></th>
+                      <th>Owner <ThCaret /></th>
+                      <th className="crm-num">Leads <ThCaret /></th>
+                      <th className="crm-num">Converted <ThCaret /></th>
+                      <th className="crm-num">Pending follow-ups <ThCaret /></th>
+                      <th style={{ width: '26%' }}>Conversion <ThCaret /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -428,7 +428,7 @@ function TrendCard({ points }: { points: TrendPoint[] }) {
         <div className="table-wrap ld-trend-table">
           <table>
             <thead>
-              <tr><th>Day</th><th className="crm-num">New</th><th className="crm-num">Converted</th></tr>
+              <tr><th>Day <ThCaret /></th><th className="crm-num">New <ThCaret /></th><th className="crm-num">Converted <ThCaret /></th></tr>
             </thead>
             <tbody>
               {[...points].reverse().map((p) => (

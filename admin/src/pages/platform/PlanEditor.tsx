@@ -232,7 +232,7 @@ export default function PlanEditor({
           <div className="pf-form-grid">
             <label className="pf-field">
               Base fee (₹ / year)
-              <input
+              <input placeholder="e.g. 50000"
                 type="number"
                 min={0}
                 step="0.01"
@@ -243,7 +243,7 @@ export default function PlanEditor({
             </label>
             <label className="pf-field">
               Per employee (₹ / month)
-              <input
+              <input placeholder="e.g. 99"
                 type="number"
                 min={0}
                 step="0.01"
@@ -258,7 +258,7 @@ export default function PlanEditor({
           <div className="pf-form-grid">
             <label className="pf-field">
               Minimum employees
-              <input
+              <input placeholder="e.g. 1"
                 type="number"
                 min={1}
                 value={draft.min_employees}
@@ -267,7 +267,7 @@ export default function PlanEditor({
             </label>
             <label className="pf-field">
               Maximum employees
-              <input
+              <input placeholder="e.g. 100"
                 type="number"
                 min={1}
                 value={draft.max_employees}
@@ -289,7 +289,7 @@ export default function PlanEditor({
           <div className="pf-form-grid">
             <label className="pf-field">
               Screenshot retention (days)
-              <input
+              <input placeholder="e.g. 30"
                 type="number"
                 min={1}
                 max={3650}
@@ -299,7 +299,7 @@ export default function PlanEditor({
             </label>
             <label className="pf-field">
               Activity retention (days)
-              <input
+              <input placeholder="e.g. 90"
                 type="number"
                 min={1}
                 max={3650}
@@ -309,7 +309,7 @@ export default function PlanEditor({
             </label>
             <label className="pf-field">
               Fastest capture (seconds)
-              <input
+              <input placeholder="e.g. 60"
                 type="number"
                 min={30}
                 max={86400}
@@ -320,7 +320,7 @@ export default function PlanEditor({
             </label>
             <label className="pf-field">
               Storage (GB)
-              <input
+              <input placeholder="e.g. 10"
                 type="number"
                 min={1}
                 value={draft.storage_gb}
@@ -374,7 +374,7 @@ export default function PlanEditor({
 
           <label className="pf-field" style={{ marginTop: 14, maxWidth: 200 }}>
             Sort order
-            <input
+            <input placeholder="e.g. 1"
               type="number"
               min={0}
               value={draft.sort_order}

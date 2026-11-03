@@ -131,12 +131,14 @@ class LeadSourceIn(NamedIn):
 class CountryOut(MasterOut):
     iso2: str | None = None
     dial_code: str | None = None
+    mobile_length: int = 10
 
 
 class CountryIn(NamedIn):
     name: str = Field(min_length=1, max_length=120)
     iso2: str | None = Field(default=None, min_length=2, max_length=2)
-    dial_code: str | None = Field(default=None, max_length=8)
+    dial_code: str | None = Field(default=None, pattern=r"^\+[0-9]{1,4}$")
+    mobile_length: int = Field(default=10, ge=4, le=15)
 
     _blank = field_validator("iso2", "dial_code", mode="before")(_blank_to_none)
 

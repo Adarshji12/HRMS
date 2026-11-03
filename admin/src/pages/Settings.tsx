@@ -208,7 +208,7 @@ export default function Settings() {
                     {preset.label}
                   </button>
                 ))}
-                <input
+                <input placeholder="300"
                   type="number"
                   min={30}
                   max={86400}
@@ -238,7 +238,7 @@ export default function Settings() {
             </Row>
 
             <Row title="Quality" desc="JPEG quality, 20–95. Lower saves bandwidth and storage.">
-              <input
+              <input placeholder="70"
                 type="number"
                 min={20}
                 max={95}
@@ -251,7 +251,7 @@ export default function Settings() {
 
             <Row title="Maximum width" desc="Captures are downscaled to this before storage.">
               <span className="set-inline">
-                <input
+                <input placeholder="1280"
                   type="number"
                   min={320}
                   max={3840}
@@ -270,7 +270,7 @@ export default function Settings() {
               desc="Enforced by the purge job, which deletes the image files too — not just the rows."
             >
               <span className="set-inline">
-                <input
+                <input placeholder="30"
                   type="number"
                   min={1}
                   max={3650}
@@ -322,7 +322,7 @@ export default function Settings() {
               desc="Time with no keyboard or mouse input before the seconds stop counting as work."
             >
               <span className="set-inline">
-                <input
+                <input placeholder="300"
                   type="number"
                   min={30}
                   max={3600}
@@ -340,7 +340,7 @@ export default function Settings() {
               desc="Shorter focus changes are discarded as alt-tab noise rather than stored."
             >
               <span className="set-inline">
-                <input
+                <input placeholder="5"
                   type="number"
                   min={1}
                   max={120}
@@ -354,7 +354,7 @@ export default function Settings() {
 
             <Row title="Sync interval" desc="How often each agent uploads what it has spooled.">
               <span className="set-inline">
-                <input
+                <input placeholder="60"
                   type="number"
                   min={10}
                   max={3600}
@@ -368,7 +368,7 @@ export default function Settings() {
 
             <Row title="Activity retention" desc="How long segments are kept before the purge job removes them.">
               <span className="set-inline">
-                <input
+                <input placeholder="90"
                   type="number"
                   min={1}
                   max={3650}
@@ -462,7 +462,7 @@ export default function Settings() {
               <h2 className="card-title">Notice text</h2>
               <span className="card-note">{form.notice_text.length} characters</span>
             </div>
-            <textarea
+            <textarea placeholder="e.g. This workspace records app and website activity during work hours to help with timesheets and productivity insights."
               className="set-textarea"
               value={form.notice_text}
               onChange={(e) => set('notice_text', e.target.value)}

@@ -801,15 +801,15 @@ function AssetForm({
         </label>
         <label className="setting">
           Brand / make
-          <input value={form.brand} onChange={(e) => set({ brand: e.target.value })} maxLength={120} />
+          <input placeholder="e.g. Dell" value={form.brand} onChange={(e) => set({ brand: e.target.value })} maxLength={120} />
         </label>
         <label className="setting">
           Model
-          <input value={form.model_name} onChange={(e) => set({ model_name: e.target.value })} maxLength={120} />
+          <input placeholder="e.g. Latitude 5440" value={form.model_name} onChange={(e) => set({ model_name: e.target.value })} maxLength={120} />
         </label>
         <label className="setting">
           Serial / licence key / reg. no.
-          <input value={form.serial_number} onChange={(e) => set({ serial_number: e.target.value })} maxLength={120} />
+          <input placeholder="e.g. SN-7H2K9Q1" value={form.serial_number} onChange={(e) => set({ serial_number: e.target.value })} maxLength={120} />
         </label>
         <label className="setting">
           Location
@@ -841,11 +841,11 @@ function AssetForm({
       <div className="settings-grid">
         <label className="setting">
           Vendor / supplier
-          <input value={form.vendor} onChange={(e) => set({ vendor: e.target.value })} maxLength={160} />
+          <input placeholder="e.g. Croma Retail Pvt Ltd" value={form.vendor} onChange={(e) => set({ vendor: e.target.value })} maxLength={160} />
         </label>
         <label className="setting">
           Invoice number
-          <input value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} maxLength={80} />
+          <input placeholder="e.g. INV-2024-0183" value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} maxLength={80} />
         </label>
         <label className="setting">
           Purchase date
@@ -903,7 +903,7 @@ function AssetForm({
           </label>
           <label className="setting">
             Remind me (days before)
-            <input
+            <input placeholder="30"
               type="number"
               min={0}
               max={365}

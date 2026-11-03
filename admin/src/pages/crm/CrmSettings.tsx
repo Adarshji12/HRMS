@@ -316,33 +316,33 @@ function SettingsForm({ title, hint, fields }: { title: string; hint: string; fi
   const control: Record<FieldKey, ReactNode> = {
     quotation_prefix: (
       <Field label="Quotation prefix" hint={`e.g. ${value('quotation_prefix')}-2026-0001`}>
-        <input value={value('quotation_prefix') ?? ''} onChange={(e) => set({ quotation_prefix: e.target.value })} />
+        <input placeholder="QT" value={value('quotation_prefix') ?? ''} onChange={(e) => set({ quotation_prefix: e.target.value })} />
       </Field>
     ),
     quotation_validity_days: (
       <Field label="Quotation validity (days)">
-        <input type="number" min={1} max={365} value={value('quotation_validity_days') ?? 15}
+        <input placeholder="15" type="number" min={1} max={365} value={value('quotation_validity_days') ?? 15}
                onChange={(e) => set({ quotation_validity_days: Number(e.target.value) })} />
       </Field>
     ),
     quotation_terms: (
       <Field label="Default terms &amp; conditions" wide hint="Printed under the totals on a new quotation.">
-        <textarea rows={4} value={value('quotation_terms') ?? ''} onChange={(e) => set({ quotation_terms: e.target.value })} />
+        <textarea placeholder="e.g. Payment within 15 days of invoice. Prices exclusive of GST." rows={4} value={value('quotation_terms') ?? ''} onChange={(e) => set({ quotation_terms: e.target.value })} />
       </Field>
     ),
     visit_prefix: (
       <Field label="Visit prefix" hint={`e.g. ${value('visit_prefix')}-0001`}>
-        <input value={value('visit_prefix') ?? ''} onChange={(e) => set({ visit_prefix: e.target.value })} />
+        <input placeholder="VST" value={value('visit_prefix') ?? ''} onChange={(e) => set({ visit_prefix: e.target.value })} />
       </Field>
     ),
     ticket_prefix: (
       <Field label="Support ticket prefix" hint={`e.g. ${value('ticket_prefix')}-00001`}>
-        <input value={value('ticket_prefix') ?? ''} onChange={(e) => set({ ticket_prefix: e.target.value })} />
+        <input placeholder="TKT" value={value('ticket_prefix') ?? ''} onChange={(e) => set({ ticket_prefix: e.target.value })} />
       </Field>
     ),
     renewal_window_days: (
       <Field label="Renewal window (days)" hint="How early a customer starts showing as renewal due.">
-        <input type="number" min={1} max={365} value={value('renewal_window_days') ?? 30}
+        <input placeholder="30" type="number" min={1} max={365} value={value('renewal_window_days') ?? 30}
                onChange={(e) => set({ renewal_window_days: Number(e.target.value) })} />
       </Field>
     ),

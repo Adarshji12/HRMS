@@ -1049,7 +1049,7 @@ function CancelPanel({
       {error && <div style={{ marginBottom: 10 }}><ErrorNote>{error}</ErrorNote></div>}
       <label className="setting">
         Why are you withdrawing it? <span className="setting-hint">Optional. Appended to the record, not replacing your approver’s note.</span>
-        <input value={reason} maxLength={2000} onChange={(e) => setReason(e.target.value)} />
+        <input placeholder="e.g. Family function out of town" value={reason} maxLength={2000} onChange={(e) => setReason(e.target.value)} />
       </label>
       <div className="lv-actions" style={{ marginTop: 10 }}>
         <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy}>

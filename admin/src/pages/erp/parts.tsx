@@ -189,7 +189,7 @@ export function ReasonDialog({ title, hint, confirm = 'Confirm', danger, onClose
     }>
       <div style={{ padding: '0 20px 8px' }}>
         <Field label="Reason" hint={hint ?? 'Kept on the record with your name.'}>
-          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+          <textarea placeholder="e.g. Entered against the wrong customer" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
         </Field>
         {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
       </div>
@@ -286,9 +286,9 @@ export function LineEditor({ lines, onChange, priced = true, items, rateFrom = '
                     </select>
                     <input value={l.description} placeholder="Description" onChange={(e) => set(l.key, { description: e.target.value })} />
                   </td>
-                  <td className="crm-line-qty"><input inputMode="decimal" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} /></td>
-                  {priced && <td className="crm-line-rate"><input inputMode="decimal" value={l.rate} onChange={(e) => set(l.key, { rate: e.target.value })} /></td>}
-                  {priced && <td className="crm-line-gst"><input inputMode="decimal" value={l.gst_percent} onChange={(e) => set(l.key, { gst_percent: e.target.value })} /></td>}
+                  <td className="crm-line-qty"><input placeholder="1" inputMode="decimal" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} /></td>
+                  {priced && <td className="crm-line-rate"><input placeholder="0" inputMode="decimal" value={l.rate} onChange={(e) => set(l.key, { rate: e.target.value })} /></td>}
+                  {priced && <td className="crm-line-gst"><input placeholder="18" inputMode="decimal" value={l.gst_percent} onChange={(e) => set(l.key, { gst_percent: e.target.value })} /></td>}
                   {priced && <td className="crm-num crm-nowrap">{rupees(taxable * (1 + Number(l.gst_percent || 0) / 100))}</td>}
                   <td>
                     <button className="crm-icon-btn" aria-label="Remove line" disabled={lines.length === 1}

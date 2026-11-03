@@ -406,7 +406,7 @@ function DepartmentForm({
     >
       <label className="setting">
         Name
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        <input placeholder="e.g. Engineering" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
       </label>
       <label className="setting">
         Code
@@ -488,7 +488,7 @@ function TeamForm({
     >
       <label className="setting">
         Name
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        <input placeholder="e.g. Backend Team" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
       </label>
       <label className="setting">
         Department
@@ -548,7 +548,7 @@ function DesignationForm({ onSaved }: { onSaved: () => void }) {
       </label>
       <label className="setting">
         Seniority level
-        <input
+        <input placeholder="e.g. 3"
           type="number"
           min={1}
           max={100}
@@ -625,7 +625,7 @@ function ScheduleForm({ onSaved }: { onSaved: () => void }) {
       </div>
       <label className="setting">
         Unpaid break (minutes)
-        <input
+        <input placeholder="60"
           type="number"
           min={0}
           max={480}
@@ -635,7 +635,7 @@ function ScheduleForm({ onSaved }: { onSaved: () => void }) {
       </label>
       <label className="setting">
         Overtime after (minutes)
-        <input
+        <input placeholder="540"
           type="number"
           min={60}
           max={1440}

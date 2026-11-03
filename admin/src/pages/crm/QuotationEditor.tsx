@@ -502,7 +502,7 @@ export default function QuotationEditor() {
         <div className="crm-grid-4 qe-body">
           <Field label="Customer name">
             {leadId || decided ? (
-              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={decided} />
+              <input placeholder="e.g. Rahul Sharma" value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={decided} />
             ) : (
               <NameCombo
                 value={customerName}
@@ -517,28 +517,28 @@ export default function QuotationEditor() {
             )}
           </Field>
           <Field label="Company">
-            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} disabled={decided} />
+            <input placeholder="e.g. Acme Industries Pvt Ltd" value={companyName} onChange={(e) => setCompanyName(e.target.value)} disabled={decided} />
           </Field>
           <Field label="GSTIN">
-            <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} disabled={decided} />
+            <input placeholder="22AAAAA0000A1Z5" value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} disabled={decided} />
           </Field>
           <Field label="Mobile">
-            <input value={mobile} onChange={(e) => setMobile(e.target.value)} disabled={decided} />
+            <input placeholder="9876543210" value={mobile} onChange={(e) => setMobile(e.target.value)} disabled={decided} />
           </Field>
           <Field label="WhatsApp">
-            <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={decided} />
+            <input placeholder="9876543210" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Email">
-            <input value={email} onChange={(e) => setEmail(e.target.value)} disabled={decided} />
+            <input placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={decided} />
           </Field>
           <Field label="City">
-            <input value={city} onChange={(e) => setCity(e.target.value)} disabled={decided} />
+            <input placeholder="e.g. Pune" value={city} onChange={(e) => setCity(e.target.value)} disabled={decided} />
           </Field>
           <Field label="State">
-            <input value={state} onChange={(e) => setState(e.target.value)} disabled={decided} />
+            <input placeholder="e.g. Maharashtra" value={state} onChange={(e) => setState(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Pincode">
-            <input value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={decided} />
+            <input placeholder="6-digit pincode" value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={decided} />
           </Field>
           <Field label="Billing address" wide>
             <textarea value={billing} onChange={(e) => setBilling(e.target.value)} rows={1} disabled={decided}
@@ -558,7 +558,7 @@ export default function QuotationEditor() {
               </span>
             </label>
             {!sameShipping && (
-              <textarea
+              <textarea placeholder="e.g. Plot 14, MIDC Industrial Area, Pune 411019"
                 value={shipping}
                 onChange={(event) => setShipping(event.target.value)}
                 rows={2}
@@ -654,7 +654,7 @@ export default function QuotationEditor() {
                       />
                     </td>
                     <td>
-                      <input
+                      <input placeholder="1"
                         className="crm-line-qty"
                         value={line.quantity}
                         onChange={(event) => patchLine(line.key, { quantity: event.target.value })}
@@ -663,7 +663,7 @@ export default function QuotationEditor() {
                       />
                     </td>
                     <td>
-                      <input
+                      <input placeholder="0"
                         className="crm-line-rate"
                         value={line.rate}
                         onChange={(event) => patchLine(line.key, { rate: event.target.value })}
@@ -673,7 +673,7 @@ export default function QuotationEditor() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <input
+                        <input placeholder="0"
                           className="crm-line-disc"
                           value={line.discount}
                           onChange={(event) => patchLine(line.key, { discount: event.target.value })}
@@ -694,7 +694,7 @@ export default function QuotationEditor() {
                       </div>
                     </td>
                     <td>
-                      <input
+                      <input placeholder="18"
                         className="crm-line-gst"
                         value={line.gst_percent}
                         onChange={(event) => patchLine(line.key, { gst_percent: event.target.value })}
@@ -741,7 +741,7 @@ export default function QuotationEditor() {
                      maxLength={200} placeholder="Quotation for …" />
             </Field>
             <Field label="Covering letter">
-              <textarea value={letterBody} onChange={(e) => setLetterBody(e.target.value)} rows={4}
+              <textarea placeholder="e.g. Thank you for your enquiry. Please find our quotation below." value={letterBody} onChange={(e) => setLetterBody(e.target.value)} rows={4}
                         disabled={decided} />
             </Field>
           </div>
@@ -753,24 +753,24 @@ export default function QuotationEditor() {
           {detailed && (
             <>
               <Field label="Payment terms">
-                <textarea value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} rows={3}
+                <textarea placeholder="e.g. 50% advance, balance on delivery" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} rows={3}
                           disabled={decided} />
               </Field>
               <Field label="Delivery terms">
-                <textarea value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} rows={3}
+                <textarea placeholder="e.g. Within 7 working days of order" value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} rows={3}
                           disabled={decided} />
               </Field>
               <Field label="Warranty">
-                <textarea value={warrantyTerms} onChange={(e) => setWarrantyTerms(e.target.value)} rows={3}
+                <textarea placeholder="e.g. 1 year against manufacturing defects" value={warrantyTerms} onChange={(e) => setWarrantyTerms(e.target.value)} rows={3}
                           disabled={decided} />
               </Field>
             </>
           )}
           <Field label="Terms &amp; conditions" hint="Defaults from CRM Settings.">
-            <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={3} disabled={decided} />
+            <textarea placeholder="e.g. Prices exclusive of GST" value={terms} onChange={(e) => setTerms(e.target.value)} rows={3} disabled={decided} />
           </Field>
           <Field label="Internal notes" hint="Not printed on the quotation.">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={decided} />
+            <textarea placeholder="e.g. Valid for 15 days" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} disabled={decided} />
           </Field>
         </div>
         <div className="crm-totals">

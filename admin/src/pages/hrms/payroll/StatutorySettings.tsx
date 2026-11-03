@@ -317,7 +317,7 @@ function ConfigForm({
       <div className="pr-row">
         <label className="pr-field">
           <span className="pr-field-label">Leave encashment: days in a month</span>
-          <input type="number" min={1} max={31} value={draft.encashment_month_days}
+          <input placeholder="30" type="number" min={1} max={31} value={draft.encashment_month_days}
                  onChange={(e) => set('encashment_month_days', Number(e.target.value))} />
           <span className="pr-field-hint">
             26 and 30 are both common, and they differ by 15%.
@@ -350,13 +350,13 @@ function ConfigForm({
         <div className="pr-row">
           <label className="pr-field">
             <span className="pr-field-label">Days per completed year</span>
-            <input type="number" min={0} max={90} value={draft.gratuity_days_per_year}
+            <input placeholder="15" type="number" min={0} max={90} value={draft.gratuity_days_per_year}
                    onChange={(e) => set('gratuity_days_per_year', Number(e.target.value))} />
             <span className="pr-field-hint">15 is the statutory figure.</span>
           </label>
           <label className="pr-field">
             <span className="pr-field-label">Divided by</span>
-            <input type="number" min={1} max={31} value={draft.gratuity_month_days}
+            <input placeholder="26" type="number" min={1} max={31} value={draft.gratuity_month_days}
                    onChange={(e) => set('gratuity_month_days', Number(e.target.value))} />
             <span className="pr-field-hint">26 notional working days.</span>
           </label>
@@ -396,7 +396,7 @@ function Rate({
   return (
     <label className="pr-field">
       <span className="pr-field-label">{label}</span>
-      <input value={text} inputMode="decimal" className={bad ? 'is-bad' : ''}
+      <input placeholder="12" value={text} inputMode="decimal" className={bad ? 'is-bad' : ''}
              onChange={(e) => {
                setText(e.target.value)
                const next = toBps(e.target.value)
@@ -422,7 +422,7 @@ function Amount({
   return (
     <label className="pr-field">
       <span className="pr-field-label">{label}</span>
-      <input value={text} inputMode="decimal"
+      <input placeholder="15000" value={text} inputMode="decimal"
              onChange={(e) => {
                setText(e.target.value)
                const next = toPaise(e.target.value)
@@ -603,18 +603,18 @@ function Preview({
       <div className="pr-row">
         <label className="pr-field">
           <span className="pr-field-label">PF wages</span>
-          <input value={pfWage} inputMode="decimal"
+          <input placeholder="15000" value={pfWage} inputMode="decimal"
                  onChange={(e) => setPfWage(e.target.value)} />
           <span className="pr-field-hint">Usually basic. Components you flagged.</span>
         </label>
         <label className="pr-field">
           <span className="pr-field-label">ESI wages</span>
-          <input value={esiWage} inputMode="decimal"
+          <input placeholder="21000" value={esiWage} inputMode="decimal"
                  onChange={(e) => setEsiWage(e.target.value)} />
         </label>
         <label className="pr-field">
           <span className="pr-field-label">Salary gross</span>
-          <input value={gross} inputMode="decimal"
+          <input placeholder="30000" value={gross} inputMode="decimal"
                  onChange={(e) => setGross(e.target.value)} />
           <span className="pr-field-hint">For the PT band. Excludes reimbursements.</span>
         </label>

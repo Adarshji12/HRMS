@@ -239,7 +239,7 @@ function NewComponent({
         )}
         <label className="pr-field">
           <span className="pr-field-label">Order</span>
-          <input value={draft.sort_order} inputMode="numeric"
+          <input placeholder="10" value={draft.sort_order} inputMode="numeric"
                  onChange={(e) => setDraft({ ...draft, sort_order: e.target.value })} />
         </label>
       </div>

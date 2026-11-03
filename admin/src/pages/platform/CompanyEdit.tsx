@@ -121,11 +121,11 @@ export default function CompanyEdit({
           <div className="pf-form-grid">
             <label className="pf-field">
               Company name
-              <input value={draft.name} onChange={(e) => set('name', e.target.value)} required minLength={2} />
+              <input placeholder="e.g. Acme" value={draft.name} onChange={(e) => set('name', e.target.value)} required minLength={2} />
             </label>
             <label className="pf-field">
               Workspace
-              <input
+              <input placeholder="e.g. acme"
                 value={draft.slug}
                 onChange={(e) => set('slug', e.target.value.toLowerCase())}
                 pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]"
@@ -141,11 +141,11 @@ export default function CompanyEdit({
             </label>
             <label className="pf-field">
               Timezone
-              <input value={draft.timezone} onChange={(e) => set('timezone', e.target.value)} />
+              <input placeholder="Asia/Kolkata" value={draft.timezone} onChange={(e) => set('timezone', e.target.value)} />
             </label>
             <label className="pf-field">
               Legal name
-              <input value={draft.legal_name} onChange={(e) => set('legal_name', e.target.value)} />
+              <input placeholder="e.g. Acme Industries Pvt Ltd" value={draft.legal_name} onChange={(e) => set('legal_name', e.target.value)} />
             </label>
           </div>
 
@@ -153,7 +153,7 @@ export default function CompanyEdit({
           <div className="pf-form-grid">
             <label className="pf-field">
               Billing email
-              <input
+              <input placeholder="name@company.com"
                 type="email"
                 value={draft.contact_email}
                 onChange={(e) => set('contact_email', e.target.value)}
@@ -161,11 +161,11 @@ export default function CompanyEdit({
             </label>
             <label className="pf-field">
               Phone
-              <input value={draft.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} />
+              <input placeholder="9876543210" value={draft.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} />
             </label>
             <label className="pf-field">
               GSTIN
-              <input value={draft.gstin} onChange={(e) => set('gstin', e.target.value)} />
+              <input placeholder="22AAAAA0000A1Z5" value={draft.gstin} onChange={(e) => set('gstin', e.target.value)} />
             </label>
             <label className="pf-field">
               Industry
@@ -189,11 +189,11 @@ export default function CompanyEdit({
             </label>
             <label className="pf-field">
               City
-              <input value={draft.city} onChange={(e) => set('city', e.target.value)} />
+              <input placeholder="e.g. Bengaluru" value={draft.city} onChange={(e) => set('city', e.target.value)} />
             </label>
             <label className="pf-field">
               State
-              <input value={draft.state} onChange={(e) => set('state', e.target.value)} />
+              <input placeholder="e.g. Karnataka" value={draft.state} onChange={(e) => set('state', e.target.value)} />
             </label>
             <label className="pf-field">
               Postal code

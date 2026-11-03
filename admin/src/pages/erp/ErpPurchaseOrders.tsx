@@ -310,9 +310,9 @@ export function PoItems({ lines, onChange, items, company, sell }: {
                   </td>
                   <td className="poi-c-hsn"><input value={l.hsn_sac} onChange={(e) => set(l.key, { hsn_sac: e.target.value })} placeholder="—" aria-label={`HSN/SAC, line ${n + 1}`} /></td>
                   <td className="poi-c-uom">
-                    <input list="poi-units" value={l.uom} onChange={(e) => set(l.key, { uom: e.target.value })} aria-label={`Unit, line ${n + 1}`} />
+                    <input placeholder="Nos" list="poi-units" value={l.uom} onChange={(e) => set(l.key, { uom: e.target.value })} aria-label={`Unit, line ${n + 1}`} />
                   </td>
-                  <td className="poi-c-num"><input inputMode="decimal" className={qtyBad ? 'is-bad' : ''} value={l.quantity}
+                  <td className="poi-c-num"><input placeholder="1" inputMode="decimal" className={qtyBad ? 'is-bad' : ''} value={l.quantity}
                     onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Quantity, line ${n + 1}`} /></td>
                   <td className="poi-c-rate"><input inputMode="decimal" value={l.rate} placeholder="0.00"
                     onChange={(e) => set(l.key, { rate: e.target.value })} aria-label={`Rate, line ${n + 1}`} /></td>
@@ -586,14 +586,14 @@ function PoForm({ po, onClose, onSaved, inline, onShowAll }: {
           <header className="pof-sec-head"><h3>Charges &amp; late-delivery penalty</h3></header>
           <div className="pof-grid pof-grid-4">
             <label className="pof-f"><span className="pof-l">Freight charges</span>
-              <span className="pof-affix"><i>₹</i><input inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
+              <span className="pof-affix"><i>₹</i><input placeholder="0" inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
             <label className="pof-f"><span className="pof-l">Other charges</span>
               <span className="pof-affix"><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
                 onChange={(e) => set('other_charges', e.target.value)} /></span></label>
             <label className="pof-f"><span className="pof-l">LD % per week late</span>
-              <span className="pof-affix"><input inputMode="decimal" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
+              <span className="pof-affix"><input placeholder="0.5" inputMode="decimal" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
             <label className="pof-f"><span className="pof-l">LD cap</span>
-              <span className="pof-affix"><input inputMode="decimal" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
+              <span className="pof-affix"><input placeholder="5" inputMode="decimal" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
           </div>
           <p className="pof-note">Liquidated damages are charged on the value received late, up to the cap.</p>
         </section>
@@ -938,8 +938,8 @@ function ReceiveForm({ po, onClose, onDone }: { po: PurchaseOrder; onClose: () =
               <option value="">Choose</option>{(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </Field>
-          <Field label="Delivery challan"><input value={challan} onChange={(e) => setChallan(e.target.value)} /></Field>
-          <Field label="Vendor invoice"><input value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} /></Field>
+          <Field label="Delivery challan"><input placeholder="e.g. DC-1042" value={challan} onChange={(e) => setChallan(e.target.value)} /></Field>
+          <Field label="Vendor invoice"><input placeholder="e.g. INV/24-25/0731" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} /></Field>
         </div>
         <div className="table-wrap"><table className="crm-lines">
           <thead><tr><th>Line</th><th className="crm-num">Due</th><th className="crm-num">Received</th><th className="crm-num">Rejected</th><th>Condition</th><th>Serials</th></tr></thead>
@@ -948,8 +948,8 @@ function ReceiveForm({ po, onClose, onDone }: { po: PurchaseOrder; onClose: () =
             return (
               <tr key={l.id}>
                 <td>{l.description}</td><td className="crm-num">{qtyText(l.pending_qty)}</td>
-                <td className="crm-line-qty"><input inputMode="decimal" value={r.received} onChange={(e) => set(l.id, { received: e.target.value })} /></td>
-                <td className="crm-line-qty"><input inputMode="decimal" value={r.rejected} onChange={(e) => set(l.id, { rejected: e.target.value })} /></td>
+                <td className="crm-line-qty"><input placeholder="0" inputMode="decimal" value={r.received} onChange={(e) => set(l.id, { received: e.target.value })} /></td>
+                <td className="crm-line-qty"><input placeholder="0" inputMode="decimal" value={r.rejected} onChange={(e) => set(l.id, { rejected: e.target.value })} /></td>
                 <td><select value={r.condition} onChange={(e) => set(l.id, { condition: e.target.value })}>{CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select></td>
                 <td>{l.is_serialized ? <textarea rows={2} value={r.serials} placeholder="One per line or comma-separated" onChange={(e) => set(l.id, { serials: e.target.value })} /> : <span className="crm-muted">—</span>}</td>
               </tr>

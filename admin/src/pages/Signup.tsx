@@ -317,11 +317,11 @@ export default function Signup() {
               </label>
               <label className="setting">
                 City
-                <input value={company.city} onChange={(e) => setCompanyField('city', e.target.value)} />
+                <input placeholder="e.g. Bengaluru" value={company.city} onChange={(e) => setCompanyField('city', e.target.value)} />
               </label>
               <label className="setting">
                 State
-                <input value={company.state} onChange={(e) => setCompanyField('state', e.target.value)} />
+                <input placeholder="e.g. Karnataka" value={company.state} onChange={(e) => setCompanyField('state', e.target.value)} />
               </label>
               <label className="setting">
                 GSTIN
@@ -334,7 +334,7 @@ export default function Signup() {
               </label>
               <label className="setting">
                 Time zone
-                <input
+                <input placeholder="Asia/Kolkata"
                   value={company.timezone}
                   onChange={(e) => setCompanyField('timezone', e.target.value)}
                 />
@@ -358,7 +358,7 @@ export default function Signup() {
             <div className="settings-grid">
               <label className="setting">
                 Full name *
-                <input
+                <input placeholder="e.g. Rahul Sharma"
                   value={admin.full_name}
                   onChange={(e) => setAdmin({ ...admin, full_name: e.target.value })}
                   autoFocus
@@ -366,7 +366,7 @@ export default function Signup() {
               </label>
               <label className="setting">
                 Work email *
-                <input
+                <input placeholder="name@company.com"
                   type="email"
                   value={admin.email}
                   onChange={(e) => setAdmin({ ...admin, email: e.target.value })}
@@ -388,7 +388,7 @@ export default function Signup() {
               </label>
               <label className="setting">
                 Phone
-                <input value={admin.phone} onChange={(e) => setAdmin({ ...admin, phone: e.target.value })} />
+                <input placeholder="9876543210" value={admin.phone} onChange={(e) => setAdmin({ ...admin, phone: e.target.value })} />
               </label>
             </div>
             <Nav
@@ -447,7 +447,7 @@ export default function Signup() {
               <div className="settings-grid" style={{ marginTop: 20 }}>
                 <label className="setting">
                   Number of employees
-                  <input
+                  <input placeholder="e.g. 50"
                     type="number"
                     min={selectedPlan?.min_employees ?? 1}
                     max={selectedPlan?.max_employees ?? 1000}

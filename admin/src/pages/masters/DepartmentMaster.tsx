@@ -301,7 +301,7 @@ function DepartmentDialog({
       <div className="crm-form">
         {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
         <Field label="Name">
-          <input value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
+          <input placeholder="e.g. Engineering" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
         </Field>
         <Field label="Code">
           <input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} placeholder="ENG" />
@@ -321,7 +321,7 @@ function DepartmentDialog({
           </select>
         </Field>
         <Field label="Description" wide>
-          <input value={form.description} onChange={(e) => set('description', e.target.value)} />
+          <input placeholder="e.g. Builds and maintains the product" value={form.description} onChange={(e) => set('description', e.target.value)} />
         </Field>
         {/* A div, not Field: Field is a <label>, which would forward a click
             anywhere on the names to the button inside it. */}

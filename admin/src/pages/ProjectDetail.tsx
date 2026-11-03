@@ -285,7 +285,7 @@ function NewTask({ projectId, onDone }: { projectId: string; onDone: () => void 
       <div className="settings-grid">
         <label className="setting">
           Title
-          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
+          <input placeholder="e.g. Design the onboarding flow" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
         </label>
         <label className="setting">
           Assignee
@@ -296,7 +296,7 @@ function NewTask({ projectId, onDone }: { projectId: string; onDone: () => void 
         </label>
         <label className="setting">
           Estimate (hours)
-          <input
+          <input placeholder="e.g. 8"
             type="number"
             min={0}
             step={0.5}
@@ -372,7 +372,7 @@ function MembersPanel({
             </select>
             <label className="field">
               Rate override ₹/h
-              <input
+              <input placeholder="e.g. 800"
                 type="number"
                 min={0}
                 step={50}

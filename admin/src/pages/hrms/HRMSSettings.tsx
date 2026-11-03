@@ -161,11 +161,11 @@ function GeneralTab({ editable }: { editable: boolean }) {
                      onChange={(e) => set('emp_code_separator', e.target.value)} />
             </Field>
             <Field label="Digits" hint="0 turns padding off">
-              <input type="number" min={0} max={10} value={draft.emp_code_digits} disabled={!editable}
+              <input placeholder="4" type="number" min={0} max={10} value={draft.emp_code_digits} disabled={!editable}
                      onChange={num('emp_code_digits')} />
             </Field>
             <Field label="Next number" hint="Set it when migrating from another system">
-              <input type="number" min={1} value={draft.emp_code_next} disabled={!editable}
+              <input placeholder="101" type="number" min={1} value={draft.emp_code_next} disabled={!editable}
                      onChange={num('emp_code_next')} />
             </Field>
           </div>
@@ -186,19 +186,19 @@ function GeneralTab({ editable }: { editable: boolean }) {
         <div className="hs-card-body">
           <div className="hs-grid-4">
             <Field label="Default probation (months)" hint="0 for no probation">
-              <input type="number" min={0} max={36} value={draft.default_probation_months} disabled={!editable}
+              <input placeholder="6" type="number" min={0} max={36} value={draft.default_probation_months} disabled={!editable}
                      onChange={num('default_probation_months')} />
             </Field>
             <Field label="Default notice period (days)">
-              <input type="number" min={0} max={365} value={draft.default_notice_days} disabled={!editable}
+              <input placeholder="60" type="number" min={0} max={365} value={draft.default_notice_days} disabled={!editable}
                      onChange={num('default_notice_days')} />
             </Field>
             <Field label="Warn before probation ends (days)">
-              <input type="number" min={1} max={365} value={draft.probation_warn_days} disabled={!editable}
+              <input placeholder="30" type="number" min={1} max={365} value={draft.probation_warn_days} disabled={!editable}
                      onChange={num('probation_warn_days')} />
             </Field>
             <Field label="Document expiry lookahead (days)">
-              <input type="number" min={1} max={365} value={draft.document_warn_days} disabled={!editable}
+              <input placeholder="30" type="number" min={1} max={365} value={draft.document_warn_days} disabled={!editable}
                      onChange={num('document_warn_days')} />
             </Field>
           </div>

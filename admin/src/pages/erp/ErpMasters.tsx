@@ -325,7 +325,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
             <div className="itx-grid itx-grid-5">
               <Field label="Sale price">
                 <span className="itf-affix"><i>₹</i>
-                  <input inputMode="decimal" value={value('sale_price')} onChange={(e) => set('sale_price', e.target.value)} />
+                  <input placeholder="e.g. 45000" inputMode="decimal" value={value('sale_price')} onChange={(e) => set('sale_price', e.target.value)} />
                 </span>
               </Field>
               <Field label="Sales tax">
@@ -344,7 +344,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
               </Field>
               <Field label="Cost">
                 <span className="itf-affix"><i>₹</i>
-                  <input inputMode="decimal" value={value('standard_cost')} onChange={(e) => set('standard_cost', e.target.value)} />
+                  <input placeholder="e.g. 32000" inputMode="decimal" value={value('standard_cost')} onChange={(e) => set('standard_cost', e.target.value)} />
                 </span>
               </Field>
               <Field label="Purchase tax">
@@ -379,7 +379,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
                 </Field>
                 <Field label="Warranty">
                   <span className="itf-affix is-suffix">
-                    <input inputMode="numeric" value={String(form.warranty_months ?? 0)}
+                    <input placeholder="12" inputMode="numeric" value={String(form.warranty_months ?? 0)}
                       onChange={(e) => set('warranty_months', Number(e.target.value.replace(/\D/g, '')) || 0)} />
                     <i>months</i>
                   </span>
@@ -799,7 +799,7 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
           <div className="itf-grid">
             <Field label="Payment terms">
               <span className="itf-affix is-suffix">
-                <input inputMode="numeric" value={String(form.payment_terms_days)}
+                <input placeholder="30" inputMode="numeric" value={String(form.payment_terms_days)}
                   onChange={(e) => set('payment_terms_days', Number(e.target.value.replace(/\D/g, '')) || 0)} />
                 <i>days</i>
               </span>
@@ -969,11 +969,11 @@ function VendorDrawer({ vendor, onClose, onChanged }: { vendor: Vendor; onClose:
               )}
               {manage && adding && (
                 <div className="vdv-addbank">
-                  <label><span>Account name</span><input value={bank.account_name} autoFocus onChange={(e) => setBank({ ...bank, account_name: e.target.value })} /></label>
-                  <label><span>Account number</span><input inputMode="numeric" value={bank.account_number} onChange={(e) => setBank({ ...bank, account_number: e.target.value.replace(/\s/g, '') })} /></label>
+                  <label><span>Account name</span><input placeholder="e.g. Sharma Traders" value={bank.account_name} autoFocus onChange={(e) => setBank({ ...bank, account_name: e.target.value })} /></label>
+                  <label><span>Account number</span><input placeholder="e.g. 123456789012" inputMode="numeric" value={bank.account_number} onChange={(e) => setBank({ ...bank, account_number: e.target.value.replace(/\s/g, '') })} /></label>
                   <label><span>IFSC</span><input value={bank.ifsc} className={bank.ifsc && !ifscOk ? 'is-bad' : ''} placeholder="HDFC0001234"
                     onChange={(e) => setBank({ ...bank, ifsc: e.target.value.toUpperCase() })} /></label>
-                  <label><span>Bank</span><input value={bank.bank_name} onChange={(e) => setBank({ ...bank, bank_name: e.target.value })} /></label>
+                  <label><span>Bank</span><input placeholder="e.g. HDFC Bank" value={bank.bank_name} onChange={(e) => setBank({ ...bank, bank_name: e.target.value })} /></label>
                   <div className="vdv-addbank-act">
                     <button className="btn btn-sm" onClick={() => { setAdding(false); setBank({ account_name: '', account_number: '', ifsc: '', bank_name: '' }) }}>Cancel</button>
                     <button className="btn btn-sm btn-primary" disabled={busy || !bank.account_number || !ifscOk || !bank.account_name}
@@ -1093,14 +1093,14 @@ function CustomerDrawer({ customer, onClose, onChanged }: { customer: CustomerAc
         ['Open orders (unbilled)', rupees(customer.open_order_value)],
       ]} />
       <div className="crm-form">
-        <Field label="Legal name" wide><input disabled={!editable} value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} /></Field>
-        <Field label="GSTIN"><input disabled={!editable} value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value })} /></Field>
-        <Field label="PAN"><input disabled={!editable} value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value })} /></Field>
-        <Field label="Credit limit (₹, 0 = none)"><input disabled={!editable} inputMode="decimal" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></Field>
-        <Field label="Credit days"><input disabled={!editable} inputMode="numeric" value={String(form.credit_days)} onChange={(e) => setForm({ ...form, credit_days: Number(e.target.value) || 0 })} /></Field>
-        <Field label="Billing state (place of supply)"><input disabled={!editable} value={form.billing_state} onChange={(e) => setForm({ ...form, billing_state: e.target.value })} /></Field>
-        <Field label="Billing address" wide><textarea disabled={!editable} rows={2} value={form.billing_address} onChange={(e) => setForm({ ...form, billing_address: e.target.value })} /></Field>
-        <Field label="Shipping address" wide><textarea disabled={!editable} rows={2} value={form.shipping_address} onChange={(e) => setForm({ ...form, shipping_address: e.target.value })} /></Field>
+        <Field label="Legal name" wide><input placeholder="e.g. Sharma Traders Pvt Ltd" disabled={!editable} value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} /></Field>
+        <Field label="GSTIN"><input placeholder="22AAAAA0000A1Z5" disabled={!editable} value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value })} /></Field>
+        <Field label="PAN"><input placeholder="ABCDE1234F" disabled={!editable} value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value })} /></Field>
+        <Field label="Credit limit (₹, 0 = none)"><input placeholder="e.g. 500000" disabled={!editable} inputMode="decimal" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></Field>
+        <Field label="Credit days"><input placeholder="30" disabled={!editable} inputMode="numeric" value={String(form.credit_days)} onChange={(e) => setForm({ ...form, credit_days: Number(e.target.value) || 0 })} /></Field>
+        <Field label="Billing state (place of supply)"><input placeholder="e.g. Maharashtra" disabled={!editable} value={form.billing_state} onChange={(e) => setForm({ ...form, billing_state: e.target.value })} /></Field>
+        <Field label="Billing address" wide><textarea placeholder="e.g. 12 MG Road, Pune, Maharashtra 411001" disabled={!editable} rows={2} value={form.billing_address} onChange={(e) => setForm({ ...form, billing_address: e.target.value })} /></Field>
+        <Field label="Shipping address" wide><textarea placeholder="e.g. 12 MG Road, Pune, Maharashtra 411001" disabled={!editable} rows={2} value={form.shipping_address} onChange={(e) => setForm({ ...form, shipping_address: e.target.value })} /></Field>
       </div>
 
       <h4 className="crm-panel-title" style={{ marginTop: 16 }}>Sites</h4>
@@ -1109,11 +1109,11 @@ function CustomerDrawer({ customer, onClose, onChanged }: { customer: CustomerAc
       ))}
       {can('can_manage_sales_orders') && (
         <div className="crm-form" style={{ marginTop: 8 }}>
-          <Field label="Site name"><input value={site.name} onChange={(e) => setSite({ ...site, name: e.target.value })} /></Field>
-          <Field label="State"><input value={site.state} onChange={(e) => setSite({ ...site, state: e.target.value })} /></Field>
-          <Field label="Contact"><input value={site.contact_name} onChange={(e) => setSite({ ...site, contact_name: e.target.value })} /></Field>
-          <Field label="Phone"><input value={site.contact_phone} onChange={(e) => setSite({ ...site, contact_phone: e.target.value })} /></Field>
-          <Field label="Address" wide><input value={site.address} onChange={(e) => setSite({ ...site, address: e.target.value })} /></Field>
+          <Field label="Site name"><input placeholder="e.g. Pune warehouse" value={site.name} onChange={(e) => setSite({ ...site, name: e.target.value })} /></Field>
+          <Field label="State"><input placeholder="e.g. Maharashtra" value={site.state} onChange={(e) => setSite({ ...site, state: e.target.value })} /></Field>
+          <Field label="Contact"><input placeholder="e.g. Rahul Sharma" value={site.contact_name} onChange={(e) => setSite({ ...site, contact_name: e.target.value })} /></Field>
+          <Field label="Phone"><input placeholder="9876543210" value={site.contact_phone} onChange={(e) => setSite({ ...site, contact_phone: e.target.value })} /></Field>
+          <Field label="Address" wide><input placeholder="e.g. Plot 5, MIDC Bhosari, Pune 411026" value={site.address} onChange={(e) => setSite({ ...site, address: e.target.value })} /></Field>
           <div><button className="btn btn-sm" disabled={busy || !site.name}
             onClick={() => void run(async () => { onChanged(await erp.addSite(customer.customer_id, site)); setSite({ name: '', address: '', state: '', contact_name: '', contact_phone: '' }) })}>Add site</button></div>
         </div>

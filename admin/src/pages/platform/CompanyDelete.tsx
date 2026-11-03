@@ -82,7 +82,7 @@ export default function CompanyDelete({
             <span>
               Type <code className="pf-code">{company.slug}</code> to confirm
             </span>
-            <input
+            <input placeholder={company.slug}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               autoFocus

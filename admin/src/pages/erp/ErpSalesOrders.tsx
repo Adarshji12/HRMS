@@ -531,10 +531,10 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
                 </select>
                 {pay.kind === 'partial' && (
                   <span className="sdt-inline">
-                    <span className="pof-affix sdt-mini"><input inputMode="numeric" value={pay.advance} aria-label="Advance percent"
+                    <span className="pof-affix sdt-mini"><input placeholder="50" inputMode="numeric" value={pay.advance} aria-label="Advance percent"
                       className={advBad ? 'is-bad' : ''} onChange={(e) => setPay((p) => ({ ...p, advance: e.target.value.replace(/\D/g, '').slice(0, 2) }))} /><i>%</i></span>
                     <span>advance, balance in</span>
-                    <span className="pof-affix sdt-mini"><input inputMode="numeric" value={pay.days} aria-label="Balance days"
+                    <span className="pof-affix sdt-mini"><input placeholder="30" inputMode="numeric" value={pay.days} aria-label="Balance days"
                       onChange={(e) => setPay((p) => ({ ...p, days: e.target.value.replace(/\D/g, '').slice(0, 3) }))} /><i>days</i></span>
                   </span>
                 )}
@@ -664,9 +664,9 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
                     <input value={m.name} placeholder="e.g. 30% advance" maxLength={160} className={msBad(m) && !m.name.trim() ? 'is-bad' : ''}
                       onChange={(e) => upd({ name: e.target.value })} />
                     <select value={m.kind} onChange={(e) => upd({ kind: e.target.value })}>{MILESTONE_KINDS.map((k) => <option key={k} value={k}>{titleCase(k)}</option>)}</select>
-                    <input inputMode="decimal" value={m.taxable_amount} className={msBad(m) && !(Number(m.taxable_amount) > 0 && moneyOk(m.taxable_amount)) ? 'is-bad' : ''}
+                    <input placeholder="0" inputMode="decimal" value={m.taxable_amount} className={msBad(m) && !(Number(m.taxable_amount) > 0 && moneyOk(m.taxable_amount)) ? 'is-bad' : ''}
                       onChange={(e) => upd({ taxable_amount: e.target.value })} />
-                    <input inputMode="decimal" value={m.gst_percent} className={msBad(m) && !(Number(m.gst_percent) >= 0 && Number(m.gst_percent) <= 28 && m.gst_percent.trim() !== '') ? 'is-bad' : ''}
+                    <input placeholder="18" inputMode="decimal" value={m.gst_percent} className={msBad(m) && !(Number(m.gst_percent) >= 0 && Number(m.gst_percent) <= 28 && m.gst_percent.trim() !== '') ? 'is-bad' : ''}
                       onChange={(e) => upd({ gst_percent: e.target.value })} />
                     <input type="date" value={m.due_date} onChange={(e) => upd({ due_date: e.target.value })} />
                     <button type="button" className="crm-icon-btn crm-icon-danger" aria-label="Remove milestone" onClick={() => setMilestones(milestones.filter((_, j) => j !== i))}><IconTrash size={13} /></button>
@@ -1020,10 +1020,10 @@ function DispatchForm({ so, onClose, onDone }: { so: SalesOrder; onClose: () => 
           <Field label="From warehouse"><select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
             <option value="">Choose</option>{(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select></Field>
-          <Field label="Transporter / courier"><input value={head.transporter} onChange={(e) => setHead({ ...head, transporter: e.target.value })} /></Field>
-          <Field label="AWB / LR"><input value={head.tracking_ref} onChange={(e) => setHead({ ...head, tracking_ref: e.target.value })} /></Field>
-          <Field label="Vehicle"><input value={head.vehicle_no} onChange={(e) => setHead({ ...head, vehicle_no: e.target.value })} /></Field>
-          <Field label="E-way bill no."><input value={head.eway_bill_no} onChange={(e) => setHead({ ...head, eway_bill_no: e.target.value })} /></Field>
+          <Field label="Transporter / courier"><input placeholder="e.g. VRL Logistics" value={head.transporter} onChange={(e) => setHead({ ...head, transporter: e.target.value })} /></Field>
+          <Field label="AWB / LR"><input placeholder="e.g. LR-883201" value={head.tracking_ref} onChange={(e) => setHead({ ...head, tracking_ref: e.target.value })} /></Field>
+          <Field label="Vehicle"><input placeholder="e.g. MH12AB1234" value={head.vehicle_no} onChange={(e) => setHead({ ...head, vehicle_no: e.target.value })} /></Field>
+          <Field label="E-way bill no."><input placeholder="e.g. 331000123456" value={head.eway_bill_no} onChange={(e) => setHead({ ...head, eway_bill_no: e.target.value })} /></Field>
         </div>
         <div className="table-wrap"><table className="crm-lines">
           <thead><tr><th>Line</th><th className="crm-num">Pending</th><th className="crm-num">Ship now</th><th>Serials</th></tr></thead>
@@ -1032,7 +1032,7 @@ function DispatchForm({ so, onClose, onDone }: { so: SalesOrder; onClose: () => 
             return (
               <tr key={l.id}>
                 <td>{l.description}</td><td className="crm-num">{qtyText(l.pending_qty)}</td>
-                <td className="crm-line-qty"><input inputMode="decimal" value={r.quantity} onChange={(e) => set(l.id, { quantity: e.target.value })} /></td>
+                <td className="crm-line-qty"><input placeholder="0" inputMode="decimal" value={r.quantity} onChange={(e) => set(l.id, { quantity: e.target.value })} /></td>
                 <td>{l.is_serialized ? <SerialPicker itemId={l.item_id!} warehouseId={warehouseId} value={r.serials} onChange={(v) => set(l.id, { serials: v })} /> : <span className="crm-muted">—</span>}</td>
               </tr>
             )

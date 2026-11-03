@@ -37,6 +37,7 @@ import {
   isoToLocalInput,
   localToISO,
   qs,
+  type Country,
   type Customer,
   type Lead,
   type Visit,
@@ -51,6 +52,9 @@ import {
   OwnerSelect,
   StateText,
   WhatsAppButton,
+  nationalDigits,
+  onlyDigits,
+  withDialCode,
 } from './parts'
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
@@ -566,7 +570,7 @@ function VisitForm({
   const [customer, setCustomer] = useState<Customer | null>(null)
   const picked = kind === 'lead' ? lead : customer
   const [contact, setContact] = useState(visit?.contact_person ?? '')
-  const [mobile, setMobile] = useState(visit?.mobile ?? '')
+  const [mobile, setMobile] = useState(nationalDigits(visit?.mobile, '+91', 10))
   const [address, setAddress] = useState(visit?.address ?? '')
   const [typeId, setTypeId] = useState(visit?.visit_type_id ?? '')
   const [priority, setPriority] = useState(visit?.priority ?? 'medium')
@@ -578,6 +582,25 @@ function VisitForm({
   const [notes, setNotes] = useState(visit?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // The country sets the dial code and how many digits a mobile has — the first
+  // one, as on the lead form, since a visit has no country of its own.
+  const countries = useQuery<Country[]>('crm-countries', () => crm.masters<Country>('countries'))
+  const country = countries.data?.[0]
+  const dial = country?.dial_code || '+91'
+  const length = country?.mobile_length ?? 10
+  // The stored number was split with India's defaults above, before the
+  // country had loaded; split it again, once, with the real ones.
+  const resplit = useRef(false)
+  useEffect(() => {
+    if (!country || resplit.current) return
+    resplit.current = true
+    if (dial === '+91' && length === 10) return
+    setMobile(nationalDigits(visit?.mobile, dial, length))
+  }, [country, dial, length, visit])
+  // Optional — it defaults to the record's number — but a number that is
+  // typed has to be a whole one.
+  const mobileBad = mobile !== '' && mobile.length !== length
 
   async function save() {
     setBusy(true)
@@ -591,7 +614,7 @@ function VisitForm({
             customer_id: kind === 'customer' ? picked?.id : null,
           }),
       contact_person: contact || null,
-      mobile: mobile || null,
+      mobile: mobile ? withDialCode(dial, mobile) : null,
       address: address || null,
       visit_type_id: typeId || null,
       priority,
@@ -610,7 +633,9 @@ function VisitForm({
     }
   }
 
-  const ready = Boolean((picked || visit) && when)
+  const ready = Boolean(
+    (picked || visit) && when && typeId && purpose.trim() && assignee && !mobileBad,
+  )
   const subjectWord = visit ? (visit.subject_kind === 'lead' ? 'lead' : 'customer') : kind
 
   return (
@@ -681,16 +706,26 @@ function VisitForm({
             placeholder="Who will meet the employee"
           />
         </Field>
-        <Field label="Mobile Number" hint="The number the arrival code goes to.">
+        <Field
+          label="Mobile Number"
+          hint={
+            mobileBad
+              ? <span className="lf-req">{`Enter a ${length}-digit mobile number.`}</span>
+              : `The number the arrival code goes to. ${dial} is added for you.`
+          }
+        >
           <input
             value={mobile}
-            onChange={(event) => setMobile(event.target.value)}
-            placeholder={picked?.mobile ?? `Defaults to the ${subjectWord}’s number`}
+            onChange={(event) => setMobile(onlyDigits(event.target.value, length))}
+            placeholder={`${dial} ${'9876543210'.slice(0, length)}`}
+            inputMode="numeric"
+            maxLength={length}
+            aria-invalid={mobileBad}
           />
         </Field>
 
         <Field label="Address" wide hint={`Leave blank to use the address on the ${subjectWord} record.`}>
-          <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2} />
+          <textarea placeholder="e.g. 12, MG Road, Bengaluru 560001" value={address} onChange={(event) => setAddress(event.target.value)} rows={2} />
         </Field>
 
         <Field label="Visit Type *">
@@ -706,7 +741,7 @@ function VisitForm({
           </select>
         </Field>
 
-        <Field label="Visit Purpose / Reason" wide>
+        <Field label="Visit Purpose / Reason" wide required>
           <textarea
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
@@ -715,8 +750,8 @@ function VisitForm({
           />
         </Field>
 
-        <Field label="Assigned Employee">
-          <OwnerSelect value={assignee} onChange={setAssignee} placeholder="Leave unassigned" />
+        <Field label="Assigned Employee" required>
+          <OwnerSelect value={assignee} onChange={setAssignee} placeholder="Select employee" />
         </Field>
         <Field label="Scheduled *">
           <input
@@ -857,7 +892,7 @@ function CloseVisitDialog({
           </div>
         )}
         <Field label="What happened on site?" wide>
-          <textarea
+          <textarea placeholder="e.g. Demo went well; sending quotation tomorrow"
             value={outcome}
             onChange={(event) => setOutcome(event.target.value)}
             rows={4}

@@ -392,7 +392,7 @@ function OverridePanel({
         </label>
         <label>
           Seats
-          <input
+          <input placeholder="e.g. 50"
             type="number"
             min={company.usage.seats_used || 1}
             value={draft.seats ?? company.seat_limit}

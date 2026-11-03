@@ -578,7 +578,7 @@ function Locations({
             </label>
             <label className="setting">
               Address (optional)
-              <input
+              <input placeholder="e.g. Tower B, Whitefield, Bengaluru"
                 value={form.address}
                 maxLength={500}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -586,7 +586,7 @@ function Locations({
             </label>
             <label className="setting">
               Latitude
-              <input
+              <input placeholder="12.971599"
                 type="number"
                 step="0.000001"
                 min={-90}
@@ -598,7 +598,7 @@ function Locations({
             </label>
             <label className="setting">
               Longitude
-              <input
+              <input placeholder="77.594566"
                 type="number"
                 step="0.000001"
                 min={-180}
@@ -610,7 +610,7 @@ function Locations({
             </label>
             <label className="setting">
               Radius (metres)
-              <input
+              <input placeholder="100"
                 type="number"
                 min={25}
                 max={20000}
@@ -891,7 +891,7 @@ function Shifts({
             </label>
             <label className="setting">
               Grace (minutes)
-              <input
+              <input placeholder="10"
                 type="number"
                 min={0}
                 max={240}
@@ -902,7 +902,7 @@ function Shifts({
             </label>
             <label className="setting">
               Half-day threshold (hours)
-              <input
+              <input placeholder="4"
                 type="number"
                 min={0.5}
                 max={12}

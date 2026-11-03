@@ -373,7 +373,7 @@ function QueueItem({
           {!rejecting && (
             <label className="setting">
               Note <span className="setting-hint">Optional on an approval; the employee sees it.</span>
-              <input value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+              <input placeholder="e.g. Approved, please plan handover" value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
             </label>
           )}
           <div className="lv-actions">

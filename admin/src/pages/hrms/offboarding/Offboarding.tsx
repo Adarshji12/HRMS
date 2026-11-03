@@ -1074,7 +1074,7 @@ function EditForm({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Note
-          <textarea value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} rows={2} />
+          <textarea placeholder="e.g. Moving to a new role in another city" value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} rows={2} />
         </label>
       </div>
 
@@ -1729,7 +1729,7 @@ function ClearanceTaskForm({
         </label>
         <label className="setting">
           Days from the last working day
-          <input
+          <input placeholder="-3"
             type="number"
             min={-365}
             max={365}
@@ -1770,7 +1770,7 @@ function ClearanceTaskForm({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Description
-          <textarea
+          <textarea placeholder="e.g. Collect laptop, ID card and access badge"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={2}
@@ -1977,7 +1977,7 @@ function ReturnAssetForm({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Condition it came back in
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+          <textarea placeholder="e.g. Cleared after asset return" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
         </label>
       </div>
 
@@ -2496,7 +2496,7 @@ function FnfForm({
         </label>
         <label className="setting">
           Currency
-          <input
+          <input placeholder="INR"
             value={currency}
             onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
             maxLength={3}

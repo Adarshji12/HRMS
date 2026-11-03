@@ -194,7 +194,7 @@ function VerifyRow({
             : money(item.verified_amount)}
       </td>
       <td className="row-actions">
-        <input className="pr-amount" value={amount} inputMode="decimal"
+        <input placeholder="150000" className="pr-amount" value={amount} inputMode="decimal"
                aria-label={`Verified amount for ${item.section}`}
                onChange={(e) => setAmount(e.target.value)} />
         <button className="btn small primary" disabled={busy || paise === null}

@@ -258,7 +258,7 @@ function DesignationDialog({
           />
         </Field>
         <Field label="Level" hint="1 is the most senior. Titles can share a level.">
-          <input
+          <input placeholder="e.g. 3"
             type="number"
             min={1}
             max={100}

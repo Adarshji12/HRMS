@@ -611,7 +611,7 @@ function AddEntry({
         </label>
         <label className="setting">
           Hours
-          <input
+          <input placeholder="e.g. 2"
             type="number"
             min={0.25}
             max={24}

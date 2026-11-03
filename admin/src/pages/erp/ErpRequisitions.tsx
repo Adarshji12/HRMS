@@ -92,7 +92,7 @@ function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; o
               {(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </Field>
-          <Field label="Justification" wide><textarea rows={2} value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
+          <Field label="Justification" wide><textarea placeholder="e.g. Replacement stock for the Pune branch" rows={2} value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
         </div>
         <LineEditor lines={lines} onChange={setLines} items={items.data ?? []} rateFrom="standard_cost" />
         <p className="crm-sub">Rates are estimates — the purchase order carries the vendor's price.</p>

@@ -46,6 +46,22 @@ interface Field {
   wide?: boolean
 }
 
+const PLACEHOLDERS: Record<string, string> = {
+  name: 'e.g. Acme',
+  legal_name: 'e.g. Acme Industries Pvt Ltd',
+  industry: 'e.g. Manufacturing',
+  website: 'https://www.example.com',
+  gstin: '22AAAAA0000A1Z5',
+  address_line1: 'e.g. 12, MG Road',
+  address_line2: 'e.g. Near City Mall',
+  city: 'e.g. Bengaluru',
+  state: 'e.g. Karnataka',
+  postal_code: '6-digit pincode',
+  country: 'IN',
+  contact_email: 'name@company.com',
+  contact_phone: '9876543210',
+}
+
 const GROUPS: Array<{ heading: string; note: string; fields: Field[] }> = [
   {
     heading: 'Identity',
@@ -169,7 +185,7 @@ export default function CompanyProfile() {
                     key={String(field.key)}
                   >
                     <span className="co-field-label">{field.label}</span>
-                    <input
+                    <input placeholder={PLACEHOLDERS[field.key as string]}
                       type={field.type ?? 'text'}
                       value={draft[field.key] ?? ''}
                       onChange={(event) =>

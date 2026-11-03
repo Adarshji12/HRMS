@@ -160,18 +160,18 @@ function QuoteForm({ rfq, vendorId, onClose, onSaved }: { rfq: Rfq; vendorId: st
           <tbody>{rfq.lines.map((l) => (
             <tr key={l.id}>
               <td>{l.description}</td><td className="crm-num">{qtyText(l.quantity)}</td>
-              <td className="crm-line-rate"><input inputMode="decimal" value={rates[l.id].rate} onChange={(e) => setRates({ ...rates, [l.id]: { ...rates[l.id], rate: e.target.value } })} /></td>
-              <td className="crm-line-gst"><input inputMode="decimal" value={rates[l.id].gst} onChange={(e) => setRates({ ...rates, [l.id]: { ...rates[l.id], gst: e.target.value } })} /></td>
+              <td className="crm-line-rate"><input placeholder="0" inputMode="decimal" value={rates[l.id].rate} onChange={(e) => setRates({ ...rates, [l.id]: { ...rates[l.id], rate: e.target.value } })} /></td>
+              <td className="crm-line-gst"><input placeholder="18" inputMode="decimal" value={rates[l.id].gst} onChange={(e) => setRates({ ...rates, [l.id]: { ...rates[l.id], gst: e.target.value } })} /></td>
             </tr>
           ))}</tbody>
         </table></div>
         <div className="crm-form" style={{ marginTop: 12 }}>
-          <Field label="Vendor quote ref"><input value={meta.quote_ref} onChange={(e) => setMeta({ ...meta, quote_ref: e.target.value })} /></Field>
+          <Field label="Vendor quote ref"><input placeholder="e.g. Q-2025-0142" value={meta.quote_ref} onChange={(e) => setMeta({ ...meta, quote_ref: e.target.value })} /></Field>
           <Field label="Valid until"><input type="date" value={meta.valid_until} onChange={(e) => setMeta({ ...meta, valid_until: e.target.value })} /></Field>
-          <Field label="Delivery (days)"><input inputMode="numeric" value={meta.delivery_days} onChange={(e) => setMeta({ ...meta, delivery_days: e.target.value })} /></Field>
-          <Field label="Freight"><input inputMode="decimal" value={meta.freight} onChange={(e) => setMeta({ ...meta, freight: e.target.value })} /></Field>
-          <Field label="Payment terms"><input value={meta.payment_terms} onChange={(e) => setMeta({ ...meta, payment_terms: e.target.value })} /></Field>
-          <Field label="Warranty"><input value={meta.warranty} onChange={(e) => setMeta({ ...meta, warranty: e.target.value })} /></Field>
+          <Field label="Delivery (days)"><input placeholder="7" inputMode="numeric" value={meta.delivery_days} onChange={(e) => setMeta({ ...meta, delivery_days: e.target.value })} /></Field>
+          <Field label="Freight"><input placeholder="0" inputMode="decimal" value={meta.freight} onChange={(e) => setMeta({ ...meta, freight: e.target.value })} /></Field>
+          <Field label="Payment terms"><input placeholder="e.g. 30 days from invoice" value={meta.payment_terms} onChange={(e) => setMeta({ ...meta, payment_terms: e.target.value })} /></Field>
+          <Field label="Warranty"><input placeholder="e.g. 12 months" value={meta.warranty} onChange={(e) => setMeta({ ...meta, warranty: e.target.value })} /></Field>
         </div>
       </div>
     </Dialog>

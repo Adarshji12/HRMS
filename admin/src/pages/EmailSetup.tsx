@@ -155,7 +155,7 @@ export default function EmailSetup() {
             </label>
             <label className="setting">
               Port
-              <input
+              <input placeholder="587"
                 type="number" min={1} max={65535} value={form.smtp_port}
                 onChange={(e) => setForm({ ...form, smtp_port: Number(e.target.value) })}
               />

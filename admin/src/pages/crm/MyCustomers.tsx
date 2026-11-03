@@ -1312,7 +1312,7 @@ function PlanForm({
         </Field>
 
         <Field label="Notes" wide>
-          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
+          <textarea placeholder="e.g. Prefers calls after 11 am" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
         </Field>
       </div>
     </Dialog>

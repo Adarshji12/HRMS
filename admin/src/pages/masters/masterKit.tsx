@@ -38,6 +38,8 @@ interface MasterField {
   dependsOn?: string
   hint?: string
   placeholder?: string
+  /** Must be filled to save. A name is always required, with or without this. */
+  required?: boolean
 }
 
 export interface ListDef {
@@ -82,7 +84,7 @@ export const LISTS: ListDef[] = [
       { key: 'lead_count', label: 'Leads' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Qualified' },
       {
         key: 'behaviour',
         label: 'Behaviour',
@@ -96,7 +98,7 @@ export const LISTS: ListDef[] = [
         ],
       },
       { key: 'colour', label: 'Colour', kind: 'colour' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -108,7 +110,7 @@ export const LISTS: ListDef[] = [
       { key: 'is_intake_default', label: 'Capture default' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Website enquiry' },
       {
         key: 'is_intake_default',
         label: 'Captured leads land on this source',
@@ -124,11 +126,14 @@ export const LISTS: ListDef[] = [
       { key: 'name', label: 'Country' },
       { key: 'iso2', label: 'ISO' },
       { key: 'dial_code', label: 'Dial code' },
+      { key: 'mobile_length', label: 'Mobile digits' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. India' },
       { key: 'iso2', label: 'ISO code', kind: 'text', placeholder: 'IN' },
-      { key: 'dial_code', label: 'Dial code', kind: 'text', placeholder: '+91' },
+      { key: 'dial_code', label: 'Dial code', kind: 'text', placeholder: '+91', hint: 'A + and up to 4 digits.', required: true },
+      { key: 'mobile_length', label: 'Mobile number length', kind: 'number', placeholder: '10', required: true,
+        hint: 'Digits in a mobile number, without the dial code. Phone boxes stop at this.' },
     ],
   },
   {
@@ -142,7 +147,7 @@ export const LISTS: ListDef[] = [
       { key: 'gst_code', label: 'GST code' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Maharashtra' },
       { key: 'country_id', label: 'Country', kind: 'parent', parentKind: 'countries' },
       { key: 'gst_code', label: 'GST state code', kind: 'text', placeholder: '27' },
     ],
@@ -157,7 +162,7 @@ export const LISTS: ListDef[] = [
       { key: 'state_name', label: 'State' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Pune' },
       { key: 'state_id', label: 'State', kind: 'parent', parentKind: 'states' },
     ],
     parent: { kind: 'states', label: 'State', field: 'state_id' },
@@ -172,7 +177,7 @@ export const LISTS: ListDef[] = [
       { key: 'state_name', label: 'State' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Mumbai' },
       { key: 'state_id', label: 'State', kind: 'parent', parentKind: 'states' },
       { key: 'district_id', label: 'District (optional)', kind: 'parent', parentKind: 'districts', dependsOn: 'state_id' },
     ],
@@ -183,7 +188,7 @@ export const LISTS: ListDef[] = [
     label: 'Industry / Vertical',
     description: 'What a lead or customer does, for segmenting the pipeline and setting vertical-wise targets.',
     columns: [{ key: 'name', label: 'Industry' }],
-    fields: [{ key: 'name', label: 'Name', kind: 'text' }],
+    fields: [{ key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Manufacturing' }],
   },
   {
     kind: 'products',
@@ -198,11 +203,11 @@ export const LISTS: ListDef[] = [
       { key: 'plan_count', label: 'Plans' },
     ],
     fields: [
-      { key: 'name', label: 'Product name', kind: 'text' },
-      { key: 'rate', label: 'Basic rate (₹)', kind: 'number' },
-      { key: 'gst_percent', label: 'GST %', kind: 'number' },
-      { key: 'hsn_sac', label: 'HSN / SAC code', kind: 'text' },
-      { key: 'description', label: 'Description', kind: 'text' },
+      { key: 'name', label: 'Product name', kind: 'text', placeholder: 'e.g. Attendance software licence' },
+      { key: 'rate', label: 'Basic rate (₹)', kind: 'number', placeholder: '5000', required: true },
+      { key: 'gst_percent', label: 'GST %', kind: 'number', placeholder: '18', required: true },
+      { key: 'hsn_sac', label: 'HSN / SAC code', kind: 'text', placeholder: '998314', required: true },
+      { key: 'description', label: 'Description', kind: 'text', placeholder: 'e.g. Annual subscription, up to 50 users' },
     ],
   },
   {
@@ -221,12 +226,12 @@ export const LISTS: ListDef[] = [
     ],
     fields: [
       { key: 'product_id', label: 'Product', kind: 'parent', parentKind: 'products' },
-      { key: 'name', label: 'Plan name', kind: 'text' },
-      { key: 'code', label: 'Plan code', kind: 'text' },
-      { key: 'price', label: 'Price (₹)', kind: 'number' },
+      { key: 'name', label: 'Plan name', kind: 'text', placeholder: 'e.g. Business Annual' },
+      { key: 'code', label: 'Plan code', kind: 'text', placeholder: 'e.g. BIZ-12' },
+      { key: 'price', label: 'Price (₹)', kind: 'number', placeholder: '12000' },
       { key: 'billing_cycle', label: 'Billing cycle', kind: 'select', options: BILLING_CYCLES },
-      { key: 'duration_days', label: 'Duration in days', kind: 'number' },
-      { key: 'description', label: 'Description', kind: 'text' },
+      { key: 'duration_days', label: 'Duration in days', kind: 'number', placeholder: '365' },
+      { key: 'description', label: 'Description', kind: 'text', placeholder: 'e.g. Includes support and updates' },
     ],
     parent: { kind: 'products', label: 'Product', field: 'product_id' },
   },
@@ -240,9 +245,9 @@ export const LISTS: ListDef[] = [
       { key: 'closes_interaction', label: 'Closes the call' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Call back later' },
       { key: 'closes_interaction', label: 'Choosing this closes the interaction', kind: 'check' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -256,10 +261,10 @@ export const LISTS: ListDef[] = [
       { key: 'colour', label: 'Colour' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Site visit' },
       { key: 'colour', label: 'Colour', kind: 'colour' },
       { key: 'requires_otp', label: 'Needs an arrival code', kind: 'check' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -276,7 +281,7 @@ export const LISTS: ListDef[] = [
       { key: 'colour', label: 'Colour' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Proposal sent' },
       {
         key: 'behaviour',
         label: 'Behaviour',
@@ -288,16 +293,16 @@ export const LISTS: ListDef[] = [
           { value: 'no_decision', label: 'No decision — customer did not buy' },
         ],
       },
-      { key: 'probability', label: 'Default probability (%)', kind: 'number' },
+      { key: 'probability', label: 'Default probability (%)', kind: 'number', placeholder: '60' },
       {
         key: 'forecast_category',
         label: 'Default forecast category',
         kind: 'select',
         options: [{ value: '', label: '— none —' }, ...FORECAST_CATEGORIES],
       },
-      { key: 'stale_after_days', label: 'Stale after (days)', kind: 'number', hint: '0 = never flagged.' },
+      { key: 'stale_after_days', label: 'Stale after (days)', kind: 'number', hint: '0 = never flagged.', placeholder: '14' },
       { key: 'colour', label: 'Colour', kind: 'colour' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -311,7 +316,7 @@ export const LISTS: ListDef[] = [
       { key: 'requires_competitor', label: 'Needs competitor' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Price too high' },
       {
         key: 'outcome',
         label: 'Applies to',
@@ -322,7 +327,7 @@ export const LISTS: ListDef[] = [
         ],
       },
       { key: 'requires_competitor', label: 'The competitor who won must be named', kind: 'check' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -334,7 +339,7 @@ export const LISTS: ListDef[] = [
       { key: 'website', label: 'Website' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Acme Solutions' },
       { key: 'website', label: 'Website', kind: 'text', placeholder: 'https://' },
       { key: 'notes', label: 'Notes', kind: 'text', placeholder: 'Strengths, typical pricing…' },
     ],
@@ -351,10 +356,10 @@ export const LISTS: ListDef[] = [
       { key: 'manager_name', label: 'Manager' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. West Zone' },
       { key: 'code', label: 'Code', kind: 'text', placeholder: 'N' },
       { key: 'manager_id', label: 'Territory manager', kind: 'user' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
       { key: 'state_ids', label: 'States', kind: 'states' },
     ],
   },
@@ -370,11 +375,11 @@ export const LISTS: ListDef[] = [
       { key: 'budget', label: 'Budget' },
     ],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Diwali offer 2026' },
       { key: 'source_id', label: 'Lead source', kind: 'parent', parentKind: 'sources' },
       { key: 'starts_on', label: 'Starts on', kind: 'date' },
       { key: 'ends_on', label: 'Ends on', kind: 'date' },
-      { key: 'budget', label: 'Budget (₹)', kind: 'number' },
+      { key: 'budget', label: 'Budget (₹)', kind: 'number', placeholder: '50000' },
     ],
   },
   {
@@ -383,8 +388,8 @@ export const LISTS: ListDef[] = [
     description: 'Groups for ERP items. The item form picks its category from this list.',
     columns: [{ key: 'name', label: 'Category' }],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Electronics' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -394,8 +399,8 @@ export const LISTS: ListDef[] = [
     description: 'Makes / OEMs whose products you stock. The item form picks its company from this list.',
     columns: [{ key: 'name', label: 'Company' }],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Dell' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
   {
@@ -404,8 +409,8 @@ export const LISTS: ListDef[] = [
     description: 'Job titles of the people you deal with at a customer — not your own staff\'s designations.',
     columns: [{ key: 'name', label: 'Designation' }],
     fields: [
-      { key: 'name', label: 'Name', kind: 'text' },
-      { key: 'sort_order', label: 'Order', kind: 'number' },
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Managing Director' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
     ],
   },
 ]
@@ -664,6 +669,14 @@ function MasterForm({
       setBusy(false)
       return
     }
+    const missing = list.fields.find(
+      (field) => field.required && (body[field.key] === null || String(body[field.key]).trim() === ''),
+    )
+    if (missing) {
+      setError(`Fill in ${missing.label}.`)
+      setBusy(false)
+      return
+    }
     try {
       if (row) await crm.updateMaster(list.kind, String(row.id), body)
       else await crm.createMaster(list.kind, body)
@@ -779,13 +792,13 @@ function MasterForm({
                     onChange={(event) => set(event.target.value)}
                     aria-label={field.label}
                   />
-                  <input value={String(value ?? '')} onChange={(event) => set(event.target.value)} />
+                  <input placeholder="#3882F6" value={String(value ?? '')} onChange={(event) => set(event.target.value)} />
                 </div>
               </Field>
             )
           }
           return (
-            <Field key={field.key} label={field.label} hint={field.hint}>
+            <Field key={field.key} label={field.label} hint={field.hint} required={field.required || field.key === 'name'}>
               <input
                 value={String(value ?? '')}
                 onChange={(event) => set(event.target.value)}

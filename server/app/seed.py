@@ -36,7 +36,9 @@ from app.models import (
     Asset,
     AssetAssignment,
     AssetCategory,
+    AssetRenewal,
     AssetStatus,
+    RenewalCycle,
     AttendanceRecord,
     AttendanceSettings,
     AttendanceStatus,
@@ -1179,8 +1181,20 @@ def seed_hrms(db, org, admin, employees, departments, teams, designations) -> di
         db, Asset,
         {"category": AssetCategory.SIM.value, "serial_number": "8991000012345678",
          "purchase_date": today - timedelta(days=200),
+         "renewal_cycle": RenewalCycle.YEARLY.value,
+         "renewal_date": today + timedelta(days=165),
+         "renewal_cost_paise": 6_00_000,
          "status": AssetStatus.ASSIGNED.value},
         org_id=org.id, asset_tag="SIM-3301",
+    )
+    # One past renewal, so the history view and the due-date move are visible.
+    _ensure(
+        db, AssetRenewal,
+        {"org_id": org.id, "previous_due": today - timedelta(days=200),
+         "next_due": today + timedelta(days=165), "cost_paise": 6_00_000,
+         "reference": "INV-SIM-2025-118", "renewed_by_id": admin.id,
+         "note": "Annual corporate plan renewal."},
+        asset_id=sim.id, renewed_on=today - timedelta(days=200),
     )
     _ensure(
         db, Asset,

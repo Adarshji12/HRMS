@@ -349,7 +349,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
       <div className="settings-grid">
         <label className="setting">
           Project name
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
+          <input placeholder="e.g. Website Redesign" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
         </label>
         <label className="setting">
           Code
@@ -362,7 +362,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
         </label>
         <label className="setting">
           Client
-          <input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
+          <input placeholder="e.g. Acme Industries Pvt Ltd" value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
         </label>
         <label className="setting">
           Project manager
@@ -380,7 +380,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
         </label>
         <label className="setting">
           Hourly rate (₹)
-          <input
+          <input placeholder="e.g. 1500"
             type="number"
             min={0}
             step={50}
@@ -390,7 +390,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
         </label>
         <label className="setting">
           Budget (hours)
-          <input
+          <input placeholder="e.g. 120"
             type="number"
             min={0}
             step={10}

@@ -317,6 +317,9 @@ class CrmCountry(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     iso2: Mapped[str | None] = mapped_column(String(2), nullable=True)
     dial_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # How many digits a mobile number has in this country, without the dial
+    # code. The phone boxes in the console limit themselves to it.
+    mobile_length: Mapped[int] = mapped_column(Integer, default=10, server_default="10", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     states: Mapped[list["CrmState"]] = relationship(

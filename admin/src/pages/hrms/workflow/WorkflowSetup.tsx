@@ -332,7 +332,7 @@ function ChainEditor({
             <div className="wf-row">
               <label className="wf-field">
                 <span className="wf-label">Escalate after</span>
-                <input type="number" min={0} max={90} value={level.escalate_after_days}
+                <input placeholder="3" type="number" min={0} max={90} value={level.escalate_after_days}
                        onChange={(e) => setLevels(rows.map((l, i) =>
                          i === index
                            ? { ...l, escalate_after_days: Number(e.target.value) }
@@ -359,7 +359,7 @@ function ChainEditor({
               )}
               <label className="wf-field">
                 <span className="wf-label">Auto-forward after</span>
-                <input type="number" min={0} max={90} value={level.auto_forward_days}
+                <input placeholder="5" type="number" min={0} max={90} value={level.auto_forward_days}
                        onChange={(e) => setLevels(rows.map((l, i) =>
                          i === index
                            ? { ...l, auto_forward_days: Number(e.target.value) }

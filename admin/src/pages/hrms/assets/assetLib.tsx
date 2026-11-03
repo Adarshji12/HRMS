@@ -364,11 +364,11 @@ export function RenewForm({
         </label>
         <label className="setting">
           Reference / receipt no.
-          <input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} />
+          <input placeholder="e.g. Ticket #4821" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} />
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Note
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} />
+          <textarea placeholder="e.g. Handed over with charger and bag" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} />
         </label>
         <label className="as-check" style={{ gridColumn: '1 / -1' }}>
           <input type="checkbox" checked={stop} onChange={(e) => setStop(e.target.checked)} />

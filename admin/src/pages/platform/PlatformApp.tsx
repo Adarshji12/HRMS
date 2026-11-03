@@ -177,7 +177,7 @@ function PlatformLogin({ onSignedIn }: { onSignedIn: (admin: PlatformAdmin) => v
 
         <label>
           Operator email
-          <input
+          <input placeholder="name@company.com"
             type="email"
             autoComplete="username"
             value={email}

@@ -364,23 +364,23 @@ function PersonalSection({
         </select>
       </Field>
       <Field label="Blood group">
-        <input value={state.draft.blood_group} disabled={ro} maxLength={8}
+        <input placeholder="e.g. B+" value={state.draft.blood_group} disabled={ro} maxLength={8}
                onChange={(e) => state.set('blood_group', e.target.value)} />
       </Field>
       <Field label="Nationality">
-        <input value={state.draft.nationality} disabled={ro}
+        <input placeholder="e.g. Indian" value={state.draft.nationality} disabled={ro}
                onChange={(e) => state.set('nationality', e.target.value)} />
       </Field>
       <Field label="Father’s / spouse’s name">
-        <input value={state.draft.father_name} disabled={ro} maxLength={160}
+        <input placeholder="e.g. Suresh Sharma" value={state.draft.father_name} disabled={ro} maxLength={160}
                onChange={(e) => state.set('father_name', e.target.value)} />
       </Field>
       <Field label="Personal email" hint="Reachable after the work address stops working.">
-        <input type="email" value={state.draft.personal_email} disabled={ro}
+        <input placeholder="name@gmail.com" type="email" value={state.draft.personal_email} disabled={ro}
                onChange={(e) => state.set('personal_email', e.target.value)} />
       </Field>
       <Field label="Alternate phone">
-        <input value={state.draft.alternate_phone} disabled={ro}
+        <input placeholder="9876543210" value={state.draft.alternate_phone} disabled={ro}
                onChange={(e) => state.set('alternate_phone', e.target.value)} />
       </Field>
 
@@ -398,15 +398,15 @@ function PersonalSection({
       )}
 
       <Field label="Emergency contact">
-        <input value={state.draft.emergency_name} disabled={ro}
+        <input placeholder="e.g. Meena Sharma" value={state.draft.emergency_name} disabled={ro}
                onChange={(e) => state.set('emergency_name', e.target.value)} />
       </Field>
       <Field label="Relationship">
-        <input value={state.draft.emergency_relationship} disabled={ro}
+        <input placeholder="e.g. Spouse" value={state.draft.emergency_relationship} disabled={ro}
                onChange={(e) => state.set('emergency_relationship', e.target.value)} />
       </Field>
       <Field label="Emergency phone">
-        <input value={state.draft.emergency_phone} disabled={ro}
+        <input placeholder="9876543210" value={state.draft.emergency_phone} disabled={ro}
                onChange={(e) => state.set('emergency_phone', e.target.value)} />
       </Field>
     </SectionShell>
@@ -496,7 +496,7 @@ function AddressFields({
   return (
     <>
       <Field label={label}>
-        <textarea rows={2} value={draft[key('address')]} disabled={ro}
+        <textarea placeholder="e.g. Flat 402, Green Park Apartments, MG Road" rows={2} value={draft[key('address')]} disabled={ro}
                   onChange={(e) => set(key('address'), e.target.value)} />
       </Field>
       <Field label="Country">
@@ -516,7 +516,7 @@ function AddressFields({
                       onChange={(v) => set(key('city'), v)} names={names(cities)} />
       </Field>
       <Field label="PIN code">
-        <input value={draft[key('postal_code')]} disabled={ro} inputMode="numeric" maxLength={20}
+        <input placeholder="6-digit pincode" value={draft[key('postal_code')]} disabled={ro} inputMode="numeric" maxLength={20}
                onChange={(e) => set(key('postal_code'), e.target.value)} />
       </Field>
     </>
@@ -568,24 +568,24 @@ function StatutorySection({
               onChange={(v) => state.set('aadhaar', v)}
               placeholder="1234 5678 9012" />
       <Field label="UAN">
-        <input value={state.draft.uan} disabled={ro}
+        <input placeholder="12-digit UAN e.g. 100123456789" value={state.draft.uan} disabled={ro}
                onChange={(e) => state.set('uan', e.target.value)} />
       </Field>
       <Field label="PF number">
-        <input value={state.draft.pf_number} disabled={ro}
+        <input placeholder="e.g. MH/BAN/1234567/000/0001234" value={state.draft.pf_number} disabled={ro}
                onChange={(e) => state.set('pf_number', e.target.value)} />
       </Field>
       <Field label="ESI number">
-        <input value={state.draft.esi_number} disabled={ro}
+        <input placeholder="17-digit ESI number" value={state.draft.esi_number} disabled={ro}
                onChange={(e) => state.set('esi_number', e.target.value)} />
       </Field>
 
       <Field label="Bank">
-        <input value={state.draft.bank_name} disabled={ro}
+        <input placeholder="e.g. HDFC Bank" value={state.draft.bank_name} disabled={ro}
                onChange={(e) => state.set('bank_name', e.target.value)} />
       </Field>
       <Field label="Branch">
-        <input value={state.draft.bank_branch} disabled={ro}
+        <input placeholder="e.g. Indiranagar, Bengaluru" value={state.draft.bank_branch} disabled={ro}
                onChange={(e) => state.set('bank_branch', e.target.value)} />
       </Field>
       <Field label="IFSC">
@@ -598,7 +598,7 @@ function StatutorySection({
               value={state.draft.bank_account} disabled={ro}
               onChange={(v) => state.set('bank_account', v)} />
       <Field label="Account holder">
-        <input value={state.draft.bank_account_name} disabled={ro}
+        <input placeholder="e.g. Rahul Sharma" value={state.draft.bank_account_name} disabled={ro}
                onChange={(e) => state.set('bank_account_name', e.target.value)} />
       </Field>
     </SectionShell>
@@ -726,7 +726,7 @@ function EmploymentSection({
         </select>
       </Field>
       <Field label="Work location">
-        <input value={state.draft.work_location} disabled={ro}
+        <input placeholder="e.g. Bengaluru HQ" value={state.draft.work_location} disabled={ro}
                onChange={(e) => state.set('work_location', e.target.value)} />
       </Field>
       <Field label="Attendance type">
@@ -737,11 +737,11 @@ function EmploymentSection({
         </select>
       </Field>
       <Field label="Grade / band">
-        <input value={state.draft.grade} disabled={ro} maxLength={40}
+        <input placeholder="e.g. L3" value={state.draft.grade} disabled={ro} maxLength={40}
                onChange={(e) => state.set('grade', e.target.value)} />
       </Field>
       <Field label="Probation (months)">
-        <input type="number" min={0} max={36} value={state.draft.probation_months} disabled={ro}
+        <input placeholder="6" type="number" min={0} max={36} value={state.draft.probation_months} disabled={ro}
                onChange={(e) =>
                  state.set('probation_months', e.target.value === '' ? '' : Number(e.target.value))
                } />
@@ -766,7 +766,7 @@ function EmploymentSection({
                onChange={(e) => state.set('bgv_status', e.target.value)} />
       </Field>
       <Field label="Agency">
-        <input value={state.draft.bgv_agency} disabled={ro}
+        <input placeholder="e.g. AuthBridge" value={state.draft.bgv_agency} disabled={ro}
                onChange={(e) => state.set('bgv_agency', e.target.value)} />
       </Field>
       <Field label="Checked on">

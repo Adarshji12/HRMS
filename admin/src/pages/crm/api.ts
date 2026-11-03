@@ -21,6 +21,13 @@ export interface Master {
   is_active: boolean
 }
 
+export interface Country extends Master {
+  iso2: string | null
+  dial_code: string | null
+  /** Digits in a mobile number, not counting the dial code. */
+  mobile_length: number
+}
+
 export interface LeadStatus extends Master {
   behaviour: 'default' | 'in_progress' | 'won' | 'lost'
   colour: string

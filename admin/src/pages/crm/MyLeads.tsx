@@ -50,6 +50,7 @@ import {
   qs,
   rupeesShort,
   todayISO,
+  type Country,
   type Lead,
   type LeadDetail,
   type LeadPage,
@@ -70,6 +71,10 @@ import {
   StagePill,
   WhatsAppButton,
   useSelection,
+  ThCaret,
+  nationalDigits,
+  onlyDigits,
+  withDialCode,
 } from './parts'
 
 const PAGE_SIZES = [25, 50, 100]
@@ -453,11 +458,11 @@ export default function MyLeads() {
                       {/* Only the columns a lead is worked from. Company,
                           product, source, industry and created date are on the
                           lead's own page, one click away on the edit button. */}
-                      <th>Lead</th>
-                      <th>Mobile</th>
-                      <th>Status</th>
-                      <th>Assigned</th>
-                      <th>Follow-up</th>
+                      <th>Lead <ThCaret /></th>
+                      <th>Mobile <ThCaret /></th>
+                      <th>Status <ThCaret /></th>
+                      <th>Assigned <ThCaret /></th>
+                      <th>Follow-up <ThCaret /></th>
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
@@ -750,14 +755,16 @@ export function LeadForm({
 }) {
   const [name, setName] = useState(lead?.name ?? '')
   const [company, setCompany] = useState(lead?.company ?? '')
-  const [mobile, setMobile] = useState(lead?.mobile ?? '')
+  // The form holds the ten national digits; "+91" is shown beside the box and
+  // added back when the lead is saved.
+  const [mobile, setMobile] = useState(nationalDigits(lead?.mobile, '+91', 10))
   const [email, setEmail] = useState(lead?.email ?? '')
   // "Same as mobile" is the default because it is true nine times in ten, and
   // the server applies the same rule when the field is left empty.
   const [sameNumber, setSameNumber] = useState(
     lead ? (lead.whatsapp ?? lead.mobile) === lead.mobile : true,
   )
-  const [whatsapp, setWhatsapp] = useState(lead?.whatsapp ?? '')
+  const [whatsapp, setWhatsapp] = useState(nationalDigits(lead?.whatsapp, '+91', 10))
   const [sourceId, setSourceId] = useState(lead?.source_id ?? '')
   const [industryId, setIndustryId] = useState(lead?.industry_id ?? '')
   const [productId, setProductId] = useState(lead?.product_id ?? '')
@@ -772,12 +779,29 @@ export function LeadForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const countries = useQuery('crm-countries', () => crm.masters('countries'))
+  const countries = useQuery('crm-countries', () => crm.masters<Country>('countries'))
   useEffect(() => {
     if (!countryId && countries.data && countries.data.length > 0) {
       setCountryId(countries.data[0].id)
     }
   }, [countries.data, countryId])
+
+  // The country sets the dial code and how many digits a mobile has. The lead
+  // form has no country picker, so it is the first one — India on a fresh
+  // workspace.
+  const country = countries.data?.find((c) => c.id === countryId) ?? countries.data?.[0]
+  const dial = country?.dial_code || '+91'
+  const length = country?.mobile_length ?? 10
+  // The stored number was split with India's defaults above, before the
+  // country had loaded; split it again, once, with the real ones.
+  const resplit = useRef(false)
+  useEffect(() => {
+    if (!country || resplit.current) return
+    resplit.current = true
+    if (dial === '+91' && length === 10) return
+    setMobile(nationalDigits(lead?.mobile, dial, length))
+    setWhatsapp(nationalDigits(lead?.whatsapp, dial, length))
+  }, [country, dial, length, lead])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -786,8 +810,8 @@ export function LeadForm({
     const body = {
       name,
       company: company || null,
-      mobile,
-      whatsapp: sameNumber ? mobile : whatsapp || null,
+      mobile: withDialCode(dial, mobile),
+      whatsapp: sameNumber ? withDialCode(dial, mobile) : whatsapp ? withDialCode(dial, whatsapp) : null,
       email: email || null,
       source_id: sourceId || null,
       industry_id: industryId || null,
@@ -815,9 +839,8 @@ export function LeadForm({
   // a red "invalid" under a number that is half typed is noise, not help.
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const touch = (key: string) => () => setTouched((t) => ({ ...t, [key]: true }))
-  const digits = (s: string) => s.replace(/\D/g, '')
-  const mobileBad = mobile.trim() !== '' && (digits(mobile).length < 10 || digits(mobile).length > 15)
-  const whatsappBad = !sameNumber && whatsapp.trim() !== '' && (digits(whatsapp).length < 10 || digits(whatsapp).length > 15)
+  const mobileBad = mobile !== '' && mobile.length !== length
+  const whatsappBad = !sameNumber && whatsapp !== '' && whatsapp.length !== length
   const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
   const ready = name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad
@@ -864,10 +887,10 @@ export function LeadForm({
           </LfField>
 
           <LfField label="Mobile number" required
-                   error={touched.mobile && mobileBad ? 'Enter a 10-digit mobile number.' : undefined}>
-            <LfInput icon={<IconPhone size={15} />} bad={touched.mobile && mobileBad}>
-              <input value={mobile} onChange={(event) => setMobile(event.target.value)} onBlur={touch('mobile')}
-                     placeholder="98765 43210" inputMode="tel" required />
+                   error={touched.mobile && mobileBad ? `Enter a ${length}-digit mobile number.` : undefined}>
+            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={touched.mobile && mobileBad}>
+              <input value={mobile} onChange={(event) => setMobile(onlyDigits(event.target.value, length))} onBlur={touch('mobile')}
+                     placeholder={'9876543210'.slice(0, length)} inputMode="numeric" maxLength={length} required />
             </LfInput>
           </LfField>
           <LfField label="Email" error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
@@ -878,7 +901,7 @@ export function LeadForm({
           </LfField>
 
           <LfField label="WhatsApp" wide
-                   error={touched.whatsapp && whatsappBad ? 'Enter a 10-digit WhatsApp number.' : undefined}
+                   error={touched.whatsapp && whatsappBad ? `Enter a ${length}-digit WhatsApp number.` : undefined}
                    aside={
                      <label className="lf-switch">
                        <input type="checkbox" checked={sameNumber}
@@ -887,9 +910,9 @@ export function LeadForm({
                        Same as mobile
                      </label>
                    }>
-            <LfInput icon={<IconPhone size={15} />} bad={touched.whatsapp && whatsappBad}>
-              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(event.target.value)}
-                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="tel"
+            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={touched.whatsapp && whatsappBad}>
+              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(onlyDigits(event.target.value, length))}
+                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="numeric" maxLength={length}
                      placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
             </LfInput>
           </LfField>
@@ -1245,7 +1268,7 @@ export function FollowUpDialog({
           />
         </Field>
         <Field label="Notes" wide>
-          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+          <textarea placeholder="e.g. Interested in the annual plan" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
         </Field>
       </div>
     </Dialog>
@@ -1319,7 +1342,7 @@ export function ConvertDialog({
           </div>
         )}
         <Field label="Customer ID" hint="Your own reference. Generated when left blank.">
-          <input value={code} onChange={(event) => setCode(event.target.value)} />
+          <input placeholder="e.g. CUST-0001" value={code} onChange={(event) => setCode(event.target.value)} />
         </Field>
         <Field label="Account manager">
           <OwnerSelect value={managerId} onChange={setManagerId} />

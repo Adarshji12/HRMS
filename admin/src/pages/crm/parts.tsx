@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Link } from 'react-router-dom'
-import { IconCheck, IconClose, IconSearch } from '../../components/Icons'
+import { IconCheck, IconChevronDown, IconClose, IconSearch } from '../../components/Icons'
 import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { dateTime } from '../../lib/format'
@@ -338,16 +338,22 @@ export function Field({
   label,
   hint,
   wide,
+  required,
   children,
 }: {
   label: string
   hint?: ReactNode
   wide?: boolean
+  /** Marks the label with a red asterisk. Enforcing it is the form's job. */
+  required?: boolean
   children: ReactNode
 }) {
   return (
     <label className={`crm-field${wide ? ' crm-form-wide' : ''}`}>
-      <span className="crm-field-label">{label}</span>
+      <span className="crm-field-label">
+        {label}
+        {required && <span className="lf-req"> *</span>}
+      </span>
       {children}
       {hint && <span className="crm-field-hint">{hint}</span>}
     </label>
@@ -737,4 +743,27 @@ export function LfInput({ icon, prefix, bad, children }: {
       {children}
     </div>
   )
+}
+
+/** Digits only, capped at the country's mobile length — what a person can type
+ *  into a mobile box. */
+export const onlyDigits = (raw: string, max: number) => raw.replace(/\D/g, '').slice(0, max)
+
+/** The national digits of a stored number, whatever form it was saved in
+ *  ("+91 98765 43210", "09876543210", "9876543210"): the dial code is taken off
+ *  the front, and anything still longer than the country's length is trimmed
+ *  from the left. */
+export function nationalDigits(stored: string | null | undefined, dial: string, length: number): string {
+  const all = (stored ?? '').replace(/\D/g, '')
+  const code = dial.replace(/\D/g, '')
+  const rest = code && all.startsWith(code) && all.length > length ? all.slice(code.length) : all
+  return rest.length > length ? rest.slice(-length) : rest
+}
+
+export const withDialCode = (dial: string, national: string) => `${dial}${national}`
+
+/** The dropdown caret that sits beside a column heading. Drawn only — a heading
+ *  that sorts or filters would wrap this in a button. */
+export function ThCaret() {
+  return <IconChevronDown size={13} className="th-caret" />
 }

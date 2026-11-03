@@ -1128,10 +1128,10 @@ function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, copy }: {
                       })} />
                     {l.item_id && codeOf.get(l.item_id) && <span className="sb-code">{codeOf.get(l.item_id)}</span>}
                   </td>
-                  <td className="sb-c-hsn"><input value={l.hsn_sac} onChange={(e) => setLine(l.key, { hsn_sac: e.target.value })} /></td>
-                  <td className="sb-c-qty"><input inputMode="decimal" value={isFilled(l) ? l.quantity : ''} onChange={(e) => setLine(l.key, { quantity: e.target.value })} /></td>
-                  <td className="sb-c-free"><input inputMode="decimal" value={l.free} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
-                  <td className="sb-c-unit"><input value={isFilled(l) ? l.uom : ''} onChange={(e) => setLine(l.key, { uom: e.target.value })} /></td>
+                  <td className="sb-c-hsn"><input placeholder="8471" value={l.hsn_sac} onChange={(e) => setLine(l.key, { hsn_sac: e.target.value })} /></td>
+                  <td className="sb-c-qty"><input placeholder="1" inputMode="decimal" value={isFilled(l) ? l.quantity : ''} onChange={(e) => setLine(l.key, { quantity: e.target.value })} /></td>
+                  <td className="sb-c-free"><input placeholder="0" inputMode="decimal" value={l.free} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
+                  <td className="sb-c-unit"><input placeholder="e.g. Nos" value={isFilled(l) ? l.uom : ''} onChange={(e) => setLine(l.key, { uom: e.target.value })} /></td>
                   <td className="sb-c-rate"><input inputMode="decimal" value={l.rate} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { rate: e.target.value })} /></td>
                   <td className="sb-c-dis"><input inputMode="decimal" value={l.discount} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount: e.target.value })} /></td>
                   <td className="sb-c-dis"><input inputMode="decimal" value={l.discount2} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount2: e.target.value })} /></td>
@@ -1824,7 +1824,7 @@ function ReceiptForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
         </div>
         <div className="rcp-grid">
           <label><span>Amount received <b className="rcp-req">*</b></span>
-            <span className="itf-affix"><i>₹</i><input inputMode="decimal" value={form.amount} onChange={(e) => set('amount', e.target.value)} autoFocus /></span></label>
+            <span className="itf-affix"><i>₹</i><input placeholder="e.g. 25000" inputMode="decimal" value={form.amount} onChange={(e) => set('amount', e.target.value)} autoFocus /></span></label>
           <label><span>TDS deducted</span>
             <span className="itf-affix"><i>₹</i><input inputMode="decimal" value={form.tds_amount} placeholder="0" onChange={(e) => set('tds_amount', e.target.value)} /></span></label>
           <label><span>Received on</span>
@@ -2017,7 +2017,7 @@ function ReceiptCorrectForm({ receipt: r, onClose, onDone }: { receipt: InvoiceR
               <button key={key} type="button" className={form.mode === key ? 'is-on' : ''} onClick={() => set('mode', key)}>{label}</button>
             ))}</div>
           </div>
-          <label><span>Reference / UTR / cheque no.</span><input value={form.reference} onChange={(e) => set('reference', e.target.value)} /></label>
+          <label><span>Reference / UTR / cheque no.</span><input placeholder="e.g. UTR123456789012" value={form.reference} onChange={(e) => set('reference', e.target.value)} /></label>
           <label><span>Deposited to</span>
             <select value={form.account} onChange={(e) => set('account', e.target.value)}>
               <option value="">— Not specified —</option>
@@ -2038,7 +2038,7 @@ function ReceiptCorrectForm({ receipt: r, onClose, onDone }: { receipt: InvoiceR
             <ProofPicker label={r.has_proof ? 'Replace proof' : 'Payment proof'} value={proof?.data ? proof : null} error={proofError}
               onChange={(p, err) => { setProof(p); setProofError(err) }} />
           )}
-          <label className="rcp-wide"><span>Notes</span><textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></label>
+          <label className="rcp-wide"><span>Notes</span><textarea placeholder="e.g. Received against advance" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></label>
           <label className="rcp-wide"><span>Reason for correction <b className="rcp-req">*</b></span>
             <input value={form.reason} maxLength={300} onChange={(e) => set('reason', e.target.value)} placeholder="e.g. Wrong UTR typed" autoFocus /></label>
         </div>
@@ -2177,7 +2177,7 @@ function CreditNoteForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () =>
                     <td className="cnf-c-qty">
                       {r.on ? (
                         <span className={`cnf-qty${r.bad ? ' is-bad' : ''}`}>
-                          <input inputMode="decimal" value={picked[r.l.id]} aria-label={`Return quantity for ${r.l.description}`}
+                          <input placeholder="0" inputMode="decimal" value={picked[r.l.id]} aria-label={`Return quantity for ${r.l.description}`}
                             onChange={(e) => setPicked((p) => ({ ...p, [r.l.id]: e.target.value }))} />
                           <small>of {qtyText(String(r.left))}</small>
                         </span>
@@ -2216,9 +2216,9 @@ function CreditNoteForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () =>
                       </td>
                       <td><input value={a.description} onChange={(e) => setA(a.key, { description: e.target.value })}
                         placeholder="e.g. Rate difference on CAM-2MP-BL" aria-label={`Description, line ${n + 1}`} /></td>
-                      <td className="cnf-c-hsn"><input value={a.hsn_sac} onChange={(e) => setA(a.key, { hsn_sac: e.target.value })} aria-label={`HSN, line ${n + 1}`} /></td>
-                      <td className="cnf-c-n"><input inputMode="decimal" value={a.quantity} onChange={(e) => setA(a.key, { quantity: e.target.value })} aria-label={`Quantity, line ${n + 1}`} /></td>
-                      <td className="cnf-c-r"><input inputMode="decimal" value={a.rate} onChange={(e) => setA(a.key, { rate: e.target.value })} aria-label={`Rate, line ${n + 1}`} /></td>
+                      <td className="cnf-c-hsn"><input placeholder="8471" value={a.hsn_sac} onChange={(e) => setA(a.key, { hsn_sac: e.target.value })} aria-label={`HSN, line ${n + 1}`} /></td>
+                      <td className="cnf-c-n"><input placeholder="1" inputMode="decimal" value={a.quantity} onChange={(e) => setA(a.key, { quantity: e.target.value })} aria-label={`Quantity, line ${n + 1}`} /></td>
+                      <td className="cnf-c-r"><input placeholder="0" inputMode="decimal" value={a.rate} onChange={(e) => setA(a.key, { rate: e.target.value })} aria-label={`Rate, line ${n + 1}`} /></td>
                       <td className="cnf-c-g">
                         <select value={String(Number(a.gst_percent))} onChange={(e) => setA(a.key, { gst_percent: e.target.value })} aria-label={`GST, line ${n + 1}`}>
                           {['0', '5', '12', '18', '28'].map((g) => <option key={g} value={g}>{g}%</option>)}

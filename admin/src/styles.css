@@ -2750,3 +2750,17 @@ input.toggle {
 .crumb-step > svg { flex: none; color: var(--text-muted); }
 .crumb-link { text-decoration: none; }
 .crumb-link:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Every single-choice dropdown shows the chevron. Feature stylesheets set
+   `background:` shorthands on their own selects, which silently drop the arrow;
+   !important on the image alone makes the arrow survive them without touching
+   anyone's colours. */
+select:not([multiple]):not([size]) {
+  background-image: var(--caret) !important;
+  background-repeat: no-repeat !important;
+  background-position: right 11px center !important;
+  background-size: 12px 8px !important;
+  padding-right: 30px;
+  appearance: none;
+  -webkit-appearance: none;
+}

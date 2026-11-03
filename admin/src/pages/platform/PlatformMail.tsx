@@ -138,7 +138,7 @@ export default function PlatformMail() {
             </label>
             <label className="setting">
               Port
-              <input
+              <input placeholder="587"
                 type="number"
                 value={form.smtp_port}
                 min={1}

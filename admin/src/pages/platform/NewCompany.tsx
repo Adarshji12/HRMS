@@ -174,7 +174,7 @@ export default function NewCompany({
         </label>
         <label className="pf-field">
           Timezone
-          <input value={form.timezone} onChange={(e) => set('timezone', e.target.value)} />
+          <input placeholder="Asia/Kolkata" value={form.timezone} onChange={(e) => set('timezone', e.target.value)} />
           <span className="pf-hint">Every report and working-hours rule is read in this zone.</span>
         </label>
       </div>
@@ -223,11 +223,11 @@ export default function NewCompany({
         </label>
         <label className="pf-field">
           Seats
-          <input type="number" min={1} max={100000} value={form.seats} onChange={(e) => set('seats', Number(e.target.value))} />
+          <input placeholder="e.g. 50" type="number" min={1} max={100000} value={form.seats} onChange={(e) => set('seats', Number(e.target.value))} />
         </label>
         <label className="pf-field">
           Valid for (days)
-          <input type="number" min={1} max={3650} value={form.valid_days} onChange={(e) => set('valid_days', Number(e.target.value))} />
+          <input placeholder="e.g. 365" type="number" min={1} max={3650} value={form.valid_days} onChange={(e) => set('valid_days', Number(e.target.value))} />
         </label>
       </div>
 
@@ -243,11 +243,11 @@ export default function NewCompany({
         </label>
         <label className="pf-field">
           Phone
-          <input value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} />
+          <input placeholder="9876543210" value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} />
         </label>
         <label className="pf-field">
           City
-          <input value={form.city} onChange={(e) => set('city', e.target.value)} />
+          <input placeholder="e.g. Bengaluru" value={form.city} onChange={(e) => set('city', e.target.value)} />
         </label>
       </div>
 

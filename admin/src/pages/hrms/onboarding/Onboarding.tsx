@@ -1091,7 +1091,7 @@ function InstanceHeaderForm({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Notes
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          <textarea placeholder="e.g. Documents received, laptop to be issued on day 1" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </label>
       </div>
 
@@ -1533,7 +1533,7 @@ function TaskForm({
         </label>
         <label className="setting">
           Order
-          <input
+          <input placeholder="10"
             type="number"
             min={0}
             max={10000}
@@ -1543,7 +1543,7 @@ function TaskForm({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Description
-          <textarea
+          <textarea placeholder="e.g. Submit signed offer letter and ID proofs"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={2}
@@ -2176,7 +2176,7 @@ function TemplateEditor({
         </label>
         <label className="setting" style={{ gridColumn: '1 / -1' }}>
           Description
-          <textarea
+          <textarea placeholder="e.g. Standard onboarding for new joiners"
             value={seededName.description}
             onChange={(e) => setField('description', e.target.value)}
             rows={2}
@@ -2248,7 +2248,7 @@ function TemplateEditor({
                   </option>
                 ))}
               </select>
-              <input
+              <input placeholder="3"
                 type="number"
                 min={-365}
                 max={365}

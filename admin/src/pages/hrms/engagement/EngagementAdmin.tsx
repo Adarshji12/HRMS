@@ -490,7 +490,7 @@ function NewSurvey({
       {anonymous && (
         <label className="eg-field">
           <span className="eg-label">Withhold results below</span>
-          <input type="number" min={2} max={100} value={minResponses}
+          <input placeholder="5" type="number" min={2} max={100} value={minResponses}
                  onChange={(e) => setMinResponses(Number(e.target.value))} />
           <span className="muted">
             Nothing is shown until this many people have replied. Written answers

@@ -189,7 +189,7 @@ function SurveyForm({
           )}
 
           {question.kind === 'text' && (
-            <textarea
+            <textarea placeholder="Type your answer here"
               rows={3}
               value={answers[question.id]?.text ?? ''}
               onChange={(e) =>

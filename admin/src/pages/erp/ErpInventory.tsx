@@ -210,9 +210,9 @@ function DocForm({ onClose, onSaved }: { onClose: () => void; onSaved: (d: Stock
           {needsFrom && <Field label={head.kind === 'adjustment' ? 'Warehouse' : 'From'}>{whSelect('from_warehouse_id')}</Field>}
           {needsTo && <Field label="To">{whSelect('to_warehouse_id')}</Field>}
           <Field label="Reason code" hint={head.kind === 'adjustment' ? 'Required — e.g. “Cycle count shortfall”' : undefined}>
-            <input value={head.reason} onChange={(e) => setHead({ ...head, reason: e.target.value })} />
+            <input placeholder="e.g. Cycle count shortage" value={head.reason} onChange={(e) => setHead({ ...head, reason: e.target.value })} />
           </Field>
-          <Field label="Notes" wide><input value={head.notes} onChange={(e) => setHead({ ...head, notes: e.target.value })} /></Field>
+          <Field label="Notes" wide><input placeholder="e.g. Monthly stock audit" value={head.notes} onChange={(e) => setHead({ ...head, notes: e.target.value })} /></Field>
         </div>
         <div className="table-wrap"><table className="crm-lines">
           <thead><tr><th>Item</th><th className="crm-num">{head.kind === 'adjustment' ? 'Qty (+/−)' : 'Qty'}</th><th>Condition</th><th>Serials</th><th /></tr></thead>
@@ -223,7 +223,7 @@ function DocForm({ onClose, onSaved }: { onClose: () => void; onSaved: (d: Stock
                 <td><select value={r.item_id} onChange={(e) => set(r.key, { item_id: e.target.value })}>
                   <option value="">Choose</option>{(items.data ?? []).map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
                 </select></td>
-                <td className="crm-line-qty"><input inputMode="decimal" value={r.quantity} onChange={(e) => set(r.key, { quantity: e.target.value })} /></td>
+                <td className="crm-line-qty"><input placeholder="0" inputMode="decimal" value={r.quantity} onChange={(e) => set(r.key, { quantity: e.target.value })} /></td>
                 <td><select value={r.condition} onChange={(e) => set(r.key, { condition: e.target.value })}>{CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select></td>
                 <td>{item?.is_serialized ? <input value={r.serials} placeholder="Comma-separated" onChange={(e) => set(r.key, { serials: e.target.value })} /> : <span className="crm-muted">—</span>}</td>
                 <td><button className="crm-icon-btn" disabled={rows.length === 1} onClick={() => setRows(rows.filter((x) => x.key !== r.key))}>×</button></td>

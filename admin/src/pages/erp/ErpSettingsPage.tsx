@@ -36,21 +36,21 @@ export default function ErpSettingsPage() {
       <section className="card" style={{ padding: 20 }}>
         <div className="crm-form">
           <Field label="GRN over-receipt tolerance (%)" hint="0 = never accept more than was ordered">
-            <input disabled={!admin} inputMode="decimal" value={form.grn_over_receipt_pct} onChange={(e) => set('grn_over_receipt_pct', e.target.value)} />
+            <input placeholder="e.g. 5" disabled={!admin} inputMode="decimal" value={form.grn_over_receipt_pct} onChange={(e) => set('grn_over_receipt_pct', e.target.value)} />
           </Field>
           <Field label="Default customer credit days">
-            <input disabled={!admin} inputMode="numeric" value={String(form.default_credit_days)} onChange={(e) => set('default_credit_days', Number(e.target.value) || 0)} />
+            <input placeholder="30" disabled={!admin} inputMode="numeric" value={String(form.default_credit_days)} onChange={(e) => set('default_credit_days', Number(e.target.value) || 0)} />
           </Field>
           <Field label="Block orders when an invoice is overdue by more than (days)" hint="0 turns the check off">
-            <input disabled={!admin} inputMode="numeric" value={String(form.block_orders_overdue_days)} onChange={(e) => set('block_orders_overdue_days', Number(e.target.value) || 0)} />
+            <input placeholder="60" disabled={!admin} inputMode="numeric" value={String(form.block_orders_overdue_days)} onChange={(e) => set('block_orders_overdue_days', Number(e.target.value) || 0)} />
           </Field>
           <label className="crm-check"><input disabled={!admin} type="checkbox" checked={form.allow_negative_stock} onChange={(e) => set('allow_negative_stock', e.target.checked)} /> Allow negative stock (not recommended)</label>
           <label className="crm-check"><input disabled={!admin} type="checkbox" checked={form.invoice_maker_checker} onChange={(e) => set('invoice_maker_checker', e.target.checked)} /> Invoices are posted by somebody other than whoever drafted them</label>
           <Field label="Default purchase order terms" wide>
-            <textarea disabled={!admin} rows={3} value={form.po_terms ?? ''} onChange={(e) => set('po_terms', e.target.value)} />
+            <textarea placeholder="e.g. Payment within 30 days of invoice" disabled={!admin} rows={3} value={form.po_terms ?? ''} onChange={(e) => set('po_terms', e.target.value)} />
           </Field>
           <Field label="Default invoice terms" wide>
-            <textarea disabled={!admin} rows={3} value={form.invoice_terms ?? ''} onChange={(e) => set('invoice_terms', e.target.value)} />
+            <textarea placeholder="e.g. Goods once sold will not be taken back" disabled={!admin} rows={3} value={form.invoice_terms ?? ''} onChange={(e) => set('invoice_terms', e.target.value)} />
           </Field>
         </div>
         <BankAccounts admin={admin} rows={form.bank_accounts ?? []} onChange={(rows) => set('bank_accounts', rows)} />
@@ -95,9 +95,9 @@ function BankAccounts({ admin, rows, onChange }: {
         <div className="erp-bank" key={r.id ?? i}>
           <Field label="Bank name *"><input disabled={!admin} value={r.bank_name} onChange={(e) => edit(i, { bank_name: e.target.value })} placeholder="HDFC Bank" /></Field>
           <Field label="Account name"><input disabled={!admin} value={r.account_name ?? ''} onChange={(e) => edit(i, { account_name: e.target.value })} placeholder="As on the account" /></Field>
-          <Field label="Account number *"><input disabled={!admin} value={r.account_number} onChange={(e) => edit(i, { account_number: e.target.value.replace(/\s/g, '') })} inputMode="numeric" /></Field>
+          <Field label="Account number *"><input placeholder="e.g. 123456789012" disabled={!admin} value={r.account_number} onChange={(e) => edit(i, { account_number: e.target.value.replace(/\s/g, '') })} inputMode="numeric" /></Field>
           <Field label="IFSC"><input disabled={!admin} value={r.ifsc ?? ''} onChange={(e) => edit(i, { ifsc: e.target.value.toUpperCase() })} placeholder="HDFC0001234" maxLength={11} /></Field>
-          <Field label="Branch"><input disabled={!admin} value={r.branch ?? ''} onChange={(e) => edit(i, { branch: e.target.value })} /></Field>
+          <Field label="Branch"><input placeholder="e.g. Andheri East" disabled={!admin} value={r.branch ?? ''} onChange={(e) => edit(i, { branch: e.target.value })} /></Field>
           <Field label="UPI ID"><input disabled={!admin} value={r.upi_id ?? ''} onChange={(e) => edit(i, { upi_id: e.target.value })} placeholder="company@hdfcbank" /></Field>
           <div className="erp-bank-actions">
             <label className="crm-check"><input type="radio" disabled={!admin} checked={r.is_default} onChange={() => makeDefault(i)} /> Default</label>

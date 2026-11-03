@@ -518,7 +518,7 @@ function ManagerReview({
 
       <label className="perf-field">
         <span className="perf-field-label">Closing comment</span>
-        <textarea rows={3} disabled={frozen} value={finalComment}
+        <textarea placeholder="e.g. Consistently exceeded targets this cycle" rows={3} disabled={frozen} value={finalComment}
                   onChange={(e) => setFinalComment(e.target.value)} />
       </label>
 

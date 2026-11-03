@@ -288,6 +288,21 @@ button.crm-stat {
   cursor: not-allowed;
 }
 
+/* The `background:` shorthands above reset the global dropdown chevron, which
+   left every CRM select looking like a plain text box. Put it back, and leave
+   room for it. */
+.crm select:not([multiple]),
+.crm select:disabled:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: var(--caret);
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 12px 8px;
+  text-overflow: ellipsis;
+}
+
 .crm input::placeholder,
 .crm textarea::placeholder { color: var(--text-muted); }
 
@@ -2852,6 +2867,13 @@ a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
 
 .crm .dmap-district-filter { height: 34px; min-width: 190px; border-radius: 9px; font-size: 13px; }
 
+/* Show eight rows, scroll the rest: a state row is about 35px (8px padding
+   either side of a 13px line), so 8 rows plus the list's bottom padding. The
+   city table is capped to the same height so the two columns end together. */
+.crm .dmap-body { min-height: 0; }
+.crm .dmap-state-list { max-height: 288px; }
+.crm .dmap-table-wrap { max-height: 288px; }
+
 /* ── Master table (masterKit's MasterTable), everywhere it is used ──────────
    CRM Settings and the Master list pages alike: the card hugs its table, the
    head is one line (title left; search, count and Add right), rows are slim.
@@ -3129,6 +3151,9 @@ a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
 }
 .lf-input-prefix { font-size: 14px; font-weight: 600; }
 .crm-dialog .lf .lf-input input { padding-left: 38px; }
+/* Icon and prefix together (the +91 on a phone box): prefix sits after the icon. */
+.lf-input-icon + .lf-input-prefix { left: 36px; }
+.crm-dialog .lf .lf-input:has(.lf-input-icon + .lf-input-prefix) input { padding-left: 68px; }
 .lf-input:focus-within .lf-input-icon { color: var(--brand); }
 .crm-dialog .lf .lf-input.is-bad input {
   border-color: var(--status-critical);
@@ -4189,3 +4214,7 @@ table.sol .itl-name b, table.sol .itl-name small { max-width: 170px; }
 .crm .qe-save-menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 2px; }
 .crm .qe-save-menu p { margin: 4px 12px 4px; font-size: 11.5px; line-height: 1.45; color: var(--text-muted); }
 .crm .qe-card:has(.qe-save) { overflow: visible; position: relative; z-index: 6; }
+
+/* Dropdown caret beside a column heading. */
+.crm th .th-caret { display: inline-block; vertical-align: -2px; margin-left: 4px; opacity: .55; }
+.crm th.crm-num .th-caret { margin-left: 3px; }

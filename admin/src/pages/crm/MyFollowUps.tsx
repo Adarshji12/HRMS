@@ -522,6 +522,14 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
       setError('Choose when the follow-up is due.')
       return
     }
+    if (!ownerId) {
+      setError('Choose who owns this follow-up.')
+      return
+    }
+    if (!purpose.trim()) {
+      setError('Say what the follow-up is for.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -562,7 +570,7 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
           </div>
         )}
         <div className="crm-field crm-form-wide">
-          <span className="crm-field-label">Follow-up for</span>
+          <span className="crm-field-label">Follow-up for<span className="lf-req"> *</span></span>
           <div className="fu-for" role="radiogroup" aria-label="Follow-up for">
             {(['lead', 'customer'] as const).map((option) => (
               <button
@@ -580,24 +588,24 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
           </div>
         </div>
         <div className="crm-field crm-form-wide">
-          <span className="crm-field-label">{kind === 'lead' ? 'Lead' : 'Customer'}</span>
+          <span className="crm-field-label">{kind === 'lead' ? 'Lead' : 'Customer'}<span className="lf-req"> *</span></span>
           {kind === 'lead' ? (
             <LeadPicker value={lead} onPick={setLead} autoFocus />
           ) : (
             <CustomerPicker value={customer} onPick={setCustomer} autoFocus />
           )}
         </div>
-        <Field label="Due">
+        <Field label="Due" required>
           <input type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} />
         </Field>
-        <Field label="Owner" hint="Left empty, it goes to the record's owner.">
-          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Record's owner" />
+        <Field label="Owner" required>
+          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Select owner" />
         </Field>
-        <Field label="Purpose" wide>
+        <Field label="Purpose" wide required>
           <input value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Call back about the demo" />
         </Field>
         <Field label="Notes" wide>
-          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
+          <textarea placeholder="e.g. Customer asked for a revised quote" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
         </Field>
       </div>
     </Dialog>

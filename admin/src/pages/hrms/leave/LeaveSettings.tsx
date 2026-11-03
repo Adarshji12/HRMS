@@ -233,7 +233,7 @@ function YearPanel({
 
           <label className="setting">
             Optional holidays each employee may take
-            <input
+            <input placeholder="12"
               type="number"
               min={0}
               max={50}
@@ -587,7 +587,7 @@ function TypeForm({
         {rateNeeded && (
           <label className="setting">
             Rate, in days per {form.accrual_type === 'monthly' ? 'month' : 'year'}
-            <input
+            <input placeholder="1.5"
               type="number"
               min={0}
               step={0.25}
@@ -603,7 +603,7 @@ function TypeForm({
 
         <label className="setting">
           Maximum balance, in days
-          <input
+          <input placeholder="30"
             type="number"
             min={0}
             step={0.5}
@@ -629,7 +629,7 @@ function TypeForm({
           </label>
           {!form.carry_forward_all && (
             <>
-              <input
+              <input placeholder="10"
                 type="number"
                 min={0}
                 step={0.5}
@@ -653,7 +653,7 @@ function TypeForm({
 
         <label className="setting">
           Notice required, in days
-          <input
+          <input placeholder="3"
             type="number"
             min={0}
             max={365}
@@ -734,7 +734,7 @@ function TypeForm({
 
       <label className="setting" style={{ marginTop: 14 }}>
         Description <span className="setting-hint">Optional. Shown to employees.</span>
-        <textarea
+        <textarea placeholder="e.g. Paid leave for personal or family needs"
           className="set-textarea"
           value={form.description}
           maxLength={2000}
@@ -1024,7 +1024,7 @@ function HolidayForm({
         </label>
         <label className="setting">
           Description <span className="setting-hint">Optional.</span>
-          <input
+          <input placeholder="e.g. Applies to the 1st and 3rd Saturday"
             value={form.description}
             maxLength={2000}
             onChange={(e) => setForm({ ...form, description: e.target.value })}

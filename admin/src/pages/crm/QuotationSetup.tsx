@@ -243,7 +243,7 @@ export default function QuotationSetupPanel() {
                 hint="Numbers run in sequence and restart each period. A deleted quotation never gives its number back.">
             <div className="crm-grid-2">
               <Field label="Prefix">
-                <input value={draft.quotation_prefix} maxLength={12}
+                <input placeholder="QT" value={draft.quotation_prefix} maxLength={12}
                        onChange={(e) => setTop({ quotation_prefix: e.target.value })} />
               </Field>
               <Field label="Next number looks like"
@@ -267,11 +267,11 @@ export default function QuotationSetupPanel() {
                 </div>
               </div>
               <Field label="Valid for (days)" hint="Sets the Valid until date on a new quotation.">
-                <input type="number" min={1} max={365} value={draft.quotation_validity_days}
+                <input placeholder="15" type="number" min={1} max={365} value={draft.quotation_validity_days}
                        onChange={(e) => setTop({ quotation_validity_days: Number(e.target.value) })} />
               </Field>
               <Field label="Default GST %" hint="Used when a product carries no rate of its own.">
-                <input type="number" min={0} max={28} step="0.01" value={setup.default_gst}
+                <input placeholder="18" type="number" min={0} max={28} step="0.01" value={setup.default_gst}
                        onChange={(e) => set({ default_gst: e.target.value })} />
               </Field>
             </div>
@@ -285,13 +285,13 @@ export default function QuotationSetupPanel() {
                     on={setup.bank_enabled} onChange={(on) => set({ bank_enabled: on })}>
               <div className="crm-grid-2">
                 <Field label="Bank name">
-                  <input value={setup.bank_name ?? ''} onChange={(e) => set({ bank_name: e.target.value })} />
+                  <input placeholder="e.g. HDFC Bank" value={setup.bank_name ?? ''} onChange={(e) => set({ bank_name: e.target.value })} />
                 </Field>
                 <Field label="Account holder">
-                  <input value={setup.account_name ?? ''} onChange={(e) => set({ account_name: e.target.value })} />
+                  <input placeholder="e.g. Acme Industries Pvt Ltd" value={setup.account_name ?? ''} onChange={(e) => set({ account_name: e.target.value })} />
                 </Field>
                 <Field label="Account number">
-                  <input value={setup.account_number ?? ''} inputMode="numeric"
+                  <input placeholder="e.g. 50200012345678" value={setup.account_number ?? ''} inputMode="numeric"
                          onChange={(e) => set({ account_number: e.target.value })} />
                 </Field>
                 <Field label="IFSC">
@@ -299,7 +299,7 @@ export default function QuotationSetupPanel() {
                          onChange={(e) => set({ ifsc: e.target.value.toUpperCase() })} />
                 </Field>
                 <Field label="Branch">
-                  <input value={setup.branch ?? ''} onChange={(e) => set({ branch: e.target.value })} />
+                  <input placeholder="e.g. MG Road, Bengaluru" value={setup.branch ?? ''} onChange={(e) => set({ branch: e.target.value })} />
                 </Field>
               </div>
             </Toggle>
@@ -311,7 +311,7 @@ export default function QuotationSetupPanel() {
                          onChange={(e) => set({ upi_id: e.target.value.trim() })} />
                 </Field>
                 <Field label="Payee name">
-                  <input value={setup.upi_name ?? ''} onChange={(e) => set({ upi_name: e.target.value })} />
+                  <input placeholder="e.g. Acme Industries" value={setup.upi_name ?? ''} onChange={(e) => set({ upi_name: e.target.value })} />
                 </Field>
               </div>
             </Toggle>
@@ -365,7 +365,7 @@ function LetterheadPanel({ setup, set }: { setup: QuotationSetup; set: SetFn }) 
             <span className="qs-color">
               <input type="color" value={setup.accent_color}
                      onChange={(e) => set({ accent_color: e.target.value })} aria-label="Accent colour" />
-              <input className="qs-mono" value={setup.accent_color} maxLength={7}
+              <input placeholder="#3882F6" className="qs-mono" value={setup.accent_color} maxLength={7}
                      onChange={(e) => set({ accent_color: e.target.value })} />
             </span>
           </Field>
