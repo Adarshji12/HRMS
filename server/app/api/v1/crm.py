@@ -33,6 +33,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from app.api.deps import CurrentUser, DbSession, audit
 from app.api.tenancy import CurrentTenant
 from app.schemas import crm as S
+from app.schemas.crm_opportunity import RequirementTypeIn, RequirementTypeOut
 from app.services import crm as svc
 from app.services import crm_geography
 
@@ -68,6 +69,7 @@ MASTER_SCHEMAS: dict[str, tuple[type, type]] = {
     "item-companies": (S.ItemCompanyIn, S.ItemCompanyOut),
     "lost-reasons": (S.LostReasonIn, S.LostReasonOut),
     "opportunity-stages": (S.OpportunityStageIn, S.OpportunityStageOut),
+    "requirement-types": (RequirementTypeIn, RequirementTypeOut),
 }
 
 

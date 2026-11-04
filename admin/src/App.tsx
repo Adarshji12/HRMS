@@ -49,6 +49,7 @@ import ModuleHub from './components/ModuleHub'
 import DepartmentMaster from './pages/masters/DepartmentMaster'
 import DesignationMaster from './pages/masters/DesignationMaster'
 import Hierarchy from './pages/Hierarchy'
+import CostsheetApprovals from './pages/crm/CostsheetApprovals'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Timesheets from './pages/Timesheets'
@@ -684,6 +685,14 @@ function Shell() {
               element={isAdmin ? <Roles /> : <Navigate to="/employees" replace />}
             />
             <Route path="/hierarchy" element={page('hierarchy', <Hierarchy />)} />
+            {/* Its own path rather than /employees/costsheets: the Employee tab
+                is not `end`, and would light up beside this one. The data is
+                the CRM's and is scoped by it; the page says so when CRM is not
+                licensed. */}
+            <Route
+              path="/costsheet-approvals"
+              element={access.canViewTeam ? <CostsheetApprovals /> : <Navigate to="/me" replace />}
+            />
           </Route>
 
           {/* No `page(...)` wrapper from here down: that helper enforces the

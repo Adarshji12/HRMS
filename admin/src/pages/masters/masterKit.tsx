@@ -306,6 +306,19 @@ export const LISTS: ListDef[] = [
     ],
   },
   {
+    kind: 'requirement-types',
+    label: 'Requirement Types',
+    description: 'What a customer is asking for on an opportunity: a new purchase, an upgrade, a renewal.',
+    columns: [
+      { key: 'name', label: 'Requirement type' },
+      { key: 'sort_order', label: 'Order' },
+    ],
+    fields: [
+      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Renewal / AMC' },
+      { key: 'sort_order', label: 'Order', kind: 'number', placeholder: '10' },
+    ],
+  },
+  {
     kind: 'lost-reasons',
     label: 'Lost Reasons',
     description:
@@ -866,7 +879,7 @@ export const MASTER_GROUPS: MasterGroup[] = [
     key: 'lead',
     title: 'Lead Master',
     description: 'How a lead is described from the moment it is captured, and what it is interested in buying.',
-    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'products', 'plans'],
+    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'products', 'plans', 'requirement-types'],
   },
   {
     key: 'erp',

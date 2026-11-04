@@ -14,6 +14,7 @@ from app.api.v1 import (
     auth,
     corehr,
     crm,
+    crm_opportunity,
     erp,
     engagement,
     expenses,
@@ -124,6 +125,7 @@ api_router.include_router(
 # ungated capture URL would be a way to write rows into a workspace whose plan
 # does not include the screens that would show them.
 api_router.include_router(crm.router, dependencies=[Depends(require_module("crm"))])
+api_router.include_router(crm_opportunity.router, dependencies=[Depends(require_module("crm"))])
 # ERP. Gated like CRM, here rather than in the router, for the same reason.
 api_router.include_router(erp.router, dependencies=[Depends(require_module("erp"))])
 # Mounted after admin: /admin/reports/summary is a different, older endpoint and

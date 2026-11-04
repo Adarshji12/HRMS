@@ -20,6 +20,7 @@ import { dateTime, relativeTime } from '../../lib/format'
 import { ErrorNote, Loading } from '../../components/ui'
 import {
   IconArrowLeft,
+  IconBriefcase,
   IconBuilding,
   IconCalendar,
   IconCheck,
@@ -35,15 +36,22 @@ import {
   IconTrash,
   IconUsers,
 } from '../../components/Icons'
-import { crm, crmError, localToISO, type FollowUp, type LeadDetail as Detail } from './api'
+import { crm, crmError, localToISO, type FollowUp, type LeadDetail as Detail, type Opportunity } from './api'
 import { Assignee, MasterSelect, OwnerSelect, StagePill, WhatsAppButton } from './parts'
 import { ConvertDialog, LeadForm } from './MyLeads'
+import { OpportunityForm } from './OpportunityForm'
 
 export default function LeadDetail() {
   const { leadId = '' } = useParams()
   const detail = useQuery<Detail>(`crm-lead-${leadId}`, () => crm.lead(leadId))
   const [editing, setEditing] = useState(false)
   const [converting, setConverting] = useState(false)
+  const opportunities = useQuery<Opportunity[]>(
+    `crm-lead-opportunities-${leadId}`,
+    () => crm.opportunities(leadId),
+  )
+  // An opportunity being edited, 'new' for a blank form, null for none.
+  const [opportunityOpen, setOpportunityOpen] = useState<Opportunity | 'new' | null>(null)
   const lead = detail.data
 
   if (detail.error) {
@@ -124,6 +132,24 @@ export default function LeadDetail() {
           <StatusUpdate lead={lead} onSaved={detail.reload} />
           <NextFollowUp leadId={lead.id} open={open} onSaved={detail.reload} />
           <section className="card ldp-card">
+            <CardHead icon={<IconBriefcase size={16} />} title="Opportunities"
+                      action={<button className="btn btn-sm" type="button" onClick={() => setOpportunityOpen('new')}><IconPlus size={14} /> Add</button>} />
+            {(opportunities.data ?? []).length === 0 ? (
+              <p className="crm-sub ldp-empty-note">No opportunity yet.</p>
+            ) : (
+              <ul className="ldp-list">
+                {(opportunities.data ?? []).map((o) => (
+                  <li key={o.id}>
+                    <button type="button" className="ldp-link" onClick={() => setOpportunityOpen(o)}>{o.title}</button>
+                    <span className="crm-sub">
+                      ₹{Number(o.expected_revenue).toLocaleString('en-IN')} · {o.probability}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="card ldp-card">
             <CardHead icon={<IconSheet size={16} />} title="Quotations"
                       action={<Link className="btn btn-sm" to={`/crm/quotations/new?lead=${lead.id}`}><IconPlus size={14} /> Add</Link>} />
             {lead.quotations.length === 0 ? (
@@ -142,6 +168,17 @@ export default function LeadDetail() {
         </aside>
       </div>
 
+      {opportunityOpen && (
+        <OpportunityForm
+          lead={lead}
+          opportunity={opportunityOpen === 'new' ? null : opportunityOpen}
+          onClose={() => setOpportunityOpen(null)}
+          onSaved={() => {
+            setOpportunityOpen(null)
+            opportunities.reload()
+          }}
+        />
+      )}
       {editing && (
         <LeadForm
           lead={lead}

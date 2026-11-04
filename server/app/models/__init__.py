@@ -157,6 +157,7 @@ from app.models.chat import (
     ChatMessage,
     ChatRead,
 )
+from app.models.crm_opportunity import CrmOpportunity, CrmRequirementType
 from app.models.crm import (
     CrmActivity,
     CrmCampaign,
@@ -248,7 +249,9 @@ __all__ = [
     "CrmItemCategory",
     "CrmItemCompany",
     "CrmLostReason",
+    "CrmOpportunity",
     "CrmOpportunityStage",
+    "CrmRequirementType",
     "CrmTerritory",
     "CrmCity",
     "CrmCountry",

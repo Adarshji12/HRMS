@@ -21,6 +21,7 @@ import '../../styles/leads.css'
 import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
+import { OpportunityForm } from './OpportunityForm'
 import {
   IconBriefcase,
   IconCheck,
@@ -102,6 +103,8 @@ export default function MyLeads() {
   const filterRef = useRef<HTMLDivElement>(null)
 
   const [adding, setAdding] = useState(false)
+  // The lead just added, while its opportunity form is open.
+  const [opportunityFor, setOpportunityFor] = useState<Lead | null>(null)
   const [editing, setEditing] = useState<Lead | null>(null)
   const navigate = useNavigate()
   const [importing, setImporting] = useState(false)
@@ -579,10 +582,22 @@ export default function MyLeads() {
             setAdding(false)
             setEditing(null)
           }}
-          onSaved={() => {
+          onSaved={(created) => {
             setAdding(false)
             setEditing(null)
             leads.reload()
+            if (created) setOpportunityFor(created)
+          }}
+        />
+      )}
+
+      {opportunityFor && (
+        <OpportunityForm
+          lead={opportunityFor}
+          onClose={() => setOpportunityFor(null)}
+          onSaved={() => {
+            setOpportunityFor(null)
+            setBanner('Opportunity saved.')
           }}
         />
       )}
@@ -751,7 +766,7 @@ export function LeadForm({
 }: {
   lead: Lead | null
   onClose: () => void
-  onSaved: () => void
+  onSaved: (created?: Lead) => void
 }) {
   const [name, setName] = useState(lead?.name ?? '')
   const [company, setCompany] = useState(lead?.company ?? '')
@@ -825,9 +840,14 @@ export function LeadForm({
       value: value || null,
     }
     try {
-      if (lead) await crm.patchLead(lead.id, body)
-      else await crm.createLead(body)
-      onSaved()
+      if (lead) {
+        await crm.patchLead(lead.id, body)
+        onSaved()
+      } else {
+        // The new lead goes up with the save: the page opens the opportunity
+        // form for it next.
+        onSaved(await crm.createLead(body))
+      }
     } catch (err) {
       setError(crmError(err, 'That lead could not be saved'))
     } finally {

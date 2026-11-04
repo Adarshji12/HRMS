@@ -78,6 +78,8 @@ from app.models import (
     CrmContactDesignation,
     CrmItemCategory,
     CrmItemCompany,
+    CrmOpportunity,
+    CrmRequirementType,
     CustomerStatus,
     ForecastCategory,
     FollowUpStatus,
@@ -288,6 +290,14 @@ DEFAULT_OPPORTUNITY_STAGES: list[tuple[str, str, int, str | None, int, str]] = [
 ]
 
 #: (name, outcome, requires a competitor)
+DEFAULT_REQUIREMENT_TYPES: list[str] = [
+    "New purchase",
+    "Upgrade / add-on",
+    "Renewal / AMC",
+    "Service / support",
+    "Rental",
+]
+
 DEFAULT_LOST_REASONS: list[tuple[str, str, bool]] = [
     ("Lost to competitor", LostOutcome.LOST.value, True),
     ("Price too high", LostOutcome.LOST.value, False),
@@ -404,6 +414,12 @@ def ensure_defaults(db: Session, org_id: uuid.UUID) -> None:
         for name in DEFAULT_INDUSTRIES:
             db.add(CrmIndustry(org_id=org_id, name=name))
 
+    if not db.scalar(select(func.count()).select_from(CrmRequirementType).where(
+        CrmRequirementType.org_id == org_id
+    )):
+        for order, name in enumerate(DEFAULT_REQUIREMENT_TYPES):
+            db.add(CrmRequirementType(org_id=org_id, name=name, sort_order=order))
+
     if not db.scalar(select(func.count()).select_from(CrmCountry).where(
         CrmCountry.org_id == org_id
     )):
@@ -471,6 +487,7 @@ MASTER_MODELS: dict[str, Any] = {
     "item-companies": CrmItemCompany,
     "lost-reasons": CrmLostReason,
     "opportunity-stages": CrmOpportunityStage,
+    "requirement-types": CrmRequirementType,
 }
 
 #: What blocks deleting a master row, and the sentence the refusal uses. A
@@ -499,6 +516,8 @@ MASTER_GUARDS: dict[str, list[tuple[Any, Any, str]]] = {
     "cities": [(CrmLead, CrmLead.city_id, "lead"), (CrmCustomer, CrmCustomer.city_id, "customer")],
     "districts": [(CrmCity, CrmCity.district_id, "city")],
     "countries": [(CrmCustomer, CrmCustomer.country_id, "customer")],
+    "requirement-types": [(CrmOpportunity, CrmOpportunity.requirement_type_id, "opportunity")],
+    "item-companies": [(CrmOpportunity, CrmOpportunity.oem_id, "opportunity")],
 }
 
 

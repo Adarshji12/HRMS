@@ -143,6 +143,9 @@ export const NAV: NavGroup[] = [
       /* Not teamOnly: knowing who you report to is the one org question an
          employee genuinely has, and the tree is already scoped. */
       { page: 'hierarchy', to: '/hierarchy', label: 'Hierarchy', icon: IconSitemap },
+      /* Opportunities whose costsheet has been approved, from the CRM. Here
+         because this is where the people who sign them off already work. */
+      { to: '/costsheet-approvals', label: 'Costsheet Approval', icon: IconSheet, teamOnly: true },
       /* Departments and designations live under Settings → Teams & Departments
          only; they are company setup, not something looked up per employee. */
     ],

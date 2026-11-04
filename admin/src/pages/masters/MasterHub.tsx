@@ -45,6 +45,7 @@ const TAGLINES: Record<string, string> = {
   'visit-types': 'Kinds of field visit',
   'item-categories': 'Groups for ERP items',
   'item-companies': 'Makes / OEMs you stock',
+  'requirement-types': 'What an opportunity is for',
 }
 
 /* Also the page behind every list on the Master menu (/masters/<kind>): the

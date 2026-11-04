@@ -21,11 +21,61 @@ export interface Master {
   is_active: boolean
 }
 
-export interface Country extends Master {
-  iso2: string | null
-  dial_code: string | null
-  /** Digits in a mobile number, not counting the dial code. */
-  mobile_length: number
+export type OpportunityFile = 'costsheet' | 'quotation'
+export type CostsheetStatus = 'none' | 'pending' | 'approved' | 'rejected'
+
+export interface Opportunity {
+  id: string
+  lead_id: string
+  /** The lead's code and name, so a list of opportunities needs no second call. */
+  lead_code: string | null
+  lead_name: string | null
+  title: string
+  customer_id: string | null
+  customer_name: string | null
+  expected_revenue: string
+  probability: number
+  expected_closing: string | null
+  priority: number
+  tags: string[]
+  requirement_type_id: string | null
+  requirement_type_name: string | null
+  oem_id: string | null
+  oem_name: string | null
+  raw_cost: string | null
+  /** Revenue less raw cost, and as a share of revenue — worked out by the server. */
+  margin: string | null
+  margin_percent: string | null
+  team_id: string | null
+  team_name: string | null
+  is_mail_send: boolean
+  /** none = not sent; pending = sent for approval; then the decision. */
+  costsheet_status: CostsheetStatus
+  notes: string | null
+  /** The lead's owner: an opportunity's salesperson. */
+  owner_id: string | null
+  owner_name: string | null
+  costsheet: { name: string; size: number | null } | null
+  quotation: { name: string; size: number | null } | null
+  created_at: string
+}
+
+export interface OpportunityInput {
+  title: string
+  customer_id: string | null
+  expected_revenue: string
+  probability: number
+  expected_closing: string | null
+  priority: number
+  tags: string[]
+  requirement_type_id: string | null
+  oem_id: string | null
+  raw_cost: string | null
+  team_id: string | null
+  is_mail_send: boolean
+  /** Ticked on the form: send the costsheet to the approvers. Unticking withdraws it. */
+  send_costsheet_for_approval: boolean
+  notes: string | null
 }
 
 export interface LeadStatus extends Master {
@@ -42,6 +92,8 @@ export interface LeadSource extends Master {
 export interface Country extends Master {
   iso2: string | null
   dial_code: string | null
+  /** Digits in a mobile number, not counting the dial code. */
+  mobile_length: number
 }
 
 export interface StateRow extends Master {
@@ -612,6 +664,21 @@ export const crm = {
   lead: (id: string) => api.get<LeadDetail>(`/crm/leads/${id}`),
   createLead: (body: unknown) => api.post<Lead>('/crm/leads', body),
   patchLead: (id: string, body: unknown) => api.patch<Lead>(`/crm/leads/${id}`, body),
+  opportunities: (leadId: string) => api.get<Opportunity[]>(`/crm/leads/${leadId}/opportunities`),
+  createOpportunity: (leadId: string, body: OpportunityInput) =>
+    api.post<Opportunity>(`/crm/leads/${leadId}/opportunities`, body),
+  updateOpportunity: (id: string, body: OpportunityInput) =>
+    api.put<Opportunity>(`/crm/opportunities/${id}`, body),
+  deleteOpportunity: (id: string) => api.del(`/crm/opportunities/${id}`),
+  decideCostsheet: (id: string, decision: 'approved' | 'rejected') =>
+    api.post<Opportunity>(`/crm/opportunities/${id}/costsheet-decision`, { decision }),
+  uploadOpportunityFile: (id: string, which: OpportunityFile, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.upload<Opportunity>(`/crm/opportunities/${id}/files/${which}`, form)
+  },
+  removeOpportunityFile: (id: string, which: OpportunityFile) =>
+    api.del<Opportunity>(`/crm/opportunities/${id}/files/${which}`),
   moveLead: (id: string, body: unknown) => api.post<Lead>(`/crm/leads/${id}/status`, body),
   deleteLead: (id: string) => api.del(`/crm/leads/${id}`),
   deleteCustomer: (id: string) => api.del(`/crm/customers/${id}`),
