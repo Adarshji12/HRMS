@@ -83,7 +83,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers })
+  } catch {
+    // fetch only rejects when no response came back at all — offline, the
+    // server down or asleep, a blocked request. Its own message is
+    // "Failed to fetch", which says nothing a person can act on.
+    throw new ApiError(0, "Can't reach the server. Check your internet connection and try again.")
+  }
 
   // Only a request that carried a session can have lost one. A 401 to a
   // tokenless call — sign-in with the wrong password — is an answer, not an
@@ -125,17 +133,105 @@ async function readError(
   try {
     const body = await response.json()
     const detail = body?.detail
-    if (typeof detail === 'string') return { message: detail }
+    if (typeof detail === 'string') {
+      // The framework's stock one-word answers, not our own sentences.
+      const stock = ['Not Found', 'Forbidden', 'Method Not Allowed', 'Internal Server Error', 'Bad Request']
+      return { message: stock.includes(detail) ? statusMessage(response.status) : detail }
+    }
     if (Array.isArray(detail)) {
-      return { message: detail.map((d) => d.msg ?? String(d)).join('; ') }
+      return { message: friendlyValidation(detail) }
     }
     if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
       return { message: detail.message, reason: detail.reason, detail }
     }
-    return { message: JSON.stringify(detail ?? body).slice(0, 300) }
+    // Nothing a person could read. The raw body goes to the console, where a
+    // developer will look, and the person gets a sentence about what happened.
+    console.error('Unreadable error body', response.status, body)
+    return { message: statusMessage(response.status) }
   } catch {
-    return { message: `Request failed (HTTP ${response.status})` }
+    return { message: statusMessage(response.status) }
   }
+}
+
+/** A sentence for an HTTP status that arrived without one worth showing. */
+function statusMessage(status: number): string {
+  if (status === 403) return "You don't have permission to do that."
+  if (status === 404) return "We couldn't find that. It may have been removed."
+  if (status === 409) return 'That conflicts with something that already exists.'
+  if (status === 413) return 'That file is too large.'
+  if (status === 429) return 'Too many requests. Wait a moment and try again.'
+  if (status >= 500) return 'Something went wrong on our side. Please try again in a moment.'
+  return "That didn't go through. Check what you entered and try again."
+}
+
+/** "mobile_length" → "Mobile length"; the few acronyms get their capitals back. */
+function fieldLabel(path: Array<string | number>): string {
+  const key = [...path].reverse().find((part) => typeof part === 'string' && part !== 'body') as string | undefined
+  if (!key) return 'This field'
+  const words = key
+    .replace(/_id$/, '')
+    .split('_')
+    .filter(Boolean)
+    .map((word) => (['gst', 'hsn', 'sac', 'gstin', 'pan', 'uan', 'otp', 'sms', 'url'].includes(word) ? word.toUpperCase() : word))
+  const text = words.join(' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/**
+ * FastAPI's validation errors, as sentences that name the field.
+ *
+ * Its own `msg` is written for developers — "String should match pattern
+ * '^\+?[0-9]…'", "Field required" — and joined with nothing to say which field
+ * each belongs to.
+ */
+function friendlyValidation(errors: Array<Record<string, unknown>>): string {
+  const sentences = errors.map((error) => {
+    const label = fieldLabel(Array.isArray(error.loc) ? (error.loc as Array<string | number>) : [])
+    const ctx = (error.ctx ?? {}) as Record<string, unknown>
+    const type = String(error.type ?? '')
+    switch (type) {
+      case 'missing':
+        return `${label} is required.`
+      case 'string_too_short':
+        return ctx.min_length === 1 ? `${label} is required.` : `${label} must be at least ${ctx.min_length} characters.`
+      case 'string_too_long':
+        return `${label} must be at most ${ctx.max_length} characters.`
+      case 'string_pattern_mismatch':
+      case 'string_type':
+      case 'value_error.str.regex':
+        return `${label} isn't in the right format.`
+      case 'int_parsing':
+      case 'float_parsing':
+      case 'int_from_float':
+      case 'decimal_parsing':
+        return `${label} must be a number.`
+      case 'greater_than_equal':
+        return `${label} must be at least ${ctx.ge}.`
+      case 'greater_than':
+        return `${label} must be more than ${ctx.gt}.`
+      case 'less_than_equal':
+        return `${label} must be at most ${ctx.le}.`
+      case 'less_than':
+        return `${label} must be less than ${ctx.lt}.`
+      case 'uuid_parsing':
+      case 'enum':
+      case 'literal_error':
+        return `Choose a valid ${label.toLowerCase()}.`
+      case 'date_parsing':
+      case 'datetime_parsing':
+      case 'date_from_datetime_parsing':
+        return `${label} isn't a valid date.`
+      case 'value_error': {
+        // A validator we wrote: its message is already a sentence.
+        const text = String(error.msg ?? '').replace(/^Value error,\s*/, '')
+        return text ? (/[.!?]$/.test(text) ? text : `${text}.`) : `${label} isn't valid.`
+      }
+      default:
+        return `${label} isn't valid.`
+    }
+  })
+  // The same sentence twice reads as a glitch.
+  return [...new Set(sentences)].join(' ')
 }
 
 export const api = {
