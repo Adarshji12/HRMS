@@ -38,7 +38,8 @@ class EmailError(RuntimeError):
     pass
 
 
-def _build(to: str, subject: str, body: str, sender: str, html: str | None = None) -> EmailMessage:
+def _build(to: str, subject: str, body: str, sender: str, html: str | None = None,
+           attachments: list[tuple[str, bytes, str]] | None = None) -> EmailMessage:
     message = EmailMessage()
     name, address = parseaddr(sender)
     message["From"] = formataddr((name or settings.app_name, address or "no-reply@localhost"))
@@ -47,6 +48,9 @@ def _build(to: str, subject: str, body: str, sender: str, html: str | None = Non
     message.set_content(body)
     if html:
         message.add_alternative(html, subtype="html")
+    for filename, data, kind in attachments or []:
+        maintype, subtype = kind.split("/", 1)
+        message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
     return message
 
 
@@ -56,6 +60,7 @@ def send(
     body: str,
     html: str | None = None,
     org_id=None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> bool:
     """Returns True if handed to an SMTP server, False if only logged.
 
@@ -67,7 +72,7 @@ def send(
     # every tenant's mail would leave through the platform default, which is
     # exactly the "why does this arrive from someone else's domain" problem.
     config = mailconfig.resolve(org_id=org_id)
-    message = _build(to, subject, body, config.sender, html)
+    message = _build(to, subject, body, config.sender, html, attachments)
 
     if not config.configured:
         log.warning(

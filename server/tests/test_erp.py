@@ -602,7 +602,7 @@ def _stocked(client, acme, checker, quantity="10", serials=(), serialized=False)
 def test_no_negative_stock(client, acme, checker):
     wh, item = _stocked(client, acme, checker, quantity="3")
     doc = ok(client.post(f"{API}/stock-docs", json={
-        "kind": "issue", "from_warehouse_id": wh["id"], "lines": [{"item_id": item["id"], "quantity": "5"}],
+        "kind": "issue", "from_warehouse_id": wh["id"], "recipient_id": str(acme.owner.id), "lines": [{"item_id": item["id"], "quantity": "5"}],
     }, headers=acme.headers()), 201)
     refused(client.post(f"{API}/stock-docs/{doc['id']}/post", headers=acme.headers()), 409, "insufficient_stock")
     assert _stock_of(client, acme, item)["quantity"] == "3.000"
@@ -651,7 +651,7 @@ def test_serials_are_counted_and_tracked(client, acme, checker):
     assert found[0]["status"] == "in_stock" and found[0]["warranty_until"]
     # A serial that is not on the shelf cannot be issued.
     doc = ok(client.post(f"{API}/stock-docs", json={
-        "kind": "issue", "from_warehouse_id": wh["id"],
+        "kind": "issue", "from_warehouse_id": wh["id"], "recipient_id": str(acme.owner.id),
         "lines": [{"item_id": item["id"], "quantity": "1", "serials": ["SN9"]}],
     }, headers=acme.headers()), 201)
     refused(client.post(f"{API}/stock-docs/{doc['id']}/post", headers=acme.headers()), 409, "serial_not_here")
@@ -687,7 +687,7 @@ def test_order_to_cash_end_to_end(client, acme, checker):
 
     # Reserved stock cannot be issued to somebody else.
     doc = ok(client.post(f"{API}/stock-docs", json={
-        "kind": "issue", "from_warehouse_id": wh["id"], "lines": [{"item_id": item["id"], "quantity": "8"}],
+        "kind": "issue", "from_warehouse_id": wh["id"], "recipient_id": str(acme.owner.id), "lines": [{"item_id": item["id"], "quantity": "8"}],
     }, headers=acme.headers()), 201)
     refused(client.post(f"{API}/stock-docs/{doc['id']}/post", headers=acme.headers()), 409, "stock_reserved")
 
@@ -731,6 +731,18 @@ def test_order_to_cash_end_to_end(client, acme, checker):
 
     ageing = ok(client.get(f"{API}/invoices/ageing", headers=acme.headers()))
     assert ageing["total"] == "900.00"
+
+    # The order's own page: customer, dispatch, invoices, payments and the trail.
+    so = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    assert so["customer"]["mobile"] == customer["mobile"]
+    assert so["dispatch_details"][0]["warehouse"] == wh["name"] and so["dispatch_details"][0]["created_by_name"]
+    assert any(i["number"] == inv["number"] and i["amount_received"] == "5000.00" for i in so["invoice_details"])
+    assert so["receipts"][0]["amount"] == "5000.00"
+    pay = so["payment_summary"]
+    assert pay["invoiced"] == "7080.00" and pay["received"] == "5000.00" and pay["outstanding"] == "900.00"
+    actions = {a["action"] for a in so["activity"]}
+    assert {"sales_order.saved", "sales_order.submitted", "dispatch.created"} <= actions
+    assert all(a["by"] for a in so["activity"] if a["action"] == "sales_order.submitted")
 
 
 def test_po_number_preview_company_and_dates(client, acme, checker):
@@ -883,6 +895,71 @@ def test_sales_order_draft_keeps_everything_and_waits_for_submit(client, acme):
     refused(client.post(f"{API}/sales-orders", json={**body, "lines": []}, headers=acme.headers()), 422)
 
 
+def test_sales_order_list_pages_filters_sorts_and_counts(client, acme, globex, checker):
+    wh, item = _stocked(client, acme, checker, quantity="50")
+    customer = _customer(client, acme)
+    made = []
+    for rate in ("300", "100", "200"):
+        made.append(ok(client.post(f"{API}/sales-orders", json={
+            "customer_id": customer["id"], "customer_po_number": f"PO-{rate}",
+            "lines": [{"description": "Survey", "quantity": "1", "rate": rate, "gst_percent": "0"}],
+        }, headers=acme.headers()), 201))
+    _, released = _released_order(client, acme, checker, item, quantity="2", rate="1000")
+    url = f"{API}/sales-orders/page"
+
+    first = ok(client.get(url, params={"page_size": 2}, headers=acme.headers()))
+    assert first["total"] == 4 and first["pages"] == 2 and len(first["rows"]) == 2
+    second = ok(client.get(url, params={"page_size": 2, "page": 2}, headers=acme.headers()))
+    assert not {r["id"] for r in first["rows"]} & {r["id"] for r in second["rows"]}
+    # Past the end lands on the last page rather than an empty one.
+    assert ok(client.get(url, params={"page_size": 2, "page": 9}, headers=acme.headers()))["page"] == 2
+
+    # The whole book is counted, whatever is filtered.
+    drafts = ok(client.get(url, params={"status": "draft"}, headers=acme.headers()))
+    assert drafts["total"] == 3 and drafts["summary"]["draft"]["count"] == 3
+    assert drafts["summary"]["approved"]["count"] == 1
+    assert Decimal(drafts["summary"]["draft"]["value"]) == 600
+
+    by_value = ok(client.get(url, params={"status": "draft", "sort": "grand_total", "direction": "asc"}, headers=acme.headers()))
+    assert [Decimal(r["grand_total"]) for r in by_value["rows"]] == [100, 200, 300]
+    assert ok(client.get(url, params={"q": "PO-200"}, headers=acme.headers()))["total"] == 1
+    assert ok(client.get(url, params={"approval": "approved"}, headers=acme.headers()))["rows"][0]["id"] == released["id"]
+    assert ok(client.get(url, params={"delivery": "delivered"}, headers=acme.headers()))["total"] == 0
+    refused(client.get(url, params={"sort": "nonsense"}, headers=acme.headers()), 422)
+    assert ok(client.get(url, headers=globex.headers()))["total"] == 0
+
+    # Amounts follow the linked records: dispatched and invoiced moves both.
+    dispatch = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": released["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": released["lines"][0]["id"], "quantity": "2"}],
+    }, headers=acme.headers()), 201)
+    inv = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": dispatch["id"]}, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/invoices/{inv['id']}/post", headers=acme.headers()))
+    row = ok(client.get(url, params={"q": released["number"]}, headers=acme.headers()))["rows"][0]
+    assert row["invoiced_total"] == inv["grand_total"] and Decimal(row["pending_amount"]) == 0
+    assert row["delivery_status"] == "in_transit"
+    top = ok(client.get(url, params={"sort": "invoiced"}, headers=acme.headers()))["rows"][0]
+    assert top["id"] == released["id"]
+
+
+def test_an_order_with_an_invoice_cannot_be_cancelled(client, acme):
+    customer = _customer(client, acme)
+    so = ok(client.post(f"{API}/sales-orders", json={
+        "customer_id": customer["id"], "lines": [{"description": "Survey", "quantity": "1", "rate": "100", "gst_percent": "0"}],
+    }, headers=acme.headers()), 201)
+    invoice = ok(client.post(f"{API}/invoices", json={
+        "kind": "service", "customer_id": customer["id"], "sales_order_id": so["id"],
+        "lines": [{"description": "Survey", "quantity": "1", "rate": "100", "gst_percent": "0"}],
+    }, headers=acme.headers()), 201)
+    refused(client.post(f"{API}/sales-orders/{so['id']}/cancel", json={"reason": "Mistake"}, headers=acme.headers()), 409, "invoiced")
+    # With the invoice gone the order can go too, and it needs a reason.
+    assert client.delete(f"{API}/invoices/{invoice['id']}", headers=acme.headers()).status_code == 204
+    refused(client.post(f"{API}/sales-orders/{so['id']}/cancel", json={"reason": " "}, headers=acme.headers()), 422)
+    done = ok(client.post(f"{API}/sales-orders/{so['id']}/cancel", json={"reason": "Mistake"}, headers=acme.headers()))
+    assert done["status"] == "cancelled" and done["closed_reason"] == "Mistake"
+    assert done["approval_status"] == "cancelled" and Decimal(done["pending_amount"]) == 0
+
+
 def test_credit_note_for_returned_items(client, acme, checker):
     customer = _customer(client, acme)
     inv = ok(client.post(f"{API}/invoices", json={
@@ -969,6 +1046,29 @@ def test_shortage_raises_a_requisition(client, acme, checker):
     assert req["lines"][0]["quantity"] == "3.000" and req["status"] == "draft"
 
 
+def test_approval_register_shows_pending_and_decided(client, acme, checker):
+    vendor = _active_vendor(client, acme, checker)
+    body = {"vendor_id": vendor["id"], "lines": [{"description": "Camera", "quantity": "1", "rate": "100"}]}
+    def raised():
+        po = ok(client.post(f"{API}/purchase-orders", json=body, headers=acme.headers()), 201)
+        return ok(client.post(f"{API}/purchase-orders/{po['id']}/submit", headers=acme.headers()))
+    waiting, good, bad = raised(), raised(), raised()
+    # A draft has not been through approval, so it is not listed.
+    draft = ok(client.post(f"{API}/purchase-orders", json=body, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/purchase-orders/{good['id']}/decide", json={"approve": True}, headers=checker))
+    ok(client.post(f"{API}/purchase-orders/{bad['id']}/decide", json={"approve": False, "note": "Too dear"}, headers=checker))
+    rows = {r["id"]: r for r in ok(client.get(f"{API}/approvals/register", headers=checker))}
+    assert draft["id"] not in rows
+    assert rows[waiting["id"]]["state"] == "pending" and rows[waiting["id"]]["can_decide"] is True
+    assert rows[good["id"]]["state"] == "approved" and rows[good["id"]]["reviewed_by_name"] == "Acme Checker"
+    assert rows[bad["id"]]["state"] == "rejected" and rows[bad["id"]]["review_note"] == "Too dear"
+    # The buyer sees their own pending order, but may not decide it.
+    mine = {r["id"]: r for r in ok(client.get(f"{API}/approvals/register", headers=acme.headers()))}
+    assert mine[waiting["id"]]["can_decide"] is False and mine[waiting["id"]]["own"] is True
+    # Somebody with no approval rights and no part in these sees none of them.
+    assert ok(client.get(f"{API}/approvals/register", headers=acme.headers(acme.employee_token))) == []
+
+
 def test_dashboard_and_approval_queue(client, acme, checker):
     item = _item(client, acme)
     vendor = _active_vendor(client, acme, checker)
@@ -1028,3 +1128,110 @@ def test_an_unused_warehouse_can_be_deleted(client, acme):
 def test_a_warehouse_holding_stock_cannot_be_deleted(client, acme, checker):
     wh, _ = _stocked(client, acme, checker, quantity="2")
     refused(client.delete(f"{API}/warehouses/{wh['id']}", headers=acme.headers()), 409, "warehouse_in_use")
+
+
+def test_the_owner_may_release_their_own_sales_order_and_nobody_else_may(client, acme, checker):
+    _, item = _stocked(client, acme, checker, quantity="10")
+    customer = _customer(client, acme)
+    body = {"customer_id": customer["id"], "customer_po_number": "PO-1",
+            "lines": [{"item_id": item["id"], "quantity": "1", "rate": "100"}]}
+
+    # The owner's own order is in the owner's queue, and the decision is theirs.
+    mine = ok(client.post(f"{API}/sales-orders", json=body, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/sales-orders/{mine['id']}/submit", headers=acme.headers()))
+    assert any(r["id"] == mine["id"] for r in ok(client.get(f"{API}/approvals", headers=acme.headers())))
+    row = next(r for r in ok(client.get(f"{API}/approvals/register", headers=acme.headers())) if r["id"] == mine["id"])
+    assert row["own"] is True and row["can_decide"] is True
+    # A rejection still needs a reason.
+    refused(client.post(f"{API}/sales-orders/{mine['id']}/decide", json={"approve": False}, headers=acme.headers()), 422)
+    released = ok(client.post(f"{API}/sales-orders/{mine['id']}/decide", json={"approve": True}, headers=acme.headers()))
+    assert released["status"] == "approved"
+
+    # An admin's own order is not theirs to release, but the owner can.
+    theirs = ok(client.post(f"{API}/sales-orders", json=body, headers=checker), 201)
+    ok(client.post(f"{API}/sales-orders/{theirs['id']}/submit", headers=checker))
+    assert not any(r["id"] == theirs["id"] for r in ok(client.get(f"{API}/approvals", headers=checker)))
+    refused(client.post(f"{API}/sales-orders/{theirs['id']}/decide", json={"approve": True}, headers=checker),
+            403, "self_review")
+    released = ok(client.post(f"{API}/sales-orders/{theirs['id']}/decide", json={"approve": True}, headers=acme.headers()))
+    assert released["status"] == "approved"
+
+
+def _dispatched(client, acme, checker, quantity="4"):
+    wh, item = _stocked(client, acme, checker, quantity="10")
+    _, so = _released_order(client, acme, checker, item, quantity=quantity)
+    d = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": so["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": quantity}],
+    }, headers=acme.headers()), 201)
+    return wh, item, so, d
+
+
+def test_goods_come_back_against_a_dispatch(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    assert _stock_of(client, acme, item)["quantity"] == "6.000"
+    line = d["lines"][0]["id"]
+    body = {"warehouse_id": wh["id"], "reason": "Wrong model", "lines": [{"dispatch_line_id": line, "quantity": "1"}]}
+
+    refused(client.post(f"{API}/dispatches/{d['id']}/returns", json={**body, "reason": " "}, headers=acme.headers()), 422)
+    refused(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        **body, "lines": [{"dispatch_line_id": line, "quantity": "5"}]}, headers=acme.headers()), 422, "over_return")
+
+    out = ok(client.post(f"{API}/dispatches/{d['id']}/returns", json=body, headers=acme.headers()), 201)
+    assert _stock_of(client, acme, item)["quantity"] == "7.000"
+    assert out["returns"][0]["number"].startswith("SR/") and out["returns"][0]["reason"] == "Wrong model"
+    assert out["dispatch_details"][0]["lines"][0]["returned_qty"] == "1.000"
+    # The rest can still come back, but not more than was sent.
+    refused(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        **body, "lines": [{"dispatch_line_id": line, "quantity": "4"}]}, headers=acme.headers()), 422, "over_return")
+    # With goods back, the shipment can no longer simply be cancelled.
+    refused(client.post(f"{API}/dispatches/{d['id']}/cancel", json={"reason": "x"}, headers=acme.headers()), 409, "returned")
+
+    # What came back is not billed: invoicing the dispatch takes the other three.
+    inv = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]}, headers=acme.headers()), 201)
+    assert inv["lines"][0]["quantity"] == "3.000"
+    row = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    assert row["dispatches"][0]["uninvoiced"] is False
+
+
+def test_returned_goods_can_arrive_defective(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    out = ok(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        "warehouse_id": wh["id"], "reason": "Burnt out", "condition": "defective",
+        "lines": [{"dispatch_line_id": d["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    # A defective unit is never counted as available.
+    rows = ok(client.get(f"{API}/stock", params={"item_id": item["id"]}, headers=acme.headers()))
+    assert {r["condition"]: r["quantity"] for r in rows} == {"good": "6.000", "defective": "1.000"}
+    # And what came back unbilled is no longer waiting to be billed: 3 of 4 at 1770.
+    assert out["payment_summary"]["to_bill"] == "5310.00" and out["pending_amount"] == "5310.00"
+
+
+def test_an_approved_order_can_be_amended_until_something_happens_against_it(client, acme, checker):
+    wh, item = _stocked(client, acme, checker, quantity="10")
+    _, so = _released_order(client, acme, checker, item, quantity="2")
+    ok(client.post(f"{API}/sales-orders/{so['id']}/reserve", json={"warehouse_id": wh["id"]}, headers=acme.headers()))
+    refused(client.post(f"{API}/sales-orders/{so['id']}/amend", json={"reason": " "}, headers=acme.headers()), 422)
+    out = ok(client.post(f"{API}/sales-orders/{so['id']}/amend", json={"reason": "Customer wants 3"}, headers=acme.headers()))
+    assert out["status"] == "draft" and out["reviewed_by_name"] is None
+    assert float(out["lines"][0]["reserved_qty"]) == 0
+    assert any(a["action"] == "sales_order.amended" for a in out["activity"])
+    # Still a record with a history: cancelled, not deleted.
+    refused(client.delete(f"{API}/sales-orders/{so['id']}", headers=acme.headers()), 409, "was_submitted")
+    # Approved again from the top.
+    ok(client.post(f"{API}/sales-orders/{so['id']}/submit", headers=acme.headers()))
+    ok(client.post(f"{API}/sales-orders/{so['id']}/decide", json={"approve": True}, headers=checker))
+
+    so = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    ok(client.post(f"{API}/dispatches", json={"sales_order_id": so["id"], "warehouse_id": wh["id"], "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "1"}]}, headers=acme.headers()), 201)
+    refused(client.post(f"{API}/sales-orders/{so['id']}/amend", json={"reason": "x"}, headers=acme.headers()), 409)
+
+
+def test_an_order_can_be_copied_to_a_new_draft(client, acme, checker):
+    _, item = _stocked(client, acme, checker, quantity="10")
+    _, so = _released_order(client, acme, checker, item, quantity="2")
+    copy = ok(client.post(f"{API}/sales-orders/{so['id']}/duplicate", headers=acme.headers()), 201)
+    assert copy["id"] != so["id"] and copy["number"] != so["number"] and copy["status"] == "draft"
+    assert copy["customer_id"] == so["customer_id"] and copy["grand_total"] == so["grand_total"]
+    assert copy["customer_po_number"] is None and float(copy["lines"][0]["dispatched_qty"]) == 0
+    assert any(a["action"] == "sales_order.duplicated" for a in copy["activity"])

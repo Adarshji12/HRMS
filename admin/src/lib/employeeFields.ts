@@ -211,6 +211,8 @@ export const ERP_PERMISSIONS = [
     description: 'Orders from customer POs and quotations, reservations, dispatch and delivery.' },
   { key: 'can_approve_sales_orders', label: 'ERP · Release, hold and close sales orders',
     description: 'Release an order for fulfilment, put it on hold, or short-close it.' },
+  { key: 'can_delete_sales_orders', label: 'ERP · Delete draft sales orders',
+    description: 'Only an order that was never submitted. Every deletion is kept in the audit log.' },
   { key: 'can_manage_billing', label: 'ERP · Raise invoices and record receipts',
     description: 'Draft and post invoices, record money received, set customer credit terms.' },
   { key: 'can_approve_billing', label: 'ERP · Approve credit notes and credit holds',

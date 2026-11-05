@@ -151,6 +151,7 @@ class MovementKind(str, enum.Enum):
     ADJUSTMENT = "adjustment"
     DISPATCH = "dispatch"
     REVERSAL = "reversal"
+    OPENING = "opening"
 
 
 class StockDocKind(str, enum.Enum):
@@ -163,6 +164,9 @@ class StockDocKind(str, enum.Enum):
     #: A counted variance. The only kind that needs approval: it changes
     #: what the company owns without anything physically moving.
     ADJUSTMENT = "adjustment"
+    #: Stock already held when the company starts using the system, at the cost
+    #: it stands at. Serial numbers on it are new to the system.
+    OPENING = "opening"
 
 
 class StockDocStatus(str, enum.Enum):
@@ -746,6 +750,15 @@ class ErpPurchaseOrder(UUIDMixin, TimestampMixin, Base):
     delivery_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
     #: The make / OEM ordered from, out of the Company Master.
     company: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: The vendor's own quotation this order takes up, as the vendor numbered it.
+    vendor_quote_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    vendor_quote_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Who at this company the vendor should talk to about the order.
+    contact_person: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Where the vendor's invoice goes.
+    billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: [{id, name, type, size, data, at, by_name}] — served one at a time.
+    attachments: Mapped[list | None] = mapped_column(JSON, nullable=True)
     #: Liquidated damages, per the PO clause (FR-06.14): percent of the late
     #: value per week of delay, capped at ``ld_cap_percent`` of it.
     ld_percent_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
@@ -800,6 +813,8 @@ class ErpPurchaseOrderLine(UUIDMixin, Base):
     hsn_sac: Mapped[str | None] = mapped_column(String(16), nullable=True)
     uom: Mapped[str] = mapped_column(String(16), default="Nos", nullable=False)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    #: When this line is wanted, if not the order's expected date.
+    expected_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     received_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     #: Trade discount, off before GST.
@@ -1318,9 +1333,44 @@ class ErpDispatchLine(UUIDMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     #: How much of this dispatched quantity has been invoiced.
     invoiced_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    #: How much the customer has sent back. Returned goods are not billed.
+    returned_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     serials: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     dispatch: Mapped["ErpDispatch"] = relationship(back_populates="lines")
+
+    @property
+    def billable_qty(self) -> Decimal:
+        """What is left to invoice on this line."""
+        return max(ZERO, self.quantity - self.returned_qty - self.invoiced_qty)
+
+
+class ErpSalesReturn(UUIDMixin, TimestampMixin, Base):
+    """Goods a customer sent back against a dispatch. Stock comes in here, in the
+    condition it arrived. The money is separate: a credit note against the
+    invoice, when the goods had been billed."""
+
+    __tablename__ = "erp_sales_returns"
+    __table_args__ = (UniqueConstraint("org_id", "number", name="uq_erp_sales_returns_org_number"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    number: Mapped[str] = mapped_column(String(32), nullable=False)
+    sales_order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("erp_sales_orders.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("erp_dispatches.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("erp_warehouses.id", ondelete="RESTRICT"), nullable=False
+    )
+    return_date: Mapped[date] = mapped_column(Date, nullable=False)
+    condition: Mapped[str] = mapped_column(String(12), default="good", nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What came back: description, quantity and serials of each line.
+    lines: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    value: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = _user_fk()
 
 
 # --------------------------------------------------------------------------- #

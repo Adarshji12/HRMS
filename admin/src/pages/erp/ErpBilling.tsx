@@ -20,10 +20,15 @@ import '../../styles/salebill.css'
 import InvoicePrint, { downloadInvoicePdf } from './InvoicePrint'
 import {
   ChainView, DateText, DecideBar, Dialog, ErpPage, ErpState,
-  Money, Note, ReasonDialog, Tabs, useAccess, useItems, useRun,
+  Note, ReasonDialog, useAccess, useItems, useRun,
 } from './parts'
 
 type Tab = 'invoices' | 'to_bill' | 'credit_notes' | 'receipts' | 'ageing'
+
+const BILL_TABS: [Tab, string][] = [
+  ['invoices', 'Invoices'], ['to_bill', 'Dispatched, not billed'], ['credit_notes', 'Credit notes'],
+  ['receipts', 'Receipts'], ['ageing', 'Ageing'],
+]
 
 export default function ErpBilling() {
   const [tab, setTab] = useState<Tab>('invoices')
@@ -32,16 +37,19 @@ export default function ErpBilling() {
   useEffect(() => { if (params.get('open')) { setOpenId(params.get('open')); setParams({}, { replace: true }) } }, [params, setParams])
   const [reload, setReload] = useState(0)
   return (
-    <ErpPage title="Billing & receivables" subtitle="What has been billed, what is still to bill, and what is owed">
-      <Tabs value={tab} onChange={setTab} items={[
-        { key: 'invoices', label: 'Invoices' }, { key: 'to_bill', label: 'Dispatched, not billed' },
-        { key: 'credit_notes', label: 'Credit notes' }, { key: 'receipts', label: 'Receipts' }, { key: 'ageing', label: 'Ageing' },
-      ]} />
+    <ErpPage>
+      <div className="bil-tabs" role="tablist" aria-label="Billing sections">
+        {BILL_TABS.map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'is-on' : undefined}
+                  onClick={() => setTab(key)}>{label}</button>
+        ))}
+      </div>
+      {/* The invoice view can change any of these, so each reloads with it. */}
       {tab === 'invoices' && <InvoiceList key={reload} kind="invoice" onOpen={setOpenId} />}
       {tab === 'credit_notes' && <InvoiceList key={reload} kind="credit_note" onOpen={setOpenId} />}
-      {tab === 'to_bill' && <ToBill onOpen={setOpenId} />}
-      {tab === 'receipts' && <Receipts />}
-      {tab === 'ageing' && <AgeingTab />}
+      {tab === 'to_bill' && <ToBill key={reload} onOpen={setOpenId} />}
+      {tab === 'receipts' && <Receipts key={reload} onOpen={setOpenId} />}
+      {tab === 'ageing' && <AgeingTab key={reload} />}
       {openId && <InvoiceDrawer id={openId} onOpen={setOpenId} onClose={() => setOpenId(null)} onChanged={() => setReload((n) => n + 1)} />}
     </ErpPage>
   )
@@ -133,15 +141,15 @@ const DOC_STATUSES: [Invoice['status'], string][] = [
   ['draft', 'Draft'], ['submitted', 'Awaiting approval'], ['posted', 'Posted'], ['rejected', 'Rejected'], ['cancelled', 'Cancelled'],
 ]
 
-type DateRange = '' | 'today' | 'this_month' | 'last_month' | 'this_quarter' | 'this_fy' | 'last_fy' | 'custom'
-const DATE_RANGES: [Exclude<DateRange, ''>, string][] = [
+export type DateRange = '' | 'today' | 'this_month' | 'last_month' | 'this_quarter' | 'this_fy' | 'last_fy' | 'custom'
+export const DATE_RANGES: [Exclude<DateRange, ''>, string][] = [
   ['today', 'Today'], ['this_month', 'This month'], ['last_month', 'Last month'], ['this_quarter', 'This quarter'],
   ['this_fy', 'This financial year'], ['last_fy', 'Last financial year'], ['custom', 'Custom range'],
 ]
 
 /** From and to dates (inclusive, yyyy-mm-dd) for a named range. Financial
  *  years and quarters run from April. */
-function rangeDates(r: DateRange): [string, string] {
+export function rangeDates(r: DateRange): [string, string] {
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const now = new Date()
   const y = now.getFullYear()
@@ -293,11 +301,29 @@ function InvoiceList({ kind, onOpen, onNew }: {
           </button>
         </div>
       )}
+      {kind === 'credit_note' && (
+        <div className="ivl-kpis bil-kpis-4">
+          <button type="button" className="ivl-kpi is-good" onClick={() => setDocStatus('posted')}>
+            <span>Credited</span><b>{rupees(sum(live, (i) => i.grand_total))}</b><small>{live.length} posted</small>
+          </button>
+          {([['submitted', 'Awaiting approval', 'is-warn'], ['draft', 'Drafts', 'is-idle'], ['rejected', 'Rejected', 'is-bad']] as const).map(([st, label, tone]) => {
+            const these = all.filter((i) => i.status === st)
+            return (
+              <button key={st} type="button" className={`ivl-kpi ${tone}`} onClick={() => setDocStatus(st)}>
+                <span>{label}</span><b>{these.length}</b><small>{rupees(sum(these, (i) => i.grand_total))}</small>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="crm-bar ivl-bar">
         <div className="crm-search"><IconSearch size={15} />
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)}
             placeholder={kind === 'invoice' ? 'Search number, customer, GSTIN, PO, e-way bill…' : 'Search number, customer'} /></div>
+        <div className="ivl-tools">
+        {filtered && <button type="button" className="btn btn-sm ivl-clear" onClick={clearAll}>Clear</button>}
+        {list.data && <span className="ivl-count">{rows.length} of {all.length}</span>}
         <div className="ivl-filter">
           <button type="button" className={`btn ivl-filter-btn${activeFilters ? ' is-on' : ''}`} aria-haspopup="dialog" aria-expanded={filtering}
             onClick={() => setFiltering((v) => !v)}>
@@ -351,9 +377,7 @@ function InvoiceList({ kind, onOpen, onNew }: {
             </>
           )}
         </div>
-        {filtered && <button type="button" className="btn btn-sm ivl-clear" onClick={clearAll}>Clear</button>}
-        {list.data && <span className="ivl-count">{rows.length} of {all.length}</span>}
-        <div className="ivl-export crm-push">
+        <div className="ivl-export">
           <button type="button" className="btn" disabled={!rows.length} aria-haspopup="menu" aria-expanded={exporting}
             title={rows.length ? `Export the ${rows.length} shown` : 'Nothing to export'} onClick={() => setExporting((v) => !v)}>
             <IconDownload size={15} /> Export
@@ -366,6 +390,7 @@ function InvoiceList({ kind, onOpen, onNew }: {
           )}
         </div>
         {kind === 'invoice' && biller && <button className="btn btn-primary" onClick={() => (onNew ? onNew() : setCreating(true))}><IconPlus size={15} /> {onNew ? 'New invoice' : 'Service / proforma invoice'}</button>}
+        </div>
       </div>
       {list.error && <ErrorNote>{erpError(list.cause, 'Could not load invoices')}</ErrorNote>}
       {removing.error && <div style={{ marginBottom: 10 }}><ErrorNote>{removing.error}</ErrorNote></div>}
@@ -389,11 +414,11 @@ function InvoiceList({ kind, onOpen, onNew }: {
                 <tr key={i.id} onClick={() => onOpen(i.id)} className={`is-${st}`}>
                   <td>
                     <span className="ivl-no">{i.number ?? <em>Draft</em>}</span>
-                    <small className="ivl-kind">{INV_TITLE[i.kind] ?? i.kind}{i.order_number ? ` · ${i.order_number}` : ''}</small>
+                    {/* A tax invoice is the usual thing; only say so when it is not. */}
+                    {(i.kind === 'proforma' || i.kind === 'credit_note') && <small className="ivl-kind">{INV_TITLE[i.kind] ?? i.kind}</small>}
                   </td>
                   <td>
-                    <span className="ivl-cust" title={i.customer_name}>{i.customer_name}</span>
-                    {i.gstin && <small className="ivl-gst">{i.gstin}</small>}
+                    <span className="ivl-cust" title={i.gstin ? `${i.customer_name} · ${i.gstin}` : i.customer_name}>{i.customer_name}</span>
                   </td>
                   <td className="ivl-date-cell"><DateText iso={i.invoice_date} /></td>
                   <td className="ivl-date-cell">
@@ -412,31 +437,26 @@ function InvoiceList({ kind, onOpen, onNew }: {
                   <td className="ivl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="ivl-actions">
                       <button className="crm-icon-btn" title="Open" aria-label={`Open ${i.number ?? 'draft'}`} onClick={() => onOpen(i.id)}><IconSheet size={14} /></button>
-                      {canEdit && <button className="crm-icon-btn" title="Edit draft" aria-label="Edit draft" onClick={() => setEditing({ inv: i, copy: false })}><IconEdit size={14} /></button>}
-                      <button className="crm-icon-btn" title="Print" aria-label={`Print ${i.number ?? 'draft'}`} onClick={() => setPrintId(i.id)}><IconPrinter size={14} /></button>
-                      <button className="crm-icon-btn" title="Download PDF" aria-label={`Download ${i.number ?? 'draft'} as PDF`}
-                        disabled={downloading === i.id} onClick={() => void download(i)}>
-                        {downloading === i.id ? <span className="ivl-spin" aria-hidden /> : <IconDownload size={14} />}
-                      </button>
-
-                      {approver && i.status === 'posted' && i.kind !== 'credit_note' && i.kind !== 'proforma' && (() => {
-                        const paid = Number(i.amount_received) + Number(i.amount_credited) > 0
-                        return (
-                          <button className="crm-icon-btn crm-icon-danger" disabled={paid}
-                            title={paid ? 'Money is received against it — raise a credit note instead' : 'Cancel invoice'}
-                            aria-label={`Cancel ${i.number}`} onClick={() => setCancelling(i)}>
-                            <IconClose size={14} />
-                          </button>
-                        )
-                      })()}
+                      <button className="crm-icon-btn" disabled={!canEdit}
+                        title={canEdit ? 'Edit draft' : 'Only a draft can be edited'} aria-label="Edit draft"
+                        onClick={() => setEditing({ inv: i, copy: false })}><IconEdit size={14} /></button>
                       {(() => {
+                        const paid = Number(i.amount_received) + Number(i.amount_credited) > 0
+                        const cancellable = approver && i.status === 'posted' && i.kind !== 'credit_note' && i.kind !== 'proforma'
                         const block = deleteBlock(i, biller, admin)
                         return (
-                          <button className="crm-icon-btn crm-icon-danger" disabled={Boolean(block) || removing.busy}
-                            title={block ?? (i.status === 'draft' ? 'Delete draft' : 'Delete invoice')}
-                            aria-label={`Delete ${i.number ?? 'draft'}`} onClick={() => remove(i)}>
-                            <IconTrash size={14} />
-                          </button>
+                          <RowMenu label={`More actions for ${i.number ?? 'draft'}`} items={[
+                            { label: 'Print', icon: <IconPrinter size={14} />, onClick: () => setPrintId(i.id) },
+                            { label: downloading === i.id ? 'Downloading…' : 'Download PDF', icon: <IconDownload size={14} />,
+                              disabled: downloading === i.id, onClick: () => void download(i) },
+                            ...(cancellable ? [{
+                              label: 'Cancel invoice', icon: <IconClose size={14} />, danger: true, disabled: paid,
+                              hint: paid ? 'Money is received against it — raise a credit note instead' : undefined,
+                              onClick: () => setCancelling(i),
+                            }] : []),
+                            { label: i.status === 'draft' ? 'Delete draft' : 'Delete invoice', icon: <IconTrash size={14} />, danger: true,
+                              disabled: Boolean(block) || removing.busy, hint: block ?? undefined, onClick: () => remove(i) },
+                          ]} />
                         )
                       })()}
                     </div>
@@ -467,25 +487,49 @@ function ToBill({ onOpen }: { onOpen: (id: string) => void }) {
   const { can } = useAccess()
   const list = useQuery('erp-uninvoiced', () => erp.dispatches({ uninvoiced: true }))
   const { busy, error, run } = useRun()
+  const [q, setQ] = useState('')
+  const all = list.data ?? []
+  const needle = q.trim().toLowerCase()
+  const rows = all.filter((d) => !needle || [d.number, d.order_number, d.customer_name].some((v) => v && v.toLowerCase().includes(needle)))
+  const oldest = all.reduce<string | null>((o, d) => (!o || d.dispatch_date < o ? d.dispatch_date : o), null)
   return (
-    <section className="card">
-      {error && <ErrorNote>{error}</ErrorNote>}
-      {!list.data ? <Loading /> : list.data.length === 0 ? (
-        <EmptyState icon={<IconCard size={22} />} title="Nothing left to bill" body="Every dispatch is invoiced." />
-      ) : (
-        <div className="table-wrap"><table>
-          <thead><tr><th>Dispatch</th><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th className="crm-num">Value</th><th /></tr></thead>
-          <tbody>{list.data.map((d) => (
-            <tr key={d.id}>
-              <td className="crm-strong">{d.number}</td><td>{d.order_number}</td><td>{d.customer_name}</td>
-              <td><DateText iso={d.dispatch_date} /></td><td><ErpState value={d.status} /></td><td className="crm-num"><Money value={d.value} /></td>
-              <td>{can('can_manage_billing') && <button className="btn btn-sm btn-primary" disabled={busy}
-                onClick={() => void run(async () => { const inv = await erp.invoiceFromDispatch(d.id); list.reload(); onOpen(inv.id) })}>Invoice</button>}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>
+    <>
+      {list.data && (
+        <div className="ivl-kpis bil-kpis-3">
+          <div className="ivl-kpi is-static is-warn"><span>Still to bill</span><b>{rupees(all.reduce((n, d) => n + Number(d.value || 0), 0))}</b><small>{all.length} dispatches</small></div>
+          <div className="ivl-kpi is-static"><span>Customers</span><b>{new Set(all.map((d) => d.customer_name)).size}</b><small>waiting for an invoice</small></div>
+          <div className="ivl-kpi is-static is-idle"><span>Oldest dispatch</span><b>{oldest ? <DateText iso={oldest} /> : '—'}</b><small>not billed yet</small></div>
+        </div>
       )}
-    </section>
+      <div className="crm-bar ivl-bar">
+        <div className="crm-search"><IconSearch size={15} />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search dispatch, order, customer…" /></div>
+        <div className="ivl-tools">{list.data && <span className="ivl-count">{rows.length} of {all.length}</span>}</div>
+      </div>
+      {list.error && <ErrorNote>{erpError(list.cause, 'Could not load the dispatches')}</ErrorNote>}
+      {error && <div style={{ marginBottom: 10 }}><ErrorNote>{error}</ErrorNote></div>}
+      <section className="card ivl-card">
+        {list.error ? null : !list.data ? <Loading /> : all.length === 0 ? (
+          <EmptyState icon={<IconCard size={22} />} title="Nothing left to bill" body="Every dispatch is invoiced." />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search." />
+        ) : (
+          <div className="table-wrap"><table className="ivl is-plain">
+            <thead><tr><th>Dispatch</th><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th className="crm-num">Value</th><th className="ivl-c-act" /></tr></thead>
+            <tbody>{rows.map((d) => (
+              <tr key={d.id}>
+                <td><span className="ivl-no">{d.number}</span></td><td>{d.order_number}</td>
+                <td><span className="ivl-cust" title={d.customer_name ?? undefined}>{d.customer_name}</span></td>
+                <td className="ivl-date-cell"><DateText iso={d.dispatch_date} /></td><td><ErpState value={d.status} /></td>
+                <td className="crm-num ivl-amt">{rupees(d.value)}</td>
+                <td className="ivl-c-act">{can('can_manage_billing') && <button className="btn btn-sm btn-primary" disabled={busy}
+                  onClick={() => void run(async () => { const inv = await erp.invoiceFromDispatch(d.id); list.reload(); onOpen(inv.id) })}>Invoice</button>}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </section>
+    </>
   )
 }
 
@@ -2277,50 +2321,169 @@ function CreditNoteForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () =>
   )
 }
 
-function Receipts() {
+function Receipts({ onOpen }: { onOpen: (id: string) => void }) {
   const list = useQuery('erp-receipts', () => erp.invoices({ kind: 'invoice' }))
-  const rows = (list.data ?? []).flatMap((i) => i.receipts.map((r) => ({ ...r, invoice: i.number, customer: i.customer_name })))
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState('')
+  const [mode, setMode] = useState('')
+  const all = (list.data ?? []).flatMap((i) => i.receipts.map((r) => ({ ...r, invoiceId: i.id, invoice: i.number, customer: i.customer_name })))
+  const needle = q.trim().toLowerCase()
+  const rows = all.filter((r) => (!status || r.status === status) && (!mode || r.mode === mode)
+    && (!needle || [r.number, r.invoice, r.customer, r.reference].some((v) => v && v.toLowerCase().includes(needle))))
+  const posted = all.filter((r) => r.status === 'posted')
+  const reversed = all.filter((r) => r.status === 'reversed')
+  const sum = (xs: typeof all, f: (r: (typeof all)[number]) => string) => xs.reduce((n, r) => n + Number(f(r) || 0), 0)
+  const modes = [...new Set(all.map((r) => r.mode))]
   return (
-    <section className="card">
-      {!list.data ? <Loading /> : rows.length === 0 ? <EmptyState icon={<IconCard size={22} />} title="No receipts yet" body="Record money received from an invoice." /> : (
-        <div className="table-wrap"><table>
-          <thead><tr><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Date</th><th>Mode</th><th className="crm-num">Amount</th><th className="crm-num">TDS</th><th>Status</th><th>Reversal</th></tr></thead>
-          <tbody>{rows.map((r) => (
-            <tr key={r.id} className={r.status === 'reversed' ? 'rcl-rev' : undefined}>
-              <td className="crm-strong">{r.number}{r.created_by_name ? <div className="crm-sub">by {r.created_by_name}</div> : null}</td>
-              <td>{r.invoice}</td><td>{r.customer}</td><td><DateText iso={r.received_on} /></td>
-              <td>{r.mode.toUpperCase()}{r.reference ? <div className="crm-sub">{r.reference}</div> : null}</td>
-              <td className="crm-num rcl-amt">{rupees(r.amount)}</td><td className="crm-num rcl-amt">{rupees(r.tds_amount)}</td><td><ErpState value={r.status} /></td>
-              <td className="rcl-why">{r.status === 'reversed' ? (
-                <>{r.reverse_reason ?? '—'}<div className="crm-sub">{r.reversed_at ? <DateText iso={r.reversed_at} /> : null}{r.reversed_by_name ? ` · ${r.reversed_by_name}` : ''}</div></>
-              ) : '—'}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>
+    <>
+      {list.data && (
+        <div className="ivl-kpis bil-kpis-3">
+          <button type="button" className="ivl-kpi is-good" onClick={() => setStatus('posted')}>
+            <span>Received</span><b>{rupees(sum(posted, (r) => r.amount))}</b><small>{posted.length} receipts</small>
+          </button>
+          <div className="ivl-kpi is-static"><span>TDS deducted</span><b>{rupees(sum(posted, (r) => r.tds_amount))}</b><small>on those receipts</small></div>
+          <button type="button" className="ivl-kpi is-bad" onClick={() => setStatus('reversed')}>
+            <span>Reversed</span><b>{rupees(sum(reversed, (r) => r.amount))}</b><small>{reversed.length} receipts</small>
+          </button>
+        </div>
       )}
-    </section>
+      <div className="crm-bar ivl-bar">
+        <div className="crm-search"><IconSearch size={15} />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search receipt, invoice, customer, reference…" /></div>
+        <div className="ivl-tools">
+          {(q || status || mode) && <button type="button" className="btn btn-sm ivl-clear" onClick={() => { setQ(''); setStatus(''); setMode('') }}>Clear</button>}
+          {list.data && <span className="ivl-count">{rows.length} of {all.length}</span>}
+          <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+            <option value="">All statuses</option><option value="posted">Posted</option><option value="reversed">Reversed</option>
+          </select>
+          <select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Payment mode">
+            <option value="">All modes</option>
+            {modes.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+          </select>
+        </div>
+      </div>
+      {list.error && <ErrorNote>{erpError(list.cause, 'Could not load the receipts')}</ErrorNote>}
+      <section className="card ivl-card">
+        {list.error ? null : !list.data ? <Loading /> : all.length === 0 ? (
+          <EmptyState icon={<IconCard size={22} />} title="No receipts yet" body="Record money received from an invoice." />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search or the filters." />
+        ) : (
+          <div className="table-wrap"><table className="ivl">
+            <thead><tr><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Date</th><th>Mode</th><th className="crm-num">Amount</th><th className="crm-num">TDS</th><th>Status</th><th>Reversal</th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.id} className={r.status === 'reversed' ? 'rcl-rev' : undefined} onClick={() => onOpen(r.invoiceId)} title="Open the invoice">
+                <td><span className="ivl-no">{r.number}</span>{r.created_by_name ? <small className="ivl-kind">by {r.created_by_name}</small> : null}</td>
+                <td className="ivl-date-cell">{r.invoice}</td>
+                <td><span className="ivl-cust" title={r.customer}>{r.customer}</span></td>
+                <td className="ivl-date-cell"><DateText iso={r.received_on} /></td>
+                <td>{r.mode.toUpperCase()}{r.reference ? <small className="ivl-kind">{r.reference}</small> : null}</td>
+                <td className="crm-num ivl-amt rcl-amt">{rupees(r.amount)}</td><td className="crm-num rcl-amt">{rupees(r.tds_amount)}</td>
+                <td><ErpState value={r.status} /></td>
+                <td className="rcl-why">{r.status === 'reversed' ? (
+                  <>{r.reverse_reason ?? '—'}<small className="ivl-kind">{r.reversed_at ? <DateText iso={r.reversed_at} /> : null}{r.reversed_by_name ? ` · ${r.reversed_by_name}` : ''}</small></>
+                ) : '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </section>
+    </>
   )
 }
 
 function AgeingTab() {
   const q = useQuery('erp-ageing', () => erp.ageing())
+  const [search, setSearch] = useState('')
+  if (q.error) return <ErrorNote>{erpError(q.cause, 'Could not load the ageing')}</ErrorNote>
   if (!q.data) return <Loading />
   const a = q.data
+  const needle = search.trim().toLowerCase()
+  const rows = a.rows.filter((r) => !needle || r.customer_name.toLowerCase().includes(needle))
+  const name = (b: string) => (b === 'current' ? 'Not due' : `${b} days`)
+  const share = (v: string) => (Number(a.total) > 0 ? `${Math.round((Number(v || 0) / Number(a.total)) * 100)}% of the total` : 'Nothing owed')
   return (
-    <section className="card">
-      {a.rows.length === 0 ? <EmptyState icon={<IconCard size={22} />} title="Nothing outstanding" body="Every posted invoice is settled." /> : (
-        <div className="table-wrap"><table>
-          <thead><tr><th>Customer</th><th className="crm-num">Invoices</th>{a.buckets.map((b) => <th key={b} className="crm-num">{b === 'current' ? 'Not due' : `${b} days`}</th>)}<th className="crm-num">Total</th></tr></thead>
-          <tbody>
-            {a.rows.map((r) => (
-              <tr key={r.customer_id}><td>{r.customer_name}</td><td className="crm-num">{qtyText(r.invoices)}</td>
-                {a.buckets.map((b) => <td key={b} className="crm-num" style={b !== 'current' && Number(r[b]) > 0 ? { color: 'var(--status-critical)' } : undefined}>{rupees(r[b] as string)}</td>)}
-                <td className="crm-num crm-strong">{rupees(r.total)}</td></tr>
-            ))}
-            <tr><td className="crm-strong">Total</td><td />{a.buckets.map((b) => <td key={b} className="crm-num crm-strong">{rupees(a.totals[b])}</td>)}<td className="crm-num crm-strong">{rupees(a.total)}</td></tr>
-          </tbody>
-        </table></div>
+    <>
+      <div className="ivl-kpis bil-kpis-age" style={{ gridTemplateColumns: `repeat(${a.buckets.length + 1}, minmax(0, 1fr))` }}>
+        <div className="ivl-kpi is-static"><span>Outstanding</span><b>{rupees(a.total)}</b><small>{a.rows.length} customers</small></div>
+        {a.buckets.map((b) => (
+          <div key={b} className={`ivl-kpi is-static ${b === 'current' ? 'is-good' : Number(a.totals[b]) > 0 ? 'is-bad' : 'is-idle'}`}>
+            <span>{name(b)}</span><b>{rupees(a.totals[b])}</b><small>{share(a.totals[b])}</small>
+          </div>
+        ))}
+      </div>
+      <div className="crm-bar ivl-bar">
+        <div className="crm-search"><IconSearch size={15} />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer…" /></div>
+        <div className="ivl-tools"><span className="ivl-count">{rows.length} of {a.rows.length}</span></div>
+      </div>
+      <section className="card ivl-card">
+        {a.rows.length === 0 ? <EmptyState icon={<IconCard size={22} />} title="Nothing outstanding" body="Every posted invoice is settled." />
+          : rows.length === 0 ? <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search." /> : (
+          <div className="table-wrap"><table className="ivl is-plain">
+            <thead><tr><th>Customer</th><th className="crm-num">Invoices</th>{a.buckets.map((b) => <th key={b} className="crm-num">{name(b)}</th>)}<th className="crm-num">Total</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.customer_id}><td><span className="ivl-cust" title={r.customer_name}>{r.customer_name}</span></td><td className="crm-num">{qtyText(r.invoices)}</td>
+                  {a.buckets.map((b) => <td key={b} className={`crm-num${Number(r[b]) <= 0 ? ' ivl-zero' : b !== 'current' ? ' bil-late' : ''}`}>{rupees(r[b] as string)}</td>)}
+                  <td className="crm-num ivl-amt">{rupees(r.total)}</td></tr>
+              ))}
+              {/* The whole book, so it stays put while searching a customer. */}
+              <tr className="bil-total"><td>All customers</td><td />{a.buckets.map((b) => <td key={b} className="crm-num">{rupees(a.totals[b])}</td>)}<td className="crm-num">{rupees(a.total)}</td></tr>
+            </tbody>
+          </table></div>
+        )}
+      </section>
+    </>
+  )
+}
+
+
+export type RowAction = { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean; hint?: string }
+
+/** The ⋯ button on a list row and the menu it opens. Placed with fixed
+ *  coordinates so a table that scrolls or clips cannot cut it off. */
+export function RowMenu({ label, items }: { label: string; items: RowAction[] }) {
+  const [at, setAt] = useState<{ top: number; right: number; up: boolean } | null>(null)
+  const btn = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!at) return
+    const close = () => setAt(null)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [at])
+  function toggle() {
+    if (at) { setAt(null); return }
+    const r = btn.current!.getBoundingClientRect()
+    const up = window.innerHeight - r.bottom < 220
+    setAt({ top: up ? r.top - 6 : r.bottom + 6, right: window.innerWidth - r.right, up })
+  }
+  return (
+    <>
+      <button ref={btn} className={`crm-icon-btn${at ? ' is-open' : ''}`} title="More" aria-label={label}
+        aria-haspopup="menu" aria-expanded={Boolean(at)} onClick={toggle}>
+        <span className="ivl-dots" aria-hidden>⋯</span>
+      </button>
+      {at && (
+        <div className={`ivl-menu${at.up ? ' is-up' : ''}`} role="menu" style={{ top: at.top, right: at.right }}
+          onMouseDown={(e) => e.stopPropagation()}>
+          {items.map((it) => (
+            <button key={it.label} role="menuitem" className={it.danger ? 'is-danger' : ''} disabled={it.disabled}
+              title={it.hint} onClick={() => { setAt(null); it.onClick() }}>
+              {it.icon}<span>{it.label}</span>
+            </button>
+          ))}
+        </div>
       )}
-    </section>
+    </>
   )
 }

@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { useAuth } from '../../lib/auth'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { IconCard, IconCheck, IconClose, IconDownload, IconEdit, IconPlus, IconSearch, IconSheet, IconTrash } from '../../components/Icons'
+import { IconCard, IconCheck, IconClose, IconDownload, IconEdit, IconMail, IconPlus, IconPrinter, IconSearch, IconSheet, IconTrash } from '../../components/Icons'
 import { CONDITIONS, erp, erpError, qtyText, rupees, type Item, type PurchaseOrder } from './api'
 import {
   DateText, DecideBar, Dialog, ErpPage, ErpState, Field,
@@ -21,10 +21,15 @@ import { crm, todayISO } from '../crm/api'
 import { amountInWords } from './InvoicePrint'
 import { downloadCsv, downloadXlsx } from '../../lib/sheet'
 import { CrmPage } from '../crm/parts'
+import { RowMenu } from './ErpBilling'
+import PurchaseOrderPrint, { downloadPurchaseOrderPdf, purchaseOrderPdfBase64 } from './PurchaseOrderPrint'
+import '../../styles/salebill.css'
+import '../../styles/so-form.css'
 
 
 type PoView = '' | 'pending' | 'open' | 'overdue' | 'attention'
 const OPEN_STATES = ['approved', 'acknowledged', 'partially_received']
+const SENDABLE = [...OPEN_STATES, 'received', 'closed']
 const PO_STATUS: [string, string][] = [
   ['draft', 'Draft'], ['submitted', 'Pending approval'], ['rejected', 'Rejected'], ['approved', 'Approved'],
   ['acknowledged', 'Acknowledged'], ['partially_received', 'Partly received'], ['received', 'Received'],
@@ -54,6 +59,10 @@ export default function ErpPurchaseOrders() {
   const [editing, setEditing] = useState<PurchaseOrder | 'new' | null>(null)
   const [exporting, setExporting] = useState(false)
   const submitting = useRun(() => list.reload())
+  const [printing, setPrinting] = useState<PurchaseOrder | null>(null)
+  const [sending, setSending] = useState<PurchaseOrder | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   useEffect(() => { if (params.get('open')) { setOpenId(params.get('open')); setParams({}, { replace: true }) } }, [params, setParams])
   // Opening Purchase orders starts a new PO, as Invoices does; somebody who
   // cannot raise one, or who came to open a specific PO, sees the list.
@@ -63,11 +72,14 @@ export default function ErpPurchaseOrders() {
   const shown = view ?? (loaded && buyer ? 'new' : 'list')
 
   if (!loaded) return <CrmPage><Loading /></CrmPage>
-  if (shown === 'new' && buyer) {
+  if ((shown === 'new' || editing) && buyer) {
+    const draft = editing && editing !== 'new' ? editing : null
     return (
       <CrmPage>
-        <PoForm key={fresh} po={null} inline onClose={() => setFresh((n) => n + 1)} onShowAll={() => setView('list')}
-          onSaved={(saved) => { setView('list'); list.reload(); setOpenId(saved.id) }} />
+        <PoForm key={draft?.id ?? `new-${fresh}`} po={draft}
+          onClose={() => { if (editing) { setEditing(null); setView('list') } else setFresh((n) => n + 1) }}
+          onShowAll={() => { setEditing(null); setView('list') }}
+          onSaved={(saved) => { setEditing(null); setView('list'); list.reload(); setOpenId(saved.id) }} />
       </CrmPage>
     )
   }
@@ -152,6 +164,8 @@ export default function ErpPurchaseOrders() {
         {buyer && <button type="button" className="btn btn-primary" onClick={() => { setFresh((n) => n + 1); setView('new') }}><IconPlus size={15} /> New PO</button>}
       </div>
       {list.error && <ErrorNote>{erpError(list.cause, 'Could not load purchase orders')}</ErrorNote>}
+      {notice && <div className="notice notice-ok" role="status" style={{ marginBottom: 10 }}>{notice}</div>}
+      {pdfError && <div style={{ marginBottom: 10 }}><ErrorNote>{pdfError}</ErrorNote></div>}
       {submitting.error && <div style={{ marginBottom: 10 }}><ErrorNote>{submitting.error}</ErrorNote></div>}
 
       <section className="card itl-card">
@@ -202,6 +216,16 @@ export default function ErpPurchaseOrders() {
                         <button className="crm-icon-btn pol-send" title="Submit for approval" aria-label={`Submit ${po.number}`} disabled={submitting.busy}
                           onClick={() => void submitting.run(() => erp.submitPurchaseOrder(po.id), 'Could not submit')}><IconCheck size={14} /></button>
                       </>}
+                      <RowMenu label={`More actions for ${po.number}`} items={[
+                        { label: 'Print', icon: <IconPrinter size={14} />, onClick: () => setPrinting(po) },
+                        { label: 'Download PDF', icon: <IconDownload size={14} />, onClick: () => {
+                          setPdfError(null)
+                          downloadPurchaseOrderPdf(po).catch(() => setPdfError(`${po.number} could not be downloaded. Open Print and use Save as PDF instead.`))
+                        } },
+                        { label: 'Send to vendor', icon: <IconMail size={14} />, disabled: !buyer || !SENDABLE.includes(po.status),
+                          hint: !buyer ? 'You cannot send orders' : SENDABLE.includes(po.status) ? undefined : 'Only an approved order is sent to the vendor',
+                          onClick: () => setSending(po) },
+                      ]} />
                     </div>
                   </td>
                 </tr>
@@ -210,9 +234,9 @@ export default function ErpPurchaseOrders() {
           </table></div>
         )}
       </section>
-      {editing && <PoForm po={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
-        onSaved={(po) => { setEditing(null); list.reload(); setOpenId(po.id) }} />}
       {openId && <PoDrawer id={openId} onClose={() => setOpenId(null)} onEdit={(po) => { setOpenId(null); setEditing(po) }} onChanged={() => list.reload()} />}
+      {printing && <PurchaseOrderPrint po={printing} onClose={() => setPrinting(null)} />}
+      {sending && <SendToVendor po={sending} onClose={() => setSending(null)} onSent={(to) => { setNotice(`${sending.number} was sent to ${to}.`); setSending(null) }} />}
     </ErpPage>
   )
 }
@@ -228,12 +252,14 @@ export interface PoLine {
   discount_percent: string
   gst_percent: string
   requisition_line_id: string | null
+  /** When this line is wanted, if not the order's expected date. */
+  expected_date?: string
 }
 export const blankPoLine = (): PoLine => ({
   key: Math.random().toString(36).slice(2), item_id: '', description: '', hsn_sac: '', uom: 'Nos',
   quantity: '1', rate: '', discount_percent: '', gst_percent: '18', requisition_line_id: null,
 })
-const PO_UNITS = ['Nos', 'Pcs', 'Box', 'Set', 'Roll', 'Mtr', 'Kg', 'Ltr', 'Pair', 'Lot', 'Hrs', 'Job']
+export const PO_UNITS = ['Nos', 'Pcs', 'Box', 'Set', 'Roll', 'Mtr', 'Kg', 'Ltr', 'Pair', 'Lot', 'Hrs', 'Job']
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 /** Quantity × rate, less the line's discount, then GST — rounded per line as
@@ -249,8 +275,10 @@ export function priceLine(l: PoLine) {
 /** The order's lines: pick from the Item Master (searchable) and the
  *  description, HSN/SAC, unit, purchase rate and GST fill themselves in;
  *  anything can still be typed over, or a line written by hand. */
-export function PoItems({ lines, onChange, items, company, sell }: {
+export function PoItems({ lines, onChange, items, company, sell, minDate }: {
   lines: PoLine[]; onChange: (lines: PoLine[]) => void; items: Item[]; company: string
+  /** The order's date: no line is wanted before it. */
+  minDate?: string
   /** A sales document: sale price and sales GST, sellable items only. */
   sell?: boolean
 }) {
@@ -291,7 +319,7 @@ export function PoItems({ lines, onChange, items, company, sell }: {
             <tr>
               <th className="poi-c-no">#</th><th className="poi-c-item">Item &amp; description</th><th className="poi-c-hsn">HSN/SAC</th>
               <th className="poi-c-uom">Unit</th><th className="poi-c-num">Qty</th><th className="poi-c-rate">Rate (₹)</th>
-              <th className="poi-c-disc">Disc %</th><th className="poi-c-gst">GST %</th><th className="poi-c-amt">Amount (₹)</th><th className="poi-c-x" />
+              <th className="poi-c-disc">Disc %</th><th className="poi-c-gst">GST %</th><th className="poi-c-date">Delivery</th><th className="poi-c-amt">Amount (₹)</th><th className="poi-c-x" />
             </tr>
           </thead>
           <tbody>
@@ -323,6 +351,8 @@ export function PoItems({ lines, onChange, items, company, sell }: {
                       {['0', '5', '12', '18', '28'].map((g) => <option key={g} value={g}>{g}%</option>)}
                     </select>
                   </td>
+                  <td className="poi-c-date"><input type="date" value={l.expected_date ?? ''} min={minDate} className={l.expected_date && minDate && l.expected_date < minDate ? 'is-bad' : ''}
+                    title="When this line is wanted, if not the order's expected date" onChange={(e) => set(l.key, { expected_date: e.target.value })} aria-label={`Delivery date, line ${n + 1}`} /></td>
                   <td className="poi-c-amt">
                     <b>{p.amount > 0 ? rupees(p.amount) : '—'}</b>
                     {p.amount > 0 && <small>{p.disc > 0 ? `−${rupees(p.disc)} disc · ` : ''}GST {rupees(p.gst)}</small>}
@@ -452,12 +482,14 @@ const PAY_TERMS = ['Advance', '15 days', '30 days', '45 days', '60 days', 'Again
 
 /** A purchase order: who from, where to, when, on what terms — then the lines.
  *  The number is the series' next one, taken when the draft is first saved. */
-function PoForm({ po, onClose, onSaved, inline, onShowAll }: {
-  po: PurchaseOrder | null; onClose: () => void; onSaved: (po: PurchaseOrder) => void
-  /** On the Purchase Orders page itself, not in a dialog. */
-  inline?: boolean
-  onShowAll?: () => void
+/** The purchase order, as a full page in the family of the sale bill and the
+ *  sales order: a top bar, boxed header fields, the items, then panels. Editing
+ *  a draft opens the same page. */
+function PoForm({ po, onClose, onSaved, onShowAll }: {
+  po: PurchaseOrder | null; onClose: () => void; onSaved: (po: PurchaseOrder) => void; onShowAll: () => void
 }) {
+  const { user } = useAuth()
+  const defaults = useQuery('crm-quotation-defaults', () => crm.quotationDefaults())
   const items = useItems()
   // Every vendor, so a draft or suspended one shows why it cannot be picked.
   const vendors = useQuery('erp-vendors-all', () => erp.vendors({}))
@@ -470,13 +502,30 @@ function PoForm({ po, onClose, onSaved, inline, onShowAll }: {
     payment_terms: po?.payment_terms ?? '', delivery_terms: po?.delivery_terms ?? '', freight: po?.freight ?? '0',
     other_charges: po?.other_charges && Number(po.other_charges) ? String(Number(po.other_charges)) : '',
     ld_percent_per_week: po?.ld_percent_per_week ?? '0', ld_cap_percent: po?.ld_cap_percent ?? '0', notes: po?.notes ?? '',
+    terms: po?.terms ?? '',
+    vendor_quote_ref: po?.vendor_quote_ref ?? '', vendor_quote_date: po?.vendor_quote_date ?? '',
+    contact_person: po ? po.contact_person ?? '' : user?.full_name ?? '', billing_address: po?.billing_address ?? '',
   })
   const [lines, setLines] = useState<PoLine[]>(po ? po.lines.map((l) => ({
     key: l.id, item_id: l.item_id ?? '', description: l.description, hsn_sac: l.hsn_sac ?? '', uom: l.uom ?? 'Nos',
     quantity: String(Number(l.quantity)), rate: String(Number(l.rate ?? 0)), discount_percent: String(Number(l.discount_percent ?? 0)),
     gst_percent: String(Number(l.gst_percent ?? 18)),
     requisition_line_id: (l as { requisition_line_id?: string | null }).requisition_line_id ?? null,
+    expected_date: l.expected_date ?? '',
   })) : [blankPoLine()])
+  const [pending, setPending] = useState<{ name: string; data: string }[]>([])
+  const [kept, setKept] = useState(po?.attachments ?? [])
+  const [fileError, setFileError] = useState<string | null>(null)
+  /* Set once the server has the order. A later step failing (an attachment, the
+     submit) must not make the next click create a second order. */
+  const [stored, setStored] = useState<PurchaseOrder | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const orderId = po?.id ?? stored?.id
+  // A new order is billed to the company's own address, until somebody changes it.
+  const companyAddress = defaults.data?.setup?.address ?? ''
+  useEffect(() => {
+    if (!po && companyAddress) setHead((h) => (h.billing_address ? h : { ...h, billing_address: companyAddress }))
+  }, [po, companyAddress])
   const next = useQuery(`erp-po-next-${head.order_date}`, () => erp.nextPoNumber(head.order_date || todayISO()))
   const { busy, error, run } = useRun()
   const set = (k: keyof typeof head, v: string) => setHead((h) => ({ ...h, [k]: v }))
@@ -501,90 +550,156 @@ function PoForm({ po, onClose, onSaved, inline, onShowAll }: {
   const chargesBad = Number(head.freight || 0) < 0 || Number(head.other_charges || 0) < 0
     || Number.isNaN(Number(head.freight || 0)) || Number.isNaN(Number(head.other_charges || 0))
   const datesBad = Boolean(head.expected_date && head.order_date && head.expected_date < head.order_date)
+  const quoteBad = Boolean(head.vendor_quote_date && head.vendor_quote_date > todayISO())
   const filled = lines.filter((l) => l.item_id || l.description.trim())
+  const lineDatesBad = filled.some((l) => l.expected_date && head.order_date && l.expected_date < head.order_date)
   const linesBad = filled.some((l) => !(Number(l.quantity) > 0) || Number(l.rate) < 0 || !(Number(l.discount_percent || 0) <= 100))
-  const ready = Boolean(head.vendor_id) && !datesBad && !busy && filled.length > 0 && !linesBad && !chargesBad
+  const problem = !head.vendor_id ? 'Choose a vendor to begin'
+    : !filled.length ? 'Add at least one item'
+      : linesBad ? 'Each item needs a quantity above 0, a rate and a discount of 100 % or less'
+        : datesBad || lineDatesBad ? 'A delivery date cannot be before the PO date'
+          : quoteBad ? 'The vendor quotation cannot be dated in the future'
+          : chargesBad ? 'Check the freight and other charges'
+            : null
+  const ready = !problem && !busy
 
   function save(submit = false) {
     void run(async () => {
-      const saved = await erp.savePurchaseOrder({
-      ...head, company: head.company || null, other_charges: head.other_charges || '0', warehouse_id: head.warehouse_id || null, expected_date: head.expected_date || null,
+      let saved = await erp.savePurchaseOrder({
+      ...head, vendor_quote_date: head.vendor_quote_date || null, company: head.company || null, other_charges: head.other_charges || '0', warehouse_id: head.warehouse_id || null, expected_date: head.expected_date || null,
       order_date: head.order_date || null, payment_terms: head.payment_terms || null, delivery_terms: head.delivery_terms || null,
       requisition_id: po?.requisition_id ?? null, sales_order_id: po?.sales_order_id ?? null,
       lines: filled.map((l) => ({
         item_id: l.item_id || null, description: l.description.trim() || null, hsn_sac: l.hsn_sac.trim() || null,
         uom: l.uom.trim() || null, quantity: l.quantity, rate: l.rate || '0', discount_percent: l.discount_percent || '0',
-        gst_percent: l.gst_percent, requisition_line_id: l.requisition_line_id,
+        gst_percent: l.gst_percent, requisition_line_id: l.requisition_line_id, expected_date: l.expected_date || null,
       })),
-      }, po?.id)
-      onSaved(submit ? await erp.submitPurchaseOrder(saved.id) : saved)
-    })
+      }, orderId)
+      setStored(saved)
+      // One at a time, so a file that fails leaves the ones before it uploaded.
+      for (const f of pending) {
+        saved = await erp.addPoAttachment(saved.id, f)
+        setStored(saved)
+        setKept(saved.attachments ?? [])
+        setPending((p) => p.filter((x) => x !== f))
+      }
+      if (submit) {
+        const draft = saved
+        try {
+          saved = await erp.submitPurchaseOrder(draft.id)
+        } catch (err) {
+          // The order is safe as a draft; say so, and why it did not go further.
+          throw new Error(`${draft.number} is saved as a draft but was not submitted: ${erpError(err, 'the submit failed')}`)
+        }
+      }
+      onSaved(saved)
+    }, submit ? 'The order could not be submitted' : 'The order could not be saved')
   }
 
-  const body = (
-      <div className={`pof${inline ? ' pof-inline' : ''}`}>
-        <section className="pof-sec">
-          <header className="pof-sec-head"><h3>Basic details</h3><span>Fields marked <b className="pof-req">*</b> are required</span></header>
-          <div className="pof-grid">
-            <div className="pof-f">
-              <span className="pof-l">PO number</span>
-              <div className="pof-ro"><b>{po?.number ?? next.data?.number ?? '…'}</b><small>{po ? 'Assigned' : 'Auto-generated'}</small></div>
-            </div>
-            <label className="pof-f">
-              <span className="pof-l">PO date <b className="pof-req">*</b></span>
-              <input type="date" value={head.order_date} max={todayISO()} onChange={(e) => set('order_date', e.target.value)} />
-            </label>
-            <div className="pof-f">
-              <span className="pof-l">Company</span>
-              <SearchSelect label="Company" value={head.company} onChange={(v) => set('company', v)} options={companyOptions} clearable
-                placeholder="Any company / make" empty="No companies — add them in Master › ERP Master › Company Master" />
-            </div>
-            <div className="pof-f pof-span2">
-              <span className="pof-l">Vendor <b className="pof-req">*</b></span>
-              <SearchSelect label="Vendor" value={head.vendor_id} onChange={(v) => set('vendor_id', v)} options={vendorOptions}
-                placeholder={vendors.data && activeVendors === 0 ? 'No active vendor yet' : 'Search vendor by name, code or GSTIN'}
-                empty="No vendor matches"
-                footer={vendors.data && activeVendors < vendors.data.length
-                  ? <>Only <b>active</b> vendors can be ordered from. Approve others in Master › ERP Master › Vendors.</> : undefined} />
-            </div>
-            <div className="pof-f">
-              <span className="pof-l">Deliver to (warehouse)</span>
-              <SearchSelect label="Deliver to" value={head.warehouse_id} onChange={(v) => set('warehouse_id', v)} options={whOptions} clearable
-                placeholder="Choose a warehouse" empty="No active warehouse" />
-            </div>
-            <label className="pof-f">
-              <span className="pof-l">Expected delivery date</span>
-              <input type="date" value={head.expected_date} min={head.order_date || undefined} className={datesBad ? 'is-bad' : ''}
-                onChange={(e) => set('expected_date', e.target.value)} />
-              {datesBad && <small className="pof-err">Cannot be before the PO date</small>}
-            </label>
-            <label className="pof-f">
-              <span className="pof-l">Payment terms</span>
-              <input list="pof-pay" value={head.payment_terms} onChange={(e) => set('payment_terms', e.target.value)}
-                placeholder={vendor ? `${vendor.payment_terms_days} days (vendor default)` : 'From the vendor master if blank'} />
-            </label>
-            <label className="pof-f">
-              <span className="pof-l">Delivery terms</span>
-              <input list="pof-del" value={head.delivery_terms} onChange={(e) => set('delivery_terms', e.target.value)} placeholder="e.g. Door delivery" />
-            </label>
-            <datalist id="pof-pay">{PAY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
-            <datalist id="pof-del">{DELIVERY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
-          </div>
-          {vendor && (
-            <div className="pof-vendor">
-              <span><em>GSTIN</em>{vendor.gstin ?? '—'}</span>
-              <span><em>State</em>{vendor.state ? titleCase(vendor.state) : '—'}</span>
-              <span><em>Contact</em>{vendor.contact_name ?? '—'}{vendor.phone ? ` · ${vendor.phone}` : ''}</span>
-              <span><em>Credit</em>{vendor.payment_terms_days} days{vendor.advance_allowed ? ' · advance OK' : ''}</span>
-              {vendor.is_msme && <span className="pof-msme">MSME — pay within 45 days</span>}
-              {wh && <span><em>Ship to</em>{wh.name}{wh.state ? `, ${titleCase(wh.state)}` : ''}</span>}
-            </div>
-          )}
-        </section>
+  function addFiles(files: FileList | null) {
+    setFileError(null)
+    for (const f of Array.from(files ?? [])) {
+      if (!/^image\/(?!svg)|^application\/pdf$/.test(f.type)) { setFileError('Attach pictures or PDFs only.'); continue }
+      if (f.size > 5 * 1024 * 1024) { setFileError(`${f.name} is larger than 5 MB.`); continue }
+      const reader = new FileReader()
+      reader.onload = () => setPending((p) => [...p, { name: f.name, data: String(reader.result) }])
+      reader.readAsDataURL(f)
+    }
+  }
 
-        <section className="pof-sec">
+  const total = lines.reduce((t, l) => t + priceLine(l).amount, 0) + Number(head.freight || 0) + Number(head.other_charges || 0)
+  return (
+    <div className="sb sb-page sof">
+      <div className="sb-bar">
+        <span className="sb-bar-icon" aria-hidden><IconSheet size={17} /></span>
+        <div className="sb-bar-text">
+          <h2 className="sb-title">{po ? `Edit ${po.number}` : stored ? `Edit ${stored.number}` : 'New purchase order'}</h2>
+          <span className="sb-bar-status">
+            <i className={po || stored ? 'is-draft' : 'is-new'} />
+            {po ? `Draft · revision ${po.revision}` : stored ? 'Draft' : 'New · not saved yet'}
+            {filled.length > 0 && <> · {filled.length} line{filled.length === 1 ? '' : 's'}</>}
+          </span>
+        </div>
+        <span className="sb-bar-gap" />
+        <small className="sof-req-note">Fields marked <b className="pof-req">*</b> are required</small>
+        <button type="button" className="btn btn-sm" onClick={onShowAll}><IconSheet size={14} /> All purchase orders</button>
+      </div>
+
+      <div className="sb-head sof-head">
+        <div className="sb-f c5 sof-cust">
+          <span>Vendor <b className="pof-req">*</b></span>
+          <SearchSelect label="Vendor" value={head.vendor_id} onChange={(v) => set('vendor_id', v)} options={vendorOptions}
+            placeholder={vendors.data && activeVendors === 0 ? 'No active vendor yet' : 'Search vendor by name, code or GSTIN'}
+            empty="No vendor matches"
+            footer={vendors.data && activeVendors < vendors.data.length
+              ? <>Only <b>active</b> vendors can be ordered from. Approve others in Master › ERP Master › Vendors.</> : undefined} />
+        </div>
+        <div className="sb-f sb-f-billno c2">
+          <span>PO no.</span>
+          <em title={po || stored ? 'Assigned' : 'Auto-generated'}>{po?.number ?? stored?.number ?? next.data?.number ?? '…'}</em>
+        </div>
+        <label className="sb-f c2">
+          <span>Date <b className="pof-req">*</b></span>
+          <input type="date" value={head.order_date} max={todayISO()} aria-label="PO date" onChange={(e) => set('order_date', e.target.value)} />
+        </label>
+        <div className="sb-f c3 sof-cust sof-pop-end">
+          <span>Company</span>
+          <SearchSelect label="Company" value={head.company} onChange={(v) => set('company', v)} options={companyOptions} clearable
+            placeholder="Any company / make" empty="No companies — add them in Master › ERP Master › Company Master" />
+        </div>
+
+        <div className="sb-f c3 sof-cust">
+          <span>Deliver to</span>
+          <SearchSelect label="Deliver to" value={head.warehouse_id} onChange={(v) => set('warehouse_id', v)} options={whOptions} clearable
+            placeholder="Choose a warehouse" empty="No active warehouse" />
+        </div>
+        <label className={`sb-f c3${datesBad ? ' is-bad' : ''}`} title={datesBad ? 'Cannot be before the PO date' : undefined}>
+          <span>Expected</span>
+          <input type="date" value={head.expected_date} min={head.order_date || undefined} aria-label="Expected delivery date"
+            onChange={(e) => set('expected_date', e.target.value)} />
+        </label>
+        <label className="sb-f c3">
+          <span>Payment</span>
+          <input list="pof-pay" value={head.payment_terms} aria-label="Payment terms" onChange={(e) => set('payment_terms', e.target.value)}
+            placeholder={vendor ? `${vendor.payment_terms_days} days (vendor default)` : 'From the vendor if blank'} />
+        </label>
+        <label className="sb-f c3">
+          <span>Delivery</span>
+          <input list="pof-del" value={head.delivery_terms} aria-label="Delivery terms" onChange={(e) => set('delivery_terms', e.target.value)} placeholder="e.g. Door delivery" />
+        </label>
+        <label className="sb-f c4">
+          <span>Vendor quote</span>
+          <input value={head.vendor_quote_ref} maxLength={80} aria-label="Vendor quotation no." onChange={(e) => set('vendor_quote_ref', e.target.value)} placeholder="The vendor's quotation no." />
+        </label>
+        <label className={`sb-f c3${quoteBad ? ' is-bad' : ''}`} title={quoteBad ? 'Cannot be in the future' : undefined}>
+          <span>Quote date</span>
+          <input type="date" value={head.vendor_quote_date} max={todayISO()} aria-label="Vendor quotation date" onChange={(e) => set('vendor_quote_date', e.target.value)} />
+        </label>
+        <label className="sb-f c5">
+          <span>Contact</span>
+          <input value={head.contact_person} maxLength={120} aria-label="Contact person" onChange={(e) => set('contact_person', e.target.value)} placeholder="Who the vendor should talk to" />
+        </label>
+        <datalist id="pof-pay">{PAY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
+        <datalist id="pof-del">{DELIVERY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
+      </div>
+
+      {vendor && (
+        <div className="pof-vendor">
+          <span><em>GSTIN</em>{vendor.gstin ?? '—'}</span>
+          <span><em>State</em>{vendor.state ? titleCase(vendor.state) : '—'}</span>
+          <span><em>Contact</em>{vendor.contact_name ?? '—'}{vendor.phone ? ` · ${vendor.phone}` : ''}</span>
+          <span><em>Credit</em>{vendor.payment_terms_days} days{vendor.advance_allowed ? ' · advance OK' : ''}</span>
+          {vendor.is_msme && <span className="pof-msme">MSME — pay within 45 days</span>}
+          {wh && <span><em>Ship to</em>{wh.name}{wh.state ? `, ${titleCase(wh.state)}` : ''}</span>}
+        </div>
+      )}
+
+      <PoItems lines={lines} onChange={setLines} items={itemList} company={head.company} minDate={head.order_date} />
+
+      <div className="sof-panels is-po">
+        <section className="pof-sec sof-p-a">
           <header className="pof-sec-head"><h3>Charges &amp; late-delivery penalty</h3></header>
-          <div className="pof-grid pof-grid-4">
+          <div className="sof-fields">
             <label className="pof-f"><span className="pof-l">Freight charges</span>
               <span className="pof-affix"><i>₹</i><input placeholder="0" inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
             <label className="pof-f"><span className="pof-l">Other charges</span>
@@ -598,50 +713,119 @@ function PoForm({ po, onClose, onSaved, inline, onShowAll }: {
           <p className="pof-note">Liquidated damages are charged on the value received late, up to the cap.</p>
         </section>
 
-        <PoItems lines={lines} onChange={setLines} items={itemList} company={head.company} />
-        <PoSummary lines={lines} freight={Number(head.freight || 0)} other={Number(head.other_charges || 0)}
-          companyState={next.data?.company_state ?? null} vendorState={vendor?.state ?? null} vendorChosen={Boolean(vendor)} />
-      </div>
-  )
-
-  if (inline) {
-    const total = lines.reduce((t, l) => t + priceLine(l).amount, 0) + Number(head.freight || 0) + Number(head.other_charges || 0)
-    return (
-      <div className="pof-page">
-        <header className="pof-page-head">
-          <div>
-            <h2>New purchase order</h2>
-            <p>Save it as a draft, or submit it straight to an approver.</p>
+        <section className="pof-sec sof-p-b">
+          <header className="pof-sec-head"><h3>Notes &amp; terms</h3></header>
+          <div className="sof-stack">
+            <label className="pof-f"><span className="pof-l">Notes to vendor</span>
+              <textarea rows={2} value={head.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything the vendor should know" /></label>
+            <label className="pof-f"><span className="pof-l">Terms &amp; conditions</span>
+              <textarea rows={2} value={head.terms} onChange={(e) => set('terms', e.target.value)} placeholder="Left blank, the terms from ERP settings are used" /></label>
           </div>
-          {onShowAll && <button type="button" className="btn" onClick={onShowAll}><IconSheet size={15} /> All purchase orders</button>}
-        </header>
-        {body}
-        <footer className="pof-page-foot">
-          <span className="pof-page-total">PO total <b>{rupees(r2(total))}</b></span>
-          {error && <span className="error">{error}</span>}
-          <span className="crm-push" />
-          <button className="btn" disabled={busy} onClick={onClose}>Clear</button>
-          <button className="btn" disabled={!ready} onClick={() => save()}>{busy ? 'Saving…' : 'Save as draft'}</button>
-          <button className="btn btn-primary" disabled={!ready} onClick={() => save(true)} title="Saves the order and sends it to an approver">
-            <IconCheck size={14} /> Submit for approval
-          </button>
-        </footer>
-      </div>
-    )
-  }
+        </section>
 
+        <section className="pof-sec sof-p-notes">
+          <header className="pof-sec-head"><h3>Bill to</h3></header>
+          <label className="pof-f"><span className="pof-l">Billing address</span>
+            <textarea rows={3} maxLength={1000} value={head.billing_address} onChange={(e) => set('billing_address', e.target.value)}
+              placeholder="Where the vendor sends the invoice. Left blank, the address in Quotation setup is used." /></label>
+          <small className="sdt-note">The goods ship to the warehouse chosen above.</small>
+        </section>
+
+        <section className="pof-sec sof-p-files">
+          <header className="pof-sec-head"><h3>Attachments</h3><span>{kept.length + pending.length} / 10</span></header>
+          <button type="button" className="sof-drop" onClick={() => fileInput.current?.click()}
+            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files) }}>
+            <IconPlus size={16} />
+            <b>Drag &amp; drop files here, or click to upload</b>
+            <small>Vendor quotation, drawings, specs — PDF, JPG, PNG · max 5 MB each</small>
+          </button>
+          <input ref={fileInput} type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf" hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+          {fileError && <small className="pof-err">{fileError}</small>}
+          {(kept.length > 0 || pending.length > 0) && (
+            <ul className="sof-files">
+              {kept.map((f) => (
+                <li key={f.id}>
+                  <span className="sof-file-ic"><IconSheet size={13} /></span>
+                  <button type="button" className="sof-file-name" onClick={() => orderId && void erp.poAttachment(orderId, f.id).then((x) => openData(x.data))}>{f.name}</button>
+                  <small>{f.by_name}</small>
+                  <button type="button" className="crm-icon-btn crm-icon-danger" aria-label={`Remove ${f.name}`}
+                    onClick={() => orderId && void run(async () => { const out = await erp.removePoAttachment(orderId, f.id); setKept(out.attachments ?? []) })}><IconTrash size={12} /></button>
+                </li>
+              ))}
+              {pending.map((f, i) => (
+                <li key={`p${i}`} className="is-new">
+                  <span className="sof-file-ic"><IconSheet size={13} /></span>
+                  <button type="button" className="sof-file-name" onClick={() => void openData(f.data)}>{f.name}</button>
+                  <small>Uploads on save</small>
+                  <button type="button" className="crm-icon-btn crm-icon-danger" aria-label={`Remove ${f.name}`}
+                    onClick={() => setPending((p) => p.filter((_, j) => j !== i))}><IconTrash size={12} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <div className="sof-p-sum">
+          <PoSummary lines={lines} freight={Number(head.freight || 0)} other={Number(head.other_charges || 0)}
+            companyState={next.data?.company_state ?? null} vendorState={vendor?.state ?? null} vendorChosen={Boolean(vendor)} />
+        </div>
+      </div>
+
+      <footer className="pof-page-foot">
+        <span className="pof-page-total">PO total <b>{rupees(r2(total))}</b></span>
+        {error && <span className="error">{error}</span>}
+        {problem ? <span className="sof-hint">{problem}</span> : <span className="sof-ok">Ready to save</span>}
+        <span className="crm-push" />
+        <button className="btn" disabled={busy} onClick={onClose}>{po ? 'Cancel' : 'Clear'}</button>
+        <button className="btn" disabled={!ready} onClick={() => save()}>{busy ? 'Saving…' : 'Save as draft'}</button>
+        <button className="btn btn-primary" disabled={!ready} onClick={() => save(true)} title="Saves the order and sends it to an approver">
+          <IconCheck size={14} /> Submit for approval
+        </button>
+      </footer>
+    </div>
+  )
+}
+
+/** Open an attachment in a new tab — a blob URL; browsers refuse data: there. */
+async function openData(data: string) {
+  const blob = await (await fetch(data)).blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener')
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/** Mail the order's PDF to the vendor. The address starts as the one on the
+ *  vendor master, and can be changed for this mail. */
+function SendToVendor({ po, onClose, onSent }: { po: PurchaseOrder; onClose: () => void; onSent: (to: string) => void }) {
+  const { user } = useAuth()
+  const [to, setTo] = useState(po.vendor_email ?? '')
+  const [subject, setSubject] = useState(`Purchase order ${po.number}`)
+  const [message, setMessage] = useState([
+    `Dear ${po.vendor_contact || po.vendor_name},`, '',
+    `Please find attached our purchase order ${po.number}${po.vendor_quote_ref ? ` against your quotation ${po.vendor_quote_ref}` : ''}, for ${rupees(po.grand_total)}.`,
+    'Please acknowledge it and confirm the delivery date.',
+    '', 'Regards,', po.contact_person || user?.full_name || '',
+  ].join('\n'))
+  const { busy, error, run } = useRun()
+  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) && subject.trim() && message.trim()
   return (
-    <Dialog wide title={po ? `Edit ${po.number}` : 'New purchase order'}
-      subtitle={po ? `Draft · revision ${po.revision}` : 'Save it as a draft, or submit it straight to an approver.'} onClose={onClose} footer={
-        <>
-          {error && <span className="error">{error}</span>}
-          <span className="crm-push" />
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn" disabled={!ready} onClick={() => save()}>{busy ? 'Saving…' : 'Save as draft'}</button>
-          <button className="btn btn-primary" disabled={!ready} onClick={() => save(true)}><IconCheck size={14} /> Submit for approval</button>
-        </>
-      }>
-      {body}
+    <Dialog title={`Send ${po.number} to the vendor`} subtitle="The order goes as a PDF attachment." onClose={onClose} footer={
+      <>
+        {error && <span className="error">{error}</span>}
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !ok} onClick={() => void run(async () => {
+          const pdf = await purchaseOrderPdfBase64(po)
+          await erp.sendPurchaseOrder(po.id, { to: to.trim(), subject: subject.trim(), message, pdf })
+          onSent(to.trim())
+        }, 'The order could not be sent')}><IconMail size={14} /> {busy ? 'Sending…' : 'Send'}</button>
+      </>
+    }>
+      <div className="crm-form" style={{ padding: '0 20px 12px', gridTemplateColumns: '1fr' }}>
+        <Field label="To"><input type="email" value={to} autoFocus placeholder="vendor@company.com" onChange={(e) => setTo(e.target.value)} /></Field>
+        {!po.vendor_email && <small className="crm-muted">No email on this vendor. Type one here, or add it in Master › ERP Master › Vendors.</small>}
+        <Field label="Subject"><input value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} /></Field>
+        <Field label="Message"><textarea rows={7} value={message} maxLength={4000} onChange={(e) => setMessage(e.target.value)} /></Field>
+      </div>
     </Dialog>
   )
 }
@@ -725,7 +909,10 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
   const [prompt, setPrompt] = useState<null | { title: string; action: 'amend' | 'cancel' | 'short-close' | 'waive-ld' }>(null)
   const [receiving, setReceiving] = useState(false)
   const [committed, setCommitted] = useState('')
-  const nested = Boolean(prompt || receiving)
+  const [printing, setPrinting] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+  const nested = Boolean(prompt || receiving || printing || sending)
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !nested) onClose() }
     window.addEventListener('keydown', esc)
@@ -753,6 +940,11 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
     )
     tools = (
       <>
+        <button className="btn btn-sm" onClick={() => setPrinting(true)}><IconPrinter size={14} /> Print</button>
+        {buyer && (
+          <button className="btn btn-sm" disabled={!SENDABLE.includes(po.status)} title={SENDABLE.includes(po.status) ? undefined : 'Only an approved order is sent to the vendor'}
+            onClick={() => setSending(true)}><IconMail size={14} /> Send to vendor</button>
+        )}
         {po.status === 'draft' && buyer && <>
           <button className="btn btn-sm" onClick={() => onEdit(po)}><IconEdit size={14} /> Edit</button>
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void run(() => erp.submitPurchaseOrder(po.id))}><IconCheck size={14} /> Submit for approval</button>
@@ -780,6 +972,7 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
     body = (
       <div className="pov-body">
         <main className="pov-main">
+          {sentTo && <Note tone="ok">{po.number} was sent to {sentTo}.</Note>}
           {po.closed_reason && <Note>{po.closed_reason}</Note>}
           {po.is_overdue && <Note>Delivery is overdue.</Note>}
           <section className="pov-card"><PoApproval po={po} canRevise={buyer} busy={busy} onRevise={() => setPrompt({ title: 'Revise & resubmit', action: 'amend' })} /></section>
@@ -788,7 +981,7 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
             <header className="pov-card-head"><h3>Items</h3><span>{po.lines.length} {po.lines.length === 1 ? 'line' : 'lines'}{share > 0 ? ` · ${share}% received` : ''}</span></header>
             <div className="table-wrap"><table className="pov-lines">
               <thead><tr>
-                <th>#</th><th>Item</th><th>HSN/SAC</th><th className="crm-num">Qty</th><th className="crm-num">Received</th>
+                <th>#</th><th>Item</th><th>HSN/SAC</th><th>Delivery</th><th className="crm-num">Qty</th><th className="crm-num">Received</th>
                 <th className="crm-num">Rate</th><th className="crm-num">Disc</th><th className="crm-num">GST</th><th className="crm-num">Amount</th>
               </tr></thead>
               <tbody>{po.lines.map((l, n) => {
@@ -799,6 +992,7 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
                     <td className="pov-n">{n + 1}</td>
                     <td><b className="pov-item">{l.description}</b>{l.item_code && <small className="pov-code">{l.item_code}</small>}</td>
                     <td className="pov-mono">{l.hsn_sac ?? '—'}</td>
+                    <td><DateText iso={l.expected_date} /></td>
                     <td className="crm-num">{qtyText(l.quantity)} <small>{l.uom}</small></td>
                     <td className={`crm-num${full ? ' pov-full' : ''}`}>{got > 0 ? qtyText(l.received_qty) : '—'}</td>
                     <td className="crm-num">{rupees(l.rate ?? '0')}</td>
@@ -841,6 +1035,9 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
               <span className="vdl-avatar" aria-hidden>{poInitials(po.vendor_name ?? '?')}</span>
               <div><b>{po.vendor_name}</b><small>{po.vendor_code}</small></div>
             </div>
+            {(po.vendor_contact || po.vendor_phone || po.vendor_email) && (
+              <p className="pov-notes">{[po.vendor_contact, po.vendor_phone, po.vendor_email].filter(Boolean).join(' · ')}</p>
+            )}
             <span className={`pov-tax${inter ? ' is-inter' : ''}`}>{inter ? 'Inter-state · IGST' : 'Intra-state · CGST + SGST'}</span>
           </section>
           <section className="pov-card">
@@ -852,6 +1049,8 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
               <dt>Deliver to</dt><dd>{po.warehouse_name ?? '—'}</dd>
               <dt>Payment terms</dt><dd>{po.payment_terms ?? '—'}</dd>
               <dt>Delivery terms</dt><dd>{po.delivery_terms ?? '—'}</dd>
+              <dt>Vendor quote</dt><dd>{po.vendor_quote_ref ?? '—'}{po.vendor_quote_date && <> · <DateText iso={po.vendor_quote_date} /></>}</dd>
+              <dt>Contact person</dt><dd>{po.contact_person ?? '—'}</dd>
               <dt>Raised by</dt><dd>{po.created_by_name ?? '—'}</dd>
             </dl>
           </section>
@@ -866,6 +1065,22 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
             </section>
           )}
           {po.notes && <section className="pov-card"><h3 className="pov-h3">Notes</h3><p className="pov-notes">{po.notes}</p></section>}
+          {po.terms && <section className="pov-card"><h3 className="pov-h3">Terms &amp; conditions</h3><p className="pov-notes">{po.terms}</p></section>}
+          {po.billing_address && <section className="pov-card"><h3 className="pov-h3">Bill to</h3><p className="pov-notes">{po.billing_address}</p></section>}
+          {(po.attachments ?? []).length > 0 && (
+            <section className="pov-card">
+              <h3 className="pov-h3">Attachments</h3>
+              <ul className="sof-files">
+                {(po.attachments ?? []).map((f) => (
+                  <li key={f.id}>
+                    <span className="sof-file-ic"><IconSheet size={13} /></span>
+                    <button type="button" className="sof-file-name" onClick={() => void erp.poAttachment(po.id, f.id).then((x) => openData(x.data))}>{f.name}</button>
+                    <small>{f.by_name}</small>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </aside>
       </div>
     )
@@ -882,6 +1097,8 @@ function PoDrawer({ id, onClose, onEdit, onChanged }: { id: string; onClose: () 
         {error && <div className="pov-error"><ErrorNote>{error}</ErrorNote></div>}
         {body}
       </div>
+      {po && printing && <PurchaseOrderPrint po={po} onClose={() => setPrinting(false)} />}
+      {po && sending && <SendToVendor po={po} onClose={() => setSending(false)} onSent={(to) => { setSentTo(to); setSending(false) }} />}
       {po && receiving && <ReceiveForm po={po} onClose={() => setReceiving(false)} onDone={() => { setReceiving(false); q.reload(); onChanged() }} />}
       {po && prompt && <ReasonDialog title={prompt.title} danger={prompt.action === 'cancel'} onClose={() => setPrompt(null)}
         onSubmit={async (reason) => { await erp.purchaseOrderReason(po.id, prompt.action, reason); q.reload(); onChanged() }} />}

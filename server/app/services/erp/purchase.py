@@ -60,6 +60,7 @@ from app.services.erp.common import (
     get_settings,
     is_interstate,
     kernel_decide,
+    mail_order_pdf,
     may,
     money,
     company_state,
@@ -512,7 +513,16 @@ def _po_out(db: Session, po: ErpPurchaseOrder) -> dict:
         **row_dict(po),
         "vendor_name": vendor.legal_name if vendor else None,
         "vendor_code": vendor.code if vendor else None,
+        "vendor_gstin": vendor.gstin if vendor else None,
+        "vendor_state": vendor.state if vendor else None,
+        "vendor_address": vendor.address if vendor else None,
+        "vendor_contact": vendor.contact_name if vendor else None,
+        "vendor_phone": vendor.phone if vendor else None,
+        "vendor_email": vendor.email if vendor else None,
         "warehouse_name": wh.name if wh else None,
+        "warehouse_address": wh.address if wh else None,
+        # The files themselves are fetched one at a time.
+        "attachments": [{k: v for k, v in a.items() if k != "data"} for a in (po.attachments or [])],
         "created_by_name": names.get(po.created_by),
         "reviewed_by_name": names.get(po.reviewed_by),
         "is_overdue": bool(due and due < today and PoStatus(po.status).is_receivable),
@@ -581,6 +591,11 @@ def _apply_po(db: Session, viewer: User, po: ErpPurchaseOrder, payload: S.Purcha
                   "ld_cap_percent", "notes"):
         setattr(po, field, getattr(payload, field))
     po.order_date = payload.order_date or date.today()
+    if payload.vendor_quote_date and payload.vendor_quote_date > date.today():
+        raise ErpError("future_quote", "The vendor's quotation cannot be dated in the future.")
+    po.vendor_quote_date = payload.vendor_quote_date
+    for field in ("vendor_quote_ref", "contact_person", "billing_address"):
+        setattr(po, field, (getattr(payload, field) or "").strip() or None)
     po.terms = payload.terms if payload.terms is not None else settings.po_terms
     po.payment_terms = payload.payment_terms or f"{vendor.payment_terms_days} days"
     po.freight = money(payload.freight)
@@ -600,13 +615,16 @@ def _apply_po(db: Session, viewer: User, po: ErpPurchaseOrder, payload: S.Purcha
             if qty(line.quantity) > req_line.quantity - req_line.ordered_qty:
                 raise ErpError(
                     "over_requisition",
-                    f"{req.number}: only {(req_line.quantity - req_line.ordered_qty).normalize()} "
+                    f"{req.number}: only {(req_line.quantity - req_line.ordered_qty).normalize():f} "
                     f"of “{req_line.description}” is left to order.",
                 )
+        if line.expected_date and line.expected_date < po.order_date:
+            raise ErpError("bad_dates", "A line's delivery date cannot be before the PO date.")
         gst = line.gst_percent if line.gst_percent is not None else (
             item.purchase_gst_percent if item else Decimal("18"))
         priced = price_line(line.quantity, line.rate, gst, line.discount_percent)
         po.lines.append(ErpPurchaseOrderLine(
+            expected_date=line.expected_date,
             org_id=viewer.org_id, item_id=item.id if item else None,
             requisition_line_id=line.requisition_line_id,
             description=line.description or item.name,
@@ -703,7 +721,7 @@ def po_from_quote(db: Session, viewer: User, rfq_id: uuid.UUID, request: Request
         sales_order_id=req.sales_order_id if req else None,
         expected_date=(date.today().fromordinal(date.today().toordinal() + quote.delivery_days)
                        if quote.delivery_days else None),
-        payment_terms=quote.payment_terms, freight=quote.freight, lines=lines,
+        payment_terms=quote.payment_terms, freight=quote.freight, lines=lines, vendor_quote_ref=quote.quote_ref,
     )
     result = save_purchase_order(db, viewer, payload, request=request)
     po = db.get(ErpPurchaseOrder, uuid.UUID(result["id"]))
@@ -711,6 +729,71 @@ def po_from_quote(db: Session, viewer: User, rfq_id: uuid.UUID, request: Request
     po.quote_id = quote.id
     db.commit()
     return get_purchase_order(db, viewer, po.id)
+
+
+#: Approved by somebody, and not called off: what a vendor may be sent.
+_SENDABLE = (PoStatus.APPROVED.value, PoStatus.ACKNOWLEDGED.value, PoStatus.PARTIALLY_RECEIVED.value,
+             PoStatus.RECEIVED.value, PoStatus.CLOSED.value)
+
+
+def send_to_vendor(db: Session, viewer: User, po_id: uuid.UUID, payload: S.SendOrderIn,
+                   request: Request | None = None) -> dict:
+    """Email the order's PDF. Only once approved: until then it commits nobody."""
+    require(viewer, "can_manage_procurement")
+    po = _get_po(db, viewer, po_id)
+    if po.status not in _SENDABLE:
+        raise ErpError("not_approved", "Only an approved order is sent to the vendor.", 409)
+    mail_order_pdf(po.org_id, po.number, payload.to, payload.subject, payload.message, payload.pdf)
+    record_audit(db, viewer, "purchase_order.sent", po, request=request, detail={"to": payload.to})
+    db.commit()
+    return get_purchase_order(db, viewer, po.id)
+
+
+def add_attachment(db: Session, viewer: User, po_id: uuid.UUID, payload: S.AttachmentIn,
+                   request: Request | None = None) -> dict:
+    """The vendor's quotation, a drawing, a spec. Kept while the order is live;
+    closed and cancelled orders are a record, and their files stay as they are."""
+    require(viewer, "can_manage_procurement")
+    po = _get_po(db, viewer, po_id)
+    _attachments_open(po)
+    files = list(po.attachments or [])
+    if len(files) >= 10:
+        raise ErpError("too_many", "An order holds up to 10 attachments.")
+    entry = {"id": uuid.uuid4().hex[:12], "name": payload.name.strip(), "type": payload.data.split(";", 1)[0].removeprefix("data:"),
+             "size": len(payload.data) * 3 // 4, "data": payload.data, "at": _now().isoformat(),
+             "by_name": viewer.full_name or viewer.email}
+    po.attachments = [*files, entry]
+    record_audit(db, viewer, "purchase_order.attachment_added", po, request=request, detail={"name": entry["name"]})
+    db.commit()
+    return get_purchase_order(db, viewer, po.id)
+
+
+def get_attachment(db: Session, viewer: User, po_id: uuid.UUID, att_id: str) -> dict:
+    po = _get_po(db, viewer, po_id)
+    found = next((a for a in po.attachments or [] if a.get("id") == att_id), None)
+    if found is None:
+        raise ErpError("not_found", "No such attachment.", 404)
+    return {"name": found["name"], "data": found["data"]}
+
+
+def remove_attachment(db: Session, viewer: User, po_id: uuid.UUID, att_id: str,
+                      request: Request | None = None) -> dict:
+    require(viewer, "can_manage_procurement")
+    po = _get_po(db, viewer, po_id)
+    _attachments_open(po)
+    files = list(po.attachments or [])
+    found = next((a for a in files if a.get("id") == att_id), None)
+    if found is None:
+        raise ErpError("not_found", "No such attachment.", 404)
+    po.attachments = [a for a in files if a.get("id") != att_id] or None
+    record_audit(db, viewer, "purchase_order.attachment_removed", po, request=request, detail={"name": found["name"]})
+    db.commit()
+    return get_purchase_order(db, viewer, po.id)
+
+
+def _attachments_open(po: ErpPurchaseOrder) -> None:
+    if po.status in (PoStatus.CANCELLED.value, PoStatus.CLOSED.value):
+        raise ErpError("closed", f"This order is {po.status}.", 409)
 
 
 def submit_purchase_order(db: Session, viewer: User, po_id: uuid.UUID, request: Request | None = None) -> dict:
@@ -943,8 +1026,8 @@ def post_receipt(db: Session, viewer: User, payload: S.GoodsReceiptIn, request: 
         if accepted > limit:
             raise ErpError(
                 "over_receipt",
-                f"“{po_line.description}”: {accepted.normalize()} accepted, but only "
-                f"{max(limit, ZERO).normalize()} is still due on the order.",
+                f"“{po_line.description}”: {accepted.normalize():f} accepted, but only "
+                f"{max(limit, ZERO).normalize():f} is still due on the order.",
             )
         item = stock.stocked_item(db, viewer.org_id, po_line.item_id)
         serials: list[str] = []

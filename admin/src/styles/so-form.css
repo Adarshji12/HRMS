@@ -1,0 +1,161 @@
+/* The sales order form, in the family of the sale bill (salebill.css): its top
+   bar and boxed header fields, then the items, then panels. Only the layout and
+   density live here; the fields are the order's own. */
+
+.sof.sb { overflow: visible; }
+
+/* ── Header strip ── */
+.sof-req-note { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.sof-prio button.is-on.is-high { background: var(--status-warn); }
+.sof-prio button.is-on.is-urgent { background: var(--status-critical); }
+
+.sb-head.sof-head { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+/* The sale bill pins its own field widths and order with !important. */
+.sof-head .sb-f.c2 { grid-column: span 2 !important; }
+.sof-head .sb-f.c3 { grid-column: span 3 !important; }
+.sof-head .sb-f.c4 { grid-column: span 4 !important; }
+.sof-head .sb-f.c6 { grid-column: span 6 !important; }
+.sof-head .sb-f { height: 36px; order: 0 !important; }
+.sof-head .sb-f > span:first-child { width: auto; white-space: nowrap; }
+.sof-head .sb-f.is-bad { border-color: var(--status-critical); }
+.sof-head .sb-f small { flex: none; font-size: 12px; color: var(--text-secondary); }
+.sof-head .sb-f input.sof-tiny { flex: none; width: 44px; text-align: right; border-bottom: 1px solid var(--border-strong, var(--border)) !important; }
+.sof-head .sb-f input::placeholder { font-weight: 400; color: var(--text-muted); }
+
+/* The customer search sits in its box, without a box of its own. */
+.sof-cust .ss { flex: 1; min-width: 0; }
+.sof-cust .ss-btn { min-height: 32px; padding: 0 2px; border: 0; background: transparent; box-shadow: none; font-size: 13.5px; font-weight: 600; }
+.sof-cust .ss-btn:focus, .sof-cust .ss-btn:focus-visible { box-shadow: none; outline: 0; }
+.sof-cust .ss-val { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sof-cust .ss-val small { display: none; }
+.sof-cust .ss-pop { min-width: 460px; }
+
+/* ── Customer facts, one quiet line ── */
+.sof .pof-vendor { margin: 0; padding: 5px 12px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface-1); font-size: 12px; }
+
+/* ── Items ── */
+.sof .poi.pof-sec { padding: 8px 12px 10px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.sof .poi .pof-sec-head { margin-bottom: 6px; }
+.sof .poi-table thead th { padding-top: 6px; padding-bottom: 6px; }
+.sof .poi-table td { padding-top: 4px; padding-bottom: 4px; }
+.sof .poi-table input, .sof .poi-table select { height: 30px !important; min-height: 0 !important; }
+.sof .poi .ss-btn { min-height: 30px; }
+.sof .poi-desc { margin-top: 3px; height: 26px !important; }
+.sof .poi-c-no { padding-top: 10px !important; }
+.sof .poi-c-amt b { padding-top: 5px; }
+.sof .poi-table td.poi-c-x { padding-left: 0; padding-right: 0; }
+.sof .poi-c-x .crm-icon-btn { width: 28px; height: 28px; margin-top: 1px; }
+.sof .poi-foot { margin-top: 6px; }
+
+/* ── Panels ── */
+.sof-panels {
+  display: grid; gap: 10px; padding: 10px 12px 12px; align-items: start;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-areas: 'a b sum' 'ms ms sum' 'notes files sum';
+  background: var(--surface-2);
+}
+.sof-p-a { grid-area: a; align-self: stretch; }
+.sof-p-b { grid-area: b; align-self: stretch; }
+.sof-p-sum { grid-area: sum; position: sticky; top: 8px; }
+.sof-p-ms { grid-area: ms; }
+.sof-p-notes { grid-area: notes; align-self: stretch; }
+.sof-p-files { grid-area: files; align-self: stretch; }
+.sof-p-notes > .pof-sec, .sof-p-files > .pof-sec { height: 100%; }
+
+.sof-panels .pof-sec { padding: 10px 12px; box-shadow: var(--shadow-sm); }
+.sof-panels .pof-sec-head { margin-bottom: 8px; }
+.sof-panels .pof-sec-head h3 { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
+.sof-panels .pof-l { font-size: 10.5px; }
+.sof-panels .pof-f { gap: 3px; }
+.sof-panels .pof-f > select, .sof-panels .pof-f > input, .sof-panels .pof-affix { height: 32px; }
+.sof-panels .pof-f > textarea { min-height: 46px; font-size: 13px; }
+.sof-panels .sdt-note { font-size: 11px; line-height: 1.3; }
+.sof-panels .sdt input.sdt-under, .sof-panels .sdt select.sdt-under, .sof-panels input.sdt-under, .sof-panels select.sdt-under { height: 32px; margin-top: 4px; }
+
+.sof-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.sof-stack { display: grid; gap: 8px; }
+.sof-panels .sof-seg { height: 32px; padding: 2px; }
+.sof-panels .sdt-addr { min-height: 44px; margin-top: 4px; padding: 6px 10px; font-size: 12.5px; }
+
+/* Summary: the figures first, the net amount as the sale bill shows it. */
+.sof-p-sum .pos-body { display: flex; flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+.sof-p-sum .pof-sec-head { flex-wrap: wrap; row-gap: 4px; }
+.sof-p-sum .pos-basis { height: auto; padding: 2px 9px; line-height: 1.35; }
+.sof-p-sum .pos-sum { font-size: 12.5px; border: 0; border-radius: 0; overflow: visible; }
+.sof-p-sum .pos-sum dt, .sof-p-sum .pos-sum dd { padding: 3px 0; border-top: 0; }
+.sof-p-sum .pos-sum .pos-strong { margin-top: 3px; padding-top: 5px; padding-bottom: 5px; border-top: 1px solid var(--border); background: transparent; }
+.sof-p-sum .pos-sum .pos-grand { margin-top: 6px; padding: 10px 14px; background: var(--brand); font-size: 18px; }
+.sof-p-sum .pos-sum dt.pos-grand { display: flex; align-items: center; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-radius: 10px 0 0 10px; }
+.sof-p-sum .pos-sum dd.pos-grand { border-radius: 0 10px 10px 0; }
+.sof-p-sum .pos-words { padding: 0; border: 0; background: transparent; }
+.sof-p-sum .pos-words span { display: none; }
+.sof-p-sum .pos-words p { margin: 0; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+
+.sof-panels .sof-ms-head span { font-size: 10px; }
+.sof-panels .sof-ms-row input, .sof-panels .sof-ms-row select { height: 30px; }
+.sof-panels .sof-add { height: 28px; }
+.sof-panels .sof-notes { grid-template-columns: 1fr; gap: 8px; }
+.sof-panels .sof-drop { padding: 10px; }
+.sof-panels .sof-drop b { font-size: 12.5px; }
+.sof-panels .sof-drop small { font-size: 11px; }
+
+/* ── The action bar stays in reach ── */
+.sof .pof-page-foot { border-radius: 0 0 12px 12px; padding-top: 8px; padding-bottom: 8px; z-index: 5; }
+
+@media (max-width: 1200px) {
+  .sof-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: 'a b' 'ms ms' 'notes files' 'sum sum'; }
+  .sof-p-sum { position: static; }
+}
+@media (max-width: 900px) {
+  .sb-head.sof-head { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .sof-head .sb-f.c2, .sof-head .sb-f.c3 { grid-column: span 3 !important; }
+  .sof-head .sb-f.c4, .sof-head .sb-f.c6 { grid-column: 1 / -1 !important; }
+  .sof-req-note { display: none; }
+}
+@media (max-width: 640px) {
+  .sof-head .sb-f.c2, .sof-head .sb-f.c3 { grid-column: 1 / -1 !important; }
+  .sof-panels { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'a' 'b' 'ms' 'notes' 'files' 'sum'; }
+  .sof-fields { grid-template-columns: minmax(0, 1fr); }
+  .sof .sb-bar, .sof .pof-page-foot { flex-wrap: wrap; }
+}
+
+/* ── Item details: the sale bill's sheet with the order's own columns ── */
+.sof-items .sb-grid { min-height: 0; overflow: visible; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1, #fff); }
+.sof-items .sb-grid table { min-width: 0; }
+.sof-items .sb-grid thead th { position: static; }
+.sof-items .sb-grid thead th:first-child { border-top-left-radius: 7px; }
+.sof-items .sb-grid thead th:last-child { border-top-right-radius: 7px; }
+.sof-items .sb-grid tbody tr:last-child td { border-bottom: 0; }
+.sof-items .sof-c-disc { width: 62px; }
+.sof-items th.sof-c-disc { text-align: right; }
+.sof-items .sb-grid td.sof-c-disc input { text-align: right; }
+.sof-items .sb-grid td input.is-bad { box-shadow: inset 0 0 0 2px var(--status-critical) !important; }
+/* The item search sits flush in its cell; its list opens over the rows below. */
+.sof-items .sb-c-item .ss-btn { min-height: 29px; height: 29px; padding: 0 6px 0 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.sof-items .sb-c-item .ss-btn:focus-visible, .sof-items .sb-c-item .ss.is-open .ss-btn { box-shadow: inset 0 0 0 2px var(--brand); }
+.sof-items .sb-c-item .ss-val { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sof-items .sb-c-item .ss-val b { font-weight: 500; }
+.sof-items .sb-c-item .ss-val small { display: none; }
+.sof-items .sb-c-item .ss-pop { z-index: 30; min-width: 380px; }
+@media (max-width: 1000px) {
+  .sof-items .sb-grid { overflow-x: auto; }
+  .sof-items .sb-grid table { min-width: 900px; }
+}
+
+/* The purchase order: the same page, with fewer panels. */
+.sof-head .sb-f.c5 { grid-column: span 5 !important; }
+.sof-cust .ss-ph { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sof-panels.is-po { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto auto 1fr; grid-template-areas: 'a a sum' 'b b sum' 'notes files sum'; }
+.sof-panels.is-po .sof-p-notes .pof-f { margin-bottom: 4px; }
+.sof .poi-c-date { width: 124px; }
+.sof .poi-table td.poi-c-date { padding-left: 3px; padding-right: 3px; }
+.sof .poi-c-date input { font-size: 12px; padding-left: 5px !important; padding-right: 2px !important; }
+.is-po .sof-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.is-po .sof-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.sof-pop-end .ss-pop { left: auto; right: 0; min-width: 320px; }
+.sof-panels .pof-note { margin-top: 6px; font-size: 11px; }
+@media (max-width: 1200px) { .sof-panels.is-po { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: 'a' 'b' 'notes' 'files' 'sum'; } }
+@media (max-width: 900px) { .sof-head .sb-f.c5 { grid-column: 1 / -1 !important; } }
+@media (max-width: 640px) { .is-po .sof-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .is-po .sof-stack { grid-template-columns: minmax(0, 1fr); } }
+/* The printed purchase order names three parties, not two. */
+.pop-parties { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }

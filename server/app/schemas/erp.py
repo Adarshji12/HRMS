@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 Condition = Literal["good", "quarantine", "defective", "doa", "rma", "demo", "scrap"]
 
@@ -254,6 +254,7 @@ class PoLineIn(_In):
     hsn_sac: str | None = None
     uom: str | None = None
     quantity: Decimal = Field(gt=0)
+    expected_date: date | None = None
     rate: Decimal = Field(ge=0)
     discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     gst_percent: Decimal | None = Field(default=None, ge=0, le=28)
@@ -266,6 +267,10 @@ class PurchaseOrderIn(_In):
     project_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
     company: str | None = Field(default=None, max_length=120)
+    vendor_quote_ref: str | None = Field(default=None, max_length=80)
+    vendor_quote_date: date | None = None
+    contact_person: str | None = Field(default=None, max_length=120)
+    billing_address: str | None = Field(default=None, max_length=1000)
     order_date: date | None = None
     expected_date: date | None = None
     payment_terms: str | None = Field(default=None, max_length=160)
@@ -315,10 +320,12 @@ class StockDocLineIn(_In):
     quantity: Decimal
     condition: Condition = "good"
     serials: list[str] = Field(default_factory=list)
+    #: Opening stock only: what one unit stands at. Blank takes the item's standard cost.
+    unit_cost: Decimal | None = None
 
 
 class StockDocIn(_In):
-    kind: Literal["issue", "return", "transfer", "adjustment"]
+    kind: Literal["issue", "return", "transfer", "adjustment", "opening"]
     from_warehouse_id: uuid.UUID | None = None
     to_warehouse_id: uuid.UUID | None = None
     doc_date: date | None = None
@@ -404,9 +411,24 @@ class AttachmentIn(_In):
     @field_validator("data")
     @classmethod
     def _kind(cls, value: str) -> str:
-        if not (value.startswith("data:image/") or value.startswith("data:application/pdf")):
+        # Not SVG: it is a picture that can carry a script, and it opens on our origin.
+        if value.startswith("data:image/svg") or not (value.startswith("data:image/") or value.startswith("data:application/pdf")):
             raise ValueError("Attach a picture or a PDF.")
         return value
+
+
+class SendOrderIn(_In):
+    to: EmailStr
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=4000)
+    #: The order's PDF as drawn by the console, base64 — about 10 MB at most.
+    pdf: str = Field(min_length=10, max_length=14_000_000)
+
+    @field_validator("subject")
+    @classmethod
+    def _one_line(cls, value: str) -> str:
+        # A line break in a mail header is an error at best, an injection at worst.
+        return " ".join(value.split())
 
 
 class FromQuotationIn(_In):
@@ -448,6 +470,20 @@ class DeliveryIn(_In):
     delivered_on: date | None = None
     received_by: str | None = None
     note: str | None = None
+
+
+class SalesReturnLineIn(_In):
+    dispatch_line_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    serials: list[str] = Field(default_factory=list)
+
+
+class SalesReturnIn(_In):
+    warehouse_id: uuid.UUID
+    return_date: date | None = None
+    condition: Literal["good", "quarantine", "defective"] = "good"
+    reason: str | None = None
+    lines: list[SalesReturnLineIn] = Field(min_length=1)
 
 
 # --------------------------------------------------------------------------- #

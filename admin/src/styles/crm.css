@@ -4022,7 +4022,6 @@ table.pol .pol-recv .pol-bar { width: 44px; }
 .sol-count { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
 .sol-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .sol-actions .btn { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; white-space: nowrap; }
-.sol-tabs { margin: -2px 0 12px; }
 table.sol tbody tr.sol-row { cursor: pointer; }
 table.sol tbody tr.sol-row:hover td { background: var(--surface-2); }
 .sol-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
@@ -4037,6 +4036,34 @@ table.sol .itl-name b, table.sol .itl-name small { max-width: 170px; }
 .sol-c-inv { width: 104px; }
 .sol-c-inv .pol-bar { width: 46px; }
 @media (max-width: 900px) { .sol-bar { flex-wrap: wrap; } .sol-actions { margin-left: 0; } }
+/* The list reads like a register: one line to a row, the details are in View. */
+.vdl-kpis + .crm-bar.sol-bar { margin-bottom: 8px; padding: 6px 8px; gap: 8px; }
+.sol-bar .crm-search { flex: 1 1 240px; max-width: 340px; }
+.sol-bar .crm-search input { height: 32px; }
+.sol-bar .btn, .sol-actions .btn { height: 32px; padding: 0 11px; font-size: 13px; }
+table.sol { font-size: 12.5px; }
+table.sol thead th { padding-top: 7px; padding-bottom: 7px; font-size: 10.5px; white-space: nowrap; }
+table.sol tbody td { padding-top: 5px !important; padding-bottom: 5px !important; }
+table.sol thead th, table.sol tbody td { padding-left: 9px !important; padding-right: 9px !important; }
+table.sol .pol-no { font-size: 12px; }
+table.sol .pol-amt { font-weight: 600; }
+table.sol .sol-c-cust b { display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+table.sol .crm-state { padding-top: 1px; padding-bottom: 1px; font-size: 11px; white-space: nowrap; }
+table.sol .crm-icon-btn { width: 26px; height: 26px; }
+/* The actions stay in reach when a narrower screen scrolls the table. */
+table.sol th.itl-c-act, table.sol td.itl-c-act { position: sticky; right: 0; background: var(--surface-1); }
+table.sol thead th.itl-c-act { background: var(--surface-2); }
+table.sol td.itl-c-act { padding-right: 4px !important; }
+table.sol .itl-actions { gap: 3px; flex-wrap: nowrap; }
+table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+.sol-pending { font-weight: 600; color: var(--status-warn); font-variant-numeric: tabular-nums; }
+.ivl-export-menu.sol-menu { position: fixed; right: auto; width: 200px; z-index: 30; }
+.ivl-export-menu.sol-menu button { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); }
+.ivl-export-menu.sol-menu button.is-danger { margin-top: 3px; padding-top: 9px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; color: var(--status-critical); }
+.ivl-export-menu.sol-menu button:disabled { opacity: .45; cursor: not-allowed; background: transparent; }
+.sol-bill { margin: 6px 0 0; }
+.sol-bill .sov-row-main { min-width: 0; }
+.sol-over { display: block; color: var(--status-critical); font-weight: 600; }
 
 /* Product / Plan Master forms */
 .itf .ppf-err { font-size: 12px; color: var(--status-critical); }
@@ -4262,3 +4289,114 @@ table.sol .itl-name b, table.sol .itl-name small { max-width: 170px; }
 .opp-decision { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 650; background: var(--surface-2); color: var(--text-secondary); }
 .opp-decision.is-approved { background: color-mix(in srgb, var(--status-good) 16%, transparent); color: var(--status-good); }
 .opp-decision.is-rejected { background: color-mix(in srgb, var(--status-critical) 16%, transparent); color: var(--status-critical); }
+
+/* Deal details on the lead form: checkboxes keep their size inside .lf. */
+.lf .crm-check { display: inline-flex; align-items: center; gap: 8px; width: auto; min-height: 0; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.lf .crm-check input[type='checkbox'] { flex: none; width: 16px !important; height: 16px !important; min-height: 0 !important; margin: 0; padding: 0 !important; }
+.lf .opp-file { min-height: 34px; }
+.lf .opp-file-name { max-width: 100%; }
+
+/* Add new lead: every section together in one popup, three columns wide. */
+.crm-dialog:has(.lf-single) { width: min(1060px, 100%); max-height: 94vh; }
+.lf.lf-single { gap: 10px; padding: 14px 20px 16px; }
+.lf-single .lf-section { padding: 12px 16px 14px; }
+.lf-single .lf-section-head { align-items: center; margin-bottom: 10px; }
+.lf-single .lf-section-icon { width: 30px; height: 30px; border-radius: 8px; }
+.lf-single .lf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; }
+.lf-single .lf-span2 { grid-column: span 2; }
+.lf-single .lf-field textarea { min-height: 40px; }
+@media (max-width: 860px) {
+  .lf-single .lf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .lf-single .lf-grid { grid-template-columns: 1fr; }
+  .lf-single .lf-span2 { grid-column: auto; }
+}
+.lf-foot-link { font-weight: 600; color: var(--status-warn); }
+
+/* The lead form inside the Lead Information card, in place of the dialog. */
+.lf-inline .lf { gap: 0; padding: 0; background: transparent; overflow: visible; scroll-margin-top: 72px; }
+.lf-inline .lf > .error { margin: 12px 20px 0; }
+.lf-inline .lf-section {
+  padding: 14px 20px 16px; background: transparent; border: 0; border-bottom: 1px solid var(--crm-hair);
+  border-radius: 0; box-shadow: none;
+}
+.lf-inline .lf-section-head { margin-bottom: 12px; }
+.lf-inline .lf-section-icon { width: 28px; height: 28px; border-radius: 8px; }
+.lf-inline .lf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+.lf-inline .lf-grid .lf-span2 { grid-column: 1 / -1; }
+.lf-inline .lf .lf-input input { padding-left: 38px; }
+.lf-inline .lf .lf-input:has(.lf-input-icon + .lf-input-prefix) input { padding-left: 68px; }
+.lf-inline .lf .lf-input.is-bad input {
+  border-color: var(--status-critical);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-critical) 14%, transparent);
+}
+.lf-inline-foot {
+  position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 10px 20px; background: var(--surface-1); border-radius: 0 0 14px 14px;
+  box-shadow: 0 -6px 14px -12px rgba(0, 40, 70, .35);
+}
+.lf-inline .lf-switch { position: relative; }
+.lf-inline .lf .lf-field .lf-switch input { width: 0; height: 0; min-height: 0; padding: 0; }
+.lf-inline-foot .lf-save { min-width: 132px; justify-content: center; }
+.crm .ldp-card-edit { overflow: visible; }
+@media (max-width: 900px) { .lf-inline .lf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .lf-inline .lf-grid { grid-template-columns: 1fr; } }
+
+/* Deal details, under the lead's own facts in the Lead Information card. */
+.crm .ldp-deal { border-top: 1px solid var(--crm-hair); }
+.crm .ldp-deal-head { display: flex; align-items: center; gap: 8px; padding: 12px 18px 0; color: var(--crm-accent-ink); }
+.crm .ldp-deal-head h3 { margin: 0; flex: 1; min-width: 0; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.crm .ldp-deal-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+.crm .ldp-deal-facts { padding-top: 14px; }
+.crm .ldp-stars { display: inline-flex; gap: 2px; color: var(--text-muted); }
+.crm .ldp-stars .is-on { color: #e0a100; fill: currentColor; }
+.crm .ldp-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.crm .ldp-tag { padding: 1px 9px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; font-weight: 600; }
+.crm .ldp-edit-note { margin: 0; padding: 10px 20px; font-size: 12.5px; color: var(--text-secondary); background: var(--crm-sunken); border-bottom: 1px solid var(--crm-hair); }
+.crm .ldp-link:disabled { opacity: .55; cursor: not-allowed; }
+
+/* Lead page: compact, so a laptop screen shows the lead and its actions together.
+   Scoped to .ldp; the customer profile shares some of these class names. */
+.crm.ldp .ldp-head { align-items: center; margin-bottom: 10px; }
+.crm.ldp .ldp-head-main { align-items: center; }
+.crm.ldp .ldp-back { margin-top: 0; }
+.crm.ldp .ldp-title { font-size: 19px; }
+.crm.ldp .ldp-head-actions .btn { height: 34px; }
+.crm.ldp .ldp-notice { margin-bottom: 10px; }
+.crm.ldp .ldp-grid { grid-template-columns: minmax(0, 1fr) minmax(280px, 320px); gap: 12px; }
+.crm.ldp .ldp-main, .crm.ldp .ldp-side { gap: 12px; }
+.crm.ldp .ldp-card-head { min-height: 44px; padding: 7px 14px; }
+.crm.ldp .ldp-card-title { font-size: 13.5px; }
+.crm.ldp .ldp-card-action .btn { height: 30px; }
+.crm.ldp .ldp-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 16px; padding: 12px 14px; }
+.crm.ldp .ldp-fact { gap: 1px; }
+.crm.ldp .ldp-fact.is-span2 { grid-column: span 2; }
+.crm.ldp .ldp-fact-label { font-size: 11.5px; }
+.crm.ldp .ldp-fact-value { font-size: 13px; }
+.crm.ldp .ldp-deal-head { padding: 10px 14px 0; }
+.crm.ldp .ldp-deal-head h3 { font-size: 13px; }
+.crm.ldp .ldp-deal-facts { padding-top: 8px; }
+.crm.ldp .ldp-form { gap: 8px; padding: 10px 14px 12px; }
+.crm.ldp .ldp-field { gap: 3px; }
+.crm.ldp .ldp-field > span { font-size: 11.5px; }
+.crm.ldp .ldp-field input, .crm.ldp .ldp-field select { height: 34px; }
+.crm.ldp .ldp-field textarea { min-height: 52px; }
+.crm.ldp .ldp-two { gap: 8px; }
+.crm.ldp .ldp-submit { height: 34px; }
+.crm.ldp .ldp-pad { gap: 10px; padding: 10px 14px 12px; }
+.crm.ldp .ldp-note { gap: 6px; }
+.crm.ldp .ldp-list { gap: 6px; padding: 8px 14px 10px; }
+.crm.ldp .ldp-list li { font-size: 13px; }
+.crm.ldp .ldp-empty { padding: 12px 14px; }
+.crm.ldp .ldp-empty-note { padding: 8px 14px 10px; }
+.crm.ldp .crm-event-body { font-size: 13px; line-height: 1.4; }
+@media (max-width: 1100px) { .crm.ldp .ldp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .crm.ldp .ldp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Internal notes sit beside "Mail sent" instead of on a row of their own. */
+.crm.ldp .ldp-deal-facts .ldp-fact.is-wide { grid-column: span 3; }
+.crm.ldp .ldp-fact-value .crm-assignee { gap: 6px; }
+.crm.ldp .ldp-fact-value .crm-assignee-dot { width: 20px; height: 20px; font-size: 9px; }
+@media (max-width: 760px) { .crm.ldp .ldp-deal-facts .ldp-fact.is-wide { grid-column: 1 / -1; } }

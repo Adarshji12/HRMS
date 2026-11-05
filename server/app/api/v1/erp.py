@@ -46,6 +46,11 @@ def approvals(viewer: CurrentUser, db: DbSession) -> list[dict]:
     return reports.pending_approvals(db, viewer)
 
 
+@router.get("/approvals/register")
+def approval_register(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    return reports.approval_register(db, viewer)
+
+
 @router.get("/settings")
 def read_settings(viewer: CurrentUser, db: DbSession) -> dict:
     row = get_settings(db, viewer.org_id)
@@ -348,6 +353,26 @@ def update_po(po_id: uuid.UUID, payload: S.PurchaseOrderIn, viewer: CurrentUser,
     return purchase.save_purchase_order(db, viewer, payload, po_id, request=request)
 
 
+@router.post("/purchase-orders/{po_id}/send")
+def send_purchase_order(po_id: uuid.UUID, payload: S.SendOrderIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return purchase.send_to_vendor(db, viewer, po_id, payload, request=request)
+
+
+@router.post("/purchase-orders/{po_id}/attachments", status_code=status.HTTP_201_CREATED)
+def po_add_attachment(po_id: uuid.UUID, payload: S.AttachmentIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return purchase.add_attachment(db, viewer, po_id, payload, request=request)
+
+
+@router.get("/purchase-orders/{po_id}/attachments/{att_id}")
+def po_get_attachment(po_id: uuid.UUID, att_id: str, viewer: CurrentUser, db: DbSession) -> dict:
+    return purchase.get_attachment(db, viewer, po_id, att_id)
+
+
+@router.delete("/purchase-orders/{po_id}/attachments/{att_id}")
+def po_remove_attachment(po_id: uuid.UUID, att_id: str, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return purchase.remove_attachment(db, viewer, po_id, att_id, request=request)
+
+
 @router.post("/purchase-orders/{po_id}/submit")
 def submit_po(po_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return purchase.submit_purchase_order(db, viewer, po_id, request=request)
@@ -457,6 +482,11 @@ def list_stock_docs(viewer: CurrentUser, db: DbSession, kind: str | None = None,
     return stock.list_docs(db, viewer, kind=kind, status=status)
 
 
+@router.get("/stock-docs/parties")
+def stock_doc_parties(viewer: CurrentUser, db: DbSession) -> dict:
+    return stock.doc_parties(db, viewer)
+
+
 @router.get("/stock-docs/{doc_id}")
 def get_stock_doc(doc_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
     _stock_reader(viewer)
@@ -508,8 +538,24 @@ def cancel_stock_doc(doc_id: uuid.UUID, payload: S.ReasonIn, viewer: CurrentUser
 
 @router.get("/sales-orders")
 def list_sales_orders(viewer: CurrentUser, db: DbSession, status: str | None = None,
-                      customer_id: uuid.UUID | None = None, q: str | None = None) -> list[dict]:
-    return sales.list_orders(db, viewer, status=status, customer_id=customer_id, q=q)
+                      customer_id: uuid.UUID | None = None, q: str | None = None,
+                      date_from: date | None = None, date_to: date | None = None) -> list[dict]:
+    return sales.list_orders(db, viewer, status=status, customer_id=customer_id, q=q,
+                             date_from=date_from, date_to=date_to)
+
+
+@router.get("/sales-orders/page")
+def page_sales_orders(
+    viewer: CurrentUser, db: DbSession, status: str | None = None, approval: str | None = None,
+    delivery: str | None = None, customer_id: uuid.UUID | None = None, q: str | None = None,
+    date_from: date | None = None, date_to: date | None = None,
+    sort: str = Query(default="created", pattern="^(created|number|order_date|customer|required_by|grand_total|invoiced|pending|approval|delivery)$"),
+    direction: str = Query(default="desc", pattern="^(asc|desc)$"),
+    page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=200),
+) -> dict:
+    return sales.page_orders(db, viewer, status=status, approval=approval, delivery=delivery, customer_id=customer_id,
+                             q=q, date_from=date_from, date_to=date_to, sort=sort, direction=direction,
+                             page=page, page_size=page_size)
 
 
 @router.get("/sales-orders/next-number")
@@ -552,6 +598,18 @@ def sales_order_from_quotation(payload: S.FromQuotationIn, viewer: CurrentUser, 
 def update_sales_order(so_id: uuid.UUID, payload: S.SalesOrderIn, viewer: CurrentUser, db: DbSession,
                        request: Request) -> dict:
     return sales.save_order(db, viewer, payload, so_id, request=request)
+
+
+@router.delete("/sales-orders/{so_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sales_order(so_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> Response:
+    sales.delete_order(db, viewer, so_id, request=request)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/sales-orders/{so_id}/send")
+def send_sales_order(so_id: uuid.UUID, payload: S.SendOrderIn, viewer: CurrentUser, db: DbSession,
+                     request: Request) -> dict:
+    return sales.send_to_customer(db, viewer, so_id, payload, request=request)
 
 
 @router.post("/sales-orders/{so_id}/submit")
@@ -630,6 +688,23 @@ def create_dispatch(payload: S.DispatchIn, viewer: CurrentUser, db: DbSession, r
 def deliver_dispatch(dispatch_id: uuid.UUID, payload: S.DeliveryIn, viewer: CurrentUser, db: DbSession,
                      request: Request) -> dict:
     return sales.deliver(db, viewer, dispatch_id, payload, request=request)
+
+
+@router.post("/dispatches/{dispatch_id}/returns", status_code=status.HTTP_201_CREATED)
+def record_return(dispatch_id: uuid.UUID, payload: S.SalesReturnIn, viewer: CurrentUser, db: DbSession,
+                  request: Request) -> dict:
+    return sales.record_return(db, viewer, dispatch_id, payload, request=request)
+
+
+@router.post("/sales-orders/{so_id}/amend")
+def amend_sales_order(so_id: uuid.UUID, payload: S.ReasonIn, viewer: CurrentUser, db: DbSession,
+                      request: Request) -> dict:
+    return sales.amend_order(db, viewer, so_id, payload.reason, request=request)
+
+
+@router.post("/sales-orders/{so_id}/duplicate", status_code=status.HTTP_201_CREATED)
+def duplicate_sales_order(so_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return sales.duplicate_order(db, viewer, so_id, request=request)
 
 
 @router.post("/dispatches/{dispatch_id}/cancel")

@@ -15,26 +15,21 @@ import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/masterhub.css'
+import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { dateTime, relativeTime } from '../../lib/format'
 import { ErrorNote, Loading } from '../../components/ui'
 import {
   IconArrowLeft,
   IconBriefcase,
-  IconBuilding,
   IconCalendar,
   IconCheck,
   IconClock,
   IconEdit,
-  IconGlobe,
-  IconMail,
-  IconPhone,
-  IconPin,
   IconPlus,
   IconSheet,
   IconStar,
   IconTrash,
-  IconUsers,
 } from '../../components/Icons'
 import { crm, crmError, localToISO, type FollowUp, type LeadDetail as Detail, type Opportunity } from './api'
 import { Assignee, MasterSelect, OwnerSelect, StagePill, WhatsAppButton } from './parts'
@@ -53,6 +48,7 @@ export default function LeadDetail() {
   // An opportunity being edited, 'new' for a blank form, null for none.
   const [opportunityOpen, setOpportunityOpen] = useState<Opportunity | 'new' | null>(null)
   const lead = detail.data
+  const deals = opportunities.data ?? []
 
   if (detail.error) {
     return (
@@ -77,7 +73,6 @@ export default function LeadDetail() {
               <span className="crm-lead-code ldp-code">#{lead.code}</span>
               <StagePill name={lead.status_name} colour={lead.status_colour} />
             </div>
-            <p className="ldp-sub">Full history and activity for this lead</p>
           </div>
         </div>
         <div className="ldp-head-actions">
@@ -86,7 +81,7 @@ export default function LeadDetail() {
             <IconSheet size={14} /> Add quotation
           </Link>
           {!lead.customer_id && (
-            <button className="btn btn-primary" onClick={() => setConverting(true)}>Convert to customer</button>
+            <button className="btn btn-primary" disabled={editing} title={editing ? busyEditing : undefined} onClick={() => setConverting(true)}>Convert to customer</button>
           )}
         </div>
       </header>
@@ -100,28 +95,51 @@ export default function LeadDetail() {
 
       <div className="ldp-grid">
         <div className="ldp-main">
+          {editing ? (
+            <section className="card ldp-card ldp-card-edit">
+              <CardHead dot title="Edit Lead Information" />
+              {deals.length > 1 && (
+                <p className="ldp-edit-note">
+                  This lead has {deals.length} deals. Edit them from Opportunities once this is saved.
+                </p>
+              )}
+              <LeadForm
+                inline
+                lead={lead}
+                opportunity={!opportunities.data || deals.length > 1 ? undefined : deals[0] ?? null}
+                onClose={() => setEditing(false)}
+                onSaved={() => {
+                  setEditing(false)
+                  detail.reload()
+                  opportunities.reload()
+                }}
+              />
+            </section>
+          ) : (
           <section className="card ldp-card">
             <CardHead dot title="Lead Information"
-                      action={<button className="btn btn-sm" onClick={() => setEditing(true)}><IconEdit size={14} /> Edit Lead</button>} />
+                      action={<button className="btn btn-sm" disabled={opportunities.loading} onClick={() => setEditing(true)}><IconEdit size={14} /> Edit Lead</button>} />
             <div className="ldp-facts">
-              <Fact icon={<IconPhone size={14} />} label="Mobile" value={lead.mobile} mono />
-              <Fact icon={<IconPhone size={14} />} label="WhatsApp" value={lead.whatsapp ?? lead.mobile} mono />
-              <Fact icon={<IconMail size={14} />} label="Email" value={lead.email} />
-              <Fact icon={<IconGlobe size={14} />} label="Lead Source" value={lead.source_name} />
-              <Fact icon={<IconUsers size={14} />} label="Lead Owner" value={lead.owner_name && <Assignee name={lead.owner_name} />} />
-              <Fact icon={<IconBuilding size={14} />} label="Company" value={lead.company} />
+              <Fact label="Mobile" value={lead.mobile} mono />
+              <Fact label="WhatsApp" value={lead.whatsapp ?? lead.mobile} mono />
+              <Fact label="Email" value={lead.email} />
+              <Fact label="Company" value={lead.company} />
+              <Fact label="Lead Source" value={lead.source_name} />
+              <Fact label="Lead Owner" value={lead.owner_name && <Assignee name={lead.owner_name} />} />
               <Fact label="Industry" value={lead.industry_name} />
               <Fact label="Product / Service" value={lead.product_name} />
-              <Fact label="Deal value" value={lead.value && `₹${Number(lead.value).toLocaleString('en-IN')}`} />
-              <Fact icon={<IconPin size={14} />} label="State" value={lead.state_name} />
+              <Fact label="Expected revenue" value={lead.value && `₹${Number(lead.value).toLocaleString('en-IN')}`} />
+              <Fact label="State" value={lead.state_name} />
               <Fact label="City" value={lead.city_name} />
               <Fact label="Pincode" value={lead.pincode} />
-              <Fact label="Address" value={lead.address} wide />
-              {lead.notes && <Fact label="Notes" value={lead.notes} wide />}
               <Fact label="Created" value={dateTime(lead.created_at)} />
               <Fact label="Last contacted" value={lead.last_contacted_at && relativeTime(lead.last_contacted_at)} />
+              <Fact label="Address" value={lead.address} span2 />
+              {lead.notes && <Fact label="Notes" value={lead.notes} wide />}
             </div>
+            <DealFacts deals={deals} />
           </section>
+          )}
 
           <FollowUpHistory rows={lead.follow_ups} onChanged={detail.reload} />
 
@@ -133,14 +151,14 @@ export default function LeadDetail() {
           <NextFollowUp leadId={lead.id} open={open} onSaved={detail.reload} />
           <section className="card ldp-card">
             <CardHead icon={<IconBriefcase size={16} />} title="Opportunities"
-                      action={<button className="btn btn-sm" type="button" onClick={() => setOpportunityOpen('new')}><IconPlus size={14} /> Add</button>} />
+                      action={<button className="btn btn-sm" type="button" disabled={editing} title={editing ? busyEditing : undefined} onClick={() => setOpportunityOpen('new')}><IconPlus size={14} /> Add</button>} />
             {(opportunities.data ?? []).length === 0 ? (
               <p className="crm-sub ldp-empty-note">No opportunity yet.</p>
             ) : (
               <ul className="ldp-list">
                 {(opportunities.data ?? []).map((o) => (
                   <li key={o.id}>
-                    <button type="button" className="ldp-link" onClick={() => setOpportunityOpen(o)}>{o.title}</button>
+                    <button type="button" className="ldp-link" disabled={editing} title={editing ? busyEditing : undefined} onClick={() => setOpportunityOpen(o)}>{o.title}</button>
                     <span className="crm-sub">
                       ₹{Number(o.expected_revenue).toLocaleString('en-IN')} · {o.probability}%
                     </span>
@@ -179,16 +197,6 @@ export default function LeadDetail() {
           }}
         />
       )}
-      {editing && (
-        <LeadForm
-          lead={lead}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false)
-            detail.reload()
-          }}
-        />
-      )}
       {converting && (
         <ConvertDialog
           lead={lead}
@@ -204,6 +212,10 @@ export default function LeadDetail() {
 }
 
 /* ------------------------------------------------------------- pieces --- */
+
+// The open form holds its own copy of the deal, so changing it elsewhere first
+// would be overwritten when the form saves.
+const busyEditing = 'Save or cancel the lead edit first'
 
 function BackLink() {
   return (
@@ -231,20 +243,90 @@ function CardHead({ title, icon, dot, action, badge }: {
   )
 }
 
-function Fact({ icon, label, value, wide, mono }: {
-  icon?: ReactNode
+function Fact({ label, value, wide, span2, mono }: {
   label: string
   value: ReactNode
   wide?: boolean
+  span2?: boolean
   mono?: boolean
 }) {
   return (
-    <div className={`ldp-fact${wide ? ' is-wide' : ''}`}>
-      <span className="ldp-fact-label">{icon}{label}</span>
+    <div className={`ldp-fact${wide ? ' is-wide' : ''}${span2 ? ' is-span2' : ''}`}>
+      <span className="ldp-fact-label">{label}</span>
       <span className={`ldp-fact-value${mono ? ' crm-mono' : ''}`}>
         {value || value === 0 ? value : <span className="crm-muted">—</span>}
       </span>
     </div>
+  )
+}
+
+// A date with no time: read as local, so it cannot slip a day.
+const closingDate = (iso: string) =>
+  new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+const rupees = (value: string | null) =>
+  value === null ? null : `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+
+const COSTSHEET_STATE: Record<Opportunity['costsheet_status'], string | null> = {
+  none: null,
+  pending: 'Pending approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+}
+
+function DealFile({ deal, which }: { deal: Opportunity; which: 'costsheet' | 'quotation' }) {
+  const file = deal[which]
+  if (!file) return null
+  return (
+    <button type="button" className="ldp-link"
+            onClick={() => void download(`/crm/opportunities/${deal.id}/files/${which}`, file.name)}>
+      {file.name}
+    </button>
+  )
+}
+
+/** The deal details saved with the lead. They live on the lead's opportunities,
+ *  so a lead with several shows one block each. With none, the same fields show
+ *  empty, as the lead's own blank fields do. */
+function DealFacts({ deals }: { deals: Opportunity[] }) {
+  const rows: Array<Opportunity | null> = deals.length > 0 ? deals : [null]
+  return (
+    <>
+      {rows.map((deal) => (
+        <div className="ldp-deal" key={deal?.id ?? 'none'}>
+          <div className="ldp-deal-head">
+            <IconBriefcase size={15} />
+            <h3>{deals.length > 1 && deal ? deal.title : 'Deal details'}</h3>
+          </div>
+          <div className="ldp-facts ldp-deal-facts">
+            <Fact label="Deal value" value={deal && rupees(deal.expected_revenue)} />
+            <Fact label="Probability" value={deal && `${deal.probability}%`} />
+            <Fact label="Expected closing" value={deal?.expected_closing && closingDate(deal.expected_closing)} />
+            <Fact label="Existing customer" value={deal?.customer_name} />
+            <Fact label="Currency" value={deal && 'INR (₹)'} />
+            <Fact label="Priority" value={deal && deal.priority > 0 && (
+              <span className="ldp-stars" role="img" aria-label={`${deal.priority} of 3 stars`}>
+                {[1, 2, 3].map((n) => <IconStar key={n} size={15} className={n <= deal.priority ? 'is-on' : undefined} />)}
+              </span>
+            )} />
+            <Fact label="Tags" value={deal && deal.tags.length > 0 && (
+              <span className="ldp-tags">{deal.tags.map((tag) => <span className="ldp-tag" key={tag}>{tag}</span>)}</span>
+            )} />
+            <Fact label="Requirement type" value={deal?.requirement_type_name} />
+            <Fact label="OEM" value={deal?.oem_name} />
+            <Fact label="Raw cost" value={deal && rupees(deal.raw_cost)} />
+            <Fact label="Sales team" value={deal?.team_name} />
+            <Fact label="Margin" value={deal && rupees(deal.margin)} />
+            <Fact label="Margin %" value={deal?.margin_percent != null && `${Number(deal.margin_percent).toFixed(2)}%`} />
+            <Fact label="Costsheet" value={deal?.costsheet && <DealFile deal={deal} which="costsheet" />} />
+            <Fact label="Costsheet approval" value={deal && COSTSHEET_STATE[deal.costsheet_status]} />
+            <Fact label="Quotation" value={deal?.quotation && <DealFile deal={deal} which="quotation" />} />
+            <Fact label="Mail sent to the customer" value={deal && (deal.is_mail_send ? 'Yes' : 'No')} />
+            <Fact label="Internal notes" value={deal?.notes} wide />
+          </div>
+        </div>
+      ))}
+    </>
   )
 }
 
@@ -421,7 +503,7 @@ function StatusUpdate({ lead, onSaved }: { lead: Detail; onSaved: () => void }) 
         </label>
         <label className="ldp-field">
           <span>Remarks</span>
-          <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3} maxLength={300}
+          <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} maxLength={300}
                     placeholder="Add a remark for this status change…" />
         </label>
         <button className="btn btn-primary ldp-submit" disabled={busy || !changed} onClick={() => void save()}>
@@ -490,7 +572,7 @@ function NextFollowUp({ leadId, open, onSaved }: { leadId: string; open: number;
         </label>
         <label className="ldp-field">
           <span>Remarks</span>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
                     placeholder="What's the plan for this follow-up?" />
         </label>
         <label className="ldp-field">

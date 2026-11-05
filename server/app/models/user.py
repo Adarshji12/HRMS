@@ -211,6 +211,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     can_approve_stock: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_manage_sales_orders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_approve_sales_orders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_delete_sales_orders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_manage_billing: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     can_approve_billing: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

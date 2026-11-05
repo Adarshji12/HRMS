@@ -709,17 +709,18 @@ export function LfSection({ icon, title, note, children }: {
   )
 }
 
-export function LfField({ label, required, hint, error, wide, aside, children }: {
+export function LfField({ label, required, hint, error, wide, aside, className, children }: {
   label: string
   required?: boolean
   hint?: ReactNode
   error?: string
   wide?: boolean
   aside?: ReactNode
+  className?: string
   children: ReactNode
 }) {
   return (
-    <div className={`lf-field${wide ? ' is-wide' : ''}${error ? ' is-bad' : ''}`}>
+    <div className={`lf-field${wide ? ' is-wide' : ''}${error ? ' is-bad' : ''}${className ? ` ${className}` : ''}`}>
       <div className="lf-label-row">
         <span className="lf-label">{label}{required && <span className="lf-req"> *</span>}</span>
         {aside}

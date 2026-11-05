@@ -1,0 +1,13 @@
+.crm-dialog:has(.rqv-body) { max-height: min(86vh, 760px); }
+.crm-dialog:has(.rqv-body) .crm-dialog-head { padding: 12px 20px; }
+.crm-dialog:has(.rqv-body) .crm-dialog-title { font-size: 16px; }
+.rqv-sub { display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 13px; }
+.rqv-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 20px 16px; display: grid; gap: 12px; align-content: start; }
+.rqv-body .crm-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0 !important; margin: 0 !important; }
+.rqv-body .table-wrap { margin: 0 !important; }
+.rqv-purpose { margin: 0; font-size: 13px; color: var(--text-secondary); white-space: pre-line; }
+.crm-dialog:has(.rqv-body) .crm-dialog-foot .rqv-cancel { margin: 0 auto 0 0; }
+.crm-dialog:has(.rqv-body) .crm-dialog-foot { padding: 10px 20px; }
+@media (max-width: 640px) {
+  .rqv-body .crm-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

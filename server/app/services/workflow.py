@@ -419,7 +419,9 @@ ERP_SALES_ORDER = Policy(
     pending=("submitted",),
     approved="approved",
     rejected="rejected",
-    self_review=SelfReview.FORBIDDEN,
+    # The owner gives the final word on orders, their own included. Anybody else
+    # who raised the order still needs somebody else to release it.
+    self_review=SelfReview.OWNER_MAY,
     reason_on_reject=True,
     audit_action="erp.sales_order.decided",
     target_type="erp_sales_order",

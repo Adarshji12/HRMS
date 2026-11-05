@@ -115,6 +115,7 @@ const SHORT: Record<string, string> = {
   can_approve_stock: 'Approve stock',
   can_manage_sales_orders: 'Raise orders',
   can_approve_sales_orders: 'Approve orders',
+  can_delete_sales_orders: 'Delete draft orders',
   can_manage_billing: 'Bill',
   can_approve_billing: 'Approve billing',
 }

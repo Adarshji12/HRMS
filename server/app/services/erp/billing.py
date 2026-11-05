@@ -19,6 +19,7 @@ kernel like any other money leaving the company.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
@@ -284,6 +285,20 @@ def peek_number(db: Session, viewer: User, kind: str, on: date | None = None) ->
             "company_state": company_state(db, viewer.org_id)}
 
 
+def _days_from_terms(terms: str | None, credit_days: int) -> int:
+    """How long an order's payment terms give the customer to pay.
+
+    The order's terms are words (``Net 15 days``, ``50% advance, balance in 30
+    days``, ``Due on receipt``). Words that name no period fall back on the
+    customer's credit days.
+    """
+    text = (terms or "").strip().lower()
+    if text in ("100% advance", "advance") or "due on receipt" in text:
+        return 0
+    periods = re.findall(r"(\d{1,3})\s*days?\b", text)
+    return int(periods[-1]) if periods else credit_days
+
+
 def _new_invoice(db: Session, viewer: User, *, kind: str, customer_id: uuid.UUID, invoice_date: date | None,
                  place_of_supply: str | None, sales_order: ErpSalesOrder | None = None) -> ErpInvoice:
     customer = get_owned(db, CrmCustomer, viewer.org_id, customer_id, "customer")
@@ -291,13 +306,18 @@ def _new_invoice(db: Session, viewer: User, *, kind: str, customer_id: uuid.UUID
     when = invoice_date or date.today()
     place = place_of_supply or (sales_order.place_of_supply if sales_order else None) or account.billing_state
     settings = get_settings(db, viewer.org_id)
+    # An order's own terms, shipping and salesperson are what was agreed; the
+    # customer's and the company's defaults are for a bill with no order behind it.
+    days = _days_from_terms(sales_order.payment_terms, account.credit_days) if sales_order else account.credit_days
     inv = ErpInvoice(
         org_id=viewer.org_id, kind=kind, customer_id=customer.id,
         customer_name=account.legal_name or customer.company or customer.name,
         gstin=account.gstin, billing_address=(sales_order.billing_address if sales_order else None)
-        or account.billing_address, place_of_supply=place,
+        or account.billing_address, shipping_address=sales_order.shipping_address if sales_order else None,
+        place_of_supply=place, salesperson_id=sales_order.salesperson_id if sales_order else None,
         sales_order_id=sales_order.id if sales_order else None, invoice_date=when,
-        due_date=when + timedelta(days=account.credit_days), terms=settings.invoice_terms,
+        due_date=when + timedelta(days=days),
+        terms=(sales_order.terms if sales_order else None) or settings.invoice_terms,
         is_interstate=is_interstate(db, viewer.org_id, place), created_by=viewer.id,
         customer_po_number=sales_order.customer_po_number if sales_order else None,
     )
@@ -343,12 +363,12 @@ def save_manual(db: Session, viewer: User, payload: S.InvoiceIn, invoice_id: uui
         inv.terms = payload.terms
     if payload.billing_address is not None:
         inv.billing_address = payload.billing_address
-    inv.shipping_address = payload.shipping_address
+    inv.shipping_address = payload.shipping_address or inv.shipping_address
     if payload.salesperson_id is not None:
         person = db.get(User, payload.salesperson_id)
         if person is None or person.org_id != viewer.org_id:
             raise ErpError("bad_salesperson", "That salesperson is not in this organisation.")
-    inv.salesperson_id = payload.salesperson_id
+    inv.salesperson_id = payload.salesperson_id or inv.salesperson_id
     if payload.recipient_bank_id:
         accounts = get_settings(db, viewer.org_id).bank_accounts or []
         bank = next((a for a in accounts if a.get("id") == payload.recipient_bank_id), None)
@@ -404,7 +424,7 @@ def from_dispatch(db: Session, viewer: User, payload: S.InvoiceFromDispatchIn, r
     order_lines = {line.id: line for line in so.lines}
     lines = []
     for dl in d.lines:
-        remaining = dl.quantity - dl.invoiced_qty
+        remaining = dl.billable_qty
         if remaining <= 0:
             continue
         ol = order_lines[dl.order_line_id]
@@ -419,6 +439,7 @@ def from_dispatch(db: Session, viewer: User, payload: S.InvoiceFromDispatchIn, r
     inv.dispatch_id = d.id
     # The goods travelled under this dispatch: its transport goes on the invoice.
     inv.dispatch_doc_number = d.number
+    inv.shipping_address = d.ship_to or inv.shipping_address
     inv.transporter_name = d.transporter
     inv.vehicle_number = d.vehicle_no
     inv.eway_bill_number = d.eway_bill_no

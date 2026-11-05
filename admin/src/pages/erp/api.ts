@@ -19,6 +19,7 @@ export type Capability =
   | 'can_approve_stock'
   | 'can_manage_sales_orders'
   | 'can_approve_sales_orders'
+  | 'can_delete_sales_orders'
   | 'can_manage_billing'
   | 'can_approve_billing'
 
@@ -267,6 +268,18 @@ export interface PurchaseOrder {
   expected_date: string | null
   committed_date: string | null
   company?: string | null
+  vendor_quote_ref?: string | null
+  vendor_quote_date?: string | null
+  contact_person?: string | null
+  billing_address?: string | null
+  vendor_gstin?: string | null
+  vendor_state?: string | null
+  vendor_address?: string | null
+  vendor_contact?: string | null
+  vendor_phone?: string | null
+  vendor_email?: string | null
+  warehouse_address?: string | null
+  attachments?: { id: string; name: string; type: string; size: number; at: string; by_name: string }[]
   payment_terms: string | null
   delivery_terms: string | null
   ld_percent_per_week: string
@@ -299,7 +312,7 @@ export interface PurchaseOrder {
   submitted_at?: string | null
   reviewed_at?: string | null
   chain: ChainStep[]
-  lines: (DocLine & { received_qty: string; pending_qty: string; hsn_sac: string | null })[]
+  lines: (DocLine & { received_qty: string; pending_qty: string; hsn_sac: string | null; expected_date?: string | null })[]
   receipts: { id: string; number: string; received_on: string; status: string; days_late: number; ld_amount: string }[]
 }
 
@@ -384,7 +397,7 @@ export interface SerialRow {
 export interface StockDoc {
   id: string
   number: string
-  kind: 'issue' | 'return' | 'transfer' | 'adjustment'
+  kind: 'issue' | 'return' | 'transfer' | 'adjustment' | 'opening'
   from_warehouse_id: string | null
   from_warehouse_name: string | null
   to_warehouse_id: string | null
@@ -398,7 +411,10 @@ export interface StockDoc {
   created_by_name: string | null
   reviewed_by_name: string | null
   review_note: string | null
+  recipient_id: string | null
   recipient_name: string | null
+  project_id: string | null
+  project_name: string | null
   chain: ChainStep[]
   lines: { id: string; item_id: string; item_code: string | null; item_name: string | null; uom: string | null; quantity: string; condition: string; unit_cost: string; serials: string[] | null; is_serialized: boolean }[]
 }
@@ -413,6 +429,64 @@ export interface Milestone {
   status: 'pending' | 'ready' | 'invoiced'
   evidence: string | null
   invoice_id: string | null
+}
+
+export interface SalesOrderQuery {
+  status?: string
+  approval?: string
+  delivery?: string
+  q?: string
+  date_from?: string
+  date_to?: string
+  sort?: string
+  direction?: 'asc' | 'desc'
+}
+
+/** One page of the list, with the whole book counted by status beside it. */
+export interface SalesOrderPage {
+  rows: SalesOrder[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  summary: Record<string, { count: number; value: string }>
+}
+
+/** One order as its own page reads it: the list row plus what it links to. */
+export interface SalesOrderDetail extends SalesOrder {
+  created_at: string
+  reviewed_at: string | null
+  customer: {
+    id: string; code: string | null; name: string; company: string | null; mobile: string | null; email: string | null
+    gstin: string | null; pan: string | null; billing_state: string | null; credit_days: number | null
+    credit_limit: string | null; credit_hold: boolean; outstanding: string; overdue: string
+  }
+  quotation: null | { id: string; number: string; status: string; quote_date: string | null; grand_total: string }
+  dispatch_details: {
+    id: string; number: string; status: string; dispatch_date: string; warehouse: string | null
+    transporter: string | null; vehicle_no: string | null; tracking_ref: string | null; eway_bill_no: string | null
+    value: string; ship_to: string | null; delivered_on: string | null; pod_received_by: string | null; pod_note: string | null
+    cancel_reason: string | null; created_by_name: string | null; created_at: string
+    lines: {
+      id: string; order_line_id: string; description: string; quantity: string
+      invoiced_qty: string; returned_qty: string; serials: string[]
+    }[]
+  }[]
+  returns: {
+    id: string; number: string; dispatch_id: string; return_date: string; warehouse: string; condition: string
+    reason: string; value: string; created_by_name: string | null
+    lines: { description: string; quantity: string; serials: string[] }[]
+  }[]
+  invoice_details: {
+    id: string; number: string | null; kind: string; status: string; invoice_date: string; due_date: string | null
+    grand_total: string; amount_received: string; amount_credited: string; outstanding: string; created_by_name: string | null
+  }[]
+  receipts: {
+    id: string; number: string; invoice_id: string; received_on: string; amount: string; mode: string
+    reference: string | null; status: string; created_by_name: string | null
+  }[]
+  payment_summary: { order_value: string; invoiced: string; credited: string; received: string; outstanding: string; to_bill: string }
+  activity: { id: string; action: string; at: string; by: string | null; target: string | null; detail: Record<string, unknown> }[]
 }
 
 export interface SalesOrder {
@@ -449,6 +523,14 @@ export interface SalesOrder {
   review_note: string | null
   closed_reason: string | null
   invoiced_total: string
+  pending_amount: string
+  approval_status: 'not_submitted' | 'pending' | 'approved' | 'rejected' | 'cancelled'
+  approval_level: number | null
+  submitted_at: string | null
+  delivery_status: 'not_applicable' | 'pending' | 'partial' | 'in_transit' | 'delivered'
+  customer_email: string | null
+  customer_mobile: string | null
+  customer_gstin: string | null
   salesperson_id?: string | null
   salesperson_name?: string | null
   order_type?: string
@@ -479,7 +561,7 @@ export interface SalesOrder {
     available_qty: string | null
   })[]
   milestones: Milestone[]
-  dispatches: { id: string; number: string; dispatch_date: string; status: string; value: string }[]
+  dispatches: { id: string; number: string; dispatch_date: string; status: string; value: string; uninvoiced: boolean; unbilled_value: string }[]
   invoices: { id: string; number: string | null; kind: string; status: string; grand_total: string; invoice_date: string }[]
 }
 
@@ -616,6 +698,17 @@ export interface PendingApproval {
   level: string | null
 }
 
+/** A document on the ERP Approvals screen: pending or already decided. */
+export interface ApprovalRow extends PendingApproval {
+  state: 'pending' | 'approved' | 'rejected'
+  doc_status: string
+  can_decide: boolean
+  own: boolean
+  reviewed_by_name: string | null
+  reviewed_at: string | null
+  review_note: string | null
+}
+
 export interface Dashboard {
   capabilities: Access
   procurement: Record<string, number | string>
@@ -693,6 +786,7 @@ type Body = Record<string, unknown>
 export const erp = {
   access: () => api.get<Access>(`${B}/access`),
   dashboard: () => api.get<Dashboard>(`${B}/dashboard`),
+  approvalRegister: () => api.get<ApprovalRow[]>(`${B}/approvals/register`),
   approvals: () => api.get<PendingApproval[]>(`${B}/approvals`),
   settings: () => api.get<ErpSettingsRow>(`${B}/settings`),
   saveSettings: (body: ErpSettingsRow) => api.put<ErpSettingsRow>(`${B}/settings`, body),
@@ -749,6 +843,11 @@ export const erp = {
 
   purchaseOrders: (p: { status?: string; q?: string } = {}) => api.get<PurchaseOrder[]>(`${B}/purchase-orders${qs(p)}`),
   purchaseOrder: (id: string) => api.get<PurchaseOrder>(`${B}/purchase-orders/${id}`),
+  sendPurchaseOrder: (id: string, body: { to: string; subject: string; message: string; pdf: string }) =>
+    api.post<PurchaseOrder>(`${B}/purchase-orders/${id}/send`, body),
+  addPoAttachment: (id: string, body: { name: string; data: string }) => api.post<PurchaseOrder>(`${B}/purchase-orders/${id}/attachments`, body),
+  poAttachment: (id: string, attId: string) => api.get<{ name: string; data: string }>(`${B}/purchase-orders/${id}/attachments/${attId}`),
+  removePoAttachment: (id: string, attId: string) => api.del<PurchaseOrder>(`${B}/purchase-orders/${id}/attachments/${attId}`),
   nextPoNumber: (on: string) => api.get<{ number: string; company_state?: string | null }>(`${B}/purchase-orders/next-number${qs({ on })}`),
   savePurchaseOrder: (body: Body, id?: string) =>
     id ? api.put<PurchaseOrder>(`${B}/purchase-orders/${id}`, body) : api.post<PurchaseOrder>(`${B}/purchase-orders`, body),
@@ -768,8 +867,12 @@ export const erp = {
     api.get<StockBalance[]>(`${B}/stock${qs(p)}`),
   movements: (p: { item_id?: string; warehouse_id?: string } = {}) => api.get<Movement[]>(`${B}/stock/movements${qs(p)}`),
   serials: (q: string) => api.get<SerialRow[]>(`${B}/stock/serials${qs({ q })}`),
-  availableSerials: (itemId: string, warehouseId: string) =>
-    api.get<string[]>(`${B}/stock/serials/available${qs({ item_id: itemId, warehouse_id: warehouseId })}`),
+  availableSerials: (itemId: string, warehouseId: string, condition?: string) =>
+    api.get<string[]>(`${B}/stock/serials/available${qs({ item_id: itemId, warehouse_id: warehouseId, condition })}`),
+  stockDocParties: () => api.get<{
+    people: { id: string; name: string }[]
+    projects: { id: string; name: string; code: string | null; client: string | null }[]
+  }>(`${B}/stock-docs/parties`),
   stockDocs: (p: { kind?: string; status?: string } = {}) => api.get<StockDoc[]>(`${B}/stock-docs${qs(p)}`),
   saveStockDoc: (body: Body, id?: string) =>
     id ? api.put<StockDoc>(`${B}/stock-docs/${id}`, body) : api.post<StockDoc>(`${B}/stock-docs`, body),
@@ -778,9 +881,14 @@ export const erp = {
     api.post<StockDoc>(`${B}/stock-docs/${id}/decide`, { approve, note }),
   cancelStockDoc: (id: string, reason: string) => api.post<StockDoc>(`${B}/stock-docs/${id}/cancel`, { reason }),
 
-  salesOrders: (p: { status?: string; q?: string; customer_id?: string } = {}) =>
+  deleteSalesOrder: (id: string) => api.del<void>(`${B}/sales-orders/${id}`),
+  sendSalesOrder: (id: string, body: { to: string; subject: string; message: string; pdf: string }) =>
+    api.post<SalesOrder>(`${B}/sales-orders/${id}/send`, body),
+  salesOrdersPage: (p: SalesOrderQuery & { page?: number; page_size?: number }) =>
+    api.get<SalesOrderPage>(`${B}/sales-orders/page${qs({ ...p })}`),
+  salesOrders: (p: { status?: string; q?: string; customer_id?: string; date_from?: string; date_to?: string } = {}) =>
     api.get<SalesOrder[]>(`${B}/sales-orders${qs(p)}`),
-  salesOrder: (id: string) => api.get<SalesOrder>(`${B}/sales-orders/${id}`),
+  salesOrder: (id: string) => api.get<SalesOrderDetail>(`${B}/sales-orders/${id}`),
   saveSalesOrder: (body: Body, id?: string) =>
     id ? api.put<SalesOrder>(`${B}/sales-orders/${id}`, body) : api.post<SalesOrder>(`${B}/sales-orders`, body),
   nextSoNumber: (on: string) => api.get<{ number: string; company_state?: string | null }>(`${B}/sales-orders/next-number${qs({ on })}`),
@@ -804,6 +912,9 @@ export const erp = {
   dispatches: (p: { status?: string; uninvoiced?: boolean } = {}) => api.get<Dispatch[]>(`${B}/dispatches${qs(p)}`),
   createDispatch: (body: Body) => api.post<Dispatch>(`${B}/dispatches`, body),
   deliver: (id: string, body: Body) => api.post<Dispatch>(`${B}/dispatches/${id}/deliver`, body),
+  salesReturn: (dispatchId: string, body: Body) => api.post<SalesOrderDetail>(`${B}/dispatches/${dispatchId}/returns`, body),
+  amendSalesOrder: (id: string, reason: string) => api.post<SalesOrderDetail>(`${B}/sales-orders/${id}/amend`, { reason }),
+  duplicateSalesOrder: (id: string) => api.post<SalesOrderDetail>(`${B}/sales-orders/${id}/duplicate`, {}),
   cancelDispatch: (id: string, reason: string) => api.post<Dispatch>(`${B}/dispatches/${id}/cancel`, { reason }),
 
   invoices: (p: { kind?: string; status?: string; q?: string; outstanding_only?: boolean; customer_id?: string } = {}) =>

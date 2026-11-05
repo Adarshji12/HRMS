@@ -21,7 +21,7 @@ import '../../styles/leads.css'
 import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { OpportunityForm } from './OpportunityForm'
+import { blankDeal, dealFromOpportunity, dealBlocked, dealFilesTooBig, dealStarted, LeadDealFields, saveDeal, uploadDealFiles } from './LeadDealFields'
 import {
   IconBriefcase,
   IconCheck,
@@ -56,6 +56,7 @@ import {
   type LeadDetail,
   type LeadPage,
   type LeadStatus,
+  type Opportunity,
 } from './api'
 import {
   Assignee,
@@ -103,8 +104,6 @@ export default function MyLeads() {
   const filterRef = useRef<HTMLDivElement>(null)
 
   const [adding, setAdding] = useState(false)
-  // The lead just added, while its opportunity form is open.
-  const [opportunityFor, setOpportunityFor] = useState<Lead | null>(null)
   const [editing, setEditing] = useState<Lead | null>(null)
   const navigate = useNavigate()
   const [importing, setImporting] = useState(false)
@@ -586,18 +585,7 @@ export default function MyLeads() {
             setAdding(false)
             setEditing(null)
             leads.reload()
-            if (created) setOpportunityFor(created)
-          }}
-        />
-      )}
-
-      {opportunityFor && (
-        <OpportunityForm
-          lead={opportunityFor}
-          onClose={() => setOpportunityFor(null)}
-          onSaved={() => {
-            setOpportunityFor(null)
-            setBanner('Opportunity saved.')
+            if (created) setBanner(`${created.name} saved.`)
           }}
         />
       )}
@@ -763,11 +751,22 @@ export function LeadForm({
   lead,
   onClose,
   onSaved,
+  inline,
+  opportunity,
 }: {
   lead: Lead | null
   onClose: () => void
   onSaved: (created?: Lead) => void
+  /** Render in the page instead of a dialog. */
+  inline?: boolean
+  /** Editing only: the deal to edit with the lead, null when it has none yet.
+   *  Left out, the deal fields are not shown. */
+  opportunity?: Opportunity | null
 }) {
+  // What the form opened with: a reload behind it must not swap the deal under
+  // what is being typed.
+  const [dealRecord] = useState(opportunity)
+  const showDeal = !lead || dealRecord !== undefined
   const [name, setName] = useState(lead?.name ?? '')
   const [company, setCompany] = useState(lead?.company ?? '')
   // The form holds the ten national digits; "+91" is shown beside the box and
@@ -785,12 +784,22 @@ export function LeadForm({
   const [productId, setProductId] = useState(lead?.product_id ?? '')
   const [ownerId, setOwnerId] = useState(lead?.owner_id ?? '')
   const [statusId, setStatusId] = useState(lead?.status_id ?? '')
+  // Inline, the stage can be moved from the panel beside the form. Follow it, or
+  // saving the form would put the lead back on the stage it opened with.
+  useEffect(() => {
+    if (lead?.status_id) setStatusId(lead.status_id)
+  }, [lead?.status_id])
   const [pincode, setPincode] = useState(lead?.pincode ?? '')
   const [countryId, setCountryId] = useState('')
   const [stateId, setStateId] = useState(lead?.state_id ?? '')
   const [cityId, setCityId] = useState(lead?.city_id ?? '')
   const [address, setAddress] = useState(lead?.address ?? '')
-  const [value, setValue] = useState(lead?.value ?? '')
+  const [value, setValue] = useState(lead?.value ?? dealRecord?.expected_revenue ?? '')
+  const [openingValue] = useState(String(lead?.value ?? dealRecord?.expected_revenue ?? '').trim())
+  const [deal, setDeal] = useState(() => (dealRecord ? dealFromOpportunity(dealRecord) : blankDeal()))
+  // What already saved, so a retry after a failure does not create a second one.
+  const savedLead = useRef<Lead | null>(null)
+  const savedDeal = useRef<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -841,15 +850,26 @@ export function LeadForm({
     }
     try {
       if (lead) {
-        await crm.patchLead(lead.id, body)
+        savedLead.current = await crm.patchLead(lead.id, body)
+        if (showDeal && (dealRecord || dealStarted(deal))) {
+          savedDeal.current = await saveDeal(lead.id, name, dealRevenue, deal, dealRecord?.id ?? savedDeal.current, dealRecord?.title)
+          await uploadDealFiles(savedDeal.current, deal, dealRecord)
+        }
         onSaved()
       } else {
-        // The new lead goes up with the save: the page opens the opportunity
-        // form for it next.
-        onSaved(await crm.createLead(body))
+        const { status_id: _status, ...again } = body
+        const row = savedLead.current ? await crm.patchLead(savedLead.current.id, again) : await crm.createLead(body)
+        savedLead.current = row
+        if (dealStarted(deal)) {
+          savedDeal.current = await saveDeal(row.id, row.name, String(value ?? ''), deal, savedDeal.current)
+          await uploadDealFiles(savedDeal.current, deal)
+        }
+        onSaved(row)
       }
     } catch (err) {
-      setError(crmError(err, 'That lead could not be saved'))
+      if (inline) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      else formRef.current?.scrollTo(0, 0)
+      setError(err instanceof Error && !('status' in err) ? err.message : crmError(err, savedLead.current ? 'The lead is saved, but its deal details could not be saved' : 'That lead could not be saved'))
     } finally {
       setSaving(false)
     }
@@ -863,36 +883,50 @@ export function LeadForm({
   const whatsappBad = !sameNumber && whatsapp !== '' && whatsapp.length !== length
   const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
-  const ready = name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad
+  const valueText = String(value ?? '').trim()
+  const valueBad = valueText !== '' && !/^\d{1,9}(\.\d{1,2})?$/.test(valueText)
+  const revenue = valueBad ? 0 : Number(valueText || 0)
+  // A saved deal keeps its own value unless Expected revenue is changed here: the
+  // two can differ, and editing a phone number must not rewrite the deal.
+  const dealRevenue = dealRecord && valueText === openingValue ? String(dealRecord.expected_revenue) : valueText
+  const needsRevenue = showDeal && (Boolean(dealRecord) || dealStarted(deal)) && dealRevenue === ''
+  const ready = name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad && !valueBad
+    && (!showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal)))
 
-  return (
-    <Dialog
-      title={lead ? `Edit ${lead.name}` : 'Add new lead'}
-      subtitle={lead
-        ? <>Lead <span className="crm-code">#{lead.code}</span> — change anything and save.</>
-        : 'Who they are, how to reach them, and where the lead came from.'}
-      onClose={onClose}
-      footer={
-        <>
-          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
-          <button className="btn" onClick={onClose} type="button">
-            Cancel
-          </button>
-          <button
-            className="btn btn-primary lf-save"
-            form="crm-lead-form"
-            type="submit"
-            disabled={saving || !ready}
-          >
-            <IconCheck size={15} /> {saving ? 'Saving…' : lead ? 'Save changes' : 'Save lead'}
-          </button>
-        </>
-      }
-    >
-      <form className="lf" id="crm-lead-form" onSubmit={submit} noValidate>
+  const formRef = useRef<HTMLFormElement>(null)
+  // What is stopping Save, said where the Save button is.
+  const customerBad = mobileBad || whatsappBad || emailBad
+  const blocker = ready ? null
+    : name.trim() === '' || mobile === '' ? 'Add the full name and mobile number'
+      : customerBad ? 'Check the contact details'
+        : pincodeBad || valueBad ? 'Check the address and revenue'
+          : needsRevenue ? 'Add the expected revenue for the deal'
+            : 'Complete the deal details'
+
+  const footer = (
+    <>
+      {blocker
+        ? <span className="lf-foot-note lf-foot-link">{blocker}</span>
+        : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
+      <button className="btn" onClick={onClose} type="button">
+        Cancel
+      </button>
+      <button
+        className="btn btn-primary lf-save"
+        form="crm-lead-form"
+        type="submit"
+        disabled={saving || !ready}
+      >
+        <IconCheck size={15} /> {saving ? 'Saving…' : lead ? 'Save changes' : 'Save lead'}
+      </button>
+    </>
+  )
+
+  const form = (
+      <form className="lf lf-single" id="crm-lead-form" ref={formRef} onSubmit={submit} noValidate>
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <LfSection icon={<IconUser size={16} />} title="Contact details" note="The person you will be speaking to.">
+        <LfSection icon={<IconUser size={16} />} title="Customer info" note="The person you will be speaking to.">
           <LfField label="Full name" required>
             <LfInput icon={<IconUser size={15} />}>
               <input value={name} onChange={(event) => setName(event.target.value)}
@@ -920,7 +954,7 @@ export function LeadForm({
             </LfInput>
           </LfField>
 
-          <LfField label="WhatsApp" wide
+          <LfField label="WhatsApp"
                    error={touched.whatsapp && whatsappBad ? `Enter a ${length}-digit WhatsApp number.` : undefined}
                    aside={
                      <label className="lf-switch">
@@ -938,7 +972,7 @@ export function LeadForm({
           </LfField>
         </LfSection>
 
-        <LfSection icon={<IconStar size={16} />} title="Lead details" note="Where it came from, what they want, and who owns it.">
+        <LfSection icon={<IconStar size={16} />} title="Lead info" note="Where it came from, what they want, and who owns it.">
           <LfField label="Lead source">
             <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
           </LfField>
@@ -952,21 +986,13 @@ export function LeadForm({
             <MasterSelect kind="products" value={productId} onChange={setProductId} placeholder="Select product" />
           </LfField>
           {lead && (
-            <>
-              <LfField label="Stage">
-                <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} placeholder="Select stage" />
-              </LfField>
-              <LfField label="Expected value" hint="Optional — leave it blank rather than guessing.">
-                <LfInput prefix="₹">
-                  <input value={value ?? ''} onChange={(event) => setValue(event.target.value)}
-                         inputMode="decimal" placeholder="0.00" />
-                </LfInput>
-              </LfField>
-            </>
+            <LfField label="Stage">
+              <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} placeholder="Select stage" />
+            </LfField>
           )}
         </LfSection>
 
-        <LfSection icon={<IconPin size={16} />} title="Location" note="Used to route the lead and plan visits.">
+        <LfSection icon={<IconPin size={16} />} title="Address & revenue" note="Where they are, and what the deal could be worth.">
           <LfField label="State">
             <MasterSelect
               kind="states"
@@ -991,12 +1017,44 @@ export function LeadForm({
                      placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
             </LfInput>
           </LfField>
-          <LfField label="Address" wide>
+          <LfField label="Expected revenue"
+                   required={needsRevenue}
+                   error={touched.value && valueBad ? 'Enter an amount like 150000 or 150000.50.' : needsRevenue ? 'Needed once deal details are filled in.' : undefined}
+                   hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
+            <LfInput prefix="₹" bad={touched.value && valueBad}>
+              <input value={value ?? ''} onChange={(event) => setValue(event.target.value.replace(/,/g, ''))} onBlur={touch('value')}
+                     inputMode="decimal" placeholder="e.g. 150000" aria-label="Expected revenue" />
+            </LfInput>
+          </LfField>
+          <LfField label="Address" className="lf-span2">
             <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
                       placeholder="Building, street, area, landmark" />
           </LfField>
         </LfSection>
+
+        {showDeal && <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord} />}
       </form>
+  )
+
+  if (inline) {
+    return (
+      <div className="lf-inline">
+        {form}
+        <div className="lf-inline-foot">{footer}</div>
+      </div>
+    )
+  }
+
+  return (
+    <Dialog
+      title={lead ? `Edit ${lead.name}` : 'Add new lead'}
+      subtitle={lead
+        ? <>Lead <span className="crm-code">#{lead.code}</span> — change anything and save.</>
+        : 'Only the name and mobile number are required.'}
+      onClose={onClose}
+      footer={footer}
+    >
+      {form}
     </Dialog>
   )
 }

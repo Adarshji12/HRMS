@@ -11,8 +11,9 @@ import { useAuth } from '../../lib/auth'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconPlus, IconSheet } from '../../components/Icons'
 import { erp, erpError, qtyText, type Requisition } from './api'
+import '../../styles/erp-req.css'
 import {
-  blankLine, ChainView, DateText, DecideBar, Dialog, Drawer, ErpPage, ErpState, Facts, Field, LineEditor,
+  blankLine, ChainView, DateText, DecideBar, Dialog, ErpPage, ErpState, Facts, Field, LineEditor,
   LinesTable, linesPayload, Money, Note, ReasonDialog, Tabs, useAccess, useItems, useRun, type EditLine,
 } from './parts'
 
@@ -101,6 +102,13 @@ function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; o
   )
 }
 
+/** A date with its year: a requisition is read long after it was raised. */
+const fullDate = (iso: string | null | undefined) => {
+  if (!iso) return null
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 function RequisitionDrawer({ req, onClose, onEdit, onChanged }: {
   req: Requisition; onClose: () => void; onEdit: () => void; onChanged: (r: Requisition) => void
 }) {
@@ -116,9 +124,13 @@ function RequisitionDrawer({ req, onClose, onEdit, onChanged }: {
   const act = (fn: () => Promise<Requisition>) => void run(async () => onChanged(await fn()))
 
   return (
-    <Drawer title={`${req.number} · ${req.title}`} meta={<ErpState value={req.status} />} onClose={onClose} footer={
-      <div className="crm-row-actions">
+    <>
+    <Dialog wide title={req.number} subtitle={<span className="rqv-sub"><ErpState value={req.status} /> {req.title}</span>}
+      // Escape belongs to whatever is open on top of this window.
+      onClose={cancelling || ordering ? () => undefined : onClose} footer={
+      <>
         {error && <span className="error">{error}</span>}
+        {!['cancelled', 'closed'].includes(req.status) && <button className="btn rqv-cancel" onClick={() => setCancelling(true)}>Cancel requisition</button>}
         {req.status === 'draft' && <>
           <button className="btn" onClick={onEdit}>Edit</button>
           <button className="btn btn-primary" disabled={busy} onClick={() => act(() => erp.requisitionAction(req.id, 'submit'))}>Submit</button>
@@ -129,23 +141,25 @@ function RequisitionDrawer({ req, onClose, onEdit, onChanged }: {
           <button className="btn" onClick={() => setOrdering('rfq')}>Request quotes</button>
           <button className="btn btn-primary" onClick={() => setOrdering('po')}>Raise purchase order</button>
         </>}
-        {!['cancelled', 'closed'].includes(req.status) && <button className="btn" onClick={() => setCancelling(true)}>Cancel</button>}
-      </div>
+      </>
     }>
-      {req.review_note && <Note>{req.status === 'rejected' ? 'Rejected: ' : 'Note: '}{req.review_note}</Note>}
-      <Facts items={[
-        ['Requested by', req.requested_by_name], ['Needed by', <DateText iso={req.required_by} />],
-        ['Estimate', <Money value={req.estimated_total} />], ['Decided by', req.reviewed_by_name],
-      ]} />
-      {req.purpose && <p>{req.purpose}</p>}
-      <ChainView steps={req.chain} />
-      <LinesTable lines={req.lines.map((l) => ({ ...l, rate: l.estimated_rate }))}
-        extra={[{ head: 'Ordered', cell: (l: { ordered_qty: string }) => qtyText(l.ordered_qty) }]} />
+      <div className="rqv-body">
+        {req.review_note && <Note>{req.status === 'rejected' ? 'Rejected: ' : 'Note: '}{req.review_note}</Note>}
+        <Facts items={[
+          ['Requested by', req.requested_by_name], ['Needed by', fullDate(req.required_by)],
+          ['Estimate', <Money value={req.estimated_total} />], ['Decided by', req.reviewed_by_name],
+        ]} />
+        {req.purpose && <p className="rqv-purpose">{req.purpose}</p>}
+        <ChainView steps={req.chain} />
+        <LinesTable lines={req.lines.map((l) => ({ ...l, rate: l.estimated_rate }))}
+          extra={[{ head: 'Ordered', cell: (l: { ordered_qty: string }) => qtyText(l.ordered_qty) }]} />
+      </div>
+    </Dialog>
       {cancelling && <ReasonDialog title={`Cancel ${req.number}`} danger confirm="Cancel requisition" onClose={() => setCancelling(false)}
         onSubmit={async (r) => onChanged(await erp.cancelRequisition(req.id, r))} />}
       {ordering && <OrderFrom req={req} mode={ordering} onClose={() => setOrdering(null)}
         onDone={(path) => navigate(path)} />}
-    </Drawer>
+    </>
   )
 }
 

@@ -71,7 +71,7 @@ def dashboard(db: Session, viewer: User) -> dict:
 
     uninvoiced = [d for d in db.scalars(select(ErpDispatch).where(
         ErpDispatch.org_id == org, ErpDispatch.status != DispatchStatus.CANCELLED.value))
-        if any(line.invoiced_qty < line.quantity for line in d.lines)]
+        if any(line.billable_qty > 0 for line in d.lines)]
 
     invoices = list(db.scalars(select(ErpInvoice).where(
         ErpInvoice.org_id == org, ErpInvoice.status == "posted",
@@ -273,16 +273,19 @@ def pending_approvals(db: Session, viewer: User) -> list[dict]:
 
     The same rule :func:`common.kernel_decide` enforces, asked in advance: with
     a chain, the viewer must be the rung it is waiting on; without one, they
-    must hold the capability. Their own documents are left out — the kernel
-    would refuse them, and a queue of things you cannot act on is not a queue.
+    must hold the capability. Documents the flow will not let them decide as
+    their own are left out — the kernel would refuse them, and a queue of things
+    you cannot act on is not a queue.
     """
-    from app.services import chains
+    from app.services import chains, workflow
 
     out = []
     for kind, model, subject_col, amount_col, capability in _FLOWS:
         rows = list(db.scalars(select(model).where(model.org_id == viewer.org_id, model.status == "submitted")))
         for row in rows:
-            if getattr(row, subject_col) == viewer.id:
+            try:
+                workflow.ensure_not_self(workflow.POLICIES[kind], row, viewer)
+            except workflow.WorkflowError:
                 continue
             if chains.steps_for(db, row.id):
                 step = chains.current_step(db, row.id)
@@ -311,6 +314,60 @@ def pending_approvals(db: Session, viewer: User) -> list[dict]:
     for r in out:
         r["subject_name"] = names.get(uuid.UUID(r["subject_id"]))
     return sorted(out, key=lambda r: r["submitted_at"] or "")
+
+
+def approval_register(db: Session, viewer: User) -> list[dict]:
+    """The ERP Approvals screen: every document that has been through approval,
+    pending and decided, newest first.
+
+    A viewer sees a flow's documents if they hold its capability, and otherwise
+    only those they raised, decided, or are the current chain rung for.
+    ``can_decide`` is the same answer :func:`pending_approvals` gives.
+    """
+    from app.services import chains
+
+    queue = {(r["kind"], r["id"]): r for r in pending_approvals(db, viewer)}
+    out = []
+    for kind, model, subject_col, amount_col, capability in _FLOWS:
+        stmt = select(model).where(model.org_id == viewer.org_id, model.submitted_at.is_not(None))
+        if kind == "credit_note":
+            stmt = stmt.where(model.kind == "credit_note")
+        for row in db.scalars(stmt.order_by(model.submitted_at.desc()).limit(500)):
+            if row.status == "submitted":
+                state = "pending"
+            elif row.status == "rejected":
+                state = "rejected"
+            elif row.reviewed_at is not None:
+                state = "approved"
+            else:
+                continue  # back in draft, or cancelled before anybody decided
+            subject = getattr(row, subject_col)
+            pending = queue.get((kind, str(row.id)))
+            if not (pending or may(viewer, capability) or viewer.id in (subject, row.reviewed_by)
+                    or chains.is_current_reviewer(db, row.id, viewer)):
+                continue
+            title = getattr(row, "title", None) or getattr(row, "customer_name", None) or getattr(row, "reason", None) or kind.replace("_", " ")
+            if kind == "purchase_order":
+                vendor = db.get(ErpVendor, row.vendor_id)
+                title = vendor.legal_name if vendor else title
+            if kind == "stock_adjustment":
+                title = f"Stock adjustment — {row.reason}"
+            out.append({
+                "kind": kind, "id": str(row.id), "number": row.number, "title": title,
+                "amount": str(getattr(row, amount_col)), "subject_id": str(subject),
+                "submitted_at": row.submitted_at.isoformat(), "state": state, "doc_status": row.status,
+                "can_decide": pending is not None, "own": subject == viewer.id,
+                "level": pending["level"] if pending else None,
+                "reviewed_by": str(row.reviewed_by) if row.reviewed_by else None,
+                "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+                "review_note": row.review_note,
+            })
+    names = user_names(db, viewer.org_id, [uuid.UUID(r["subject_id"]) for r in out]
+                       + [uuid.UUID(r["reviewed_by"]) for r in out if r["reviewed_by"]])
+    for r in out:
+        r["subject_name"] = names.get(uuid.UUID(r["subject_id"]))
+        r["reviewed_by_name"] = names.get(uuid.UUID(r["reviewed_by"])) if r["reviewed_by"] else None
+    return sorted(out, key=lambda r: r["submitted_at"], reverse=True)
 
 
 def ageing(db: Session, viewer: User) -> dict:

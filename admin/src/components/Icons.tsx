@@ -249,6 +249,14 @@ export const IconFilter = (p: P) => (
   <Svg {...p}><path d="M3.5 5.5h17l-6.5 7.5v6l-4 2v-8L3.5 5.5Z" /></Svg>
 )
 
+export const IconMore = (p: P) => (
+  <Svg {...p}>
+    <circle cx="5.5" cy="12" r="1.2" />
+    <circle cx="12" cy="12" r="1.2" />
+    <circle cx="18.5" cy="12" r="1.2" />
+  </Svg>
+)
+
 export const IconMail = (p: P) => (
   <Svg {...p}>
     <rect x="2.5" y="5" width="19" height="14" rx="2.5" />

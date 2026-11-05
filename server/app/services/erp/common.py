@@ -24,6 +24,7 @@ employee a potential requester (§6.6.5), and approval is where the gate is.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -68,6 +69,7 @@ CAPABILITY_TEXT: dict[str, str] = {
     "can_approve_stock": "approve stock adjustments",
     "can_manage_sales_orders": "book sales orders and dispatch them",
     "can_approve_sales_orders": "release sales orders",
+    "can_delete_sales_orders": "delete draft sales orders",
     "can_manage_billing": "raise invoices and record receipts",
     "can_approve_billing": "approve credit notes",
 }
@@ -133,6 +135,23 @@ def record_audit(
         target_type=getattr(row, "__tablename__", None), target_id=str(row.id),
         detail={**({"number": row.number} if getattr(row, "number", None) else {}), **(detail or {})},
     )
+
+
+def mail_order_pdf(org_id: Any, number: str, to: str, subject: str, message: str, pdf_base64: str) -> None:
+    """Email an order's PDF, or say exactly why it could not go."""
+    from app.services import email, mailconfig
+
+    try:
+        pdf = base64.b64decode(pdf_base64, validate=True)
+    except ValueError as exc:
+        raise ErpError("bad_pdf", "The order's PDF could not be read.") from exc
+    if not pdf.startswith(b"%PDF"):
+        raise ErpError("bad_pdf", "The order's PDF could not be read.")
+    if not mailconfig.resolve(org_id=org_id).configured:
+        raise ErpError("mail_not_configured", "Email is not set up yet. Set it up under Settings › Email, then send again.", 409)
+    name = f"{number.replace('/', '-')}.pdf"
+    if not email.send(to, subject, message, org_id=org_id, attachments=[(name, pdf, "application/pdf")]):
+        raise ErpError("mail_failed", "The mail server did not accept this message. Check Settings › Email and try again.", 502)
 
 
 def require_reason(reason: str | None, what: str) -> str:

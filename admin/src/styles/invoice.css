@@ -626,3 +626,65 @@ tr.rcl-rev .rcl-amt { text-decoration: line-through; color: var(--text-muted); }
 .ivv-trail b { color: var(--text-primary); }
 .ivv-trail em { font-style: normal; color: var(--text-primary); }
 .ivv-trail s { color: var(--text-muted); }
+
+/* Row ⋯ menu: Print, Download, Cancel, Delete. */
+.ivl-dots { font-size: 17px; line-height: 1; letter-spacing: 1px; margin-top: -3px; }
+.ivl-actions .crm-icon-btn.is-open { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.ivl-actions .crm-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+.ivl-menu {
+  position: fixed; z-index: 80; min-width: 190px; padding: 5px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(15, 40, 80, .18);
+}
+.ivl-menu.is-up { transform: translateY(-100%); }
+.ivl-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 11px; border: 0; border-radius: 7px;
+  background: transparent; font: inherit; font-size: 13px; color: var(--text-primary); cursor: pointer; text-align: left;
+}
+.ivl-menu button:hover:not(:disabled) { background: var(--brand-soft); color: var(--brand); }
+.ivl-menu button.is-danger { color: var(--status-critical, #b91c1c); }
+.ivl-menu button.is-danger:hover:not(:disabled) { background: rgba(220, 38, 38, .08); color: var(--status-critical, #b91c1c); }
+.ivl-menu button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* The list reads like a register, as Sales Orders does: one line to a row. The cards above it keep their size. */
+.ivl-kpis + .crm-bar.ivl-bar { margin-bottom: 8px; padding: 6px 8px; gap: 8px; }
+.ivl-bar .crm-search input { height: 32px; }
+.ivl-bar .btn { height: 32px; padding: 0 11px; font-size: 13px; }
+table.ivl { font-size: 12.5px; }
+table.ivl thead th { padding: 7px 9px !important; font-size: 10.5px; white-space: nowrap; }
+table.ivl tbody td { padding: 5px 9px !important; }
+table.ivl .ivl-no { font-size: 12px; }
+table.ivl .ivl-state { padding-top: 1px; padding-bottom: 1px; font-size: 11px; }
+table.ivl .ivl-actions { gap: 3px; }
+table.ivl .ivl-actions .crm-icon-btn { width: 26px; height: 26px; }
+
+/* Invoice list: search on the left, everything else together on the right. */
+.ivl-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+.ivl-tools .ivl-filter-pop { left: auto; right: 0; }
+.ivl-tools .ivl-export-menu { right: 0; left: auto; }
+@media (max-width: 900px) { .ivl-tools { margin-left: 0; flex-wrap: wrap; flex: 1 1 100%; } }
+
+/* Billing page: no heading, underlined section tabs, the same summary strip,
+   bar and table on every section. */
+.bil-tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.crm .bil-tabs button {
+  flex: none; margin-bottom: -1px; padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; cursor: pointer;
+}
+.crm .bil-tabs button:hover { color: var(--text-primary); }
+.crm .bil-tabs button.is-on { color: var(--brand); border-bottom-color: var(--brand); }
+.ivl-kpis.bil-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ivl-kpis.bil-kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.bil-kpis-age .ivl-kpi { padding-right: 10px; }
+.bil-kpis-age .ivl-kpi b { font-size: 16px; }
+.ivl-kpi.is-static { cursor: default; }
+.ivl-kpi.is-static:hover { border-color: var(--border); transform: none; }
+table.ivl.is-plain tbody tr { cursor: default; }
+table.ivl tbody tr.bil-total td, table.ivl tbody tr.bil-total:hover td { background: var(--surface-2); font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.bil-late { font-weight: 600; color: var(--status-critical); white-space: nowrap; }
+@media (max-width: 1100px) {
+  .ivl-kpis.bil-kpis-age { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 700px) {
+  .ivl-kpis.bil-kpis-3, .ivl-kpis.bil-kpis-4, .ivl-kpis.bil-kpis-age { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

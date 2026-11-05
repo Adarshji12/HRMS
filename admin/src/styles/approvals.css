@@ -1,0 +1,101 @@
+/* ERP Approvals. Prefixed apl-. */
+.crm .apl-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.crm .apl-card {
+  --tone: var(--brand);
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; font: inherit; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, var(--border)); border-radius: 12px;
+  background: color-mix(in srgb, var(--tone) 6%, var(--surface-1));
+  transition: box-shadow .15s;
+}
+.crm .apl-card:hover { box-shadow: 0 6px 18px rgb(15 23 42 / .07); }
+.crm .apl-card.is-wait { --tone: var(--status-warn); }
+.crm .apl-card.is-good { --tone: var(--status-good); }
+.crm .apl-card.is-bad { --tone: var(--status-critical); }
+.crm .apl-card-ic { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--tone); }
+.crm .apl-card-txt { display: grid; min-width: 0; line-height: 1.25; }
+.crm .apl-card-txt b { font-size: 21px; font-weight: 750; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.crm .apl-card-txt span { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.crm .apl-card-txt small { font-size: 11px; color: var(--text-muted); }
+
+.crm .apl-bar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.crm .apl-bar .crm-search { flex: 1 1 260px; margin: 0; }
+
+.crm .apl-err { margin-bottom: 10px; }
+
+.crm .apl-table-card { padding: 0; overflow: hidden; }
+.crm .apl-table th { font-size: 11px; white-space: nowrap; }
+.crm .apl-table td { vertical-align: middle; font-size: 13px; padding-top: 9px; padding-bottom: 9px; }
+.crm .apl-n { width: 34px; text-align: center; color: var(--text-muted); }
+.crm .apl-kind {
+  --tone: var(--brand);
+  display: inline-flex; height: 22px; align-items: center; padding: 0 9px; border-radius: 6px; white-space: nowrap; font-size: 11.5px; font-weight: 650;
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 11%, transparent);
+}
+.crm .apl-kind.is-sales_order { --tone: #2563eb; }
+.crm .apl-kind.is-purchase_order { --tone: #7c3aed; }
+.crm .apl-kind.is-purchase_requisition { --tone: #0d9488; }
+.crm .apl-kind.is-stock_adjustment { --tone: #c2410c; }
+.crm .apl-kind.is-credit_note { --tone: #be185d; }
+.crm .apl-no { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--text-primary); text-decoration: none; }
+.crm .apl-no:hover { color: var(--brand); text-decoration: underline; }
+.crm .apl-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm .apl-amt { font-weight: 700; white-space: nowrap; }
+.crm .apl-when { font-size: 12px; color: var(--text-secondary); min-width: 96px; }
+.crm .apl-sub { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+.crm .apl-status { max-width: 150px; }
+.crm .apl-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm .apl-state {
+  --tone: var(--text-muted);
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 650;
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent);
+}
+.crm .apl-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--tone); }
+.crm .apl-state.is-pending { --tone: var(--status-warn); }
+.crm .apl-state.is-approved { --tone: var(--status-good); }
+.crm .apl-state.is-rejected { --tone: var(--status-critical); }
+.crm th.apl-act, .crm td.apl-act { text-align: right; width: 200px; }
+.crm .apl-btns { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
+.crm .apl-btns .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+.crm .apl-btns .apl-sub { margin: 0; flex-basis: 100%; text-align: right; }
+.crm .btn.apl-yes { background: var(--status-good); border-color: var(--status-good); color: #fff; }
+.crm .btn.apl-reject { background: var(--status-critical); border-color: var(--status-critical); color: #fff; }
+.crm .btn.apl-yes:hover:not(:disabled), .crm .btn.apl-reject:hover:not(:disabled) { filter: brightness(.94); }
+.crm .apl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-muted); }
+.crm .apl-pager { display: inline-flex; align-items: center; gap: 8px; }
+.crm .apl-pager b { color: var(--text-primary); font-weight: 600; }
+
+@media (max-width: 1000px) {
+  .crm .apl-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm .apl-bar { flex-wrap: wrap; }
+}
+
+/* Compact rows: one line of actions, tighter cells for a laptop width. */
+.crm .apl-cards { gap: 10px; margin-bottom: 10px; }
+.crm .apl-card { padding: 9px 12px; }
+.crm .apl-card-ic { width: 34px; height: 34px; }
+.crm .apl-card-txt b { font-size: 19px; }
+.crm .apl-table th, .crm .apl-table td { padding-left: 8px; padding-right: 8px; }
+.crm .apl-table td { padding-top: 7px; padding-bottom: 7px; }
+.crm .apl-title { max-width: 150px; }
+.crm th.apl-act, .crm td.apl-act { width: 196px; min-width: 196px; }
+.crm .apl-btns { flex-wrap: nowrap; gap: 4px; }
+.crm .apl-btns .btn { padding: 0 8px; }
+.crm .apl-btns .apl-sub { flex: 1 1 auto; flex-basis: auto; line-height: 1.2; }
+
+/* The Filters button and its panel. */
+.crm .apl-bar > .btn { height: var(--crm-control-h); }
+.crm .apl-filter { position: relative; flex: none; }
+.crm .apl-filter-btn { display: inline-flex; align-items: center; gap: 6px; height: var(--crm-control-h); }
+.crm .apl-filter-btn.is-on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.crm .apl-filter-n { min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 9px;
+  font-size: 11px; font-weight: 700; color: #fff; background: var(--brand); }
+.crm .apl-filter-scrim { position: fixed; inset: 0; z-index: 19; }
+.crm .apl-filter-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 320px; display: grid; gap: 10px; padding: 14px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 14px 34px rgb(15 23 42 / .16);
+}
+.crm .apl-filter-pop label { display: grid; gap: 4px; }
+.crm .apl-filter-pop label > span { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.crm .apl-filter-pop select { width: 100%; height: 36px; }
+.crm .apl-filter-foot { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.crm .apl-filter-foot span { margin-right: auto; font-size: 12.5px; color: var(--text-muted); }

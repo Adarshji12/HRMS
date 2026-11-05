@@ -151,7 +151,7 @@ GROUPS: tuple[Group, ...] = (
           ("can_manage_inventory", "can_approve_stock")),
        _m("/erp/sales-orders", "Sales Orders", "erp",
           ("/erp/sales-orders", "/erp/dispatches", "/erp/milestones"),
-          ("can_manage_sales_orders", "can_approve_sales_orders")),
+          ("can_manage_sales_orders", "can_approve_sales_orders", "can_delete_sales_orders")),
        _m("/erp/billing", "Billing", "erp", ("/erp/invoices", "/erp/receipts", "/erp/credit-notes"),
           ("can_manage_billing", "can_approve_billing")),
        _m("/erp/masters", "ERP Masters", "erp",

@@ -78,6 +78,7 @@ ERP_PERMISSION_KEYS: tuple[str, ...] = (
     "can_approve_stock",
     "can_manage_sales_orders",
     "can_approve_sales_orders",
+    "can_delete_sales_orders",
     "can_manage_billing",
     "can_approve_billing",
 )
@@ -102,7 +103,7 @@ PERMISSION_KEYS: tuple[str, ...] = (
     "can_manage_payroll",
     "can_manage_performance",
     "can_manage_engagement",
-    # ERP. Ten rather than one because the PRD's segregation of duties is the
+    # ERP. Eleven rather than one because the PRD's segregation of duties is the
     # point of most of them: whoever raises a purchase order does not approve
     # it, whoever counts stock does not approve the adjustment, and whoever
     # bills does not approve the credit note. See ``services.erp.common``.

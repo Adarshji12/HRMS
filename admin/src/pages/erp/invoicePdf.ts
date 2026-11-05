@@ -37,7 +37,7 @@ const qty = (v: string | number | null | undefined) => {
 const longDate = (iso: string | null | undefined) =>
   iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'
 
-function hexRgb(hex: string | null | undefined): [number, number, number] {
+export function hexRgb(hex: string | null | undefined): [number, number, number] {
   const m = /^#?([0-9a-f]{6})$/i.exec((hex ?? '').trim())
   if (!m) return [11, 58, 99]
   const n = parseInt(m[1], 16)
@@ -60,7 +60,7 @@ export async function imageData(src: string | null): Promise<string | null> {
   }
 }
 
-function imageType(data: string): string {
+export function imageType(data: string): string {
   return data.startsWith('data:image/png') ? 'PNG' : data.startsWith('data:image/webp') ? 'WEBP' : 'JPEG'
 }
 

@@ -34,7 +34,8 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import User
+from app.models import Project, User
+from app.models.project import ProjectStatus
 from app.models.erp import (
     ErpItem,
     ErpSerial,
@@ -149,16 +150,16 @@ def move(
                 wh = db.get(ErpWarehouse, warehouse_id)
                 raise ErpError(
                     "insufficient_stock",
-                    f"{item.code}: only {bucket.quantity.normalize()} {item.uom} "
+                    f"{item.code}: only {bucket.quantity.normalize():f} {item.uom} "
                     f"({condition}) at {wh.name if wh else 'that warehouse'}, "
-                    f"{out.normalize()} needed.",
+                    f"{out.normalize():f} needed.",
                     409,
                 )
             if condition == StockCondition.GOOD.value and free < out:
                 raise ErpError(
                     "stock_reserved",
-                    f"{item.code}: {bucket.reserved_qty.normalize()} of the "
-                    f"{bucket.quantity.normalize()} on hand is reserved for sales orders.",
+                    f"{item.code}: {bucket.reserved_qty.normalize():f} of the "
+                    f"{bucket.quantity.normalize():f} on hand is reserved for sales orders.",
                     409,
                 )
         if consume_reserved:
@@ -231,8 +232,9 @@ def receive_serials(
     db: Session, viewer: User, *, item: ErpItem, serials: list[str], warehouse_id: uuid.UUID,
     condition: str, ref_type: str, ref_id: uuid.UUID, ref_number: str | None,
     vendor_id: uuid.UUID | None = None, grn_id: uuid.UUID | None = None, received_on: date | None = None,
+    event_kind: MovementKind = MovementKind.GRN,
 ) -> None:
-    """New units arriving from a vendor. A serial already in stock is a duplicate."""
+    """New units entering the system. A serial already in stock is a duplicate."""
     existing = _serial_rows(db, viewer.org_id, item.id, serials)
     for serial_no in serials:
         row = existing.get(serial_no)
@@ -254,7 +256,7 @@ def receive_serials(
             day = min(received_on.day, 28)
             row.warranty_until = date(year, month % 12 + 1, day)
         db.flush()
-        _event(db, viewer, row, MovementKind.GRN, ref_type, ref_id, ref_number)
+        _event(db, viewer, row, event_kind, ref_type, ref_id, ref_number)
 
 
 def take_serials(
@@ -314,7 +316,7 @@ def reserve(db: Session, org_id: uuid.UUID, item: ErpItem, warehouse_id: uuid.UU
     if quantity > free:
         raise ErpError(
             "insufficient_stock",
-            f"{item.code}: {free.normalize()} available to reserve, {quantity.normalize()} asked.", 409,
+            f"{item.code}: {free.normalize():f} available to reserve, {quantity.normalize():f} asked.", 409,
         )
     bucket.reserved_qty = qty(bucket.reserved_qty + quantity)
 
@@ -428,7 +430,7 @@ def serials_in(db: Session, viewer: User, item_id: uuid.UUID, warehouse_id: uuid
 # Stock documents
 # --------------------------------------------------------------------------- #
 
-PREFIX = {"issue": "ISS", "return": "RET", "transfer": "TRF", "adjustment": "ADJ"}
+PREFIX = {"issue": "ISS", "return": "RET", "transfer": "TRF", "adjustment": "ADJ", "opening": "OPN"}
 
 
 def _doc_out(db: Session, doc: ErpStockDoc) -> dict:
@@ -436,6 +438,7 @@ def _doc_out(db: Session, doc: ErpStockDoc) -> dict:
         ErpItem.id.in_([line.item_id for line in doc.lines])))} if doc.lines else {}
     wh = {w.id: w.name for w in db.scalars(select(ErpWarehouse).where(ErpWarehouse.org_id == doc.org_id))}
     names = user_names(db, doc.org_id, [doc.created_by, doc.reviewed_by, doc.recipient_id])
+    project = db.get(Project, doc.project_id) if doc.project_id else None
     from app.services import chains
 
     return {
@@ -445,6 +448,7 @@ def _doc_out(db: Session, doc: ErpStockDoc) -> dict:
         "created_by_name": names.get(doc.created_by),
         "reviewed_by_name": names.get(doc.reviewed_by),
         "recipient_name": names.get(doc.recipient_id),
+        "project_name": project.name if project else None,
         "chain": [row_dict(s) for s in chains.steps_for(db, doc.id)],
         "lines": [
             {
@@ -472,16 +476,41 @@ def get_doc(db: Session, viewer: User, doc_id: uuid.UUID) -> dict:
     return _doc_out(db, get_owned(db, ErpStockDoc, viewer.org_id, doc_id, "stock document"))
 
 
+def doc_parties(db: Session, viewer: User) -> dict:
+    """Who and what stock can be issued to. A storekeeper needs these names without
+    holding the rights to the employee list or the projects page."""
+    require(viewer, "can_manage_inventory")
+    people = db.scalars(select(User).where(User.org_id == viewer.org_id, User.is_active.is_(True)).order_by(User.full_name))
+    projects = db.scalars(select(Project).where(
+        Project.org_id == viewer.org_id, Project.status != ProjectStatus.ARCHIVED.value).order_by(Project.name))
+    return {
+        "people": [{"id": str(u.id), "name": u.full_name} for u in people],
+        "projects": [{"id": str(x.id), "name": x.name, "code": x.code, "client": x.client_name} for x in projects],
+    }
+
+
 def _validate_doc(db: Session, viewer: User, payload: S.StockDocIn) -> None:
     kind = StockDocKind(payload.kind)
     if kind in (StockDocKind.ISSUE, StockDocKind.TRANSFER, StockDocKind.ADJUSTMENT):
         active_warehouse(db, viewer.org_id, payload.from_warehouse_id)
-    if kind in (StockDocKind.RETURN, StockDocKind.TRANSFER):
+    if kind in (StockDocKind.RETURN, StockDocKind.TRANSFER, StockDocKind.OPENING):
         active_warehouse(db, viewer.org_id, payload.to_warehouse_id)
+    if payload.doc_date and payload.doc_date > date.today():
+        raise ErpError("future_date", "A stock document cannot be dated in the future.")
     if kind is StockDocKind.TRANSFER and payload.from_warehouse_id == payload.to_warehouse_id:
         raise ErpError("same_warehouse", "A transfer needs two different warehouses.")
     if kind is StockDocKind.ADJUSTMENT and not payload.reason:
         raise ErpError("reason_required", "An adjustment needs a reason code.")
+    if kind is StockDocKind.ISSUE and not (payload.recipient_id or payload.project_id):
+        raise ErpError("issue_to_required", "Say who or which project this stock is issued to.")
+    if payload.recipient_id:
+        person = db.get(User, payload.recipient_id)
+        if person is None or person.org_id != viewer.org_id or not person.is_active:
+            raise ErpError("bad_recipient", "That person is not an active member of this company.")
+    if payload.project_id:
+        project = get_owned(db, Project, viewer.org_id, payload.project_id, "project")
+        if project.status == ProjectStatus.ARCHIVED.value:
+            raise ErpError("project_archived", f"{project.name} is archived.", 409)
     for line in payload.lines:
         item = get_owned(db, ErpItem, viewer.org_id, line.item_id, "item")
         if not item.is_stocked:
@@ -490,6 +519,8 @@ def _validate_doc(db: Session, viewer: User, payload: S.StockDocIn) -> None:
             raise ErpError("zero_quantity", f"{item.code}: a quantity of zero moves nothing.")
         if kind is not StockDocKind.ADJUSTMENT and line.quantity < 0:
             raise ErpError("negative_quantity", f"{item.code}: quantities are positive here.")
+        if line.unit_cost is not None and line.unit_cost < 0:
+            raise ErpError("negative_cost", f"{item.code}: a unit cost cannot be negative.")
         check_serial_count(item, abs(qty(line.quantity)), line.serials)
 
 
@@ -523,6 +554,8 @@ def save_doc(
         if doc.from_warehouse_id:
             cost = balance(db, viewer.org_id, item.id, doc.from_warehouse_id, line.condition).avg_cost
         cost = cost or item.standard_cost
+        if payload.kind == StockDocKind.OPENING.value and line.unit_cost is not None:
+            cost = line.unit_cost
         q = qty(line.quantity)
         value += abs(q) * cost
         doc.lines.append(ErpStockDocLine(
@@ -548,6 +581,17 @@ def _post_out(db: Session, viewer: User, doc: ErpStockDoc, line: ErpStockDocLine
                  ref_type="stock_doc", ref_id=doc.id, ref_number=doc.number,
                  condition=line.condition, serials=line.serials, reason=doc.reason)
     line.unit_cost = moved.unit_cost
+
+
+def _post_opening(db: Session, viewer: User, doc: ErpStockDoc, line: ErpStockDocLine) -> None:
+    item = db.get(ErpItem, line.item_id)
+    if line.serials:
+        receive_serials(db, viewer, item=item, serials=line.serials, warehouse_id=doc.to_warehouse_id,
+                        condition=line.condition, ref_type="stock_doc", ref_id=doc.id, ref_number=doc.number,
+                        received_on=doc.doc_date, event_kind=MovementKind.OPENING)
+    move(db, viewer, item=item, warehouse_id=doc.to_warehouse_id, quantity=line.quantity, kind=MovementKind.OPENING,
+         ref_type="stock_doc", ref_id=doc.id, ref_number=doc.number, condition=line.condition,
+         unit_cost=line.unit_cost, serials=line.serials, reason=doc.reason)
 
 
 def _post_in(db: Session, viewer: User, doc: ErpStockDoc, line: ErpStockDocLine, kind: MovementKind,
@@ -580,6 +624,8 @@ def post_doc(db: Session, viewer: User, doc_id: uuid.UUID, request: Request | No
         elif kind is StockDocKind.RETURN:
             _post_in(db, viewer, doc, line, MovementKind.RETURN, doc.to_warehouse_id, line.quantity,
                      (SerialStatus.ISSUED, SerialStatus.DELIVERED))
+        elif kind is StockDocKind.OPENING:
+            _post_opening(db, viewer, doc, line)
         else:
             _post_out(db, viewer, doc, line, MovementKind.TRANSFER_OUT, SerialStatus.IN_TRANSIT,
                       doc.from_warehouse_id, line.quantity)

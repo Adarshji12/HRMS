@@ -41,22 +41,30 @@ export function useQuery<T>(
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
   const hasData = useRef(false)
+  // Only the newest request may answer. Without this, a slow response to an
+  // older search or filter lands last and overwrites the right one.
+  const latest = useRef(0)
 
   const run = useCallback(async () => {
+    const mine = ++latest.current
     if (hasData.current) setRefetching(true)
     else setLoading(true)
     try {
       const result = await fetcherRef.current()
+      if (mine !== latest.current) return
       setData(result)
       setError(null)
       setCause(null)
       hasData.current = true
     } catch (err) {
+      if (mine !== latest.current) return
       setError(err instanceof Error ? err.message : String(err))
       setCause(err)
     } finally {
-      setLoading(false)
-      setRefetching(false)
+      if (mine === latest.current) {
+        setLoading(false)
+        setRefetching(false)
+      }
     }
   }, [])
 

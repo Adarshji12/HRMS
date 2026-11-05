@@ -19,8 +19,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import Request
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import CrmCustomer, CrmQuotation, User
 from app.models.erp import (
@@ -32,6 +32,7 @@ from app.models.erp import (
     ErpItem,
     ErpSalesOrder,
     ErpSalesOrderLine,
+    ErpSalesReturn,
     ErpWarehouse,
     MilestoneStatus,
     MovementKind,
@@ -67,13 +68,70 @@ def _now() -> datetime:
 
 def _readable(viewer: User) -> bool:
     return any(may(viewer, f) for f in (
-        "can_manage_sales_orders", "can_approve_sales_orders", "can_manage_inventory",
+        "can_manage_sales_orders", "can_approve_sales_orders", "can_delete_sales_orders", "can_manage_inventory",
         "can_manage_billing", "can_manage_procurement",
     ))
 
 
+#: Orders that have been released, so may go out to the customer.
+_RELEASED = (
+    SalesOrderStatus.APPROVED.value, SalesOrderStatus.ON_HOLD.value, SalesOrderStatus.PARTIALLY_DISPATCHED.value,
+    SalesOrderStatus.DISPATCHED.value, SalesOrderStatus.CLOSED.value,
+)
+
+
+def _approval_status(so: ErpSalesOrder) -> str:
+    """Where the order stands with its approvers, whatever happened to it since."""
+    if so.status in _RELEASED:
+        return "approved"
+    return {
+        SalesOrderStatus.DRAFT.value: "not_submitted",
+        SalesOrderStatus.SUBMITTED.value: "pending",
+    }.get(so.status, so.status)  # rejected, cancelled
+
+
+def _delivery_status(so: ErpSalesOrder, dispatches: list[ErpDispatch]) -> str:
+    """How far the goods have got. An order with nothing to ship has no such status."""
+    goods = [line for line in so.lines if line.fulfilment != "service"]
+    if not goods:
+        return "not_applicable"
+    if not any(line.dispatched_qty > 0 for line in goods):
+        ended = so.status in (SalesOrderStatus.CANCELLED.value, SalesOrderStatus.CLOSED.value)
+        return "not_applicable" if ended else "pending"
+    if any(line.dispatched_qty < line.quantity for line in goods):
+        return "partial"
+    live = [d for d in dispatches if d.status != DispatchStatus.CANCELLED.value]
+    return "delivered" if live and all(d.status == DispatchStatus.DELIVERED.value for d in live) else "in_transit"
+
+
+def _unbilled_value(d: ErpDispatch, lines: dict[uuid.UUID, ErpSalesOrderLine]) -> Decimal:
+    """What invoicing the rest of this dispatch would come to, GST included."""
+    total = ZERO
+    for dl in d.lines:
+        line = lines.get(dl.order_line_id)
+        if line is not None:
+            total += dl.billable_qty * line.net_rate * (1 + line.gst_percent / Decimal("100"))
+    return money(total)
+
+
+def _returned_unbilled(so: ErpSalesOrder, dispatches: list[ErpDispatch]) -> Decimal:
+    """The value of goods that came back before they were billed, GST included.
+    They will never be invoiced, so they are no longer "still to bill"."""
+    lines = {line.id: line for line in so.lines}
+    total = ZERO
+    for d in dispatches:
+        if d.status == DispatchStatus.CANCELLED.value:
+            continue
+        for dl in d.lines:
+            line = lines.get(dl.order_line_id)
+            unbilled = min(dl.returned_qty, max(ZERO, dl.quantity - dl.invoiced_qty))
+            if line is not None and unbilled > 0:
+                total += unbilled * line.net_rate * (1 + line.gst_percent / Decimal("100"))
+    return money(total)
+
+
 def _order_out(db: Session, so: ErpSalesOrder) -> dict:
-    from app.models.erp import ErpInvoice
+    from app.models.erp import ErpCustomerAccount, ErpInvoice
     from app.services import chains
 
     names = user_names(db, so.org_id, [so.created_by, so.reviewed_by, so.salesperson_id])
@@ -86,8 +144,27 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
     quotation = db.get(CrmQuotation, so.quotation_id) if so.quotation_id else None
     site = db.get(ErpCustomerSite, so.site_id) if so.site_id else None
     steps = chains.steps_for(db, so.id)
+    billed = [i for i in invoices if i.status == "posted" and i.kind not in ("proforma", "credit_note")]
+    credited = db.scalar(select(func.coalesce(func.sum(ErpInvoice.grand_total), 0)).where(
+        ErpInvoice.kind == "credit_note", ErpInvoice.status == "posted",
+        ErpInvoice.original_invoice_id.in_([i.id for i in billed]))) if billed else 0
+    invoiced = money(sum((i.grand_total for i in billed), ZERO) - Decimal(str(credited or 0)))
+    # A cancelled or closed order will not be billed any further.
+    ended = so.status in (SalesOrderStatus.CANCELLED.value, SalesOrderStatus.CLOSED.value)
+    customer = db.get(CrmCustomer, so.customer_id)
+    account = db.scalar(select(ErpCustomerAccount).where(
+        ErpCustomerAccount.org_id == so.org_id, ErpCustomerAccount.customer_id == so.customer_id))
+    order_lines = {line.id: line for line in so.lines}
+    waiting = next((s for s in steps if s.is_open), None)
     return {
         **row_dict(so),
+        "approval_status": _approval_status(so),
+        "approval_level": waiting.level if waiting and so.status == SalesOrderStatus.SUBMITTED.value else None,
+        "delivery_status": _delivery_status(so, dispatches),
+        "pending_amount": str(money(ZERO if ended else max(ZERO, so.grand_total - invoiced - _returned_unbilled(so, dispatches)))),
+        "customer_email": customer.email if customer else None,
+        "customer_mobile": customer.mobile if customer else None,
+        "customer_gstin": (account.gstin if account else None) or (customer.gstin if customer else None),
         "created_by_name": names.get(so.created_by),
         "reviewed_by_name": names.get(so.reviewed_by),
         "salesperson_name": names.get(so.salesperson_id),
@@ -109,7 +186,10 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
         "milestones": [row_dict(m) for m in so.milestones],
         "dispatches": [
             {"id": str(d.id), "number": d.number, "dispatch_date": d.dispatch_date.isoformat(),
-             "status": d.status, "value": str(d.value)}
+             "status": d.status, "value": str(d.value),
+             "uninvoiced": d.status != DispatchStatus.CANCELLED.value
+             and any(line.billable_qty > 0 for line in d.lines),
+             "unbilled_value": str(_unbilled_value(d, order_lines))}
             for d in dispatches
         ],
         "invoices": [
@@ -117,15 +197,119 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
              "grand_total": str(i.grand_total), "invoice_date": i.invoice_date.isoformat()}
             for i in invoices
         ],
-        "invoiced_total": str(money(sum(
-            (i.grand_total for i in invoices if i.status == "posted" and i.kind not in ("proforma", "credit_note")),
-            ZERO))),
+        "invoiced_total": str(invoiced),
+    }
+
+
+#: The list's Open tab, and what its sort keys read.
+_OPEN = (SalesOrderStatus.APPROVED.value, SalesOrderStatus.PARTIALLY_DISPATCHED.value, SalesOrderStatus.ON_HOLD.value)
+_SORTS = {
+    "number": lambda row: row["so"].number,
+    "order_date": lambda row: row["so"].order_date,
+    "customer": lambda row: (row["so"].customer_name or "").lower(),
+    "required_by": lambda row: row["so"].required_by,
+    "grand_total": lambda row: row["so"].grand_total,
+    "invoiced": lambda row: row["invoiced"],
+    "pending": lambda row: row["pending"],
+    "approval": lambda row: row["approval"],
+    "delivery": lambda row: row["delivery"],
+}
+
+
+def page_orders(
+    db: Session, viewer: User, *, status: str | None = None, approval: str | None = None,
+    delivery: str | None = None, customer_id: uuid.UUID | None = None, q: str | None = None,
+    date_from: date | None = None, date_to: date | None = None, sort: str = "created",
+    direction: str = "desc", page: int = 1, page_size: int = 25,
+) -> dict:
+    """One page of the list, and the figures around it.
+
+    Approval, delivery, invoiced and pending are worked out from linked records
+    rather than stored, so they cannot go stale; that is why they are filtered
+    and sorted here after a batch read, and only the page shown is built in full.
+    """
+    from app.models.erp import ErpInvoice
+
+    if not _readable(viewer):
+        require(viewer, "can_manage_sales_orders")
+    org = viewer.org_id
+
+    # The cards and tabs count the whole book, whatever the filters are.
+    by_status = db.execute(select(
+        ErpSalesOrder.status, func.count(), func.coalesce(func.sum(ErpSalesOrder.grand_total), 0),
+    ).where(ErpSalesOrder.org_id == org).group_by(ErpSalesOrder.status)).all()
+
+    stmt = select(ErpSalesOrder).where(ErpSalesOrder.org_id == org)
+    if status == "open":
+        stmt = stmt.where(ErpSalesOrder.status.in_(_OPEN))
+    elif status:
+        stmt = stmt.where(ErpSalesOrder.status == status)
+    if customer_id:
+        stmt = stmt.where(ErpSalesOrder.customer_id == customer_id)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(ErpSalesOrder.number.ilike(like), ErpSalesOrder.customer_name.ilike(like),
+                              ErpSalesOrder.customer_po_number.ilike(like)))
+    if date_from:
+        stmt = stmt.where(ErpSalesOrder.order_date >= date_from)
+    if date_to:
+        stmt = stmt.where(ErpSalesOrder.order_date <= date_to)
+    orders = list(db.scalars(stmt.options(selectinload(ErpSalesOrder.lines)).order_by(ErpSalesOrder.created_at.desc())))
+    ids = [so.id for so in orders]
+
+    dispatches: dict[uuid.UUID, list[ErpDispatch]] = {}
+    invoiced: dict[uuid.UUID, Decimal] = {}
+    if ids:
+        for d in db.scalars(select(ErpDispatch).where(ErpDispatch.sales_order_id.in_(ids))):
+            dispatches.setdefault(d.sales_order_id, []).append(d)
+        billed = db.execute(select(ErpInvoice.id, ErpInvoice.sales_order_id, ErpInvoice.grand_total).where(
+            ErpInvoice.sales_order_id.in_(ids), ErpInvoice.status == "posted",
+            ErpInvoice.kind.not_in(("proforma", "credit_note")))).all()
+        order_of = {row.id: row.sales_order_id for row in billed}
+        for row in billed:
+            invoiced[row.sales_order_id] = invoiced.get(row.sales_order_id, ZERO) + row.grand_total
+        if order_of:
+            for original, total in db.execute(select(
+                ErpInvoice.original_invoice_id, func.coalesce(func.sum(ErpInvoice.grand_total), 0),
+            ).where(ErpInvoice.kind == "credit_note", ErpInvoice.status == "posted",
+                    ErpInvoice.original_invoice_id.in_(order_of)).group_by(ErpInvoice.original_invoice_id)):
+                invoiced[order_of[original]] -= Decimal(str(total))
+
+    rows = []
+    for so in orders:
+        ended = so.status in (SalesOrderStatus.CANCELLED.value, SalesOrderStatus.CLOSED.value)
+        done = money(invoiced.get(so.id, ZERO))
+        rows.append({
+            "so": so, "invoiced": done, "approval": _approval_status(so),
+            "pending": money(ZERO if ended else max(ZERO, so.grand_total - done)),
+            "delivery": _delivery_status(so, dispatches.get(so.id, [])),
+        })
+    if approval:
+        rows = [row for row in rows if row["approval"] == approval]
+    if delivery:
+        rows = [row for row in rows if row["delivery"] == delivery]
+    key = _SORTS.get(sort)
+    if key:
+        # Rows with no value stay last whichever way the column is sorted.
+        filled = [row for row in rows if key(row) is not None]
+        blank = [row for row in rows if key(row) is None]
+        filled.sort(key=key, reverse=direction == "desc")
+        rows = filled + blank
+
+    total = len(rows)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, pages)  # the last row of the last page may just have gone
+    start = (page - 1) * page_size
+    return {
+        "rows": [_order_out(db, row["so"]) for row in rows[start:start + page_size]],
+        "total": total, "page": page, "page_size": page_size, "pages": pages,
+        "summary": {name: {"count": n, "value": str(money(Decimal(str(value))))} for name, n, value in by_status},
     }
 
 
 def list_orders(
     db: Session, viewer: User, *, status: str | None = None, customer_id: uuid.UUID | None = None,
-    q: str | None = None,
+    q: str | None = None, date_from: date | None = None, date_to: date | None = None,
 ) -> list[dict]:
     if not _readable(viewer):
         require(viewer, "can_manage_sales_orders")
@@ -138,6 +322,10 @@ def list_orders(
         stmt = stmt.where(ErpSalesOrder.status == status)
     if customer_id:
         stmt = stmt.where(ErpSalesOrder.customer_id == customer_id)
+    if date_from:
+        stmt = stmt.where(ErpSalesOrder.order_date >= date_from)
+    if date_to:
+        stmt = stmt.where(ErpSalesOrder.order_date <= date_to)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(ErpSalesOrder.number.ilike(like), ErpSalesOrder.customer_name.ilike(like),
@@ -155,7 +343,104 @@ def _get(db: Session, viewer: User, so_id: uuid.UUID) -> ErpSalesOrder:
 
 
 def get_order(db: Session, viewer: User, so_id: uuid.UUID) -> dict:
-    return _order_out(db, _get(db, viewer, so_id))
+    so = _get(db, viewer, so_id)
+    return {**_order_out(db, so), **_order_detail(db, so)}
+
+
+def _order_detail(db: Session, so: ErpSalesOrder) -> dict:
+    """What the order's own page adds to a list row: the customer, the linked
+    quotation, dispatch and delivery details, invoices with what was paid on
+    them, and the activity trail — all read from records that already exist."""
+    from app.models import AuditLog
+    from app.models.erp import ErpCustomerAccount, ErpInvoice, ErpReceipt, ErpWarehouse
+    from app.services.erp import billing
+
+    customer = db.get(CrmCustomer, so.customer_id)
+    account = db.scalar(select(ErpCustomerAccount).where(
+        ErpCustomerAccount.org_id == so.org_id, ErpCustomerAccount.customer_id == so.customer_id))
+    exposure = billing.customer_exposure(db, so.org_id, so.customer_id)
+    quotation = db.get(CrmQuotation, so.quotation_id) if so.quotation_id else None
+
+    dispatches = list(db.scalars(select(ErpDispatch).where(
+        ErpDispatch.sales_order_id == so.id).order_by(ErpDispatch.created_at)))
+    invoices = list(db.scalars(select(ErpInvoice).where(
+        ErpInvoice.sales_order_id == so.id).order_by(ErpInvoice.created_at)))
+    receipts = list(db.scalars(select(ErpReceipt).where(
+        ErpReceipt.invoice_id.in_([i.id for i in invoices])).order_by(ErpReceipt.received_on))) if invoices else []
+    houses = {w.id: w.name for w in db.scalars(select(ErpWarehouse).where(
+        ErpWarehouse.id.in_({d.warehouse_id for d in dispatches})))} if dispatches else {}
+
+    ids = [str(so.id), *(str(d.id) for d in dispatches), *(str(i.id) for i in invoices), *(str(r.id) for r in receipts)]
+    trail = list(db.scalars(select(AuditLog).where(
+        AuditLog.org_id == so.org_id, AuditLog.target_id.in_(ids)).order_by(AuditLog.created_at.desc()).limit(200)))
+    names = user_names(db, so.org_id, [
+        *(a.actor_user_id for a in trail), *(d.created_by for d in dispatches),
+        *(i.created_by for i in invoices), *(r.created_by for r in receipts)])
+
+    billed = [i for i in invoices if i.status == "posted" and i.kind not in ("proforma", "credit_note")]
+    received = sum((r.amount for r in receipts if r.status == "posted"), ZERO)
+    credited = sum((i.amount_credited for i in billed), ZERO)
+    outstanding = sum((i.outstanding for i in billed), ZERO)
+    invoiced = sum((i.grand_total for i in billed), ZERO)
+    return {
+        "customer": {
+            "id": str(so.customer_id), "code": customer.code if customer else None,
+            "name": customer.name if customer else so.customer_name,
+            "company": customer.company if customer else None,
+            "mobile": customer.mobile if customer else None, "email": customer.email if customer else None,
+            "gstin": (account.gstin if account else None) or (customer.gstin if customer else None),
+            "pan": account.pan if account else None,
+            "billing_state": account.billing_state if account else None,
+            "credit_days": account.credit_days if account else None,
+            "credit_limit": str(account.credit_limit) if account else None,
+            "credit_hold": bool(account and account.credit_hold),
+            "outstanding": exposure["outstanding"], "overdue": exposure["overdue"],
+        },
+        "quotation": None if quotation is None else {
+            "id": str(quotation.id), "number": quotation.number, "status": quotation.status,
+            "quote_date": quotation.quote_date.isoformat() if quotation.quote_date else None,
+            "grand_total": str(quotation.grand_total),
+        },
+        "dispatch_details": [{
+            "id": str(d.id), "number": d.number, "status": d.status, "dispatch_date": d.dispatch_date.isoformat(),
+            "warehouse": houses.get(d.warehouse_id), "transporter": d.transporter, "vehicle_no": d.vehicle_no,
+            "tracking_ref": d.tracking_ref, "eway_bill_no": d.eway_bill_no, "value": str(d.value), "ship_to": d.ship_to,
+            "delivered_on": d.delivered_on.isoformat() if d.delivered_on else None,
+            "pod_received_by": d.pod_received_by, "pod_note": d.pod_note, "cancel_reason": d.cancel_reason,
+            "created_by_name": names.get(d.created_by), "created_at": d.created_at.isoformat(),
+            "lines": [{"id": str(line.id), "order_line_id": str(line.order_line_id), "description": line.description,
+                       "quantity": str(line.quantity), "invoiced_qty": str(line.invoiced_qty),
+                       "returned_qty": str(line.returned_qty), "serials": line.serials or []} for line in d.lines],
+        } for d in dispatches],
+        "returns": [{
+            "id": str(r.id), "number": r.number, "dispatch_id": str(r.dispatch_id), "return_date": r.return_date.isoformat(),
+            "warehouse": db.get(ErpWarehouse, r.warehouse_id).name, "condition": r.condition, "reason": r.reason,
+            "lines": r.lines, "value": str(r.value), "created_by_name": user_names(db, so.org_id, [r.created_by]).get(r.created_by),
+        } for r in db.scalars(select(ErpSalesReturn).where(ErpSalesReturn.sales_order_id == so.id)
+                              .order_by(ErpSalesReturn.created_at.desc()))],
+        "invoice_details": [{
+            "id": str(i.id), "number": i.number, "kind": i.kind, "status": i.status,
+            "invoice_date": i.invoice_date.isoformat(), "due_date": i.due_date.isoformat() if i.due_date else None,
+            "grand_total": str(i.grand_total), "amount_received": str(i.amount_received),
+            "amount_credited": str(i.amount_credited), "outstanding": str(money(i.outstanding)),
+            "created_by_name": names.get(i.created_by),
+        } for i in invoices],
+        "receipts": [{
+            "id": str(r.id), "number": r.number, "invoice_id": str(r.invoice_id), "received_on": r.received_on.isoformat(),
+            "amount": str(r.amount), "mode": r.mode, "reference": r.reference, "status": r.status,
+            "created_by_name": names.get(r.created_by),
+        } for r in receipts],
+        "payment_summary": {
+            "order_value": str(so.grand_total), "invoiced": str(money(invoiced)), "credited": str(money(credited)),
+            "received": str(money(received)), "outstanding": str(money(outstanding)),
+            "to_bill": str(money(max(ZERO, so.grand_total - invoiced + credited - _returned_unbilled(so, dispatches)))),
+        },
+        "activity": [{
+            "id": str(a.id), "action": a.action.removeprefix("erp."), "at": a.created_at.isoformat(),
+            "by": names.get(a.actor_user_id) if a.actor_user_id else None,
+            "target": a.target_type, "detail": a.detail or {},
+        } for a in trail],
+    }
 
 
 def _known_state(db: Session, org_id: uuid.UUID, place: str | None) -> str | None:
@@ -316,6 +601,21 @@ def remove_attachment(db: Session, viewer: User, so_id: uuid.UUID, att_id: str,
     return get_order(db, viewer, so.id)
 
 
+def send_to_customer(db: Session, viewer: User, so_id: uuid.UUID, payload: S.SendOrderIn,
+                     request: Request | None = None) -> dict:
+    """Email the order's PDF. Only once released: until then it is not a commitment."""
+    from app.services.erp.common import mail_order_pdf
+
+    require(viewer, "can_manage_sales_orders")
+    so = _get(db, viewer, so_id)
+    if so.status not in _RELEASED:
+        raise ErpError("not_released", "Only an approved order is sent to the customer.", 409)
+    mail_order_pdf(so.org_id, so.number, payload.to, payload.subject, payload.message, payload.pdf)
+    record_audit(db, viewer, "sales_order.sent", so, request=request, detail={"to": payload.to})
+    db.commit()
+    return get_order(db, viewer, so.id)
+
+
 def save_order(db: Session, viewer: User, payload: S.SalesOrderIn, so_id: uuid.UUID | None = None,
                request: Request | None = None) -> dict:
     require(viewer, "can_manage_sales_orders")
@@ -336,6 +636,45 @@ def save_order(db: Session, viewer: User, payload: S.SalesOrderIn, so_id: uuid.U
                  detail={"grand_total": str(so.grand_total), "deviation": so.has_deviation})
     db.commit()
     return get_order(db, viewer, so.id)
+
+
+def delete_order(db: Session, viewer: User, so_id: uuid.UUID, request: Request | None = None) -> None:
+    """Delete an order nobody but its author has ever seen.
+
+    Only a draft that was never submitted. One that was submitted, rejected and
+    revised is a draft again but has an approval history, so it is cancelled with
+    a reason instead, as is anything further along. The number is not handed back:
+    it may already have been quoted to somebody. What was deleted stays in the
+    audit log, because the row itself no longer can.
+    """
+    from app.models.erp import ErpInvoice, ErpPurchaseOrder, ErpRequisition, ErpSerial
+
+    require(viewer, "can_delete_sales_orders")
+    so = _get(db, viewer, so_id)
+    if so.status != SalesOrderStatus.DRAFT.value:
+        raise ErpError("not_draft", f"This order is {so.status}. Only a draft that was never submitted is deleted.", 409)
+    if so.submitted_at is not None:
+        raise ErpError("was_submitted", "This order has been through approval, so its history is kept. Cancel it instead.", 409)
+    linked = (("dispatches", ErpDispatch), ("invoices", ErpInvoice), ("requisitions", ErpRequisition),
+              ("purchase orders", ErpPurchaseOrder), ("serials", ErpSerial))
+    for name, model in linked:
+        if db.scalar(select(func.count()).select_from(model).where(model.sales_order_id == so.id)):
+            raise ErpError("has_documents", f"This order has {name} against it, so it cannot be deleted.", 409)
+    record_audit(db, viewer, "sales_order.deleted", so, request=request, detail={
+        "customer": so.customer_name, "grand_total": str(so.grand_total), "order_date": so.order_date.isoformat(),
+        "customer_po": so.customer_po_number, "quotation_id": str(so.quotation_id) if so.quotation_id else None,
+        "lines": len(so.lines), "created_by": str(so.created_by),
+    })
+    db.delete(so)
+    db.commit()
+
+
+def _clip(text: str | None, limit: int) -> str | None:
+    """A quotation's free text, cut to what the order's field can hold."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    return text if len(text) <= limit else f"{text[:limit - 1].rstrip()}…"
 
 
 def from_quotation(db: Session, viewer: User, quotation_id: uuid.UUID, request: Request | None = None) -> dict:
@@ -371,10 +710,15 @@ def from_quotation(db: Session, viewer: User, quotation_id: uuid.UUID, request: 
             quantity=ql.quantity, rate=rate, gst_percent=ql.gst_percent,
             fulfilment=None if item else "service",
         ))
+    # Who sold it: the quotation's author, if still with the company.
+    author = db.get(User, quotation.created_by) if quotation.created_by else None
+    terms = "\n\n".join(t.strip() for t in (quotation.terms, quotation.warranty_terms) if t and t.strip())
     payload = S.SalesOrderIn(
         customer_id=quotation.customer_id, quotation_id=quotation.id, lines=lines,
         billing_address=quotation.billing_address, shipping_address=quotation.shipping_address,
-        place_of_supply=quotation.state,
+        place_of_supply=quotation.state, payment_terms=_clip(quotation.payment_terms, 160),
+        delivery_terms=_clip(quotation.delivery_terms, 160), terms=_clip(terms, 4000), notes=quotation.notes,
+        salesperson_id=author.id if author and author.org_id == viewer.org_id and author.is_active else None,
     )
     return save_order(db, viewer, payload, request=request)
 
@@ -445,6 +789,67 @@ def revise_order(db: Session, viewer: User, so_id: uuid.UUID, request: Request |
     record_audit(db, viewer, "sales_order.revised", so, request=request)
     db.commit()
     return get_order(db, viewer, so.id)
+
+
+def _live_invoices(db: Session, so: ErpSalesOrder) -> bool:
+    from app.models.erp import ErpInvoice
+
+    return any(i.status not in ("cancelled", "rejected") and i.kind not in ("proforma", "credit_note")
+               for i in db.scalars(select(ErpInvoice).where(ErpInvoice.sales_order_id == so.id)))
+
+
+def amend_order(db: Session, viewer: User, so_id: uuid.UUID, reason: str | None, request: Request | None = None) -> dict:
+    """An approved order back to draft, to be changed and approved again. Only
+    before anything has happened against the figures that were approved."""
+    from app.services.erp.purchase import reset_chain
+
+    require(viewer, "can_manage_sales_orders")
+    so = _get(db, viewer, so_id)
+    if so.status != SalesOrderStatus.APPROVED.value:
+        raise ErpError("not_amendable", f"A {so.status} order cannot be amended.", 409)
+    if db.scalar(select(func.count()).select_from(ErpDispatch).where(ErpDispatch.sales_order_id == so.id)):
+        raise ErpError("dispatched", "This order has a dispatch against it. Close it and raise another.", 409)
+    if _live_invoices(db, so):
+        raise ErpError("invoiced", "An invoice is raised against this order. Delete or cancel it first.", 409)
+    cleaned = require_reason(reason, "order is amended")
+    _release_all(db, so)
+    reset_chain(db, so.id)
+    so.status = SalesOrderStatus.DRAFT.value
+    so.reviewed_by = so.reviewed_at = None
+    so.review_note = None
+    record_audit(db, viewer, "sales_order.amended", so, request=request, detail={"reason": cleaned})
+    db.commit()
+    return get_order(db, viewer, so.id)
+
+
+def duplicate_order(db: Session, viewer: User, so_id: uuid.UUID, request: Request | None = None) -> dict:
+    """A new draft with the same customer, lines and terms. The customer's PO,
+    the quotation and the dates belong to the old order, so they do not come."""
+    require(viewer, "can_manage_sales_orders")
+    so = _get(db, viewer, so_id)
+    payload = S.SalesOrderIn(
+        customer_id=so.customer_id, site_id=so.site_id, project_id=so.project_id,
+        billing_address=so.billing_address, shipping_address=so.shipping_address,
+        place_of_supply=so.place_of_supply, payment_terms=so.payment_terms, notes=so.notes,
+        salesperson_id=so.salesperson_id, order_type=so.order_type, priority=so.priority,
+        delivery_terms=so.delivery_terms, delivery_mode=so.delivery_mode, transporter_name=so.transporter_name,
+        freight_terms=so.freight_terms, delivery_instructions=so.delivery_instructions, terms=so.terms,
+        internal_notes=so.internal_notes, freight=so.freight, other_charges=so.other_charges,
+        charges_gst_percent=so.charges_gst_percent,
+        lines=[S.SalesOrderLineIn(
+            item_id=line.item_id, description=line.description, hsn_sac=line.hsn_sac, uom=line.uom,
+            quantity=line.quantity, rate=line.rate, discount_percent=line.discount_percent,
+            gst_percent=line.gst_percent, fulfilment=line.fulfilment,
+        ) for line in so.lines],
+        milestones=[S.MilestoneIn(
+            name=m.name, kind=m.kind, taxable_amount=m.taxable_amount, gst_percent=m.gst_percent,
+        ) for m in so.milestones],
+    )
+    copy = save_order(db, viewer, payload, request=request)
+    new = _get(db, viewer, uuid.UUID(copy["id"]))
+    record_audit(db, viewer, "sales_order.duplicated", new, request=request, detail={"from": so.number})
+    db.commit()
+    return get_order(db, viewer, new.id)
 
 
 def set_hold(db: Session, viewer: User, so_id: uuid.UUID, payload: S.HoldIn, request: Request | None = None) -> dict:
@@ -574,6 +979,14 @@ def cancel_order(db: Session, viewer: User, so_id: uuid.UUID, reason: str | None
         raise ErpError("closed", f"This order is {so.status}.", 409)
     if any(m.status == MilestoneStatus.INVOICED.value for m in so.milestones):
         raise ErpError("invoiced", "A milestone is invoiced — raise a credit note before cancelling.", 409)
+    from app.models.erp import ErpInvoice
+
+    # A draft invoice counts: left behind, it could still be posted against a dead order.
+    live = list(db.scalars(select(ErpInvoice).where(
+        ErpInvoice.sales_order_id == so.id, ErpInvoice.kind.not_in(("proforma", "credit_note")),
+        ErpInvoice.status.not_in(("cancelled", "rejected")))))
+    if live:
+        raise ErpError("invoiced", f"Invoice {live[0].number or '(draft)'} is raised against this order — delete or cancel it first.", 409)
     cleaned = require_reason(reason, "order is cancelled")
     _release_all(db, so)  # FR-05.19
     so.status = SalesOrderStatus.CANCELLED.value
@@ -623,7 +1036,7 @@ def _dispatch_out(db: Session, d: ErpDispatch) -> dict:
         **row_dict(d), "order_number": so.number if so else None,
         "customer_name": so.customer_name if so else None, "customer_id": str(so.customer_id) if so else None,
         "warehouse_name": wh.name if wh else None, "created_by_name": names.get(d.created_by),
-        "uninvoiced": any(line.invoiced_qty < line.quantity for line in d.lines),
+        "uninvoiced": any(line.billable_qty > 0 for line in d.lines),
         "lines": [row_dict(line) for line in d.lines],
     }
 
@@ -677,7 +1090,7 @@ def create_dispatch(db: Session, viewer: User, payload: S.DispatchIn, request: R
         quantity = qty(pl.quantity)
         if quantity > line.quantity - line.dispatched_qty:
             raise ErpError("over_dispatch",
-                           f"“{line.description}”: only {(line.quantity - line.dispatched_qty).normalize()} left to dispatch.")
+                           f"“{line.description}”: only {(line.quantity - line.dispatched_qty).normalize():f} left to dispatch.")
         item = db.get(ErpItem, line.item_id)
         serials = stock.check_serial_count(item, quantity, pl.serials)
         consume = min(line.reserved_qty, quantity) if line.reserved_warehouse_id == wh.id else ZERO
@@ -743,6 +1156,8 @@ def cancel_dispatch(db: Session, viewer: User, dispatch_id: uuid.UUID, reason: s
         raise ErpError("not_cancellable", f"A {d.status} dispatch cannot be cancelled.", 409)
     if any(line.invoiced_qty > 0 for line in d.lines):
         raise ErpError("invoiced", "This dispatch is invoiced — credit the invoice first.", 409)
+    if any(line.returned_qty > 0 for line in d.lines):
+        raise ErpError("returned", "Goods have already come back against this dispatch.", 409)
     cleaned = require_reason(reason, "dispatch is cancelled")
     so = db.get(ErpSalesOrder, d.sales_order_id)
     order_lines = {line.id: line for line in so.lines}
@@ -765,3 +1180,61 @@ def cancel_dispatch(db: Session, viewer: User, dispatch_id: uuid.UUID, reason: s
     record_audit(db, viewer, "dispatch.cancelled", d, request=request, detail={"reason": cleaned})
     db.commit()
     return get_dispatch(db, viewer, d.id)
+
+
+def record_return(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.SalesReturnIn,
+                  request: Request | None = None) -> dict:
+    """Goods back from the customer. Stock comes in, in the condition it arrived.
+    The order stays dispatched: a replacement is a new order, and any money back
+    is a credit note against the invoice."""
+    require(viewer, "can_manage_sales_orders")
+    d = get_owned(db, ErpDispatch, viewer.org_id, dispatch_id, "dispatch")
+    if d.status == DispatchStatus.CANCELLED.value:
+        raise ErpError("cancelled", "A cancelled dispatch has nothing to return.", 409)
+    wh = stock.active_warehouse(db, viewer.org_id, payload.warehouse_id)
+    when = payload.return_date or date.today()
+    if when < d.dispatch_date:
+        raise ErpError("before_dispatch", "A return cannot be before the dispatch.")
+    if when > date.today():
+        raise ErpError("future_return", "A return cannot be dated in the future.")
+    cleaned = require_reason(payload.reason, "return is recorded")
+    so = db.get(ErpSalesOrder, d.sales_order_id)
+    order_lines = {line.id: line for line in so.lines}
+    by_id = {line.id: line for line in d.lines}
+    number = next_number(db, viewer.org_id, "SR", when)
+    row = ErpSalesReturn(
+        org_id=viewer.org_id, number=number, sales_order_id=so.id, dispatch_id=d.id, warehouse_id=wh.id,
+        return_date=when, condition=payload.condition, reason=cleaned, created_by=viewer.id, lines=[],
+    )
+    db.add(row)
+    db.flush()
+    kept = []
+    value = ZERO
+    for rl in payload.lines:
+        line = by_id.get(rl.dispatch_line_id)
+        if line is None:
+            raise ErpError("wrong_dispatch", "A line does not belong to this dispatch.")
+        quantity = qty(rl.quantity)
+        left = line.quantity - line.returned_qty
+        if quantity > left:
+            raise ErpError("over_return", f"“{line.description}”: only {left.normalize():f} can come back.")
+        item = db.get(ErpItem, line.item_id)
+        serials = stock.check_serial_count(item, quantity, rl.serials)
+        if serials:
+            if not set(serials) <= set(line.serials or []):
+                raise ErpError("serial_not_dispatched", "A serial was not on this dispatch.")
+            stock.place_serials(db, viewer, item=item, serials=serials, warehouse_id=wh.id,
+                                condition=payload.condition, kind=MovementKind.RETURN, ref_type="sales_return",
+                                ref_id=row.id, ref_number=number, expect=(SerialStatus.DELIVERED,))
+        stock.move(db, viewer, item=item, warehouse_id=wh.id, quantity=quantity, kind=MovementKind.RETURN,
+                   ref_type="sales_return", ref_id=row.id, ref_number=number, condition=payload.condition,
+                   serials=serials, reason=cleaned)
+        line.returned_qty = qty(line.returned_qty + quantity)
+        value += quantity * order_lines[line.order_line_id].net_rate
+        kept.append({"description": line.description, "quantity": str(quantity), "serials": serials or []})
+    row.lines = kept
+    row.value = money(value)
+    record_audit(db, viewer, "dispatch.returned", d, request=request,
+                 detail={"number": number, "reason": cleaned, "value": str(row.value)})
+    db.commit()
+    return get_order(db, viewer, so.id)

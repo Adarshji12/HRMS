@@ -27,7 +27,7 @@ const longDate = (iso: string | null | undefined) =>
 const num = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-function useImage(kind: 'logo' | 'stamp', present: boolean | undefined, version: string | null | undefined) {
+export function useImage(kind: 'logo' | 'stamp', present: boolean | undefined, version: string | null | undefined) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     if (!present) return setSrc(null)
