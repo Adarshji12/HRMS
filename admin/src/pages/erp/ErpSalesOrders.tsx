@@ -1230,6 +1230,7 @@ function CreateInvoice({ so, onClose }: { so: SalesOrder; onClose: () => void })
   const { busy, error, run } = useRun()
   const open = (id: string) => navigate(`/erp/billing?open=${id}`)
   const dispatches = so.dispatches.filter((d) => d.uninvoiced)
+  const byMilestones = so.milestones.some((m) => m.kind === 'dispatch' || m.kind === 'delivery')
   const ready = so.milestones.filter((m) => m.status === 'ready')
   const waiting = so.milestones.filter((m) => m.status === 'pending')
   const services = so.lines.filter((l) => l.fulfilment === 'service')
@@ -1278,6 +1279,11 @@ function CreateInvoice({ so, onClose }: { so: SalesOrder; onClose: () => void })
       </>
     }>
       <div style={{ padding: '0 20px 12px' }}>
+        {byMilestones && (
+          <p className="crm-muted" style={{ margin: '0 0 10px' }}>
+            The goods on this order are billed by its dispatch or delivery milestone. A dispatch only makes that milestone ready, so they are not invoiced twice.
+          </p>
+        )}
         {nothing ? (
           <p className="crm-muted">
             {waiting.length ? 'Nothing is ready to invoice. Mark a billing milestone ready from View, or dispatch the goods.'
@@ -1461,7 +1467,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   'sales_order.cancelled': 'Order cancelled', 'sales_order.closed': 'Order closed', 'sales_order.sent': 'Order sent to customer',
   'sales_order.amended': 'Sent back to draft to amend', 'sales_order.duplicated': 'Copied from another order',
   'dispatch.returned': 'Goods returned', 'sales_order.attachment_added': 'Attachment added', 'sales_order.attachment_removed': 'Attachment removed',
-  'dispatch.created': 'Goods dispatched', 'dispatch.delivered': 'Delivery confirmed', 'dispatch.cancelled': 'Dispatch cancelled',
+  'dispatch.transport_changed': 'Transport details changed', 'dispatch.created': 'Goods dispatched', 'dispatch.delivered': 'Delivery confirmed', 'dispatch.cancelled': 'Dispatch cancelled',
   'invoice.saved': 'Invoice drafted', 'invoice.posted': 'Invoice posted', 'invoice.cancelled': 'Invoice cancelled',
   'receipt.recorded': 'Payment received', 'receipt.reversed': 'Payment reversed',
 }
@@ -1478,6 +1484,11 @@ function activityTone(action: string): string {
 }
 function activityDetail(a: Activity): string {
   const d = a.detail
+  if (a.action === 'dispatch.transport_changed' && d.changes && typeof d.changes === 'object') {
+    const list = Object.entries(d.changes as Record<string, { from: string | null; to: string | null }>)
+      .map(([k, v]) => `${TRANSPORT_LABEL[k] ?? k}: ${v.from ?? '—'} → ${v.to ?? '—'}`)
+    return [typeof d.number === 'string' ? d.number : null, ...list].filter(Boolean).join(' · ')
+  }
   const bits = [
     typeof d.number === 'string' && !a.action.startsWith('sales_order.') ? d.number : null,
     typeof d.from === 'string' ? `from ${d.from}` : null,
@@ -1501,6 +1512,7 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
   const [prompt, setPrompt] = useState<null | { title: string; hint?: string; act: (reason: string) => Promise<unknown>; danger?: boolean }>(null)
   const [challan, setChallan] = useState<string | null>(null)
   const [delivering, setDelivering] = useState<string | null>(null)
+  const [transporting, setTransporting] = useState<string | null>(null)
   const [returning, setReturning] = useState<string | null>(null)
   const [reserveWh, setReserveWh] = useState('')
   const [dispatching, setDispatching] = useState(false)
@@ -1560,7 +1572,7 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
         )}
       </>}
       onClose={onClose}
-      covered={Boolean(printing || sending || invoicing || dispatching || prompt || challan || delivering || returning)}
+      covered={Boolean(printing || sending || invoicing || dispatching || prompt || challan || delivering || returning || transporting)}
       actions={<>
         <button type="button" className="btn btn-sm" onClick={() => setPrinting(true)}><IconPrinter size={14} /> Print</button>
         <button type="button" className="btn btn-sm" disabled={pdfBusy} onClick={() => void downloadPdf()}>
@@ -1766,6 +1778,7 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
             <span className="sov-sub sov-disp-when">Dispatched <FullDate iso={d.dispatch_date} />{d.created_by_name ? ` by ${d.created_by_name}` : ''}</span>
             <div className="sov-disp-actions">
               {d.status !== 'cancelled' && <button type="button" className="btn btn-sm" onClick={() => setChallan(d.id)}><IconPrinter size={13} /> Challan</button>}
+              {d.status === 'dispatched' && sales && <button type="button" className="btn btn-sm" onClick={() => setTransporting(d.id)}><IconEdit size={13} /> Edit transport</button>}
               {d.status === 'dispatched' && sales && <button type="button" className="btn btn-sm btn-primary" onClick={() => setDelivering(d.id)}><IconCheck size={13} /> Mark delivered</button>}
               {d.status !== 'cancelled' && sales && d.lines.some((l) => Number(l.returned_qty) < Number(l.quantity)) && (
                 <button type="button" className="btn btn-sm" onClick={() => setReturning(d.id)}>Return goods</button>
@@ -1795,6 +1808,7 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
               <li key={l.id}>
                 {l.description} <b>× {qtyText(l.quantity)}</b>
                 {Number(l.returned_qty) > 0 && <span className="sov-bad"> · {qtyText(l.returned_qty)} returned</span>}
+                {Number(l.free_qty) > 0 && <span className="sov-good"> · {qtyText(l.free_qty)} free replacement</span>}
                 {l.serials.length > 0 && <small className="sov-sub"> · {l.serials.join(', ')}</small>}
               </li>
             ))}</ul>
@@ -1806,13 +1820,13 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
         <section className="sov-card">
           <h3>Returned goods <span className="sov-count">{so.returns.length}</span></h3>
           <div className="table-wrap"><table>
-            <thead><tr><th>Return</th><th>Date</th><th>Dispatch</th><th>Items</th><th>Into</th><th>Condition</th><th className="crm-num">Value</th><th>Reason</th></tr></thead>
+            <thead><tr><th>Return</th><th>Date</th><th>Dispatch</th><th>Items</th><th>Into</th><th>Condition</th><th>Next</th><th className="crm-num">Value</th><th>Reason</th></tr></thead>
             <tbody>{so.returns.map((r) => (
               <tr key={r.id}>
                 <td><b>{r.number}</b></td><td><FullDate iso={r.return_date} /></td>
                 <td>{so.dispatch_details.find((d) => d.id === r.dispatch_id)?.number ?? '—'}</td>
                 <td>{r.lines.map((l) => `${l.description} × ${qtyText(l.quantity)}`).join(', ')}</td>
-                <td>{r.warehouse}</td><td>{titleCase(r.condition)}</td>
+                <td>{r.warehouse}</td><td>{titleCase(r.condition)}</td><td>{r.replace ? 'Replacement' : 'No replacement'}</td>
                 <td className="crm-num">{rupees(r.value)}</td><td>{r.reason}</td>
               </tr>
             ))}</tbody>
@@ -1951,6 +1965,10 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
     {challan && so.dispatch_details.some((d) => d.id === challan) && (
       <DispatchChallan so={so} dispatch={so.dispatch_details.find((d) => d.id === challan)!} onClose={() => window.setTimeout(() => setChallan(null))} />
     )}
+    {transporting && so.dispatch_details.some((d) => d.id === transporting) && (
+      <TransportDialog dispatch={so.dispatch_details.find((d) => d.id === transporting)!}
+        onClose={() => setTransporting(null)} onDone={() => { setTransporting(null); q.reload(); onChanged() }} />
+    )}
     {delivering && <DeliverDialog number={so.dispatch_details.find((d) => d.id === delivering)?.number ?? ''} id={delivering}
       minDate={so.dispatch_details.find((d) => d.id === delivering)?.dispatch_date ?? ''}
       onClose={() => setDelivering(null)} onDone={() => { setDelivering(null); q.reload(); onChanged() }} />}
@@ -1965,6 +1983,40 @@ function OrderDrawer({ id, flash, onClose, onEdit, onChanged }: { id: string; fl
 }
 
 /** Proof of delivery: who took the goods, and when. */
+const TRANSPORT_LABEL: Record<string, string> = {
+  transporter: 'Transporter', tracking_ref: 'LR / tracking', vehicle_no: 'Vehicle', eway_bill_no: 'E-way bill',
+}
+
+/** Correct how a shipment travels. The goods and the stock are not touched. */
+function TransportDialog({ dispatch, onClose, onDone }: { dispatch: SalesOrderDetail['dispatch_details'][number]; onClose: () => void; onDone: () => void }) {
+  const [form, setForm] = useState({
+    transporter: dispatch.transporter ?? '', tracking_ref: dispatch.tracking_ref ?? '',
+    vehicle_no: dispatch.vehicle_no ?? '', eway_bill_no: dispatch.eway_bill_no ?? '',
+  })
+  const { busy, error, run } = useRun()
+  const changed = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k].trim() !== ((dispatch[k] as string | null) ?? ''))
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value })
+  return (
+    <Dialog title={`Edit transport for ${dispatch.number}`} subtitle="Only how it travels changes. The goods, quantities and stock stay as they are." onClose={onClose} footer={
+      <>
+        {error && <span className="error">{error}</span>}
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !changed} onClick={() => void run(async () => {
+          await erp.dispatchTransport(dispatch.id, form)
+          onDone()
+        })}>Save changes</button>
+      </>
+    }>
+      <div className="crm-form" style={{ padding: '0 20px 14px' }}>
+        <Field label="Transporter / courier"><input placeholder="e.g. VRL Logistics" maxLength={120} value={form.transporter} onChange={set('transporter')} /></Field>
+        <Field label="Vehicle no."><input placeholder="e.g. MH12AB1234" maxLength={24} value={form.vehicle_no} onChange={set('vehicle_no')} /></Field>
+        <Field label="AWB / LR"><input placeholder="e.g. LR-883201" maxLength={80} value={form.tracking_ref} onChange={set('tracking_ref')} /></Field>
+        <Field label="E-way bill no."><input placeholder="e.g. 331000123456" maxLength={24} value={form.eway_bill_no} onChange={set('eway_bill_no')} /></Field>
+      </div>
+    </Dialog>
+  )
+}
+
 function DeliverDialog({ id, number, minDate, onClose, onDone }: { id: string; number: string; minDate: string; onClose: () => void; onDone: () => void }) {
   const [on, setOn] = useState(todayISO())
   const [by, setBy] = useState('')
@@ -1998,6 +2050,7 @@ function ReturnDialog({ dispatch, onClose, onDone }: { dispatch: SalesOrderDetai
   const [on, setOn] = useState(todayISO())
   const [condition, setCondition] = useState('good')
   const [reason, setReason] = useState('')
+  const [replace, setReplace] = useState(false)
   const [rows, setRows] = useState<Record<string, { quantity: string; serials: string[] }>>({})
   const { busy, error, run } = useRun()
   // The warehouse it left is the likely one it comes back to.
@@ -2017,7 +2070,7 @@ function ReturnDialog({ dispatch, onClose, onDone }: { dispatch: SalesOrderDetai
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !ready} onClick={() => void run(async () => {
           await erp.salesReturn(dispatch.id, {
-            warehouse_id: house, return_date: on, condition, reason: reason.trim(),
+            warehouse_id: house, return_date: on, condition, reason: reason.trim(), replace,
             lines: picked.map((l) => ({ dispatch_line_id: l.id, quantity: row(l.id).quantity, serials: row(l.id).serials })),
           })
           onDone()
@@ -2034,6 +2087,13 @@ function ReturnDialog({ dispatch, onClose, onDone }: { dispatch: SalesOrderDetai
             <option value="good">Good</option><option value="quarantine">Quarantine (to be checked)</option><option value="defective">Defective</option>
           </select></Field>
           <Field label="Reason" wide><input placeholder="e.g. Wrong model sent" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          <div className="crm-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="crm-check">
+              <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+              Send a replacement from this order
+            </label>
+            <span className="crm-field-hint">The same quantity opens up to dispatch again. Units already billed go free; the rest are billed with the replacement.</span>
+          </div>
         </div>
         <div className="table-wrap"><table className="crm-lines">
           <thead><tr><th>Line</th><th className="crm-num">Sent</th><th className="crm-num">Can return</th><th className="crm-num">Returning</th><th>Serials</th></tr></thead>
@@ -2056,7 +2116,8 @@ function ReturnDialog({ dispatch, onClose, onDone }: { dispatch: SalesOrderDetai
         </table></div>
         {over && <p className="sov-note sov-bad">That is more than can come back.</p>}
         {serialsOff && <p className="sov-note sov-bad">Pick one serial for each unit coming back.</p>}
-        {billed && <p className="sov-note">Some of this has been invoiced. Raise a credit note against the invoice for the money, from Billing.</p>}
+        {billed && !replace && <p className="sov-note">Some of this has been invoiced. Raise a credit note against the invoice for the money, from Billing.</p>}
+        {billed && replace && <p className="sov-note">Some of this has been invoiced, so its replacement will not be billed again. No credit note is needed.</p>}
       </div>
     </Dialog>
   )

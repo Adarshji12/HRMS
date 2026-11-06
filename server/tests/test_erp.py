@@ -1235,3 +1235,192 @@ def test_an_order_can_be_copied_to_a_new_draft(client, acme, checker):
     assert copy["customer_id"] == so["customer_id"] and copy["grand_total"] == so["grand_total"]
     assert copy["customer_po_number"] is None and float(copy["lines"][0]["dispatched_qty"]) == 0
     assert any(a["action"] == "sales_order.duplicated" for a in copy["activity"])
+
+
+def test_transport_details_can_be_corrected_while_in_transit(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    before = _stock_of(client, acme, item)["quantity"]
+    out = ok(client.put(f"{API}/dispatches/{d['id']}/transport", json={
+        "transporter": "VRL Logistics", "vehicle_no": "mp 20 ab 1234", "tracking_ref": "LR-1", "eway_bill_no": "",
+    }, headers=acme.headers()))
+    assert out["transporter"] == "VRL Logistics" and out["vehicle_no"] == "MP20AB1234" and out["eway_bill_no"] is None
+    assert _stock_of(client, acme, item)["quantity"] == before
+    detail = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    changed = [a for a in detail["activity"] if a["action"] == "dispatch.transport_changed"]
+    assert changed and changed[0]["detail"]["changes"]["vehicle_no"]["to"] == "MP20AB1234"
+    # Delivered: the paperwork stands.
+    ok(client.post(f"{API}/dispatches/{d['id']}/deliver", json={"received_by": "Ramesh"}, headers=acme.headers()))
+    refused(client.put(f"{API}/dispatches/{d['id']}/transport", json={"vehicle_no": "X"}, headers=acme.headers()),
+            409, "not_in_transit")
+
+
+def test_a_billed_return_is_replaced_free_from_the_same_order(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    inv = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]}, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/invoices/{inv['id']}/post", headers=acme.headers()))
+    out = ok(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        "warehouse_id": wh["id"], "reason": "Faulty", "replace": True,
+        "lines": [{"dispatch_line_id": d["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    assert out["status"] == "partially_dispatched" and out["returns"][0]["replace"] is True
+    assert out["payment_summary"]["to_bill"] == "0.00"
+    again = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": so["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    assert again["uninvoiced"] is False
+    refused(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": again["id"]}, headers=acme.headers()), 409)
+    row = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    assert row["status"] == "dispatched" and row["payment_summary"]["to_bill"] == "0.00"
+
+
+def test_an_unbilled_return_is_replaced_and_billed_once(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    ok(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        "warehouse_id": wh["id"], "reason": "Wrong model", "replace": True,
+        "lines": [{"dispatch_line_id": d["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    again = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": so["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    first = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]}, headers=acme.headers()), 201)
+    second = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": again["id"]}, headers=acme.headers()), 201)
+    assert first["lines"][0]["quantity"] == "3.000" and second["lines"][0]["quantity"] == "1.000"
+
+
+def test_cancelling_a_free_replacement_owes_it_again(client, acme, checker):
+    wh, item, so, d = _dispatched(client, acme, checker)
+    inv = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]}, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/invoices/{inv['id']}/post", headers=acme.headers()))
+    ok(client.post(f"{API}/dispatches/{d['id']}/returns", json={
+        "warehouse_id": wh["id"], "reason": "Faulty", "replace": True,
+        "lines": [{"dispatch_line_id": d["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    body = {"sales_order_id": so["id"], "warehouse_id": wh["id"],
+            "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "1"}]}
+    again = ok(client.post(f"{API}/dispatches", json=body, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/dispatches/{again['id']}/cancel", json={"reason": "Wrong van"}, headers=acme.headers()))
+    third = ok(client.post(f"{API}/dispatches", json=body, headers=acme.headers()), 201)
+    assert third["uninvoiced"] is False
+
+
+def test_milestone_order_is_not_billed_by_dispatch_as_well(client, acme, checker):
+    wh, item = _stocked(client, acme, checker, quantity="10")
+    _, so = _released_order(client, acme, checker, item, quantity="4", milestones=[
+        {"name": "Advance", "kind": "advance", "taxable_amount": "1800"},
+        {"name": "On dispatch", "kind": "dispatch", "taxable_amount": "4200"},
+    ])
+    d = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": so["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "4"}],
+    }, headers=acme.headers()), 201)
+    assert d["uninvoiced"] is False and d["billed_by_milestones"] is True
+    refused(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]},
+                        headers=acme.headers()), 409, "milestone_billing")
+    got = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    assert all(not x["uninvoiced"] for x in got["dispatches"])
+    assert not [x for x in ok(client.get(f"{API}/dispatches?uninvoiced=true", headers=acme.headers())) if x["id"] == d["id"]]
+    # The dispatch readied its milestone; that and the advance bill the order once.
+    on_dispatch = next(m for m in got["milestones"] if m["kind"] == "dispatch")
+    assert on_dispatch["status"] == "ready"
+    advance = next(m for m in got["milestones"] if m["kind"] == "advance")
+    ok(client.post(f"{API}/milestones/{advance['id']}/ready", json={"evidence": "Advance received"}, headers=acme.headers()))
+    a = ok(client.post(f"{API}/invoices/from-milestone", json={"milestone_id": advance["id"]}, headers=acme.headers()), 201)
+    b = ok(client.post(f"{API}/invoices/from-milestone", json={"milestone_id": on_dispatch["id"]}, headers=acme.headers()), 201)
+    assert float(a["grand_total"]) + float(b["grand_total"]) == float(so["grand_total"])
+
+
+def test_a_milestone_cannot_bill_past_the_order(client, acme, checker):
+    service = _item(client, acme, code="AMC", item_type="service")
+    customer = _customer(client, acme)
+    so = ok(client.post(f"{API}/sales-orders", json={
+        "customer_id": customer["id"], "lines": [{"item_id": service["id"], "quantity": "1", "rate": "6000"}],
+        # Same taxable value, but at 28 % it bills more than the order's 18 %.
+        "milestones": [{"name": "Go-live", "kind": "custom", "taxable_amount": "6000", "gst_percent": "28"}],
+    }, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/sales-orders/{so['id']}/submit", headers=acme.headers()))
+    so = ok(client.post(f"{API}/sales-orders/{so['id']}/decide", json={"approve": True}, headers=checker))
+    ms = so["milestones"][0]
+    ok(client.post(f"{API}/milestones/{ms['id']}/ready", json={"evidence": "Live"}, headers=acme.headers()))
+    refused(client.post(f"{API}/invoices/from-milestone", json={"milestone_id": ms["id"]},
+                        headers=acme.headers()), 409, "over_order")
+    got = ok(client.get(f"{API}/sales-orders/{so['id']}", headers=acme.headers()))
+    assert got["milestones"][0]["status"] == "ready" and not got["invoices"]
+
+
+def test_an_advance_milestone_cannot_bill_an_order_already_billed_by_dispatch(client, acme, checker):
+    wh, item = _stocked(client, acme, checker, quantity="10")
+    _, so = _released_order(client, acme, checker, item, quantity="1", rate="950",
+                            milestones=[{"name": "Advance", "kind": "advance", "taxable_amount": "100"}])
+    d = ok(client.post(f"{API}/dispatches", json={
+        "sales_order_id": so["id"], "warehouse_id": wh["id"],
+        "lines": [{"order_line_id": so["lines"][0]["id"], "quantity": "1"}],
+    }, headers=acme.headers()), 201)
+    # An advance milestone does not stop the goods being billed by dispatch...
+    assert d["uninvoiced"] is True
+    inv = ok(client.post(f"{API}/invoices/from-dispatch", json={"dispatch_id": d["id"]}, headers=acme.headers()), 201)
+    assert inv["grand_total"] == so["grand_total"]
+    # ...but once they are, the advance would bill the order a second time.
+    ms = so["milestones"][0]
+    ok(client.post(f"{API}/milestones/{ms['id']}/ready", json={"evidence": "Paid"}, headers=acme.headers()))
+    refused(client.post(f"{API}/invoices/from-milestone", json={"milestone_id": ms["id"]},
+                        headers=acme.headers()), 409, "over_order")
+
+
+def test_rfq_carries_buyer_terms_and_vendor_discounts_to_the_po(client, acme, checker):
+    wh = _warehouse(client, acme)
+    item = _item(client, acme)
+    v1 = _active_vendor(client, acme, checker)
+    v2 = _active_vendor(client, acme, checker, name="Cheaper Supplies", pan="AAACC1234F")
+    v3 = _active_vendor(client, acme, checker, name="Late Supplies", pan="AAACL1234F")
+    from datetime import date, timedelta
+    today = date.today()
+    body = {
+        "title": "Switches", "vendor_ids": [v1["id"]], "due_date": str(today + timedelta(days=3)),
+        "required_by": str(today + timedelta(days=10)), "warehouse_id": wh["id"],
+        "payment_terms": "30 days", "delivery_terms": "FOR our warehouse", "quote_validity_days": 30,
+        "contact_person": "Ravi", "terms": "Quote with make and model.", "notes": "Budget is tight",
+        "lines": [{"item_id": item["id"], "quantity": "10", "specification": "24 port, managed", "target_rate": "1000"}],
+    }
+    refused(client.post(f"{API}/rfqs", json={**body, "due_date": str(today - timedelta(days=1))},
+                        headers=acme.headers()), 422, "due_before_rfq")
+    rfq = ok(client.post(f"{API}/rfqs", json=body, headers=acme.headers()), 201)
+    assert rfq["rfq_date"] == str(today) and rfq["warehouse_name"] == wh["name"]
+    assert rfq["lines"][0]["specification"] == "24 port, managed" and rfq["lines"][0]["target_rate"] == "1000.00"
+
+    # A draft is edited: a second vendor, a changed quantity.
+    line = rfq["lines"][0]
+    rfq = ok(client.put(f"{API}/rfqs/{rfq['id']}", json={
+        **body, "vendor_ids": [v1["id"], v2["id"]],
+        "lines": [{**body["lines"][0], "id": line["id"], "quantity": "12"}],
+    }, headers=acme.headers()))
+    assert len(rfq["vendors"]) == 2 and rfq["lines"][0]["quantity"] == "12.000"
+    ok(client.post(f"{API}/rfqs/{rfq['id']}/issue", headers=acme.headers()))
+    refused(client.put(f"{API}/rfqs/{rfq['id']}", json=body, headers=acme.headers()), 409, "not_draft")
+    # Issued: one more vendor may still be asked.
+    rfq = ok(client.post(f"{API}/rfqs/{rfq['id']}/vendors", json={"vendor_ids": [v3["id"]]}, headers=acme.headers()))
+    assert len(rfq["vendors"]) == 3
+
+    line_id = rfq["lines"][0]["id"]
+    # 1000 less 10 % is cheaper than 920 flat.
+    ok(client.post(f"{API}/rfqs/{rfq['id']}/quotes", json={
+        "vendor_id": v1["id"], "lines": [{"rfq_line_id": line_id, "rate": "1000", "discount_percent": "10", "make": "Cisco"}],
+    }, headers=acme.headers()), 201)
+    ok(client.post(f"{API}/rfqs/{rfq['id']}/quotes", json={
+        "vendor_id": v2["id"], "lines": [{"rfq_line_id": line_id, "rate": "920"}],
+    }, headers=acme.headers()), 201)
+    cmp = ok(client.get(f"{API}/rfqs/{rfq['id']}/comparison", headers=acme.headers()))
+    best = cmp["quotes"][0]
+    assert best["vendor_id"] == v1["id"] and best["landed_total"] == "12744.00"  # 12 x 900 + 18 %
+    assert cmp["lines"][0]["lowest_rate"] == "900.00"
+    assert cmp["lines"][0]["rates"][best["id"]]["make"] == "Cisco"
+    got = ok(client.get(f"{API}/rfqs/{rfq['id']}", headers=acme.headers()))
+    assert got["quotes_received"] == 2 and got["lowest_landed"] == "12744.00"
+
+    ok(client.post(f"{API}/rfqs/{rfq['id']}/award", json={"quote_id": best["id"]}, headers=acme.headers()))
+    po = ok(client.post(f"{API}/rfqs/{rfq['id']}/purchase-order", headers=acme.headers()), 201)
+    assert po["warehouse_id"] == wh["id"] and po["delivery_terms"] == "FOR our warehouse"
+    assert po["lines"][0]["discount_percent"] == "10.00" and po["grand_total"] == "12744.00"
+    got = ok(client.get(f"{API}/rfqs/{rfq['id']}", headers=acme.headers()))
+    assert got["purchase_order_number"] == po["number"] and got["awarded_vendor"] == v1["legal_name"]

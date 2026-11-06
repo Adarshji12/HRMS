@@ -275,8 +275,10 @@ export function priceLine(l: PoLine) {
 /** The order's lines: pick from the Item Master (searchable) and the
  *  description, HSN/SAC, unit, purchase rate and GST fill themselves in;
  *  anything can still be typed over, or a line written by hand. */
-export function PoItems({ lines, onChange, items, company, sell, minDate }: {
+export function PoItems({ lines, onChange, items, company, sell, minDate, grid }: {
   lines: PoLine[]; onChange: (lines: PoLine[]) => void; items: Item[]; company: string
+  /** The invoice's spreadsheet look: flat cells, one grid. */
+  grid?: boolean
   /** The order's date: no line is wanted before it. */
   minDate?: string
   /** A sales document: sale price and sales GST, sellable items only. */
@@ -306,6 +308,8 @@ export function PoItems({ lines, onChange, items, company, sell, minDate }: {
   }))
   const priced = lines.map(priceLine)
   const count = lines.filter((l) => l.item_id || l.description.trim()).length
+
+  if (grid) return <PoSheet lines={lines} onChange={onChange} options={options} items={items} sell={sell} company={company} minDate={minDate} />
 
   return (
     <section className="pof-sec poi">
@@ -371,6 +375,125 @@ export function PoItems({ lines, onChange, items, company, sell, minDate }: {
       </div>
       <div className="poi-foot">
         <button type="button" className="btn btn-sm poi-add" onClick={add}><IconPlus size={14} /> Add item</button>
+      </div>
+    </section>
+  )
+}
+
+const PO_MIN_ROWS = 4
+const PO_GST = ['0', '5', '12', '18', '28']
+
+/** The order's items as a sheet, in the family of the sale bill and the sales
+ *  order: one row a line, and a fresh row appears once the last one is used. */
+function PoSheet({ lines, onChange, options, items, sell, company, minDate }: {
+  lines: PoLine[]; onChange: (lines: PoLine[]) => void; options: PickOption[]; items: Item[]
+  sell?: boolean; company: string; minDate?: string
+}) {
+  const used = (l: PoLine) => Boolean(l.item_id || l.description.trim())
+  const tail = useRef(blankPoLine())
+  // Once the spare row is typed in it is a line of the order; the next spare is new.
+  if (lines.some((l) => l.key === tail.current.key)) tail.current = blankPoLine()
+  const rows = lines.length > 0 && !used(lines[lines.length - 1]) ? lines : [...lines, tail.current]
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const set = (key: string, patch: Partial<PoLine>) => onChange((key === tail.current.key ? rows : lines).map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  const pick = (key: string, id: string) => {
+    const it = items.find((i) => i.id === id)
+    if (!it) { set(key, { item_id: '' }); return }
+    set(key, {
+      item_id: it.id, description: it.name, hsn_sac: it.hsn_sac ?? '', uom: it.uom || 'Nos',
+      rate: String(Number((sell ? it.sale_price : it.standard_cost) || 0)),
+      gst_percent: String(Number(sell ? it.gst_percent ?? 18 : it.purchase_gst_percent ?? it.gst_percent ?? 18)),
+    })
+  }
+  const remove = (key: string) => {
+    const left = lines.filter((l) => l.key !== key)
+    onChange(left.length > 0 ? left : [blankPoLine()])
+  }
+  const count = lines.filter(used).length
+  /** Enter moves along the row, as on the sale bill. */
+  function nextCell(e: React.KeyboardEvent<HTMLTableElement>) {
+    const target = e.target as HTMLElement
+    if (e.defaultPrevented || e.key !== 'Enter' || !target.matches('td > input, td > select')) return
+    e.preventDefault()
+    const cells = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('td > input, td > select, td .ss-btn'))
+    cells[cells.indexOf(target) + 1]?.focus()
+  }
+
+  return (
+    <section className="pof-sec sof-items pos-items">
+      <header className="pof-sec-head">
+        <h3>Item details</h3>
+        <span>{company ? `${company} items · ` : ''}{count} {count === 1 ? 'line' : 'lines'}</span>
+      </header>
+      <div className="sb-grid">
+        <table onKeyDown={nextCell}>
+          <thead>
+            <tr>
+              <th className="sb-c-sr">Sr</th><th className="sb-c-item">Item name</th><th className="sof-c-desc">Description</th>
+              <th className="sb-c-hsn">HSN/SAC</th><th className="sb-c-qty">Qty</th><th className="sb-c-unit">Unit</th>
+              <th className="sb-c-rate">Rate (₹)</th><th className="sof-c-disc">Disc %</th><th className="sb-c-gst">GST %</th>
+              <th className="pos-c-date">Delivery</th><th className="sb-c-amt">Amount (₹)</th><th className="sb-c-x" aria-label="Remove" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((l, n) => {
+              const on = used(l)
+              const p = priceLine(l)
+              const qtyBad = on && !(Number(l.quantity) > 0)
+              const discBad = Number(l.discount_percent || 0) > 100
+              const dateBad = Boolean(l.expected_date && minDate && l.expected_date < minDate)
+              const gst = String(Number(l.gst_percent))
+              return (
+                <tr key={l.key} className={l.key === activeKey ? 'is-active' : undefined} onFocusCapture={() => setActiveKey(l.key)}>
+                  <td className="sb-c-sr">{n + 1}</td>
+                  <td className="sb-c-item">
+                    <SearchSelect label={`Item, line ${n + 1}`} value={l.item_id} onChange={(v) => pick(l.key, v)} options={options} clearable
+                      placeholder="Search item name or code…" empty={company ? `No ${company} items in the Item Master` : 'No item matches'} />
+                  </td>
+                  <td className="sof-c-desc"><input value={l.description} onChange={(e) => set(l.key, { description: e.target.value })}
+                    placeholder={l.item_id ? 'Description' : 'Or type a line by hand'} aria-label={`Description, line ${n + 1}`} /></td>
+                  <td className="sb-c-hsn"><input value={l.hsn_sac} placeholder="8471" onChange={(e) => set(l.key, { hsn_sac: e.target.value })} aria-label={`HSN/SAC, line ${n + 1}`} /></td>
+                  <td className="sb-c-qty"><input placeholder="1" inputMode="decimal" className={qtyBad ? 'is-bad' : undefined} value={on || l.quantity !== '1' ? l.quantity : ''}
+                    onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Quantity, line ${n + 1}`} /></td>
+                  <td className="sb-c-unit"><input placeholder="Nos" list="poi-units" value={on || l.uom !== 'Nos' ? l.uom : ''}
+                    onChange={(e) => set(l.key, { uom: e.target.value })} aria-label={`Unit, line ${n + 1}`} /></td>
+                  <td className="sb-c-rate"><input inputMode="decimal" value={l.rate} placeholder={on ? '0.00' : ''}
+                    onChange={(e) => set(l.key, { rate: e.target.value })} aria-label={`Rate, line ${n + 1}`} /></td>
+                  <td className="sof-c-disc"><input inputMode="decimal" className={discBad ? 'is-bad' : undefined} value={l.discount_percent} placeholder={on ? '0' : ''}
+                    onChange={(e) => set(l.key, { discount_percent: e.target.value })} aria-label={`Discount percent, line ${n + 1}`} /></td>
+                  <td className="sb-c-gst">
+                    {on && (
+                      <select value={gst} onChange={(e) => set(l.key, { gst_percent: e.target.value })} aria-label={`GST, line ${n + 1}`}>
+                        {!PO_GST.includes(gst) && <option value={gst}>{gst}%</option>}
+                        {PO_GST.map((g) => <option key={g} value={g}>{g}%</option>)}
+                      </select>
+                    )}
+                  </td>
+                  <td className="pos-c-date">
+                    {on && <input type="date" value={l.expected_date ?? ''} min={minDate} className={dateBad ? 'is-bad' : undefined}
+                      title="When this line is wanted, if not the order's expected date" onChange={(e) => set(l.key, { expected_date: e.target.value })} aria-label={`Delivery date, line ${n + 1}`} />}
+                  </td>
+                  <td className="sb-c-amt" title={p.amount > 0 ? `Taxable ${rupees(p.taxable)}${p.disc > 0 ? ` after ${rupees(p.disc)} discount` : ''} + GST ${rupees(p.gst)}` : undefined}>
+                    {p.amount > 0 ? rupees(p.amount) : ''}
+                  </td>
+                  <td className="sb-c-x">
+                    {on && <button type="button" className="sb-del" title="Remove line" aria-label={`Remove line ${n + 1}`} onClick={() => remove(l.key)}><IconTrash size={13} /></button>}
+                  </td>
+                </tr>
+              )
+            })}
+            {count === 0 && (
+              <tr className="sb-hint"><td className="sb-c-sr" /><td colSpan={11}>
+                <b>Start the order:</b> search an item in row 1 and pick it — description, HSN, unit, rate and GST fill in.
+                For a line that is not in the item list, type it under <b>Description</b>.
+              </td></tr>
+            )}
+            {Array.from({ length: Math.max(0, PO_MIN_ROWS - rows.length - (count === 0 ? 1 : 0)) }, (_, i) => (
+              <tr key={`pad-${i}`} className="sb-pad"><td className="sb-c-sr" /><td colSpan={11} /></tr>
+            ))}
+          </tbody>
+        </table>
+        <datalist id="poi-units">{PO_UNITS.map((u) => <option key={u} value={u} />)}</datalist>
       </div>
     </section>
   )
@@ -694,7 +817,7 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
         </div>
       )}
 
-      <PoItems lines={lines} onChange={setLines} items={itemList} company={head.company} minDate={head.order_date} />
+      <PoItems grid lines={lines} onChange={setLines} items={itemList} company={head.company} minDate={head.order_date} />
 
       <div className="sof-panels is-po">
         <section className="pof-sec sof-p-a">

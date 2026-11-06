@@ -11,3 +11,14 @@
 @media (max-width: 640px) {
   .rqv-body .crm-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* The list: the sales order list, with what a requisition needs at a glance. */
+.rql .rql-title { max-width: 300px; }
+.rql .rql-title b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rql .rql-title small { display: block; font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rql .rql-late { color: var(--status-critical); font-weight: 600; }
+.rql-bar { position: relative; display: inline-flex; align-items: center; width: 84px; height: 16px; border-radius: 8px; background: var(--surface-2, #eef2f7); overflow: hidden; }
+.rql-bar i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--status-good) 32%, transparent); }
+.rql-bar em { position: relative; width: 100%; text-align: center; font-style: normal; font-size: 11px; font-weight: 650; color: var(--text-secondary); }
+.rql-check { display: flex !important; align-items: center; gap: 8px !important; font-size: 13px; color: var(--text-secondary); }
+.rql-check input { width: auto !important; height: auto !important; }

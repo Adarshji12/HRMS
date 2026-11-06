@@ -1,0 +1,125 @@
+/* Requests for quotation: the list, the form, the view and the comparison.
+ * Built on the sales order list (sol-*, itl, vdl-kpi) and the crm dialog. */
+
+/* ---- list */
+.rfl .rfl-title { max-width: 280px; }
+.rfl .rfl-title b, .rfl .rfl-award b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfl .rfl-title small, .rfl .rfl-award small { display: block; font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfl .rfl-award { max-width: 170px; }
+.rfl-late { color: var(--status-critical) !important; font-weight: 600; }
+.rfl-bar { position: relative; display: inline-flex; align-items: center; width: 70px; height: 16px; border-radius: 8px; background: var(--surface-2, #eef2f7); overflow: hidden; }
+.rfl-bar i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--brand) 26%, transparent); }
+.rfl-bar em { position: relative; width: 100%; text-align: center; font-style: normal; font-size: 11px; font-weight: 650; color: var(--text-secondary); }
+.rfq-check { display: flex !important; align-items: center; gap: 8px !important; font-size: 13px; color: var(--text-secondary); }
+.rfq-check input { width: auto !important; height: auto !important; }
+
+/* ---- form and quote dialogs */
+.crm-dialog:has(.rff-body) { width: min(1120px, 96vw); max-width: 1120px; max-height: min(92vh, 880px); }
+.rff-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; display: grid; gap: 14px; align-content: start; }
+.rff-sec { display: grid; gap: 8px; }
+.rff-sec h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.rff-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rff-sec-head span { font-size: 12px; color: var(--text-muted); }
+.rff-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+.rff-grid > * { min-width: 0; }
+.rff-grid .crm-form-wide { grid-column: span 2; }
+.rff-grid input, .rff-grid select { width: 100%; }
+.rff-two { grid-template-columns: 1fr 1fr; gap: 12px; }
+.rff-two textarea { width: 100%; resize: vertical; }
+.rff-lines { margin: 0 !important; }
+.rff-lines table { width: 100%; table-layout: fixed; }
+.rff-lines th { font-size: 11px; padding: 7px 6px; white-space: nowrap; }
+.rff-lines td { padding: 4px 4px; vertical-align: middle; }
+.rff-lines td input, .rff-lines td select { width: 100%; height: 32px; font-size: 13px; padding: 0 8px; }
+.rff-lines .rff-c-no { width: 34px; text-align: center; color: var(--text-muted); font-size: 12px; }
+.rff-lines .rff-c-item { width: 210px; }
+.rff-lines .rff-c-qty { width: 88px; }
+.rff-lines .rff-c-unit { width: 92px; }
+.rff-lines .rff-c-rate { width: 120px; }
+.rff-lines .rff-c-disc { width: 70px; }
+.rff-lines .rff-c-gst { width: 78px; }
+.rff-lines .rff-c-amt { width: 116px; text-align: right; font-variant-numeric: tabular-nums; }
+.rff-lines .rff-c-x { width: 40px; text-align: center; }
+.rff-lines .rff-c-desc b { display: block; font-weight: 600; font-size: 13px; }
+.rff-lines .rff-c-desc small { display: block; font-size: 11.5px; color: var(--text-muted); }
+.rff-lines .rff-ro { font-size: 13px; padding-right: 8px; white-space: nowrap; }
+.rff-add { justify-self: start; display: inline-flex; align-items: center; gap: 5px; }
+.rff-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rff-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: 12.5px; font-weight: 600; }
+.rff-chip button { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.rff-chip button:hover { background: color-mix(in srgb, var(--brand) 14%, transparent); }
+.rff-vsearch { margin: 0 !important; max-width: 380px; }
+.rff-vendors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; max-height: 196px; overflow-y: auto; padding: 2px; }
+.rff-vendor { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; min-width: 0; background: var(--surface); }
+.rff-vendor:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
+.rff-vendor.is-on { border-color: var(--brand); background: var(--brand-soft); }
+.rff-vendor input { flex: none; }
+.rff-vendor span { display: grid; min-width: 0; flex: 1; }
+.rff-vendor b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rff-vendor small { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rff-vendor em { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--surface-2, #eef2f7); color: var(--text-secondary); }
+.rff-totals { display: flex; align-items: flex-start; gap: 16px; }
+.rff-totals > :first-child { flex: 1; }
+.rff-totals input { width: 100%; }
+.rff-totals dl { margin: 0; min-width: 260px; display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2, #f6f8fb); }
+.rff-totals dl div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.rff-totals dt { color: var(--text-muted); }
+.rff-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.rff-totals .is-total { padding-top: 6px; border-top: 1px solid var(--border); font-weight: 700; font-size: 14px; }
+.rff-totals .is-total dt { color: var(--text-primary); }
+
+/* ---- view */
+.crm-dialog:has(.rfv-body) { width: min(1180px, 96vw); max-width: 1180px; max-height: min(92vh, 900px); }
+.crm-dialog:has(.rfv-body) .crm-dialog-head { padding: 12px 20px; }
+.crm-dialog:has(.rfv-body) .crm-dialog-title { font-size: 16px; }
+.crm-dialog:has(.rfv-body) .crm-dialog-foot { padding: 10px 20px; }
+.crm-dialog:has(.rfv-body) .crm-dialog-foot .rfv-cancel { margin: 0 auto 0 0; }
+.crm-dialog:has(.rfv-body) .crm-dialog-foot .btn { display: inline-flex; align-items: center; gap: 5px; }
+.rfv-sub { display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 13px; flex-wrap: wrap; }
+.rfv-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 16px; display: grid; gap: 14px; align-content: start; }
+.rfv-won { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 9px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--status-good) 35%, transparent); background: color-mix(in srgb, var(--status-good) 8%, transparent); }
+.rfv-won b { font-size: 13.5px; }
+.rfv-won span { font-size: 12.5px; color: var(--text-secondary); }
+.rfv-facts { margin: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.rfv-facts div { padding: 8px 12px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); min-width: 0; }
+.rfv-facts div:nth-child(5n) { border-right: 0; }
+.rfv-facts div:nth-last-child(-n + 5) { border-bottom: 0; }
+.rfv-facts dt { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.rfv-facts dd { margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfv-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.rfv-notes > div { padding: 9px 12px; border-radius: 10px; background: var(--surface-2, #f6f8fb); }
+.rfv-notes h4 { margin: 0 0 3px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.rfv-notes p { margin: 0; font-size: 13px; white-space: pre-line; color: var(--text-secondary); }
+.rfv-h { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-primary); }
+.rfv-h span { margin-left: 6px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.rfv-body .table-wrap { margin: 0 !important; }
+.rfv-table th { font-size: 11px; padding: 7px 10px; white-space: nowrap; }
+.rfv-table td { padding: 7px 10px; font-size: 13px; }
+.rfv-table td small { color: var(--text-muted); font-size: 11.5px; }
+.rfv-table .rfv-spec { max-width: 280px; color: var(--text-secondary); }
+.rfv-table .rfv-contact { font-size: 12px; color: var(--text-secondary); max-width: 260px; }
+.rfv-best { color: var(--status-good) !important; font-weight: 700; }
+.rfv-cmp th.rfv-col-best { background: color-mix(in srgb, var(--status-good) 10%, transparent); }
+.rfv-rank { display: inline-block; min-width: 22px; padding: 0 5px; border-radius: 6px; background: var(--surface-2, #eef2f7); font-size: 10.5px; text-align: center; }
+.rfv-col-best .rfv-rank { background: var(--status-good); color: #fff; }
+.rfv-cell-sub { display: block; font-size: 11px !important; font-weight: 500; color: var(--text-muted); }
+.rfv-cell-sub.is-up { color: var(--status-critical) !important; }
+.rfv-cell-sub.is-down { color: var(--status-good) !important; }
+.rfv-sum td { background: var(--surface-2, #f8fafc); color: var(--text-secondary); padding-top: 5px !important; padding-bottom: 5px !important; }
+.rfv-total td { font-weight: 700; border-top: 2px solid var(--border); background: var(--surface-2, #f8fafc); }
+.rfv-term td { font-size: 12px !important; color: var(--text-secondary); padding-top: 5px !important; padding-bottom: 5px !important; }
+.rfv-term td:first-child, .rfv-sum td:first-child { font-weight: 600; color: var(--text-muted); }
+.rfv-award td { border-top: 1px solid var(--border); }
+
+@media (max-width: 900px) {
+  .rff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rff-vendors { grid-template-columns: 1fr 1fr; }
+  .rff-two { grid-template-columns: 1fr; }
+  .rfv-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rfv-facts div { border-right: 0 !important; border-bottom: 1px solid var(--border) !important; }
+  .rff-totals { flex-direction: column; align-items: stretch; }
+}
+@media (max-width: 560px) {
+  .rff-grid, .rff-vendors { grid-template-columns: 1fr; }
+  .rff-grid .crm-form-wide { grid-column: auto; }
+}

@@ -286,13 +286,35 @@ def cancel_requisition(db: Session, viewer: User, req_id: uuid.UUID, reason: str
 def _rfq_out(db: Session, rfq: ErpRfq) -> dict:
     vendors = {v.id: v for v in db.scalars(select(ErpVendor).where(
         ErpVendor.id.in_([rv.vendor_id for rv in rfq.vendors] + [q.vendor_id for q in rfq.quotes])))}
+    items = {i.id: i for i in db.scalars(select(ErpItem).where(
+        ErpItem.id.in_([line.item_id for line in rfq.lines if line.item_id])))}
+    req = db.get(ErpRequisition, rfq.requisition_id) if rfq.requisition_id else None
+    wh = db.get(ErpWarehouse, rfq.warehouse_id) if rfq.warehouse_id else None
+    latest = _latest_quotes(rfq)
+    selected = next((q for q in rfq.quotes if q.is_selected), None)
+    po = db.scalar(select(ErpPurchaseOrder).where(
+        ErpPurchaseOrder.rfq_id == rfq.id, ErpPurchaseOrder.status != PoStatus.CANCELLED.value))
+    names = user_names(db, rfq.org_id, [rfq.created_by])
     return {
         **row_dict(rfq),
-        "lines": [row_dict(line) for line in rfq.lines],
+        "requisition_number": req.number if req else None,
+        "warehouse_name": wh.name if wh else None,
+        "created_by_name": names.get(rfq.created_by),
+        "quotes_received": len(latest),
+        "lowest_landed": str(min(q.landed_total for q in latest)) if latest else None,
+        "awarded_vendor": vendors[selected.vendor_id].legal_name if selected and selected.vendor_id in vendors else None,
+        "awarded_total": str(selected.landed_total) if selected else None,
+        "purchase_order_id": str(po.id) if po else None,
+        "purchase_order_number": po.number if po else None,
+        "lines": [{**row_dict(line), "item_code": items[line.item_id].code if line.item_id in items else None}
+                  for line in rfq.lines],
         "vendors": [
             {"vendor_id": str(rv.vendor_id), "legal_name": vendors[rv.vendor_id].legal_name,
-             "code": vendors[rv.vendor_id].code,
-             "quoted": any(q.vendor_id == rv.vendor_id for q in rfq.quotes)}
+             "code": vendors[rv.vendor_id].code, "email": vendors[rv.vendor_id].email,
+             "phone": vendors[rv.vendor_id].phone, "gstin": vendors[rv.vendor_id].gstin,
+             "address": vendors[rv.vendor_id].address, "contact_name": vendors[rv.vendor_id].contact_name,
+             "quoted": any(q.vendor_id == rv.vendor_id for q in rfq.quotes),
+             "rounds": sum(1 for q in rfq.quotes if q.vendor_id == rv.vendor_id)}
             for rv in rfq.vendors if rv.vendor_id in vendors
         ],
         "quotes": [
@@ -314,40 +336,132 @@ def get_rfq(db: Session, viewer: User, rfq_id: uuid.UUID) -> dict:
     return _rfq_out(db, get_owned(db, ErpRfq, viewer.org_id, rfq_id, "RFQ"))
 
 
-def create_rfq(db: Session, viewer: User, payload: S.RfqIn, request: Request | None = None) -> dict:
-    require(viewer, "can_manage_procurement")
-    rfq = ErpRfq(
-        org_id=viewer.org_id, title=payload.title, due_date=payload.due_date, terms=payload.terms,
-        requisition_id=payload.requisition_id, created_by=viewer.id,
-        number=next_number(db, viewer.org_id, "RFQ", date.today()),
-    )
-    db.add(rfq)
-    if payload.requisition_id:
-        req = get_owned(db, ErpRequisition, viewer.org_id, payload.requisition_id, "requisition")
-        if req.status != DocStatus.APPROVED.value:
-            raise ErpError("not_approved", "Only an approved requisition goes out for quotation.", 409)
+def _clean(text: str | None) -> str | None:
+    return (text or "").strip() or None
+
+
+def _apply_rfq(db: Session, viewer: User, rfq: ErpRfq, payload: S.RfqIn, req: ErpRequisition | None) -> None:
+    """Header, lines and vendors of a draft RFQ, from the form."""
+    rfq.title = payload.title.strip()
+    rfq.rfq_date = payload.rfq_date or rfq.rfq_date or date.today()
+    if payload.due_date and payload.due_date < rfq.rfq_date:
+        raise ErpError("due_before_rfq", "Quotes cannot be due before the RFQ is dated.")
+    if payload.required_by and payload.required_by < rfq.rfq_date:
+        raise ErpError("required_before_rfq", "The goods cannot be needed before the RFQ is dated.")
+    rfq.due_date = payload.due_date
+    rfq.required_by = payload.required_by or (req.required_by if req else None)
+    warehouse_id = payload.warehouse_id or (req.warehouse_id if req else None)
+    if warehouse_id:
+        get_owned(db, ErpWarehouse, viewer.org_id, warehouse_id, "warehouse")
+    rfq.warehouse_id = warehouse_id
+    rfq.payment_terms = _clean(payload.payment_terms)
+    rfq.delivery_terms = _clean(payload.delivery_terms)
+    rfq.quote_validity_days = payload.quote_validity_days
+    rfq.contact_person = _clean(payload.contact_person)
+    rfq.notes = _clean(payload.notes)
+    rfq.terms = _clean(payload.terms)
+
+    req_lines = {line.id: line for line in req.lines} if req else {}
+    kept = {line.id: line for line in rfq.lines}
+    if payload.lines:
+        fresh = []
+        for order, line in enumerate(payload.lines):
+            old = kept.get(line.id) if line.id else None
+            source = req_lines.get(old.requisition_line_id) if old and old.requisition_line_id else None
+            item = _item_defaults(db, viewer.org_id, line.item_id, line.description)
+            quantity = qty(line.quantity)
+            if source is not None and quantity > source.quantity - source.ordered_qty:
+                raise ErpError("over_requisition",
+                               f"{source.description}: the requisition still needs only "
+                               f"{source.quantity - source.ordered_qty:g}.")
+            fresh.append(ErpRfqLine(
+                org_id=viewer.org_id, item_id=item.id if item else None,
+                requisition_line_id=source.id if source is not None else None,
+                description=(line.description or (item.name if item else "")).strip(),
+                specification=_clean(line.specification),
+                uom=line.uom or (item.uom if item else "Nos"), quantity=quantity,
+                target_rate=money(line.target_rate) if line.target_rate is not None
+                else (money(line.estimated_rate) if line.estimated_rate else None),
+                sort_order=order,
+            ))
+        rfq.lines.clear()
+        db.flush()
+        rfq.lines.extend(fresh)
+    elif req is not None and not rfq.lines:
         for order, line in enumerate(req.lines):
             remaining = line.quantity - line.ordered_qty
             if remaining > 0:
                 rfq.lines.append(ErpRfqLine(
                     org_id=viewer.org_id, requisition_line_id=line.id, item_id=line.item_id,
                     description=line.description, uom=line.uom, quantity=remaining, sort_order=order,
+                    target_rate=money(line.estimated_rate) if line.estimated_rate else None,
                 ))
-    else:
-        for order, line in enumerate(payload.lines):
-            item = _item_defaults(db, viewer.org_id, line.item_id, line.description)
-            rfq.lines.append(ErpRfqLine(
-                org_id=viewer.org_id, item_id=item.id if item else None,
-                description=line.description or item.name, uom=line.uom or (item.uom if item else "Nos"),
-                quantity=qty(line.quantity), sort_order=order,
-            ))
     if not rfq.lines:
         raise ErpError("no_lines", "An RFQ needs at least one line to quote on.")
+
+    wanted = list(dict.fromkeys(payload.vendor_ids))
+    for vendor_id in wanted:
+        if vendor_id not in {rv.vendor_id for rv in rfq.vendors}:
+            masters.purchasable_vendor(db, viewer.org_id, vendor_id)
+    rfq.vendors[:] = [rv for rv in rfq.vendors if rv.vendor_id in wanted]
+    for vendor_id in wanted:
+        if vendor_id not in {rv.vendor_id for rv in rfq.vendors}:
+            rfq.vendors.append(ErpRfqVendor(org_id=viewer.org_id, vendor_id=vendor_id))
+
+
+def create_rfq(db: Session, viewer: User, payload: S.RfqIn, request: Request | None = None) -> dict:
+    require(viewer, "can_manage_procurement")
+    req = None
+    if payload.requisition_id:
+        req = get_owned(db, ErpRequisition, viewer.org_id, payload.requisition_id, "requisition")
+        if req.status != DocStatus.APPROVED.value:
+            raise ErpError("not_approved", "Only an approved requisition goes out for quotation.", 409)
+    today = payload.rfq_date or date.today()
+    rfq = ErpRfq(
+        org_id=viewer.org_id, title=payload.title, requisition_id=payload.requisition_id, created_by=viewer.id,
+        number=next_number(db, viewer.org_id, "RFQ", today), rfq_date=today,
+    )
+    db.add(rfq)
+    _apply_rfq(db, viewer, rfq, payload, req)
+    db.flush()
+    record_audit(db, viewer, "rfq.created", rfq, request=request, detail={"vendors": len(rfq.vendors)})
+    db.commit()
+    return get_rfq(db, viewer, rfq.id)
+
+
+def update_rfq(db: Session, viewer: User, rfq_id: uuid.UUID, payload: S.RfqIn, request: Request | None = None) -> dict:
+    """Change a draft before it goes out. Once issued, vendors are quoting on it."""
+    require(viewer, "can_manage_procurement")
+    rfq = get_owned(db, ErpRfq, viewer.org_id, rfq_id, "RFQ")
+    if rfq.status != RfqStatus.DRAFT.value:
+        raise ErpError("not_draft", "Only a draft RFQ is edited. Once issued, vendors are quoting on it.", 409)
+    req = db.get(ErpRequisition, rfq.requisition_id) if rfq.requisition_id else None
+    _apply_rfq(db, viewer, rfq, payload, req)
+    db.flush()
+    record_audit(db, viewer, "rfq.updated", rfq, request=request)
+    db.commit()
+    return get_rfq(db, viewer, rfq.id)
+
+
+def invite_vendors(db: Session, viewer: User, rfq_id: uuid.UUID, payload: S.RfqVendorsIn,
+                   request: Request | None = None) -> dict:
+    """Ask one more vendor while quotes are still coming in."""
+    require(viewer, "can_manage_procurement")
+    rfq = get_owned(db, ErpRfq, viewer.org_id, rfq_id, "RFQ")
+    if rfq.status not in (RfqStatus.DRAFT.value, RfqStatus.ISSUED.value):
+        raise ErpError("closed", f"This RFQ is {rfq.status}.", 409)
+    have = {rv.vendor_id for rv in rfq.vendors}
+    added = []
     for vendor_id in dict.fromkeys(payload.vendor_ids):
+        if vendor_id in have:
+            continue
         masters.purchasable_vendor(db, viewer.org_id, vendor_id)
         rfq.vendors.append(ErpRfqVendor(org_id=viewer.org_id, vendor_id=vendor_id))
+        added.append(str(vendor_id))
+    if not added:
+        raise ErpError("already_invited", "Those vendors are already on this RFQ.", 409)
     db.flush()
-    record_audit(db, viewer, "rfq.created", rfq, request=request, detail={"vendors": len(payload.vendor_ids)})
+    record_audit(db, viewer, "rfq.vendors_added", rfq, request=request, detail={"vendors": added})
     db.commit()
     return get_rfq(db, viewer, rfq.id)
 
@@ -382,19 +496,22 @@ def add_quote(db: Session, viewer: User, rfq_id: uuid.UUID, payload: S.VendorQuo
     rounds = [q.round for q in rfq.quotes if q.vendor_id == payload.vendor_id]
     quote = ErpVendorQuote(
         org_id=viewer.org_id, rfq_id=rfq.id, vendor_id=payload.vendor_id,
-        round=(max(rounds) + 1) if rounds else 1, quote_ref=payload.quote_ref,
+        round=(max(rounds) + 1) if rounds else 1, quote_ref=_clean(payload.quote_ref),
+        quote_date=payload.quote_date or date.today(),
         valid_until=payload.valid_until, delivery_days=payload.delivery_days,
         payment_terms=payload.payment_terms, warranty=payload.warranty,
         freight=money(payload.freight), notes=payload.notes,
     )
     taxable = tax = ZERO
+    if payload.valid_until and payload.valid_until < quote.quote_date:
+        raise ErpError("valid_before_quote", "A quote cannot expire before it is dated.")
     for line in payload.lines:
-        priced = price_line(rfq_lines[line.rfq_line_id].quantity, line.rate, line.gst_percent)
+        priced = price_line(rfq_lines[line.rfq_line_id].quantity, line.rate, line.gst_percent, line.discount_percent)
         taxable += priced["taxable_value"]
         tax += priced["tax_amount"]
         quote.lines.append(ErpVendorQuoteLine(
             org_id=viewer.org_id, rfq_line_id=line.rfq_line_id, rate=money(line.rate),
-            gst_percent=line.gst_percent,
+            discount_percent=line.discount_percent, gst_percent=line.gst_percent, make=_clean(line.make),
         ))
     quote.taxable_total = money(taxable)
     quote.tax_total = money(tax)
@@ -431,9 +548,11 @@ def comparison(db: Session, viewer: User, rfq_id: uuid.UUID) -> dict:
         for q in quotes:
             match = next((ql for ql in q.lines if ql.rfq_line_id == line.id), None)
             if match is not None:
-                rates[str(q.id)] = {"rate": str(match.rate), "gst_percent": str(match.gst_percent),
-                                    "amount": str(money(line.quantity * match.rate))}
-        offered = [Decimal(r["rate"]) for r in rates.values() if Decimal(r["rate"]) > 0]
+                net = money(match.rate * (1 - match.discount_percent / Decimal("100")))
+                rates[str(q.id)] = {"rate": str(match.rate), "discount_percent": str(match.discount_percent),
+                                    "net_rate": str(net), "gst_percent": str(match.gst_percent), "make": match.make,
+                                    "amount": str(money(line.quantity * net))}
+        offered = [Decimal(r["net_rate"]) for r in rates.values() if Decimal(r["net_rate"]) > 0]
         rows.append({**row_dict(line), "rates": rates,
                      "lowest_rate": str(min(offered)) if offered else None})
     return {
@@ -713,15 +832,17 @@ def po_from_quote(db: Session, viewer: User, rfq_id: uuid.UUID, request: Request
         lines.append(S.PoLineIn(
             item_id=line.item_id, requisition_line_id=line.requisition_line_id,
             description=line.description, uom=line.uom, quantity=line.quantity,
-            rate=ql.rate, gst_percent=ql.gst_percent,
+            rate=ql.rate, discount_percent=ql.discount_percent, gst_percent=ql.gst_percent,
         ))
     payload = S.PurchaseOrderIn(
         vendor_id=quote.vendor_id, requisition_id=rfq.requisition_id,
-        project_id=req.project_id if req else None, warehouse_id=req.warehouse_id if req else None,
+        project_id=req.project_id if req else None,
+        warehouse_id=rfq.warehouse_id or (req.warehouse_id if req else None),
         sales_order_id=req.sales_order_id if req else None,
         expected_date=(date.today().fromordinal(date.today().toordinal() + quote.delivery_days)
-                       if quote.delivery_days else None),
-        payment_terms=quote.payment_terms, freight=quote.freight, lines=lines, vendor_quote_ref=quote.quote_ref,
+                       if quote.delivery_days else rfq.required_by),
+        payment_terms=quote.payment_terms or rfq.payment_terms, delivery_terms=rfq.delivery_terms,
+        freight=quote.freight, lines=lines, vendor_quote_ref=quote.quote_ref, vendor_quote_date=quote.quote_date,
     )
     result = save_purchase_order(db, viewer, payload, request=request)
     po = db.get(ErpPurchaseOrder, uuid.UUID(result["id"]))

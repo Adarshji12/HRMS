@@ -407,20 +407,35 @@ def save_manual(db: Session, viewer: User, payload: S.InvoiceIn, invoice_id: uui
         inv.grand_total = money(rounded)
     db.flush()
     if so is not None and payload.kind != "proforma":
-        if _invoiced_on_order(db, so.id) > so.grand_total:
-            raise ErpError("over_order",
-                           f"This takes billing on {so.number} past its value of ₹{so.grand_total:,.2f}.", 409)
+        _within_order(db, so)
     record_audit(db, viewer, "invoice.drafted", inv, request=request, detail={"kind": inv.kind})
     db.commit()
     return get_invoice(db, viewer, inv.id)
 
 
+#: Line-by-line rounding can land a few paise over the order's own total.
+_ROUNDING = Decimal("1")
+
+
+def _within_order(db: Session, so: ErpSalesOrder) -> None:
+    """Nothing bills an order past its value, whichever way it is billed."""
+    if _invoiced_on_order(db, so.id) > so.grand_total + _ROUNDING:
+        raise ErpError("over_order",
+                       f"This takes billing on {so.number} past its value of ₹{so.grand_total:,.2f}.", 409)
+
+
 def from_dispatch(db: Session, viewer: User, payload: S.InvoiceFromDispatchIn, request: Request | None = None) -> dict:
+    from app.services.erp.sales import billed_by_milestones
+
     require(viewer, "can_manage_billing")
     d = get_owned(db, ErpDispatch, viewer.org_id, payload.dispatch_id, "dispatch")
     if d.status == DispatchStatus.CANCELLED.value:
         raise ErpError("cancelled", "A cancelled dispatch is not billed.", 409)
     so = db.get(ErpSalesOrder, d.sales_order_id)
+    if billed_by_milestones(so):
+        raise ErpError("milestone_billing",
+                       f"{so.number} is billed by its milestones, not by dispatch. "
+                       "Invoice the milestone this dispatch made ready.", 409)
     order_lines = {line.id: line for line in so.lines}
     lines = []
     for dl in d.lines:
@@ -452,6 +467,7 @@ def from_dispatch(db: Session, viewer: User, payload: S.InvoiceFromDispatchIn, r
         ol = order_lines[line.order_line_id]
         ol.invoiced_qty = qty(ol.invoiced_qty + line.quantity)
     db.flush()
+    _within_order(db, so)
     record_audit(db, viewer, "invoice.drafted", inv, request=request, detail={"kind": "product", "dispatch": d.number})
     db.commit()
     return get_invoice(db, viewer, inv.id)
@@ -474,6 +490,7 @@ def from_milestone(db: Session, viewer: User, payload: S.InvoiceFromMilestoneIn,
     _price(db, inv, [{"description": f"{ms.name} — {so.number}", "quantity": 1,
                       "rate": ms.taxable_amount, "gst_percent": ms.gst_percent}])
     db.flush()
+    _within_order(db, so)
     ms.status = MilestoneStatus.INVOICED.value
     ms.invoice_id = inv.id
     record_audit(db, viewer, "invoice.drafted", inv, request=request, detail={"kind": "milestone", "milestone": ms.name})

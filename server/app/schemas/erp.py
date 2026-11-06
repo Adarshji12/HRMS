@@ -214,25 +214,47 @@ class RequisitionIn(_In):
     lines: list[RequisitionLineIn] = Field(min_length=1)
 
 
+class RfqLineIn(RequisitionLineIn):
+    #: An existing line, kept when a draft is edited (and with it its requisition line).
+    id: uuid.UUID | None = None
+    specification: str | None = Field(default=None, max_length=2000)
+    target_rate: Decimal | None = Field(default=None, ge=0)
+
+
 class RfqIn(_In):
     title: str = Field(min_length=1, max_length=200)
     requisition_id: uuid.UUID | None = None
+    rfq_date: date | None = None
     due_date: date | None = None
+    required_by: date | None = None
+    warehouse_id: uuid.UUID | None = None
+    payment_terms: str | None = Field(default=None, max_length=160)
+    delivery_terms: str | None = Field(default=None, max_length=160)
+    quote_validity_days: int | None = Field(default=None, ge=0, le=365)
+    contact_person: str | None = Field(default=None, max_length=120)
+    notes: str | None = None
     terms: str | None = None
     vendor_ids: list[uuid.UUID] = Field(min_length=1)
-    #: Only when not built from a requisition.
-    lines: list[RequisitionLineIn] = Field(default_factory=list)
+    #: Built from the requisition when one is named and no lines are given.
+    lines: list[RfqLineIn] = Field(default_factory=list)
+
+
+class RfqVendorsIn(_In):
+    vendor_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 class QuoteLineIn(_In):
     rfq_line_id: uuid.UUID
     rate: Decimal = Field(ge=0)
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     gst_percent: Decimal = Field(default=Decimal("18"), ge=0, le=28)
+    make: str | None = Field(default=None, max_length=120)
 
 
 class VendorQuoteIn(_In):
     vendor_id: uuid.UUID
     quote_ref: str | None = None
+    quote_date: date | None = None
     valid_until: date | None = None
     delivery_days: int | None = Field(default=None, ge=0)
     payment_terms: str | None = None
@@ -466,6 +488,13 @@ class DispatchIn(_In):
     lines: list[DispatchLineIn] = Field(min_length=1)
 
 
+class DispatchTransportIn(_In):
+    transporter: str | None = Field(default=None, max_length=120)
+    tracking_ref: str | None = Field(default=None, max_length=80)
+    vehicle_no: str | None = Field(default=None, max_length=24)
+    eway_bill_no: str | None = Field(default=None, max_length=24)
+
+
 class DeliveryIn(_In):
     delivered_on: date | None = None
     received_by: str | None = None
@@ -483,6 +512,8 @@ class SalesReturnIn(_In):
     return_date: date | None = None
     condition: Literal["good", "quarantine", "defective"] = "good"
     reason: str | None = None
+    #: Send the same goods again from this order.
+    replace: bool = False
     lines: list[SalesReturnLineIn] = Field(min_length=1)
 
 

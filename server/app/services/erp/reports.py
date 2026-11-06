@@ -38,6 +38,8 @@ from app.services.erp.common import ZERO, capabilities, may, money, user_names
 
 
 def dashboard(db: Session, viewer: User) -> dict:
+    from app.services.erp.sales import billed_by_milestones
+
     org = viewer.org_id
     today = date.today()
     open_po_statuses = [s.value for s in PoStatus if s.is_receivable]
@@ -71,7 +73,8 @@ def dashboard(db: Session, viewer: User) -> dict:
 
     uninvoiced = [d for d in db.scalars(select(ErpDispatch).where(
         ErpDispatch.org_id == org, ErpDispatch.status != DispatchStatus.CANCELLED.value))
-        if any(line.billable_qty > 0 for line in d.lines)]
+        if any(line.billable_qty > 0 for line in d.lines)
+        and not billed_by_milestones(db.get(ErpSalesOrder, d.sales_order_id))]
 
     invoices = list(db.scalars(select(ErpInvoice).where(
         ErpInvoice.org_id == org, ErpInvoice.status == "posted",

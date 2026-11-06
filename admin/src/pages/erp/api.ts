@@ -220,15 +220,38 @@ export interface VendorQuote {
   vendor_name: string | null
   round: number
   quote_ref: string | null
+  quote_date: string | null
   valid_until: string | null
   delivery_days: number | null
   payment_terms: string | null
+  warranty: string | null
+  notes: string | null
   freight: string
   taxable_total: string
   tax_total: string
   landed_total: string
   is_selected: boolean
-  lines: { rfq_line_id: string; rate: string; gst_percent: string }[]
+  created_at: string
+  lines: { rfq_line_id: string; rate: string; discount_percent: string; gst_percent: string; make: string | null }[]
+}
+
+export interface RfqLine extends DocLine {
+  requisition_line_id: string | null
+  specification: string | null
+  target_rate: string | null
+}
+
+export interface RfqVendor {
+  vendor_id: string
+  legal_name: string
+  code: string
+  email: string | null
+  phone: string | null
+  gstin: string | null
+  address: string | null
+  contact_name: string | null
+  quoted: boolean
+  rounds: number
 }
 
 export interface Rfq {
@@ -236,19 +259,42 @@ export interface Rfq {
   number: string
   title: string
   requisition_id: string | null
+  requisition_number: string | null
+  rfq_date: string | null
   due_date: string | null
+  required_by: string | null
+  warehouse_id: string | null
+  warehouse_name: string | null
+  payment_terms: string | null
+  delivery_terms: string | null
+  quote_validity_days: number | null
+  contact_person: string | null
+  notes: string | null
+  terms: string | null
   status: 'draft' | 'issued' | 'awarded' | 'cancelled'
   award_reason: string | null
+  issued_at: string | null
   created_at: string
-  lines: DocLine[]
-  vendors: { vendor_id: string; legal_name: string; code: string; quoted: boolean }[]
+  created_by: string | null
+  created_by_name: string | null
+  quotes_received: number
+  lowest_landed: string | null
+  awarded_vendor: string | null
+  awarded_total: string | null
+  purchase_order_id: string | null
+  purchase_order_number: string | null
+  lines: RfqLine[]
+  vendors: RfqVendor[]
   quotes: VendorQuote[]
 }
 
 export interface Comparison {
   rfq: Rfq
   quotes: (VendorQuote & { rank: number; is_lowest: boolean; vendor_score: string | null })[]
-  lines: (DocLine & { rates: Record<string, { rate: string; gst_percent: string; amount: string }>; lowest_rate: string | null })[]
+  lines: (RfqLine & {
+    rates: Record<string, { rate: string; discount_percent: string; net_rate: string; gst_percent: string; make: string | null; amount: string }>
+    lowest_rate: string | null
+  })[]
 }
 
 export interface PurchaseOrder {
@@ -469,12 +515,12 @@ export interface SalesOrderDetail extends SalesOrder {
     cancel_reason: string | null; created_by_name: string | null; created_at: string
     lines: {
       id: string; order_line_id: string; description: string; quantity: string
-      invoiced_qty: string; returned_qty: string; serials: string[]
+      invoiced_qty: string; returned_qty: string; replaced_qty: string; free_qty: string; serials: string[]
     }[]
   }[]
   returns: {
     id: string; number: string; dispatch_id: string; return_date: string; warehouse: string; condition: string
-    reason: string; value: string; created_by_name: string | null
+    reason: string; value: string; replace: boolean; created_by_name: string | null
     lines: { description: string; quantity: string; serials: string[] }[]
   }[]
   invoice_details: {
@@ -834,6 +880,8 @@ export const erp = {
   rfqs: () => api.get<Rfq[]>(`${B}/rfqs`),
   rfq: (id: string) => api.get<Rfq>(`${B}/rfqs/${id}`),
   createRfq: (body: Body) => api.post<Rfq>(`${B}/rfqs`, body),
+  updateRfq: (id: string, body: Body) => api.put<Rfq>(`${B}/rfqs/${id}`, body),
+  inviteRfqVendors: (id: string, vendorIds: string[]) => api.post<Rfq>(`${B}/rfqs/${id}/vendors`, { vendor_ids: vendorIds }),
   issueRfq: (id: string) => api.post<Rfq>(`${B}/rfqs/${id}/issue`),
   addQuote: (id: string, body: Body) => api.post<Rfq>(`${B}/rfqs/${id}/quotes`, body),
   comparison: (id: string) => api.get<Comparison>(`${B}/rfqs/${id}/comparison`),
@@ -915,6 +963,7 @@ export const erp = {
   salesReturn: (dispatchId: string, body: Body) => api.post<SalesOrderDetail>(`${B}/dispatches/${dispatchId}/returns`, body),
   amendSalesOrder: (id: string, reason: string) => api.post<SalesOrderDetail>(`${B}/sales-orders/${id}/amend`, { reason }),
   duplicateSalesOrder: (id: string) => api.post<SalesOrderDetail>(`${B}/sales-orders/${id}/duplicate`, {}),
+  dispatchTransport: (id: string, body: Body) => api.put<Dispatch>(`${B}/dispatches/${id}/transport`, body),
   cancelDispatch: (id: string, reason: string) => api.post<Dispatch>(`${B}/dispatches/${id}/cancel`, { reason }),
 
   invoices: (p: { kind?: string; status?: string; q?: string; outstanding_only?: boolean; customer_id?: string } = {}) =>

@@ -290,6 +290,17 @@ def create_rfq(payload: S.RfqIn, viewer: CurrentUser, db: DbSession, request: Re
     return purchase.create_rfq(db, viewer, payload, request=request)
 
 
+@router.put("/rfqs/{rfq_id}")
+def update_rfq(rfq_id: uuid.UUID, payload: S.RfqIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return purchase.update_rfq(db, viewer, rfq_id, payload, request=request)
+
+
+@router.post("/rfqs/{rfq_id}/vendors")
+def invite_rfq_vendors(rfq_id: uuid.UUID, payload: S.RfqVendorsIn, viewer: CurrentUser, db: DbSession,
+                       request: Request) -> dict:
+    return purchase.invite_vendors(db, viewer, rfq_id, payload, request=request)
+
+
 @router.post("/rfqs/{rfq_id}/issue")
 def issue_rfq(rfq_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return purchase.issue_rfq(db, viewer, rfq_id, request=request)
@@ -682,6 +693,12 @@ def get_dispatch(dispatch_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> 
 @router.post("/dispatches", status_code=status.HTTP_201_CREATED)
 def create_dispatch(payload: S.DispatchIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return sales.create_dispatch(db, viewer, payload, request=request)
+
+
+@router.put("/dispatches/{dispatch_id}/transport")
+def update_dispatch_transport(dispatch_id: uuid.UUID, payload: S.DispatchTransportIn, viewer: CurrentUser,
+                              db: DbSession, request: Request) -> dict:
+    return sales.update_transport(db, viewer, dispatch_id, payload, request=request)
 
 
 @router.post("/dispatches/{dispatch_id}/deliver")

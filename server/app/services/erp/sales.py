@@ -124,10 +124,19 @@ def _returned_unbilled(so: ErpSalesOrder, dispatches: list[ErpDispatch]) -> Deci
             continue
         for dl in d.lines:
             line = lines.get(dl.order_line_id)
-            unbilled = min(dl.returned_qty, max(ZERO, dl.quantity - dl.invoiced_qty))
+            # Replaced goods will be shipped and billed again, so they still count.
+            unbilled = min(dl.returned_qty - dl.replaced_qty, max(ZERO, dl.quantity - dl.invoiced_qty - dl.free_qty))
             if line is not None and unbilled > 0:
                 total += unbilled * line.net_rate * (1 + line.gst_percent / Decimal("100"))
     return money(total)
+
+
+def billed_by_milestones(so: ErpSalesOrder | None) -> bool:
+    """An order with a dispatch or delivery milestone bills its goods through
+    that milestone: the dispatch only makes it ready, and invoicing the goods
+    as well would bill the same value twice. Other milestones (an advance, UAT)
+    sit beside dispatch billing, held to the order's value by the invoice cap."""
+    return bool(so is not None and any(m.kind in ("dispatch", "delivery") for m in so.milestones))
 
 
 def _order_out(db: Session, so: ErpSalesOrder) -> dict:
@@ -187,7 +196,7 @@ def _order_out(db: Session, so: ErpSalesOrder) -> dict:
         "dispatches": [
             {"id": str(d.id), "number": d.number, "dispatch_date": d.dispatch_date.isoformat(),
              "status": d.status, "value": str(d.value),
-             "uninvoiced": d.status != DispatchStatus.CANCELLED.value
+             "uninvoiced": d.status != DispatchStatus.CANCELLED.value and not billed_by_milestones(so)
              and any(line.billable_qty > 0 for line in d.lines),
              "unbilled_value": str(_unbilled_value(d, order_lines))}
             for d in dispatches
@@ -410,12 +419,13 @@ def _order_detail(db: Session, so: ErpSalesOrder) -> dict:
             "created_by_name": names.get(d.created_by), "created_at": d.created_at.isoformat(),
             "lines": [{"id": str(line.id), "order_line_id": str(line.order_line_id), "description": line.description,
                        "quantity": str(line.quantity), "invoiced_qty": str(line.invoiced_qty),
-                       "returned_qty": str(line.returned_qty), "serials": line.serials or []} for line in d.lines],
+                       "returned_qty": str(line.returned_qty), "replaced_qty": str(line.replaced_qty),
+                       "free_qty": str(line.free_qty), "serials": line.serials or []} for line in d.lines],
         } for d in dispatches],
         "returns": [{
             "id": str(r.id), "number": r.number, "dispatch_id": str(r.dispatch_id), "return_date": r.return_date.isoformat(),
             "warehouse": db.get(ErpWarehouse, r.warehouse_id).name, "condition": r.condition, "reason": r.reason,
-            "lines": r.lines, "value": str(r.value), "created_by_name": user_names(db, so.org_id, [r.created_by]).get(r.created_by),
+            "lines": r.lines, "value": str(r.value), "replace": r.replace, "created_by_name": user_names(db, so.org_id, [r.created_by]).get(r.created_by),
         } for r in db.scalars(select(ErpSalesReturn).where(ErpSalesReturn.sales_order_id == so.id)
                               .order_by(ErpSalesReturn.created_at.desc()))],
         "invoice_details": [{
@@ -1036,7 +1046,8 @@ def _dispatch_out(db: Session, d: ErpDispatch) -> dict:
         **row_dict(d), "order_number": so.number if so else None,
         "customer_name": so.customer_name if so else None, "customer_id": str(so.customer_id) if so else None,
         "warehouse_name": wh.name if wh else None, "created_by_name": names.get(d.created_by),
-        "uninvoiced": any(line.billable_qty > 0 for line in d.lines),
+        "uninvoiced": not billed_by_milestones(so) and any(line.billable_qty > 0 for line in d.lines),
+        "billed_by_milestones": billed_by_milestones(so),
         "lines": [row_dict(line) for line in d.lines],
     }
 
@@ -1107,9 +1118,11 @@ def create_dispatch(db: Session, viewer: User, payload: S.DispatchIn, request: R
             line.reserved_warehouse_id = None
         line.dispatched_qty = qty(line.dispatched_qty + quantity)
         value += quantity * line.net_rate
+        free = min(quantity, line.free_replacement_qty)
+        line.free_replacement_qty = qty(line.free_replacement_qty - free)
         d.lines.append(ErpDispatchLine(
             org_id=viewer.org_id, order_line_id=line.id, item_id=line.item_id,
-            description=line.description, quantity=quantity, serials=serials or None,
+            description=line.description, quantity=quantity, serials=serials or None, free_qty=free,
         ))
     d.value = money(value)
     _refresh_status(so)
@@ -1146,6 +1159,33 @@ def deliver(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.Delive
     return get_dispatch(db, viewer, d.id)
 
 
+_TRANSPORT = ("transporter", "tracking_ref", "vehicle_no", "eway_bill_no")
+
+
+def update_transport(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.DispatchTransportIn,
+                     request: Request | None = None) -> dict:
+    """Correct how a shipment travels: transporter, vehicle, LR and e-way bill.
+    Nothing about the goods or the stock changes. Only while it is in transit:
+    once delivered, the paperwork is what was delivered against."""
+    require(viewer, "can_manage_sales_orders")
+    d = get_owned(db, ErpDispatch, viewer.org_id, dispatch_id, "dispatch")
+    if d.status != DispatchStatus.DISPATCHED.value:
+        raise ErpError("not_in_transit", f"A {d.status} dispatch cannot be changed.", 409)
+    changes = {}
+    for field in _TRANSPORT:
+        value = (getattr(payload, field) or "").strip() or None
+        if field == "vehicle_no" and value:
+            value = value.upper().replace(" ", "")
+        if value != getattr(d, field):
+            changes[field] = {"from": getattr(d, field), "to": value}
+            setattr(d, field, value)
+    if changes:
+        record_audit(db, viewer, "dispatch.transport_changed", d, request=request,
+                     detail={"number": d.number, "changes": changes})
+        db.commit()
+    return get_dispatch(db, viewer, d.id)
+
+
 def cancel_dispatch(db: Session, viewer: User, dispatch_id: uuid.UUID, reason: str | None,
                     request: Request | None = None) -> dict:
     """A shipment that never left, or came straight back — stock returns to the
@@ -1172,6 +1212,7 @@ def cancel_dispatch(db: Session, viewer: User, dispatch_id: uuid.UUID, reason: s
                    serials=line.serials, reason=cleaned)
         ol = order_lines[line.order_line_id]
         ol.dispatched_qty = max(ZERO, qty(ol.dispatched_qty - line.quantity))
+        ol.free_replacement_qty = qty(ol.free_replacement_qty + line.free_qty)
     d.status = DispatchStatus.CANCELLED.value
     d.cancel_reason = cleaned
     if so.status == SalesOrderStatus.DISPATCHED.value:
@@ -1185,8 +1226,11 @@ def cancel_dispatch(db: Session, viewer: User, dispatch_id: uuid.UUID, reason: s
 def record_return(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.SalesReturnIn,
                   request: Request | None = None) -> dict:
     """Goods back from the customer. Stock comes in, in the condition it arrived.
-    The order stays dispatched: a replacement is a new order, and any money back
-    is a credit note against the invoice."""
+
+    With ``replace`` the same quantity opens up on the order to be dispatched
+    again. What had been billed is shipped free next time; what had not is
+    billed when the replacement is. Without it, the order stays dispatched and
+    any money back is a credit note against the invoice."""
     require(viewer, "can_manage_sales_orders")
     d = get_owned(db, ErpDispatch, viewer.org_id, dispatch_id, "dispatch")
     if d.status == DispatchStatus.CANCELLED.value:
@@ -1205,6 +1249,7 @@ def record_return(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.
     row = ErpSalesReturn(
         org_id=viewer.org_id, number=number, sales_order_id=so.id, dispatch_id=d.id, warehouse_id=wh.id,
         return_date=when, condition=payload.condition, reason=cleaned, created_by=viewer.id, lines=[],
+        replace=payload.replace,
     )
     db.add(row)
     db.flush()
@@ -1229,12 +1274,22 @@ def record_return(db: Session, viewer: User, dispatch_id: uuid.UUID, payload: S.
         stock.move(db, viewer, item=item, warehouse_id=wh.id, quantity=quantity, kind=MovementKind.RETURN,
                    ref_type="sales_return", ref_id=row.id, ref_number=number, condition=payload.condition,
                    serials=serials, reason=cleaned)
+        # Returns come out of the unbilled part first; the rest had been billed.
+        unbilled = max(ZERO, line.quantity - line.invoiced_qty - line.free_qty - line.returned_qty)
+        billed = max(ZERO, quantity - unbilled)
         line.returned_qty = qty(line.returned_qty + quantity)
-        value += quantity * order_lines[line.order_line_id].net_rate
+        ol = order_lines[line.order_line_id]
+        if payload.replace:
+            line.replaced_qty = qty(line.replaced_qty + quantity)
+            ol.dispatched_qty = max(ZERO, qty(ol.dispatched_qty - quantity))
+            ol.free_replacement_qty = qty(ol.free_replacement_qty + billed)
+        value += quantity * ol.net_rate
         kept.append({"description": line.description, "quantity": str(quantity), "serials": serials or []})
     row.lines = kept
     row.value = money(value)
+    if payload.replace:
+        _refresh_status(so)
     record_audit(db, viewer, "dispatch.returned", d, request=request,
-                 detail={"number": number, "reason": cleaned, "value": str(row.value)})
+                 detail={"number": number, "reason": cleaned, "value": str(row.value), "replace": payload.replace})
     db.commit()
     return get_order(db, viewer, so.id)

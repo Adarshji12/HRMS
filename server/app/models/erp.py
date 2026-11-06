@@ -599,6 +599,20 @@ class ErpRfq(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("erp_requisitions.id", ondelete="SET NULL"), nullable=True
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: The RFQ's own date, as printed for the vendor.
+    rfq_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: When the goods are wanted at the door, not when the quotes are due.
+    required_by: Mapped[date | None] = mapped_column(Date, nullable=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+    #: What the buyer asks for; each vendor's quote says what it offers.
+    payment_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    quote_validity_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contact_person: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Instructions to vendors are ``terms``; this is for the buyer's own team.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=RfqStatus.DRAFT.value, nullable=False)
     created_by: Mapped[uuid.UUID | None] = _user_fk()
@@ -632,8 +646,12 @@ class ErpRfqLine(UUIDMixin, Base):
         Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True
     )
     description: Mapped[str] = mapped_column(String(300), nullable=False)
+    #: Make, model, size, standard: what the vendor must quote against.
+    specification: Mapped[str | None] = mapped_column(Text, nullable=True)
     uom: Mapped[str] = mapped_column(String(16), default="Nos", nullable=False)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    #: The buyer's expected rate (the requisition's estimate). Never shown to vendors.
+    target_rate: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     rfq: Mapped["ErpRfq"] = relationship(back_populates="lines")
@@ -672,6 +690,7 @@ class ErpVendorQuote(UUIDMixin, TimestampMixin, Base):
     )
     round: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     quote_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    quote_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     delivery_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payment_terms: Mapped[str | None] = mapped_column(String(160), nullable=True)
@@ -701,7 +720,10 @@ class ErpVendorQuoteLine(UUIDMixin, Base):
         Uuid, ForeignKey("erp_rfq_lines.id", ondelete="CASCADE"), nullable=False
     )
     rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
     gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
+    #: The brand or model the vendor offers, which may differ from the one asked for.
+    make: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     quote: Mapped["ErpVendorQuote"] = relationship(back_populates="lines")
 
@@ -1230,6 +1252,9 @@ class ErpSalesOrderLine(UUIDMixin, Base):
     )
     dispatched_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     invoiced_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    #: Units owed to the customer free: billed, sent back, and to be replaced.
+    #: The next dispatch of this line ships them without billing them again.
+    free_replacement_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     @property
@@ -1335,6 +1360,10 @@ class ErpDispatchLine(UUIDMixin, Base):
     invoiced_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     #: How much the customer has sent back. Returned goods are not billed.
     returned_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    #: Of what came back, how much is being replaced by a later dispatch.
+    replaced_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    #: A replacement for goods already billed: shipped, never billed again.
+    free_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     serials: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     dispatch: Mapped["ErpDispatch"] = relationship(back_populates="lines")
@@ -1342,7 +1371,7 @@ class ErpDispatchLine(UUIDMixin, Base):
     @property
     def billable_qty(self) -> Decimal:
         """What is left to invoice on this line."""
-        return max(ZERO, self.quantity - self.returned_qty - self.invoiced_qty)
+        return max(ZERO, self.quantity - self.returned_qty - self.invoiced_qty - self.free_qty)
 
 
 class ErpSalesReturn(UUIDMixin, TimestampMixin, Base):
@@ -1370,6 +1399,8 @@ class ErpSalesReturn(UUIDMixin, TimestampMixin, Base):
     #: What came back: description, quantity and serials of each line.
     lines: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     value: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    #: The customer gets the same goods again, from this order.
+    replace: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[uuid.UUID | None] = _user_fk()
 
 
