@@ -4400,3 +4400,45 @@ table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .crm.ldp .ldp-fact-value .crm-assignee { gap: 6px; }
 .crm.ldp .ldp-fact-value .crm-assignee-dot { width: 20px; height: 20px; font-size: 9px; }
 @media (max-width: 760px) { .crm.ldp .ldp-deal-facts .ldp-fact.is-wide { grid-column: 1 / -1; } }
+
+/* Add new lead: step indicator. */
+.lf-steps { display: flex; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.lf-steps li { flex: 1; min-width: 0; }
+.lf-steps button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--crm-hair); background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.lf-steps button:disabled { cursor: not-allowed; opacity: 0.6; }
+.lf-step-dot {
+  flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--crm-hair); color: var(--text-secondary, inherit); font-size: 12px;
+}
+.lf-step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lf-steps .is-current button { border-color: var(--accent, #4f46e5); color: var(--text-primary); }
+.lf-steps .is-current .lf-step-dot, .lf-steps .is-done .lf-step-dot { background: var(--accent, #4f46e5); color: #fff; }
+.lf-steps .is-done button { color: var(--text-primary); }
+@media (max-width: 560px) { .lf-step-label { display: none; } .lf-steps button { justify-content: center; } }
+
+/* Opportunity pipeline board. */
+.pipe-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 12px; align-items: start; }
+.pipe-col { background: rgba(127,127,127,0.06); border: 1px solid var(--crm-hair); border-radius: 12px; padding: 10px; min-height: 220px; }
+.pipe-col.is-over { outline: 2px dashed var(--accent, #4f46e5); outline-offset: -2px; }
+.pipe-head { display: flex; align-items: baseline; gap: 8px; padding: 2px 4px 10px; }
+.pipe-head h2 { margin: 0; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.pipe-count { font-size: 12px; color: var(--text-muted); }
+.pipe-total { margin-left: auto; font-size: 12.5px; font-weight: 600; }
+.pipe-cards { display: flex; flex-direction: column; gap: 8px; }
+.pipe-empty { margin: 8px 4px; font-size: 12.5px; color: var(--text-muted); }
+.pipe-card { background: var(--surface, #fff); border: 1px solid var(--crm-hair); border-radius: 10px; padding: 10px 12px; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.pipe-card.is-dragging { opacity: 0.45; }
+.pipe-title { all: unset; cursor: pointer; font-weight: 650; font-size: 13.5px; color: var(--text-primary); display: block; }
+.pipe-title:hover { text-decoration: underline; }
+.pipe-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-muted); }
+.pipe-money { margin-top: 6px; font-weight: 600; font-size: 13.5px; }
+.pipe-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pipe-stars { display: inline-flex; gap: 1px; color: var(--text-muted); }
+.pipe-stars .is-on { color: #f5a524; fill: currentColor; }
+.pipe-stage { margin-left: auto; max-width: 110px; padding: 3px 24px 3px 8px; font-size: 12px; min-height: 0; }
+.pipe-col.is-won .pipe-head h2 { color: var(--status-ok, #16a34a); }
+.pipe-col.is-lost .pipe-head h2 { color: var(--status-bad, #dc2626); }

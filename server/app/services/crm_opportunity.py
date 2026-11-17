@@ -115,6 +115,7 @@ def to_out(db: Session, row: CrmOpportunity) -> S.OpportunityOut:
         team_id=row.team_id,
         team_name=team.name if team else None,
         is_mail_send=row.is_mail_send,
+        stage=row.stage,
         costsheet_status=row.costsheet_status,
         notes=row.notes,
         owner_id=lead.owner_id if lead else None,
@@ -193,6 +194,8 @@ def _apply(row: CrmOpportunity, payload: S.OpportunityIn) -> None:
     else:
         row.costsheet_status = "none"
     row.notes = payload.notes
+    if payload.stage:
+        row.stage = payload.stage
 
 
 def create(
@@ -205,6 +208,14 @@ def create(
 ) -> S.OpportunityOut:
     lead = crm_svc._readable_lead(db, viewer, lead_id)
     _check_references(db, viewer.org_id, payload)
+    if db.scalar(
+        select(CrmOpportunity.id).where(
+            CrmOpportunity.org_id == viewer.org_id, CrmOpportunity.lead_id == lead.id
+        )
+    ):
+        raise _refuse(
+            "This lead already has an opportunity. Edit that one instead.", "already_exists", 409
+        )
     row = CrmOpportunity(org_id=viewer.org_id, lead_id=lead.id, created_by=viewer.id)
     _apply(row, payload)
     db.add(row)
@@ -233,6 +244,30 @@ def update(
           request=request, target_type="crm_opportunity", target_id=str(row.id))
     db.commit()
     db.refresh(row)
+    return to_out(db, row)
+
+
+def set_stage(
+    db: Session,
+    viewer: User,
+    opportunity_id: uuid.UUID,
+    stage: str,
+    *,
+    request: Request | None = None,
+) -> S.OpportunityOut:
+    """Move an opportunity along the pipeline board (or to Lost)."""
+    row = _get(db, viewer, opportunity_id)
+    previous = row.stage
+    if previous != stage:
+        row.stage = stage
+        lead = db.get(CrmLead, row.lead_id)
+        if lead is not None:
+            crm_svc._log(db, lead, viewer, "note", f"Opportunity {row.title}: {previous} → {stage}")
+        audit(db, org_id=viewer.org_id, actor=viewer, action="crm.opportunity_stage",
+              request=request, target_type="crm_opportunity", target_id=str(row.id),
+              detail={"from": previous, "to": stage})
+        db.commit()
+        db.refresh(row)
     return to_out(db, row)
 
 

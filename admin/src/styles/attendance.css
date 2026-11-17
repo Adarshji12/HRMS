@@ -448,3 +448,6 @@
   background: var(--brand-soft);
   border-color: color-mix(in srgb, var(--brand) 24%, transparent);
 }
+
+/* "Selected: …" beside the work-mode question — drawn only where a page opts in. */
+.wm-selected { display: none; }

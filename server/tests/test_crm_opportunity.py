@@ -62,16 +62,24 @@ def test_validation_names_the_problem(client, acme):
 
 def test_listing_returns_the_leads_opportunities(client, acme):
     lead = _lead(client, acme)
-    _opportunity(client, acme, lead["id"], title="First")
-    _opportunity(client, acme, lead["id"], title="Second")
     other = _lead(client, acme)
+    _opportunity(client, acme, lead["id"], title="First")
+    _opportunity(client, acme, other["id"], title="Second")
     listed = client.get(
         f"/api/v1/crm/leads/{lead['id']}/opportunities", headers=acme.headers()
     ).json()
-    assert {o["title"] for o in listed} == {"First", "Second"}
-    assert client.get(
+    assert {o["title"] for o in listed} == {"First"}
+    assert [o["title"] for o in client.get(
         f"/api/v1/crm/leads/{other['id']}/opportunities", headers=acme.headers()
-    ).json() == []
+    ).json()] == ["Second"]
+
+
+def test_a_lead_has_only_one_opportunity(client, acme):
+    lead = _lead(client, acme)
+    assert _opportunity(client, acme, lead["id"]).status_code == 201
+    again = _opportunity(client, acme, lead["id"], title="Another")
+    assert again.status_code == 409
+    assert "already has an opportunity" in again.json()["detail"]["message"]
 
 
 def test_requirement_types_are_seeded_and_selectable(client, acme):
@@ -186,9 +194,11 @@ def test_an_opportunity_can_be_linked_to_an_existing_customer(client, acme, glob
     assert linked.status_code == 201, linked.text
     assert linked.json()["customer_name"] == "Priya Traders"
     # Optional: a deal for a lead that is not a customer yet carries none.
-    assert _opportunity(client, acme, lead["id"]).json()["customer_id"] is None
+    plain = _lead(client, acme)
+    assert _opportunity(client, acme, plain["id"]).json()["customer_id"] is None
     # Another company's customer is refused, like any other foreign reference.
-    assert _opportunity(client, acme, lead["id"], customer_id=theirs["id"]).status_code == 422
+    fresh = _lead(client, acme)
+    assert _opportunity(client, acme, fresh["id"], customer_id=theirs["id"]).status_code == 422
 
 
 def _decide(client, headers, opportunity_id: str, decision: str):
@@ -292,3 +302,27 @@ def test_the_approvals_list_filters_by_status_and_stays_inside_the_company(clien
         "/api/v1/crm/opportunities", params={"costsheet_status": "bogus"}, headers=acme.headers()
     ).status_code == 422
     assert pending["id"]
+
+
+def test_stage_starts_qualified_and_can_be_moved(client, acme):
+    lead = _lead(client, acme)
+    row = _opportunity(client, acme, lead["id"]).json()
+    assert row["stage"] == "qualified"
+    for stage in ("proposal", "commit", "won", "lost", "qualified"):
+        moved = client.post(
+            f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": stage}, headers=acme.headers()
+        )
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["stage"] == stage
+    bad = client.post(
+        f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": "nope"}, headers=acme.headers()
+    )
+    assert bad.status_code == 422
+
+
+def test_another_company_cannot_move_the_stage(client, acme, globex):
+    row = _opportunity(client, acme, _lead(client, acme)["id"]).json()
+    response = client.post(
+        f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": "won"}, headers=globex.headers()
+    )
+    assert response.status_code == 404

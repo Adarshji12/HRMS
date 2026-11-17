@@ -60,6 +60,7 @@ export default function WorkModePicker({
           question they answer has to be readable by anything that lists the
           form's controls, not only by a sighted reader looking above them. */}
       <legend className="wm-legend">Where are you working?</legend>
+      <span className="wm-selected">Selected: {WORK_MODE_LABEL[value]}</span>
       <div className="wm-choices">
         {WORK_MODES.map((mode) => (
           <label

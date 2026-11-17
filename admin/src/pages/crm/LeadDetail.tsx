@@ -34,7 +34,6 @@ import {
 import { crm, crmError, localToISO, type FollowUp, type LeadDetail as Detail, type Opportunity } from './api'
 import { Assignee, MasterSelect, OwnerSelect, StagePill, WhatsAppButton } from './parts'
 import { ConvertDialog, LeadForm } from './MyLeads'
-import { OpportunityForm } from './OpportunityForm'
 
 export default function LeadDetail() {
   const { leadId = '' } = useParams()
@@ -45,8 +44,6 @@ export default function LeadDetail() {
     `crm-lead-opportunities-${leadId}`,
     () => crm.opportunities(leadId),
   )
-  // An opportunity being edited, 'new' for a blank form, null for none.
-  const [opportunityOpen, setOpportunityOpen] = useState<Opportunity | 'new' | null>(null)
   const lead = detail.data
   const deals = opportunities.data ?? []
 
@@ -150,24 +147,6 @@ export default function LeadDetail() {
           <StatusUpdate lead={lead} onSaved={detail.reload} />
           <NextFollowUp leadId={lead.id} open={open} onSaved={detail.reload} />
           <section className="card ldp-card">
-            <CardHead icon={<IconBriefcase size={16} />} title="Opportunities"
-                      action={<button className="btn btn-sm" type="button" disabled={editing} title={editing ? busyEditing : undefined} onClick={() => setOpportunityOpen('new')}><IconPlus size={14} /> Add</button>} />
-            {(opportunities.data ?? []).length === 0 ? (
-              <p className="crm-sub ldp-empty-note">No opportunity yet.</p>
-            ) : (
-              <ul className="ldp-list">
-                {(opportunities.data ?? []).map((o) => (
-                  <li key={o.id}>
-                    <button type="button" className="ldp-link" disabled={editing} title={editing ? busyEditing : undefined} onClick={() => setOpportunityOpen(o)}>{o.title}</button>
-                    <span className="crm-sub">
-                      ₹{Number(o.expected_revenue).toLocaleString('en-IN')} · {o.probability}%
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section className="card ldp-card">
             <CardHead icon={<IconSheet size={16} />} title="Quotations"
                       action={<Link className="btn btn-sm" to={`/crm/quotations/new?lead=${lead.id}`}><IconPlus size={14} /> Add</Link>} />
             {lead.quotations.length === 0 ? (
@@ -186,17 +165,6 @@ export default function LeadDetail() {
         </aside>
       </div>
 
-      {opportunityOpen && (
-        <OpportunityForm
-          lead={lead}
-          opportunity={opportunityOpen === 'new' ? null : opportunityOpen}
-          onClose={() => setOpportunityOpen(null)}
-          onSaved={() => {
-            setOpportunityOpen(null)
-            opportunities.reload()
-          }}
-        />
-      )}
       {converting && (
         <ConvertDialog
           lead={lead}

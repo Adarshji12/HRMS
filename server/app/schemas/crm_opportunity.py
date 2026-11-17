@@ -45,6 +45,8 @@ class OpportunityIn(CrmBase):
     #: withdraws it. Whatever they then decide is theirs to set, not the form's.
     send_costsheet_for_approval: bool = False
     notes: str | None = Field(default=None, max_length=4000)
+    #: Left out, a new opportunity is Qualified and an edit keeps its stage.
+    stage: str | None = Field(default=None, pattern=r"^(qualified|proposal|commit|won|lost)$")
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -66,6 +68,13 @@ class OpportunityIn(CrmBase):
     @classmethod
     def _blank_notes(cls, value):
         return None if value is None or str(value).strip() == "" else value
+
+
+STAGES = ("qualified", "proposal", "commit", "won", "lost")
+
+
+class StageIn(CrmBase):
+    stage: str = Field(pattern=r"^(qualified|proposal|commit|won|lost)$")
 
 
 class CostsheetDecisionIn(CrmBase):
@@ -98,6 +107,7 @@ class OpportunityOut(ORMModel):
     team_id: uuid.UUID | None = None
     team_name: str | None = None
     is_mail_send: bool = False
+    stage: str = "qualified"
     costsheet_status: str = "none"
     notes: str | None = None
     #: The lead's owner — the opportunity's salesperson.

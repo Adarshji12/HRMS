@@ -1,10 +1,11 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Fragment, useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { canAdminister, canApproveSomething, canViewTeam, isOwner, useAuth } from './lib/auth'
 import {
   NAV,
   HRMS_NAV_ITEMS,
   ERP_NAV_ITEMS,
+  ERP_TRANSACTIONS,
   canSee,
   firstRouteIn,
   itemsIn,
@@ -36,8 +37,10 @@ import ErpRfqs from './pages/erp/ErpRfqs'
 import ErpPurchaseOrders from './pages/erp/ErpPurchaseOrders'
 import ErpInventory from './pages/erp/ErpInventory'
 import ErpSalesOrders from './pages/erp/ErpSalesOrders'
-import ErpBilling, { ErpInvoices } from './pages/erp/ErpBilling'
+import ErpBilling from './pages/erp/ErpBilling'
+import ErpSale from './pages/erp/ErpSale'
 import ErpMasters from './pages/erp/ErpMasters'
+import ErpPlaceholder from './pages/erp/ErpPlaceholder'
 import ErpSettingsPage from './pages/erp/ErpSettingsPage'
 import NotificationSettings from './pages/NotificationSettings'
 import EmailSetup from './pages/EmailSetup'
@@ -108,6 +111,7 @@ import EmployeeHome from './pages/hrms/home/EmployeeHome'
 import LeadDashboard from './pages/crm/LeadDashboard'
 import LeadDetail from './pages/crm/LeadDetail'
 import MyLeads from './pages/crm/MyLeads'
+import Pipeline from './pages/crm/Pipeline'
 import MyFollowUps from './pages/crm/MyFollowUps'
 import MyVisits from './pages/crm/MyVisits'
 import SupportCenter from './pages/crm/SupportCenter'
@@ -159,9 +163,15 @@ function Shell() {
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   )
   const erpItems = ERP_NAV_ITEMS.filter((item) => canSee(item, access))
-  const erpRouteActive = erpItems.some((item) =>
-    location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
-  )
+  const onPath = (to: string) => {
+    const path = to.split('?')[0]
+    return location.pathname === path || location.pathname.startsWith(`${path}/`)
+  }
+  /* A menu row that carries a query (…?tab=docs) is lit only on that exact view,
+     so two rows pointing at one page do not both light up. */
+  const rowOn = (to: string) => (to.includes('?') ? `${location.pathname}${location.search}` === to : onPath(to))
+  const txGroupHere = ERP_TRANSACTIONS.groups.find((g) => g.items.some((item) => onPath(item.to)))
+  const erpRouteActive = erpItems.some((item) => onPath(item.to)) || Boolean(txGroupHere)
   /* Where a bare /settings lands. An employee holds none of the admin pages,
      so a fixed target would be a redirect into a permission bounce; the first
      entry they can open is the only answer that works for every role. The
@@ -183,6 +193,9 @@ function Shell() {
       () => hrmsRouteActive || hrmsHomeRouteActive,
     )
     const [erpExpanded, setErpExpanded] = useState(() => erpRouteActive)
+    // Transactions, and which of its two groups (Sale / Purchase) is open.
+    const [txOpen, setTxOpen] = useState(() => Boolean(txGroupHere))
+    const [txGroup, setTxGroup] = useState<string | null>(() => txGroupHere?.key ?? null)
     const [crmExpanded, setCrmExpanded] = useState(
       () => crmRouteActive,
     )
@@ -226,6 +239,10 @@ function Shell() {
     // was working in every time they followed one of those read as the menu
     // closing on its own. Top-level links close the groups explicitly.
     const hrmsActive = hrmsRouteActive || hrmsHomeRouteActive
+    if (txGroupHere) {
+      setTxOpen(true)
+      setTxGroup(txGroupHere.key)
+    }
     if (crmRouteActive || erpRouteActive || hrmsActive) {
       setCrmExpanded(crmRouteActive)
       setErpExpanded(erpRouteActive && !crmRouteActive)
@@ -480,21 +497,82 @@ function Shell() {
           </button>
           {erpExpanded && !collapsed && (
             <div className="erp-nav-submenu">
-              {erpItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className="nav-link nav-sub erp-nav-link"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setSelectedModule(null)
-                    sessionStorage.removeItem(HRMS_HOME_NAV_KEY)
-                  }}
-                >
-                  <item.icon />
-                  <span className="nav-label">{item.label}</span>
-                </NavLink>
+              {erpItems.map((item, index) => (
+                <Fragment key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.end}
+                    className="nav-link nav-sub erp-nav-link"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setSelectedModule(null)
+                      sessionStorage.removeItem(HRMS_HOME_NAV_KEY)
+                    }}
+                  >
+                    <item.icon />
+                    <span className="nav-label">{item.label}</span>
+                  </NavLink>
+                  {index === 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="nav-link nav-sub erp-nav-link erp-tx-toggle"
+                        aria-expanded={txOpen}
+                        aria-current={txGroupHere ? 'page' : undefined}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setTxOpen((open) => !open)
+                        }}
+                      >
+                        <ERP_TRANSACTIONS.icon />
+                        <span className="nav-label">{ERP_TRANSACTIONS.label}</span>
+                        <IconChevronDown size={13} className="nav-disclosure-arrow" />
+                      </button>
+                      {txOpen && (
+                        <div className="erp-tx-menu">
+                          {ERP_TRANSACTIONS.groups.map((group) => (
+                            <Fragment key={group.key}>
+                              <button
+                                type="button"
+                                className="nav-link nav-sub erp-nav-link erp-tx-group"
+                                aria-expanded={txGroup === group.key}
+                                aria-current={txGroupHere?.key === group.key ? 'page' : undefined}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setTxGroup((open) => (open === group.key ? null : group.key))
+                                }}
+                              >
+                                <group.icon />
+                                <span className="nav-label">{group.label}</span>
+                                <IconChevronDown size={13} className="nav-disclosure-arrow" />
+                              </button>
+                              {txGroup === group.key && (
+                                <div className="erp-tx-pages">
+                                  {group.items.map((page) => (
+                                    <Link
+                                      key={page.to}
+                                      to={page.to}
+                                      className={`nav-link nav-sub erp-nav-link${rowOn(page.to) && !(page.to === '/erp/inventory' && location.search) ? ' active' : ''}`}
+                                      aria-current={rowOn(page.to) && !(page.to === '/erp/inventory' && location.search) ? 'page' : undefined}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        setSelectedModule(null)
+                                        sessionStorage.removeItem(HRMS_HOME_NAV_KEY)
+                                      }}
+                                    >
+                                      <page.icon />
+                                      <span className="nav-label">{page.label}</span>
+                                    </Link>
+                                  ))}
+                                </div>
+                              )}
+                            </Fragment>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Fragment>
               ))}
             </div>
           )}
@@ -607,10 +685,12 @@ function Shell() {
           <Route path="/erp/requisitions" element={<ErpRequisitions />} />
           <Route path="/erp/rfqs" element={<ErpRfqs />} />
           <Route path="/erp/purchase-orders" element={<ErpPurchaseOrders />} />
-          <Route path="/erp/inventory" element={<ErpInventory />} />
+          <Route path="/erp/inventory" element={<ErpInventory key={location.search} />} />
           <Route path="/erp/sales-orders" element={<ErpSalesOrders />} />
-          <Route path="/erp/invoices" element={<ErpInvoices />} />
-          <Route path="/erp/billing" element={<ErpBilling />} />
+          <Route path="/erp/invoices" element={<ErpSale />} />
+          <Route path="/erp/billing" element={<ErpBilling key={location.search} />} />
+          <Route path="/erp/purchase" element={<ErpPlaceholder title="Purchase" />} />
+          <Route path="/erp/purchase-returns" element={<ErpPlaceholder title="Purchase Return" />} />
           <Route path="/erp/masters" element={<ErpMasters />} />
           <Route path="/erp/settings" element={<ErpSettingsPage />} />
           {/* The old placeholder. The general ledger is a later phase; billing
@@ -898,6 +978,7 @@ function Shell() {
           <Route element={<ModulePanel group={mod('crm')} />}>
             <Route path="/crm" element={<LeadDashboard />} />
             <Route path="/crm/leads" element={<MyLeads />} />
+            <Route path="/crm/pipeline" element={<Pipeline />} />
             <Route path="/crm/leads/:leadId" element={<LeadDetail />} />
             <Route path="/crm/follow-ups" element={<MyFollowUps />} />
             <Route path="/crm/visits" element={<MyVisits />} />

@@ -89,6 +89,11 @@ class CrmOpportunity(UUIDMixin, TimestampMixin, Base):
     team_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
     )
+    #: Where the deal is on the pipeline board: qualified, proposal, commit,
+    #: won or lost.
+    stage: Mapped[str] = mapped_column(
+        String(12), default="qualified", server_default="qualified", nullable=False, index=True
+    )
     is_mail_send: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

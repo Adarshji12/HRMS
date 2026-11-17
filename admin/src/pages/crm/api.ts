@@ -22,6 +22,8 @@ export interface Master {
 }
 
 export type OpportunityFile = 'costsheet' | 'quotation'
+export type OpportunityStage = 'qualified' | 'proposal' | 'commit' | 'won' | 'lost'
+
 export type CostsheetStatus = 'none' | 'pending' | 'approved' | 'rejected'
 
 export interface Opportunity {
@@ -49,6 +51,7 @@ export interface Opportunity {
   team_id: string | null
   team_name: string | null
   is_mail_send: boolean
+  stage: OpportunityStage
   /** none = not sent; pending = sent for approval; then the decision. */
   costsheet_status: CostsheetStatus
   notes: string | null
@@ -76,6 +79,7 @@ export interface OpportunityInput {
   /** Ticked on the form: send the costsheet to the approvers. Unticking withdraws it. */
   send_costsheet_for_approval: boolean
   notes: string | null
+  stage?: OpportunityStage | null
 }
 
 export interface LeadStatus extends Master {
@@ -670,6 +674,8 @@ export const crm = {
   updateOpportunity: (id: string, body: OpportunityInput) =>
     api.put<Opportunity>(`/crm/opportunities/${id}`, body),
   deleteOpportunity: (id: string) => api.del(`/crm/opportunities/${id}`),
+  setOpportunityStage: (id: string, stage: OpportunityStage) =>
+    api.post<Opportunity>(`/crm/opportunities/${id}/stage`, { stage }),
   decideCostsheet: (id: string, decision: 'approved' | 'rejected') =>
     api.post<Opportunity>(`/crm/opportunities/${id}/costsheet-decision`, { decision }),
   uploadOpportunityFile: (id: string, which: OpportunityFile, file: File) => {

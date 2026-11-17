@@ -223,3 +223,13 @@
   border-radius: 12px; column-gap: 12px;
 }
 .pnl-tab { padding: 5px 11px; font-size: 13px; line-height: 18px; border-radius: 8px; }
+
+/* ERP → Transactions: a toggle row, then Sale / Purchase groups, then their pages. */
+.erp-tx-toggle, .erp-tx-group { width: 100%; background: none; border: 0; text-align: left; cursor: pointer; font-family: inherit; }
+.erp-tx-toggle .nav-disclosure-arrow, .erp-tx-group .nav-disclosure-arrow { margin-left: auto; }
+.erp-tx-menu, .erp-tx-pages {
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 1px 0 3px 12px; padding-left: 8px; border-left: 1px solid var(--gridline);
+}
+.erp-tx-pages { margin-left: 10px; }
+.erp-tx-toggle[aria-current='page'], .erp-tx-group[aria-current='page'] { color: var(--brand-ink); font-weight: 600; }

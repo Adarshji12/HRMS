@@ -21,7 +21,7 @@ import '../../styles/leads.css'
 import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { blankDeal, dealFromOpportunity, dealBlocked, dealFilesTooBig, dealStarted, LeadDealFields, saveDeal, uploadDealFiles } from './LeadDealFields'
+import { blankDeal, dealFromOpportunity, dealBlocked, dealIncomplete, dealFilesTooBig, dealStarted, LeadDealFields, saveDeal, uploadDealFiles } from './LeadDealFields'
 import {
   IconBriefcase,
   IconCheck,
@@ -829,6 +829,7 @@ export function LeadForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (stepped && step < lastStep) { goNext(); return }
     setSaving(true)
     setError(null)
     const body = {
@@ -890,10 +891,38 @@ export function LeadForm({
   // two can differ, and editing a phone number must not rewrite the deal.
   const dealRevenue = dealRecord && valueText === openingValue ? String(dealRecord.expected_revenue) : valueText
   const needsRevenue = showDeal && (Boolean(dealRecord) || dealStarted(deal)) && dealRevenue === ''
-  const ready = name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad && !valueBad
+  // Editing a lead: every field must have a value.
+  const editMissing = Boolean(lead) && (
+    company.trim() === '' || email.trim() === '' || (!sameNumber && whatsapp === '') || !sourceId || !ownerId
+    || !industryId || !productId || !statusId || !stateId || !cityId || pincode.trim() === '' || valueText === ''
+    || address.trim() === '' || (showDeal && dealIncomplete(deal, dealRecord))
+  )
+  const ready = !editMissing && name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad && !valueBad
     && (!showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal)))
 
   const formRef = useRef<HTMLFormElement>(null)
+  // A new lead in the popup is filled in over steps; editing, and the inline
+  // form on the lead page, stay on one page.
+  const stepped = !lead && !inline
+  const [step, setStep] = useState(0)
+  const dealOk = !showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal))
+  const stepOk = [
+    name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad,
+    true,
+    !pincodeBad && !valueBad,
+    dealOk,
+    dealOk,
+  ]
+  const lastStep = showDeal ? 4 : 2
+  const stepNames = ['Customer info', 'Lead info', 'Address & revenue', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
+  const goNext = () => {
+    if (!stepOk[step]) {
+      setTouched((t) => ({ ...t, mobile: true, email: true, whatsapp: true, pincode: true, value: true }))
+      return
+    }
+    setStep((n) => Math.min(n + 1, lastStep))
+    formRef.current?.scrollTo(0, 0)
+  }
   // What is stopping Save, said where the Save button is.
   const customerBad = mobileBad || whatsappBad || emailBad
   const blocker = ready ? null
@@ -901,9 +930,32 @@ export function LeadForm({
       : customerBad ? 'Check the contact details'
         : pincodeBad || valueBad ? 'Check the address and revenue'
           : needsRevenue ? 'Add the expected revenue for the deal'
-            : 'Complete the deal details'
+            : editMissing ? 'Every field is required — fill in the empty ones'
+              : 'Complete the deal details'
 
-  const footer = (
+  const stepBlocker = !stepOk[step]
+    ? step === 0 ? (name.trim() === '' || mobile === '' ? 'Add the full name and mobile number' : 'Check the contact details')
+      : step === 2 ? 'Check the address and revenue' : step === 3 ? 'Complete the deal details' : 'Complete the opportunity details'
+    : null
+  const footer = stepped ? (
+    <>
+      {stepBlocker
+        ? <span className="lf-foot-note lf-foot-link">{stepBlocker}</span>
+        : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
+      {step === 0
+        ? <button className="btn" onClick={onClose} type="button">Cancel</button>
+        : <button className="btn" onClick={() => setStep((n) => n - 1)} type="button">Back</button>}
+      {step < lastStep ? (
+        <button key="next" className="btn btn-primary lf-save" type="button" onClick={goNext} disabled={!stepOk[step]}>
+          Next
+        </button>
+      ) : (
+        <button key="save" className="btn btn-primary lf-save" form="crm-lead-form" type="submit" disabled={saving || !ready}>
+          <IconCheck size={15} /> {saving ? 'Saving…' : 'Save lead'}
+        </button>
+      )}
+    </>
+  ) : (
     <>
       {blocker
         ? <span className="lf-foot-note lf-foot-link">{blocker}</span>
@@ -925,15 +977,29 @@ export function LeadForm({
   const form = (
       <form className="lf lf-single" id="crm-lead-form" ref={formRef} onSubmit={submit} noValidate>
         {error && <ErrorNote>{error}</ErrorNote>}
+        {stepped && (
+          <ol className="lf-steps" aria-label="Lead steps">
+            {stepNames.map((label, i) => (
+              <li key={label} className={i === step ? 'is-current' : i < step ? 'is-done' : ''}
+                  aria-current={i === step ? 'step' : undefined}>
+                <button type="button" disabled={i > step && !stepOk.slice(0, i).every(Boolean)}
+                        onClick={() => setStep(i)}>
+                  <span className="lf-step-dot">{i < step ? <IconCheck size={12} /> : i + 1}</span>
+                  <span className="lf-step-label">{label}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
 
-        <LfSection icon={<IconUser size={16} />} title="Customer info" note="The person you will be speaking to.">
+        {(!stepped || step === 0) && <LfSection icon={<IconUser size={16} />} title="Customer info" note="The person you will be speaking to.">
           <LfField label="Full name" required>
             <LfInput icon={<IconUser size={15} />}>
               <input value={name} onChange={(event) => setName(event.target.value)}
                      placeholder="e.g. Rahul Sharma" autoFocus required />
             </LfInput>
           </LfField>
-          <LfField label="Company">
+          <LfField label="Company" required={Boolean(lead)}>
             <LfInput icon={<IconBriefcase size={15} />}>
               <input value={company} onChange={(event) => setCompany(event.target.value)}
                      placeholder="Company / firm name" />
@@ -947,14 +1013,14 @@ export function LeadForm({
                      placeholder={'9876543210'.slice(0, length)} inputMode="numeric" maxLength={length} required />
             </LfInput>
           </LfField>
-          <LfField label="Email" error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
+          <LfField label="Email" required={Boolean(lead)} error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
             <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
               <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
                      placeholder="name@company.com" />
             </LfInput>
           </LfField>
 
-          <LfField label="WhatsApp"
+          <LfField label="WhatsApp" required={Boolean(lead) && !sameNumber}
                    error={touched.whatsapp && whatsappBad ? `Enter a ${length}-digit WhatsApp number.` : undefined}
                    aside={
                      <label className="lf-switch">
@@ -970,30 +1036,30 @@ export function LeadForm({
                      placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
             </LfInput>
           </LfField>
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconStar size={16} />} title="Lead info" note="Where it came from, what they want, and who owns it.">
-          <LfField label="Lead source">
+        {(!stepped || step === 1) && <LfSection icon={<IconStar size={16} />} title="Lead info" note="Where it came from, what they want, and who owns it.">
+          <LfField label="Lead source" required={Boolean(lead)}>
             <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
           </LfField>
-          <LfField label="Lead owner">
+          <LfField label="Lead owner" required={Boolean(lead)}>
             <OwnerSelect value={ownerId} onChange={setOwnerId} />
           </LfField>
-          <LfField label="Industry type">
+          <LfField label="Industry type" required={Boolean(lead)}>
             <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
           </LfField>
-          <LfField label="Product / service">
+          <LfField label="Product / service" required={Boolean(lead)}>
             <MasterSelect kind="products" value={productId} onChange={setProductId} placeholder="Select product" />
           </LfField>
           {lead && (
-            <LfField label="Stage">
+            <LfField label="Stage" required={Boolean(lead)}>
               <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} placeholder="Select stage" />
             </LfField>
           )}
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconPin size={16} />} title="Address & revenue" note="Where they are, and what the deal could be worth.">
-          <LfField label="State">
+        {(!stepped || step === 2) && <LfSection icon={<IconPin size={16} />} title="Address & revenue" note="Where they are, and what the deal could be worth.">
+          <LfField label="State" required={Boolean(lead)}>
             <MasterSelect
               kind="states"
               value={stateId}
@@ -1007,18 +1073,18 @@ export function LeadForm({
               placeholder="Select state"
             />
           </LfField>
-          <LfField label="City" hint={stateId ? undefined : 'Pick a state first.'}>
+          <LfField label="City" required={Boolean(lead)} hint={stateId ? undefined : 'Pick a state first.'}>
             <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId}
                           placeholder="Select city" />
           </LfField>
-          <LfField label="Pincode" error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
+          <LfField label="Pincode" required={Boolean(lead)} error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
             <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
               <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
                      placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
             </LfInput>
           </LfField>
           <LfField label="Expected revenue"
-                   required={needsRevenue}
+                   required={needsRevenue || Boolean(lead)}
                    error={touched.value && valueBad ? 'Enter an amount like 150000 or 150000.50.' : needsRevenue ? 'Needed once deal details are filled in.' : undefined}
                    hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
             <LfInput prefix="₹" bad={touched.value && valueBad}>
@@ -1026,13 +1092,16 @@ export function LeadForm({
                      inputMode="decimal" placeholder="e.g. 150000" aria-label="Expected revenue" />
             </LfInput>
           </LfField>
-          <LfField label="Address" className="lf-span2">
+          <LfField label="Address" required={Boolean(lead)} className="lf-span2">
             <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
                       placeholder="Building, street, area, landmark" />
           </LfField>
-        </LfSection>
+        </LfSection>}
 
-        {showDeal && <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord} />}
+        {showDeal && (!stepped || step >= 3) && (
+          <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord}
+                          part={stepped ? (step === 3 ? 'deal' : 'opportunity') : 'both'} all={Boolean(lead)} />
+        )}
       </form>
   )
 
@@ -1050,7 +1119,7 @@ export function LeadForm({
       title={lead ? `Edit ${lead.name}` : 'Add new lead'}
       subtitle={lead
         ? <>Lead <span className="crm-code">#{lead.code}</span> — change anything and save.</>
-        : 'Only the name and mobile number are required.'}
+        : 'Fill in the steps. Only the name and mobile number are required.'}
       onClose={onClose}
       footer={footer}
     >

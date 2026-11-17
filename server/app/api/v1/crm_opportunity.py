@@ -27,6 +27,17 @@ def list_all_opportunities(
     return svc.list_all(db, viewer, costsheet_status=costsheet_status)
 
 
+@router.post("/opportunities/{opportunity_id}/stage", response_model=S.OpportunityOut)
+def set_opportunity_stage(
+    opportunity_id: uuid.UUID,
+    payload: S.StageIn,
+    viewer: CurrentUser,
+    db: DbSession,
+    request: Request,
+) -> S.OpportunityOut:
+    return svc.set_stage(db, viewer, opportunity_id, payload.stage, request=request)
+
+
 @router.post("/opportunities/{opportunity_id}/costsheet-decision", response_model=S.OpportunityOut)
 def decide_costsheet(
     opportunity_id: uuid.UUID,

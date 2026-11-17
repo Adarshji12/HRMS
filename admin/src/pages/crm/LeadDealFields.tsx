@@ -11,10 +11,13 @@ import { type KeyboardEvent } from 'react'
 import { IconBriefcase, IconClose, IconDownload, IconStar, IconUpload } from '../../components/Icons'
 import { api, download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
-import { crm, crmError, type Opportunity, type OpportunityFile } from './api'
+import { crm, crmError, type Opportunity, type OpportunityFile, type OpportunityStage } from './api'
 import { LfField, LfInput, LfSection, MasterSelect } from './parts'
 
 export interface Deal {
+  /** Blank means "<lead> opportunity". */
+  title: string
+  stage: OpportunityStage
   probability: string
   closing: string
   customerId: string
@@ -34,6 +37,7 @@ export interface Deal {
 }
 
 export const blankDeal = (): Deal => ({
+  title: '', stage: 'qualified',
   probability: '10', closing: '', customerId: '', priority: 0, tags: [], tagDraft: '', requirementId: '', oemId: '',
   rawCost: '', teamId: '', mailSent: false, approve: false, notes: '', files: { costsheet: null, quotation: null },
   removed: { costsheet: false, quotation: false },
@@ -42,6 +46,8 @@ export const blankDeal = (): Deal => ({
 /** The form's fields for an opportunity already saved. */
 export const dealFromOpportunity = (o: Opportunity): Deal => ({
   ...blankDeal(),
+  title: o.title,
+  stage: o.stage,
   probability: String(o.probability),
   closing: o.expected_closing ? o.expected_closing.slice(0, 10) : '',
   customerId: o.customer_id ?? '',
@@ -86,7 +92,8 @@ export async function saveDeal(
   leadId: string, leadName: string, revenue: string, d: Deal, existingId: string | null, title?: string,
 ): Promise<string> {
   const body = {
-    title: title ?? `${leadName} opportunity`,
+    title: d.title.trim() || title || `${leadName} opportunity`,
+    stage: d.stage,
     customer_id: d.customerId || null,
     expected_revenue: revenue.trim(),
     probability: Number(d.probability),
@@ -119,10 +126,14 @@ export async function uploadDealFiles(id: string, d: Deal, saved?: Opportunity |
   }
 }
 
-export function LeadDealFields({ deal, onChange, revenue, saved }: {
+export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', all }: {
   deal: Deal
   onChange: (d: Deal) => void
   revenue: string
+  /** Which half to show: the deal itself, the opportunity details, or both. */
+  part?: 'deal' | 'opportunity' | 'both'
+  /** Editing a lead: every field is required, not only the ones a started deal needs. */
+  all?: boolean
   /** The opportunity being edited, when the lead already has one. */
   saved?: Opportunity | null
 }) {
@@ -130,6 +141,9 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
   const teams = useQuery<Array<{ id: string; name: string; is_active: boolean }>>('teams', () => api.get('/org/teams'))
   const customers = useQuery('crm-customers-for-opportunity', () => crm.customers({}))
   const started = dealStarted(deal)
+  const req = Boolean(all)
+  const showDeal = part !== 'opportunity'
+  const showOpp = part !== 'deal'
 
   const revenueNumber = Number(revenue)
   const cost = deal.rawCost.trim() && moneyOk(deal.rawCost) ? Number(deal.rawCost) : null
@@ -152,7 +166,8 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
   const tooBig = (file: File | null) => Boolean(file && file.size > MAX_FILE)
 
   return (
-    <LfSection icon={<IconBriefcase size={16} />} title="Deal details"
+    <>
+    {showDeal && <LfSection icon={<IconBriefcase size={16} />} title="Deal details"
                note={saved ? 'Saved on this lead\'s opportunity.' : 'Optional. Fill these in to create the opportunity with the lead.'}>
       <LfField label="Probability" error={probabilityBad(deal) ? 'Between 0 and 100.' : undefined}>
         <LfInput prefix="%" bad={probabilityBad(deal)}>
@@ -160,12 +175,12 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
                  onChange={(e) => set({ probability: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
         </LfInput>
       </LfField>
-      <LfField label="Expected closing" required={started && !saved}
-               error={started && !saved && !deal.closing ? 'Needed once deal details are filled in.' : undefined}>
+      <LfField label="Expected closing" required={req || (started && !saved)}
+               error={(req || (started && !saved)) && !deal.closing ? 'Needed once deal details are filled in.' : undefined}>
         <input type="date" value={deal.closing} aria-label="Expected closing" onChange={(e) => set({ closing: e.target.value })} />
       </LfField>
 
-      <LfField label="Existing customer" hint="Only if this deal is for a customer you already have.">
+      <LfField label="Existing customer" required={req} hint="Only if this deal is for a customer you already have.">
         <select value={deal.customerId} aria-label="Existing customer" onChange={(e) => set({ customerId: e.target.value })}>
           <option value="">Select customer</option>
           {(customers.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>)}
@@ -175,7 +190,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
         <input value="INR (₹)" readOnly disabled className="lf-readonly" aria-label="Currency" />
       </LfField>
 
-      <LfField label="Priority">
+      <LfField label="Priority" required={req}>
         <div className="opp-stars" role="radiogroup" aria-label="Priority">
           {[1, 2, 3].map((n) => (
             <button key={n} type="button" role="radio" aria-checked={deal.priority === n} className={n <= deal.priority ? 'is-on' : undefined}
@@ -185,7 +200,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
           ))}
         </div>
       </LfField>
-      <LfField label="Tags" hint="Press Enter or comma after each tag.">
+      <LfField label="Tags" required={req} hint="Press Enter or comma after each tag.">
         <div className="opp-tags">
           {deal.tags.map((tag) => (
             <span className="opp-tag" key={tag}>
@@ -199,21 +214,37 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
                  onBlur={() => addTag(deal.tagDraft)} placeholder={deal.tags.length ? '' : 'e.g. Hardware, Urgent'} maxLength={40} aria-label="Tags" />
         </div>
       </LfField>
+    </LfSection>}
 
-      <LfField label="Requirement type">
+    {showOpp && <LfSection icon={<IconBriefcase size={16} />} title="Opportunity"
+               note={saved ? 'Saved on this opportunity.' : 'Optional. Requirement, cost, files and notes for this opportunity.'}>
+      <LfField label="Opportunity name" required={req} wide>
+        <input value={deal.title} maxLength={200} aria-label="Opportunity name" placeholder="e.g. 20 desktops for the accounts team"
+               onChange={(e) => set({ title: e.target.value })} />
+      </LfField>
+      <LfField label="Stage">
+        <select value={deal.stage} aria-label="Opportunity stage" onChange={(e) => set({ stage: e.target.value as OpportunityStage })}>
+          <option value="qualified">Qualified</option>
+          <option value="proposal">Proposal</option>
+          <option value="commit">Commit</option>
+          <option value="won">Won</option>
+          <option value="lost">Lost</option>
+        </select>
+      </LfField>
+      <LfField label="Requirement type" required={req}>
         <MasterSelect kind="requirement-types" value={deal.requirementId} onChange={(v) => set({ requirementId: v })} placeholder="Select requirement type" />
       </LfField>
-      <LfField label="OEM">
+      <LfField label="OEM" required={req}>
         <MasterSelect kind="item-companies" value={deal.oemId} onChange={(v) => set({ oemId: v })} placeholder="Select OEM" />
       </LfField>
 
-      <LfField label="Raw cost" error={costBad(deal) ? 'Enter an amount like 200000 or 200000.50.' : undefined}>
+      <LfField label="Raw cost" required={req} error={costBad(deal) ? 'Enter an amount like 200000 or 200000.50.' : undefined}>
         <LfInput prefix="₹" bad={costBad(deal)}>
           <input value={deal.rawCost} inputMode="decimal" placeholder="e.g. 200000" aria-label="Raw cost"
                  onChange={(e) => set({ rawCost: e.target.value.replace(/,/g, '') })} />
         </LfInput>
       </LfField>
-      <LfField label="Sales team">
+      <LfField label="Sales team" required={req}>
         <select value={deal.teamId} aria-label="Sales team" onChange={(e) => set({ teamId: e.target.value })}>
           <option value="">Select sales team</option>
           {(teams.data ?? []).filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -233,7 +264,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
         const stored = !file && !deal.removed[which] ? saved?.[which] : null
         const status = saved && deal.approve ? saved.costsheet_status : 'none'
         return (
-          <LfField key={which} label={label} error={tooBig(file) ? 'That file is larger than 15 MB.' : undefined}
+          <LfField key={which} label={label} required={req} error={tooBig(file) ? 'That file is larger than 15 MB.' : undefined}
                    hint={file || stored ? undefined : 'Up to 15 MB.'}>
             <div className="opp-file">
               <label className="btn btn-sm">
@@ -288,12 +319,21 @@ export function LeadDealFields({ deal, onChange, revenue, saved }: {
           <input type="checkbox" checked={deal.mailSent} onChange={(e) => set({ mailSent: e.target.checked })} /> Mail sent to the customer
         </label>
       </LfField>
-      <LfField label="Internal notes" wide>
+      <LfField label="Internal notes" wide required={req}>
         <textarea value={deal.notes} onChange={(e) => set({ notes: e.target.value })} rows={3} maxLength={4000}
                   placeholder="Anything the team should know about this deal" />
       </LfField>
-    </LfSection>
+    </LfSection>}
+    </>
   )
+}
+
+/** Editing: what is still empty. Every field but the two tick boxes is required. */
+export function dealIncomplete(d: Deal, saved?: Opportunity | null): boolean {
+  const hasFile = (which: OpportunityFile) => Boolean(d.files[which] || (saved?.[which] && !d.removed[which]))
+  return !d.title.trim() || !d.closing || !d.customerId || d.priority === 0 || (d.tags.length === 0 && !d.tagDraft.trim())
+    || !d.requirementId || !d.oemId || !d.rawCost.trim() || !d.teamId || !d.notes.trim()
+    || !hasFile('costsheet') || !hasFile('quotation')
 }
 
 /** Any file too large to upload — blocks saving rather than failing after the lead exists. */

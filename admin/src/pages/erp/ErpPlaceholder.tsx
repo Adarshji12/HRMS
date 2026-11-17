@@ -4,7 +4,7 @@ export default function ErpPlaceholder({ title }: { title: string }) {
       <div className="page-head">
         <div>
           <h1>{title}</h1>
-          <p>This is a frontend placeholder. ERP backend functionality is not implemented.</p>
+          <p>This screen is not built yet. It has a place in the menu so the structure is in, but there is nothing behind it.</p>
         </div>
       </div>
     </div>

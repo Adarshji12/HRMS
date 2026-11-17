@@ -54,6 +54,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { useAuth } from '../../../lib/auth'
 import { dateTime } from '../../../lib/format'
 import { Empty, EmptyState, ErrorNote, Identity, Loading, StatTile } from '../../../components/ui'
+import { IconSheet } from '../../../components/Icons'
 import {
   hm,
   longDate,
@@ -771,9 +772,12 @@ export function MyRegularizations({
   const pendingCount = (rows ?? []).filter((row) => row.status === 'pending').length
 
   return (
-    <section className="card" style={{ marginTop: 14 }}>
+    <section className="card att-reqcard" style={{ marginTop: 14 }}>
       <div className="card-head">
-        <h2 className="card-title">My correction requests</h2>
+        <div>
+          <h2 className="card-title">My correction requests</h2>
+          <p className="att-card-sub">Ask for a fix when a punch is missing or wrong. A manager decides each one.</p>
+        </div>
         <div className="ts-toggle ts-toggle-xs">
           {(['all', 'pending', 'approved', 'rejected'] as const).map((key) => (
             <button
@@ -795,8 +799,9 @@ export function MyRegularizations({
         <div className={refetching ? 'refetching' : undefined}>
           {rows.length === 0 ? (
             <EmptyState
-              title="You have not asked for a correction"
-              body="Pick a day on the calendar above and use “Ask for a correction” when a punch is missing or wrong. A manager decides it, and only an approval changes the record."
+              icon={<IconSheet size={24} />}
+              title="No correction requests yet"
+              body="Your attendance correction requests will appear here once submitted. To ask for one, pick a day on the calendar above and use “Ask for a correction” — only an approval changes the record."
             />
           ) : shown.length === 0 ? (
             <Empty>Nothing with that status.</Empty>

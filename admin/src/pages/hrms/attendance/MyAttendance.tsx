@@ -1,10 +1,24 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import '../../../styles/attendance.css'
+import '../../../styles/attendance-premium.css'
 import { ApiError, api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { useAuth } from '../../../lib/auth'
 import { clockTime } from '../../../lib/format'
-import { Empty, ErrorNote, Loading, StatTile } from '../../../components/ui'
+import { Empty, ErrorNote, StatTile } from '../../../components/ui'
+import {
+  IconArrowLeft,
+  IconCalendar,
+  IconCheck,
+  IconChevronRight,
+  IconEdit,
+  IconPin,
+  IconClock,
+  IconClose,
+  IconGauge,
+  IconInfo,
+  IconSignOut,
+} from '../../../components/Icons'
 import WorkModePicker, { type WorkMode } from '../../../components/WorkModePicker'
 import { DayRegularization, MyRegularizations, type RegRequest } from './regularization'
 
@@ -374,6 +388,58 @@ function requestFix(): Promise<GeoAttempt> {
 
 /* -------------------------------------------------------------- the page -- */
 
+/** The org's wall clock, ticking each second. Display only — nothing is stamped from it. */
+function useNow(timezone: string | undefined) {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const opts = (o: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions => {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: timezone || undefined })
+      return { ...o, timeZone: timezone || undefined }
+    } catch {
+      return o
+    }
+  }
+  return {
+    time: now.toLocaleTimeString(undefined, opts({ hour: '2-digit', minute: '2-digit', second: '2-digit' })),
+    date: now.toLocaleDateString(undefined, opts({ weekday: 'short', month: 'short', day: 'numeric' })),
+    hour: Number(now.toLocaleTimeString('en-GB', opts({ hour: '2-digit', hour12: false })).slice(0, 2)),
+  }
+}
+
+/** What the browser says about location access, said plainly. Never blocks a punch. */
+function useGeoBadge(): { label: string; tone: 'ok' | 'ask' | 'bad' } {
+  const [state, setState] = useState<PermissionState | 'none' | 'unknown'>('unknown')
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setState('none')
+      return
+    }
+    let status: PermissionStatus | null = null
+    let alive = true
+    navigator.permissions
+      ?.query({ name: 'geolocation' as PermissionName })
+      .then((s) => {
+        if (!alive) return
+        status = s
+        setState(s.state)
+        s.onchange = () => setState(s.state)
+      })
+      .catch(() => alive && setState('unknown'))
+    return () => {
+      alive = false
+      if (status) status.onchange = null
+    }
+  }, [])
+  if (state === 'granted') return { label: 'GPS ready', tone: 'ok' }
+  if (state === 'denied') return { label: 'GPS blocked', tone: 'bad' }
+  if (state === 'none') return { label: 'No GPS', tone: 'bad' }
+  return { label: 'GPS will ask', tone: 'ask' }
+}
+
 interface PunchNotice {
   kind: 'in' | 'out'
   result: PunchResult
@@ -435,8 +501,7 @@ export default function MyAttendance() {
   }
 
   return (
-    <div>
-
+    <div className="att2">
       <PunchCard
         today={todayQ.data}
         loading={todayQ.loading}
@@ -553,12 +618,47 @@ function PunchCard({
     return phase.step === 'locating' ? 'Finding your location…' : 'Recording…'
   }
 
+  /* Where the day stands, in a word. Derived from the same two rows the
+     buttons read, so the badge and the buttons can never disagree. */
+  const dayState: 'open' | 'out' | 'in' | 'idle' = openNightShift
+    ? 'open'
+    : today?.check_out_at
+      ? 'out'
+      : today?.check_in_at
+        ? 'in'
+        : 'idle'
+  const stateLabel = { idle: 'Not checked in', in: 'Checked in', out: 'Checked out', open: 'Night shift open' }[dayState]
+  const clock = useNow(timezone)
+  const geo = useGeoBadge()
+  const greeting = clock.hour < 12 ? 'Good morning' : clock.hour < 17 ? 'Good afternoon' : 'Good evening'
+
   return (
-    <section className="card" style={{ marginBottom: 14 }}>
+    <section className="card att-hero">
+      <div className="att-hero-bar">
+        <span className={`att-state att-state-${dayState}`}>
+          <span className="att-state-dot" />
+          {stateLabel}
+        </span>
+        <span className="att-greet">{greeting}</span>
+        <span className="att-clockpill">
+          <IconClock size={14} />
+          <span className="att-clockpill-time">{clock.time}</span>
+          <span className="att-clockpill-sep" aria-hidden>•</span>
+          <span>{clock.date}</span>
+        </span>
+        <span className={`att-geo att-geo-${geo.tone}`}>
+          <IconPin size={14} /> {geo.label}
+        </span>
+      </div>
       <div className="att-punch">
-        <div>
+        <div className="att-hero-main">
           {loading ? (
-            <Loading label="Reading today…" />
+            <div className="att-skel-stack" role="status" aria-label="Reading today…">
+              <span className="att-skel att-skel-pill" />
+              <span className="att-skel att-skel-title" />
+              <span className="att-skel att-skel-line" />
+              <span className="att-skel att-skel-block" />
+            </div>
           ) : error ? (
             <ErrorNote>{error}</ErrorNote>
           ) : (
@@ -585,48 +685,56 @@ function PunchCard({
                 <WorkModePicker value={workMode} onChange={setWorkMode} disabled={busy} />
               )}
 
+              <label className="att-notefield">
+                <span className="att-notefield-label">Note (optional)</span>
+                <span className="att-inputwrap">
+                  <input
+                    className="att-note-input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={500}
+                    placeholder="At the client's office today"
+                    disabled={busy}
+                  />
+                  <IconEdit size={15} />
+                </span>
+                <span className="att-notefield-hint">
+                  Attached to the punch. Cheaper for everyone than asking for a correction later.
+                </span>
+              </label>
+
               <div className="att-actions">
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary att-btn-in"
                   disabled={busy || !canPunchIn}
                   onClick={() => void punch('in')}
                 >
+                  {phase?.kind === 'in' ? <span className="att-btn-spin" aria-hidden /> : <IconCheck size={16} />}
                   {label('in', 'Punch in')}
                 </button>
                 <button
-                  className="btn"
+                  className="btn att-btn-out"
                   disabled={busy || !canPunchOut}
                   onClick={() => void punch('out')}
                 >
+                  {phase?.kind === 'out' ? <span className="att-btn-spin" aria-hidden /> : <IconSignOut size={16} />}
                   {label('out', 'Punch out')}
                 </button>
                 {!canPunchIn && !canPunchOut && (
                   <span className="muted-sm">Today is closed. Nothing left to punch.</span>
                 )}
               </div>
-
-              <label className="setting" style={{ marginTop: 12 }}>
-                Note (optional)
-                <input
-                  className="att-note-input"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  maxLength={500}
-                  placeholder="At the client's office today"
-                  disabled={busy}
-                />
-              </label>
-              <p className="setting-hint" style={{ marginTop: 6 }}>
-                Attached to the punch. Cheaper for everyone than asking for a correction later.
-              </p>
             </>
           )}
         </div>
 
-        <div>
+        <aside className="att-hero-side" aria-label="Today at a glance">
           <div className="att-pairs">
-            <div>
-              <div className="att-pair-label">Status today</div>
+            <div className="att-info">
+              <div className="att-info-head">
+                <span className="att-pair-label">Status today</span>
+                <span className="att-info-icon att-tone-brand"><IconInfo size={16} /></span>
+              </div>
               <div className="att-pair-value">
                 {today ? <StatusPill status={today.status} /> : <span>No record yet</span>}
               </div>
@@ -634,8 +742,11 @@ function PunchCard({
                 {today ? 'Finalised after the day ends.' : 'A row appears at your first punch.'}
               </div>
             </div>
-            <div>
-              <div className="att-pair-label">Shift</div>
+            <div className="att-info">
+              <div className="att-info-head">
+                <span className="att-pair-label">Shift</span>
+                <span className="att-info-icon att-tone-indigo"><IconClock size={16} /></span>
+              </div>
               <div className="att-pair-value">{today?.shift_name ?? 'Unassigned'}</div>
               <div className="att-pair-meta">
                 {today?.shift_start_time
@@ -643,12 +754,19 @@ function PunchCard({
                   : 'No shift on the rota for today, so nothing counts as late.'}
               </div>
             </div>
-            <div>
-              <div className="att-pair-label">Checked out</div>
+            <div className="att-info">
+              <div className="att-info-head">
+                <span className="att-pair-label">Checked out</span>
+                <span className="att-info-icon att-tone-warn"><IconSignOut size={16} /></span>
+              </div>
               <div className="att-pair-value">{clockTime(today?.check_out_at ?? null, timezone)}</div>
+              {today?.check_in_at && !today.check_out_at && <div className="att-pair-meta">Pending exit punch.</div>}
             </div>
-            <div>
-              <div className="att-pair-label">Worked</div>
+            <div className="att-info">
+              <div className="att-info-head">
+                <span className="att-pair-label">Worked</span>
+                <span className="att-info-icon att-tone-good"><IconGauge size={16} /></span>
+              </div>
               <div className="att-pair-value">{hm(today?.worked_minutes ?? 0)}</div>
               <div className="att-pair-meta">Counted when you punch out.</div>
             </div>
@@ -669,8 +787,14 @@ function PunchCard({
             )}
             {activeOffices.length > 0 ? (
               <>
-                <b>Office locations:</b>{' '}
-                {activeOffices.map((o) => `${o.name} (${o.radius_m} m)`).join(' · ')}
+                <div className="att-offices-head"><IconPin size={15} /> <b>Office locations:</b></div>
+                <div className="att-offices-list">
+                  {activeOffices.map((o) => (
+                    <span key={o.id} className="att-office">
+                      {o.name} <span className="att-chip">{o.radius_m} m</span>
+                    </span>
+                  ))}
+                </div>
               </>
             ) : (
               enforcement !== 'off' && (
@@ -678,7 +802,7 @@ function PunchCard({
               )
             )}
           </div>
-        </div>
+        </aside>
       </div>
 
       {notice && (
@@ -847,16 +971,16 @@ function MonthCalendar({
   const selectedDay = selected ? (byDate.get(selected) ?? null) : null
 
   return (
-    <section className="card">
+    <section className="card att-calcard">
       <div className="card-head">
-        <h2 className="card-title">Calendar</h2>
+        <h2 className="card-title att-title-icon"><IconCalendar size={17} /> Calendar</h2>
         <div className="att-cal-nav">
           <button className="btn btn-sm" onClick={() => onMonth(shiftMonth(month, -1))} aria-label="Previous month">
-            ←
+            <IconArrowLeft size={14} />
           </button>
           <span className="att-cal-month">{monthLabel(month)}</span>
           <button className="btn btn-sm" onClick={() => onMonth(shiftMonth(month, 1))} aria-label="Next month">
-            →
+            <IconChevronRight size={14} />
           </button>
           <button
             className="btn btn-sm"
@@ -869,16 +993,17 @@ function MonthCalendar({
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
-      {loading && !days && <Loading />}
+      {loading && !days && <CalendarSkeleton />}
 
       {days && (
         <div className={refetching ? 'refetching' : undefined}>
-          <div className="grid grid-tiles" style={{ marginBottom: 14 }}>
-            <StatTile label="Present" value={String(summary.counts.present ?? 0)} accent="var(--status-good)" />
-            <StatTile label="Absent" value={String(summary.counts.absent ?? 0)} accent={summary.counts.absent ? 'var(--status-critical)' : undefined} />
-            <StatTile label="Half days" value={String(summary.counts.half_day ?? 0)} />
-            <StatTile label="On leave" value={String(summary.counts.on_leave ?? 0)} />
+          <div className="att-kpis">
+            <StatTile icon={<IconCheck size={15} />} label="Present" value={String(summary.counts.present ?? 0)} accent="var(--status-good)" />
+            <StatTile icon={<IconClose size={15} />} label="Absent" value={String(summary.counts.absent ?? 0)} accent={summary.counts.absent ? 'var(--status-critical)' : undefined} />
+            <StatTile icon={<IconClock size={15} />} label="Half days" value={String(summary.counts.half_day ?? 0)} accent="var(--status-warn)" />
+            <StatTile icon={<IconCalendar size={15} />} label="On leave" value={String(summary.counts.on_leave ?? 0)} accent="var(--prod)" />
             <StatTile
+              icon={<IconGauge size={15} />}
               label="Worked"
               value={hm(summary.worked)}
               meta={`${summary.late} late · ${summary.missing} missing a check-out`}
@@ -949,12 +1074,12 @@ function MonthCalendar({
               <div className="att-legend">
                 {(Object.keys(STATUS) as AttendanceStatus[]).map((key) => (
                   <span key={key} className="att-legend-item">
-                    <span className="att-swatch" style={{ background: STATUS[key].color }} />
+                    <span className={`att-swatch att-sw-${key}`} />
                     {STATUS[key].label}
                   </span>
                 ))}
                 <span className="att-legend-item">
-                  <span className="att-swatch" style={{ background: 'transparent' }} />
+                  <span className="att-swatch att-sw-none" />
                   No record yet
                 </span>
               </div>
@@ -1004,6 +1129,20 @@ function MonthCalendar({
         </div>
       )}
     </section>
+  )
+}
+
+/** Placeholder while the month loads: the same grid, so nothing jumps when it fills. */
+function CalendarSkeleton() {
+  return (
+    <div role="status" aria-label="Loading the calendar">
+      <div className="att-kpis">
+        {Array.from({ length: 5 }, (_, i) => <span key={i} className="att-skel att-skel-kpi" />)}
+      </div>
+      <div className="att-cal-grid">
+        {Array.from({ length: 28 }, (_, i) => <span key={i} className="att-skel att-skel-cell" />)}
+      </div>
+    </div>
   )
 }
 

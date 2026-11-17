@@ -12,6 +12,7 @@ import {
   IconGear,
   IconHome,
   IconInfo,
+  IconBriefcase,
   IconMail,
   IconReturn,
   IconGlobe,
@@ -20,6 +21,7 @@ import {
   IconSheet,
   IconSitemap,
   IconUsers,
+  IconGrid,
 } from '../components/Icons'
 import type { MenuRights } from './types'
 
@@ -329,6 +331,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/crm', label: 'Lead Dashboard', icon: IconDashboard, end: true },
       { to: '/crm/leads', label: 'My Leads', icon: IconUsers },
+      { to: '/crm/pipeline', label: 'Pipeline', icon: IconGrid },
       { to: '/crm/follow-ups', label: 'My Follow-ups', icon: IconClock },
       { to: '/crm/visits', label: 'My Visit', icon: IconGlobe },
       { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
@@ -391,16 +394,47 @@ export const HRMS_NAV_ITEMS: NavItem[] = [
    pages tell somebody without an ERP role that they have none. */
 export const ERP_NAV_ITEMS: NavItem[] = [
   { to: '/erp', label: 'ERP Dashboard', icon: IconDashboard, end: true },
-  { to: '/erp/approvals', label: 'ERP Approvals', icon: IconCheck, end: true },
-  { to: '/erp/requisitions', label: 'Requisitions', icon: IconSheet, end: true },
-  { to: '/erp/rfqs', label: 'RFQs', icon: IconMail, end: true },
-  { to: '/erp/purchase-orders', label: 'Purchase Orders', icon: IconCard, end: true },
-  { to: '/erp/inventory', label: 'Inventory', icon: IconFolder, end: true },
-  { to: '/erp/sales-orders', label: 'Sales Orders', icon: IconChart, end: true },
-  { to: '/erp/invoices', label: 'Invoices', icon: IconSheet, end: true },
-  { to: '/erp/billing', label: 'Billing', icon: IconCard, end: true },
   { to: '/erp/settings', label: 'Setting', icon: IconGear, end: true, adminOnly: true },
 ]
+
+/**
+ * ERP → Transactions: a two-level group in the ERP sub-menu. Sale and Purchase
+ * each hold the pages that belong to them, so the day-to-day documents are one
+ * click under their own heading instead of a flat run of eight rows.
+ */
+export const ERP_TRANSACTIONS: {
+  label: string
+  icon: NavItem['icon']
+  groups: Array<{ key: string; label: string; icon: NavItem['icon']; items: NavItem[] }>
+} = {
+  label: 'Transactions',
+  icon: IconSheet,
+  groups: [
+    {
+      key: 'sale',
+      label: 'Sale',
+      icon: IconChart,
+      items: [
+        { to: '/erp/invoices', label: 'Sale', icon: IconChart, end: true },
+        { to: '/crm/quotations', label: 'Quotation', icon: IconSheet },
+        { to: '/erp/sales-orders', label: 'Sale Order', icon: IconSheet, end: true },
+        { to: '/erp/billing?tab=credit_notes', label: 'Sale Return', icon: IconReturn, end: true },
+        { to: '/erp/inventory?tab=docs', label: 'Stock Issue', icon: IconFolder, end: true },
+      ],
+    },
+    {
+      key: 'purchase',
+      label: 'Purchase',
+      icon: IconBriefcase,
+      items: [
+        { to: '/erp/purchase-orders', label: 'Purchase Order', icon: IconSheet, end: true },
+        { to: '/erp/purchase', label: 'Purchase', icon: IconCard, end: true },
+        { to: '/erp/purchase-returns', label: 'Purchase Return', icon: IconReturn, end: true },
+        { to: '/erp/inventory', label: 'Stock Receive', icon: IconFolder, end: true },
+      ],
+    },
+  ],
+}
 
 export interface NavAccess {
   isAdmin: boolean
@@ -523,14 +557,16 @@ export function locate(
   const sections = [
     ...itemsIn({ items: HRMS_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'HRMS' })),
     ...itemsIn({ items: ERP_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'ERP' })),
+    ...itemsIn({ items: ERP_TRANSACTIONS.groups.flatMap((g) => g.items) }, access).map((item) => ({ ...item, heading: 'ERP' })),
   ]
   for (const entry of [...visibleItems(access), ...sections]) {
+    const path = entry.to.split('?')[0]
     const hit =
-      entry.to === '/'
+      path === '/'
         ? pathname === '/'
-        : pathname === entry.to || pathname.startsWith(`${entry.to}/`)
+        : pathname === path || pathname.startsWith(`${path}/`)
     if (!hit) continue
-    if (!best || entry.to.length > best.item.to.length) best = { item: entry, heading: entry.heading }
+    if (!best || path.length > best.item.to.split('?')[0].length) best = { item: entry, heading: entry.heading }
   }
   return best
 }

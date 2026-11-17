@@ -1,0 +1,512 @@
+/* My Attendance — premium layer.
+
+   Everything here is scoped under `.att2` (the page root) so Team Attendance,
+   the employee home card and every other page keep their existing look. The
+   palette below is the design brief's; in dark mode it hands over to the
+   app's own tokens, so the page never turns into a white island. */
+
+.att2 {
+  --a-primary: #1769aa;
+  --a-teal: #0d9488;
+  --a-bg: #f4f7fb;
+  --a-card: #ffffff;
+  --a-text: #172b4d;
+  --a-text-2: #64748b;
+  --a-good: #16a36a;
+  --a-warn: #f59e0b;
+  --a-bad: #ef4444;
+  --a-border: #e5eaf1;
+  --a-soft: color-mix(in srgb, var(--a-primary) 8%, #fff);
+  --a-shadow: 0 1px 2px rgba(23, 43, 77, 0.05), 0 6px 18px rgba(23, 43, 77, 0.05);
+  --a-shadow-hover: 0 2px 4px rgba(23, 43, 77, 0.06), 0 10px 26px rgba(23, 43, 77, 0.09);
+  --a-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .att2 {
+    --a-card: var(--surface-1);
+    --a-text: var(--text-primary);
+    --a-text-2: var(--text-secondary);
+    --a-border: var(--border);
+    --a-soft: color-mix(in srgb, var(--a-primary) 18%, var(--surface-1));
+    --a-shadow: none;
+    --a-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme='dark'] .att2 {
+  --a-card: var(--surface-1);
+  --a-text: var(--text-primary);
+  --a-text-2: var(--text-secondary);
+  --a-border: var(--border);
+  --a-soft: color-mix(in srgb, var(--a-primary) 18%, var(--surface-1));
+  --a-shadow: none;
+  --a-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Cards: one radius, one padding, one shadow, for every panel on the page. */
+.att2 > .card {
+  margin: 0 !important;
+  padding: 22px;
+  border: 1px solid var(--a-border);
+  border-radius: 16px;
+  background: var(--a-card);
+  box-shadow: var(--a-shadow);
+}
+.att2 .card-head { margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+.att2 .card-title { font-size: 16px; font-weight: 650; color: var(--a-text); letter-spacing: -0.01em; }
+.att-title-icon { display: inline-flex; align-items: center; gap: 8px; }
+.att-title-icon svg { color: var(--a-primary); }
+.att-card-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--a-text-2); }
+
+/* ----------------------------------------------------------- tab bar --- */
+/* Only on the attendance pages: the bar is the shared module panel, so it is
+   reached through the page it wraps rather than restyled for every module. */
+.pnl-shell:has(.att2) > .pnl-bar {
+  padding: 6px;
+  border-radius: 14px;
+  column-gap: 4px;
+  box-shadow: 0 1px 2px rgba(23, 43, 77, 0.05), 0 6px 18px rgba(23, 43, 77, 0.04);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+}
+.pnl-shell:has(.att2) > .pnl-bar::-webkit-scrollbar { display: none; }
+.pnl-shell:has(.att2) .pnl-tab {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  transition: background 180ms var(--a-ease, ease), color 180ms ease, box-shadow 180ms ease;
+}
+.pnl-shell:has(.att2) .pnl-tab[aria-current='page'] {
+  background: #1769aa;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(23, 105, 170, 0.28);
+}
+.pnl-shell:has(.att2) .pnl-tab[aria-current='page'] svg { color: #fff; opacity: 1; }
+
+/* ------------------------------------------------------- punch panel --- */
+
+.att2 .att-hero { padding: 0; overflow: hidden; }
+.att2 .att-punch {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+}
+.att2 .att-hero-main { padding: 24px 26px; min-width: 0; }
+.att2 .att-hero-side {
+  padding: 24px 26px;
+  background: var(--a-soft);
+  border-left: 1px solid var(--a-border);
+  min-width: 0;
+}
+
+.att-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.att-greet { font-size: 13px; color: var(--a-text-2); font-weight: 500; }
+
+.att-state {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 10px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 650; letter-spacing: 0.01em;
+  background: color-mix(in srgb, var(--a-text-2) 12%, transparent);
+  color: var(--a-text-2);
+}
+.att-state-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.att-state-in { background: color-mix(in srgb, var(--a-good) 14%, transparent); color: #0f7d51; }
+.att-state-in .att-state-dot { animation: att-pulse 1.8s ease-out infinite; }
+.att-state-out { background: color-mix(in srgb, var(--a-primary) 13%, transparent); color: var(--a-primary); }
+.att-state-open { background: color-mix(in srgb, var(--a-warn) 18%, transparent); color: #a15c07; }
+.att-state-idle { color: var(--a-text-2); }
+@keyframes att-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--a-good) 55%, transparent); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.att2 .att-clock { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; color: var(--a-text); }
+.att2 .att-clock-sub { margin-top: 6px; font-size: 13.5px; line-height: 1.55; color: var(--a-text-2); max-width: 56ch; }
+
+/* Work location: three selectable cards, the chosen one lifted and ringed. */
+.att2 .wm-set { margin: 18px 0 4px; }
+.att2 .wm-legend { font-size: 13px; font-weight: 650; color: var(--a-text); margin-bottom: 10px; }
+.att2 .wm-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.att2 .wm-choice {
+  position: relative;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 12px 12px;
+  border: 1.5px solid var(--a-border);
+  border-radius: 12px;
+  background: var(--a-card);
+  transition: transform 180ms var(--a-ease), border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+.att2 .wm-choice:hover { border-color: color-mix(in srgb, var(--a-primary) 45%, var(--a-border)); background: var(--a-card); transform: translateY(-1px); box-shadow: var(--a-shadow-hover); }
+.att2 .wm-choice svg {
+  grid-row: span 2; width: 34px; height: 34px; padding: 8px; border-radius: 10px;
+  background: color-mix(in srgb, var(--a-text-2) 11%, transparent); color: var(--a-text-2);
+  transition: background 180ms ease, color 180ms ease;
+}
+.att2 .wm-choice-label { font-size: 13.5px; }
+.att2 .wm-choice-hint { font-size: 11.5px; line-height: 1.35; color: var(--a-text-2); }
+.att2 .wm-choice-on {
+  border-color: var(--a-primary);
+  background: var(--a-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--a-primary) 14%, transparent);
+  animation: att-pop 220ms var(--a-ease);
+}
+.att2 .wm-choice-on svg { background: var(--a-primary); color: #fff; }
+.att2 .wm-choice-on .wm-choice-label { color: var(--a-primary); }
+.att2 .wm-choice-on .wm-choice-hint { color: var(--a-text-2); }
+.att2 .wm-choice-on::after {
+  content: ''; position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--a-primary);
+}
+@keyframes att-pop { 0% { transform: scale(0.97); } 100% { transform: scale(1); } }
+
+/* Note */
+.att-notefield { display: block; margin-top: 16px; }
+.att-notefield-label { display: block; font-size: 13px; font-weight: 650; color: var(--a-text); margin-bottom: 6px; }
+.att2 .att-note-input {
+  width: 100%; height: 42px; padding: 0 14px;
+  border: 1.5px solid var(--a-border); border-radius: 10px;
+  background: var(--a-card); color: var(--a-text); font-size: 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.att2 .att-note-input::placeholder { color: color-mix(in srgb, var(--a-text-2) 70%, transparent); }
+.att2 .att-note-input:focus { outline: none; border-color: var(--a-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--a-primary) 16%, transparent); }
+.att-notefield-hint { display: block; margin-top: 6px; font-size: 12px; color: var(--a-text-2); }
+
+/* Buttons */
+.att2 .att-actions { margin-top: 18px; gap: 10px; }
+.att2 .att-actions .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 46px; padding: 0 22px; border-radius: 12px; font-size: 14.5px; font-weight: 650;
+  transition: transform 160ms var(--a-ease), box-shadow 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+.att2 .att-btn-in {
+  min-width: 170px;
+  background: linear-gradient(180deg, #1c78c0, #1769aa);
+  border-color: #145a93; color: #fff;
+  box-shadow: 0 6px 16px rgba(23, 105, 170, 0.32);
+}
+.att2 .att-btn-in:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(23, 105, 170, 0.38); }
+.att2 .att-btn-in:active:not(:disabled) { transform: translateY(0); }
+.att2 .att-btn-in:disabled { background: color-mix(in srgb, var(--a-text-2) 22%, var(--a-card)); border-color: transparent; color: var(--a-text-2); box-shadow: none; }
+.att2 .att-btn-out { border: 1.5px solid var(--a-border); background: var(--a-card); color: var(--a-text); }
+.att2 .att-btn-out:hover:not(:disabled) { border-color: var(--a-primary); color: var(--a-primary); transform: translateY(-1px); }
+.att2 .att-btn-out:disabled { opacity: 0.5; }
+.att-btn-spin {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
+  animation: att-spin 700ms linear infinite;
+}
+@keyframes att-spin { to { transform: rotate(360deg); } }
+
+/* Today at a glance */
+.att2 .att-pairs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.att-info {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 13px 14px; border-radius: 12px;
+  background: var(--a-card); border: 1px solid var(--a-border);
+  transition: transform 180ms var(--a-ease), box-shadow 180ms ease;
+}
+.att-info:hover { transform: translateY(-1px); box-shadow: var(--a-shadow-hover); }
+.att-info-icon {
+  flex: none; width: 32px; height: 32px; border-radius: 9px;
+  display: inline-grid; place-items: center;
+}
+.att-tone-brand { background: color-mix(in srgb, var(--a-primary) 13%, transparent); color: var(--a-primary); }
+.att-tone-teal { background: color-mix(in srgb, var(--a-teal) 14%, transparent); color: var(--a-teal); }
+.att-tone-warn { background: color-mix(in srgb, var(--a-warn) 17%, transparent); color: #b36b05; }
+.att-tone-good { background: color-mix(in srgb, var(--a-good) 14%, transparent); color: var(--a-good); }
+.att2 .att-pair-label { font-size: 11px; color: var(--a-text-2); }
+.att2 .att-pair-value { font-size: 15.5px; color: var(--a-text); }
+.att2 .att-pair-meta { font-size: 11.5px; color: var(--a-text-2); line-height: 1.4; }
+.att2 .att-offices { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--a-border); color: var(--a-text-2); }
+
+.att2 .att-verdict { margin: 0 26px 22px; }
+.att2 .att-hero > div:not(.att-punch) { margin: 0 26px 22px !important; }
+
+/* ------------------------------------------------------------- KPIs --- */
+
+.att-kpis {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px;
+}
+.att2 .att-kpis .tile {
+  display: flex; flex-direction: column; height: 100%;
+  padding: 16px 18px; border-radius: 14px;
+  background: var(--a-card); border: 1px solid var(--a-border); box-shadow: none;
+  transition: transform 180ms var(--a-ease), box-shadow 180ms ease, border-color 180ms ease;
+}
+.att2 .att-kpis .tile:hover { transform: translateY(-2px); box-shadow: var(--a-shadow-hover); border-color: color-mix(in srgb, var(--tile-accent, var(--a-primary)) 35%, var(--a-border)); }
+.att2 .att-kpis .tile::before { height: 3px; border-radius: 14px 14px 0 0; }
+.att2 .att-kpis .tile-label { font-size: 12.5px; color: var(--a-text-2); font-weight: 600; margin-bottom: 10px; }
+.att2 .att-kpis .tile-label svg {
+  box-sizing: content-box; padding: 6px; border-radius: 8px; opacity: 1;
+  background: color-mix(in srgb, var(--tile-accent, var(--a-primary)) 13%, transparent);
+  color: var(--tile-accent, var(--a-primary));
+}
+.att2 .att-kpis .tile-value { font-size: 30px; font-weight: 700; }
+.att2 .att-kpis .tile-meta { margin-top: auto; padding-top: 6px; font-size: 11.5px; color: var(--a-text-2); }
+
+/* ---------------------------------------------------------- calendar --- */
+
+.att2 .att-cal-nav {
+  padding: 3px; border: 1px solid var(--a-border); border-radius: 12px; background: var(--a-bg);
+  gap: 4px;
+}
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .att2 .att-cal-nav { background: var(--surface-2); } }
+:root[data-theme='dark'] .att2 .att-cal-nav { background: var(--surface-2); }
+.att2 .att-cal-nav .btn { border-radius: 9px; border-color: transparent; background: var(--a-card); height: 32px; }
+.att2 .att-cal-nav .btn:hover:not(:disabled) { color: var(--a-primary); box-shadow: var(--a-shadow); }
+.att2 .att-cal-nav .btn-sm:last-child { padding: 0 12px; font-weight: 600; }
+.att2 .att-cal-month { min-width: 150px; font-size: 14px; font-weight: 700; color: var(--a-text); }
+
+.att2 .att-cal-grid { gap: 6px; }
+.att2 .att-cal-dow {
+  padding: 4px 0 6px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--a-text-2);
+}
+
+.att2 .att-cell {
+  position: relative;
+  min-height: 62px; padding: 8px 10px;
+  border: 1px solid var(--a-border); border-radius: 12px;
+  background: var(--a-card);
+  gap: 5px; overflow: hidden;
+  transition: transform 160ms var(--a-ease), box-shadow 160ms ease, border-color 160ms ease;
+}
+.att2 .att-cell:hover:not(:disabled) { transform: translateY(-2px); border-color: color-mix(in srgb, var(--a-primary) 45%, var(--a-border)); box-shadow: var(--a-shadow-hover); }
+.att2 .att-cell-blank { border: 0; background: none; min-height: 0; }
+.att2 .att-cell-none { background: var(--a-card); }
+.att2 .att-cell:disabled { opacity: 0.55; }
+
+/* Status: a coloured rail on the left plus a soft tint — the written label is
+   still inside the cell, so colour is never the only signal. */
+.att2 .att-cell[class*='att-present'],
+.att2 .att-cell[class*='att-absent'],
+.att2 .att-cell[class*='att-half_day'],
+.att2 .att-cell[class*='att-on_leave'],
+.att2 .att-cell[class*='att-holiday'],
+.att2 .att-cell[class*='att-weekly_off'] { border-left-width: 4px; }
+.att2 .att-present { background: color-mix(in srgb, var(--a-good) 9%, var(--a-card)); border-left-color: var(--a-good); }
+.att2 .att-absent { background: color-mix(in srgb, var(--a-bad) 8%, var(--a-card)); border-left-color: var(--a-bad); }
+.att2 .att-half_day { background: color-mix(in srgb, var(--a-warn) 11%, var(--a-card)); border-left-color: var(--a-warn); }
+.att2 .att-on_leave { background: color-mix(in srgb, var(--a-teal) 10%, var(--a-card)); border-left-color: var(--a-teal); }
+.att2 .att-holiday { background: color-mix(in srgb, var(--a-primary) 9%, var(--a-card)); border-left-color: var(--a-primary); }
+.att2 .att-weekly_off { background: color-mix(in srgb, var(--a-text-2) 9%, var(--a-card)); border-left-color: color-mix(in srgb, var(--a-text-2) 60%, transparent); }
+
+.att2 .att-daynum {
+  font-size: 15px; font-weight: 700; color: var(--a-text);
+  min-width: 26px; height: 26px; display: inline-grid; place-items: center; align-self: flex-start;
+  border-radius: 8px; margin: -3px 0 0 -4px; padding: 0 4px;
+}
+.att2 .att-cell-label { font-size: 11.5px; font-weight: 650; color: var(--a-text); }
+.att2 .att-cell-time { font-size: 11px; color: var(--a-text-2); font-variant-numeric: tabular-nums; }
+
+/* Today: a filled day number and a brand ring. Selected: a thicker ring. */
+.att2 .att-cell-today { border-color: var(--a-primary); box-shadow: 0 0 0 1px var(--a-primary) inset; }
+.att2 .att-cell-today .att-daynum { background: var(--a-primary); color: #fff; }
+.att2 .att-cell-on { border-color: var(--a-primary); box-shadow: 0 0 0 2px var(--a-primary) inset, var(--a-shadow-hover); transform: translateY(-1px); }
+
+.att2 .att-flags { gap: 4px; }
+.att2 .att-flag { font-size: 9.5px; padding: 1px 5px; border-radius: 5px; }
+
+/* Legend: one tidy row, swatches that match the cells. */
+.att2 .att-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  margin-top: 18px; padding: 12px 16px;
+  border: 1px solid var(--a-border); border-radius: 12px; background: var(--a-bg);
+}
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .att2 .att-legend { background: var(--surface-2); } }
+:root[data-theme='dark'] .att2 .att-legend { background: var(--surface-2); }
+.att2 .att-legend-item { font-size: 13px; font-weight: 500; color: var(--a-text); gap: 8px; }
+.att2 .att-swatch { width: 14px; height: 14px; border-radius: 5px; border: 1.5px solid transparent; }
+.att2 .att-sw-present { background: var(--a-good); }
+.att2 .att-sw-absent { background: var(--a-bad); }
+.att2 .att-sw-half_day { background: var(--a-warn); }
+.att2 .att-sw-on_leave { background: var(--a-teal); }
+.att2 .att-sw-holiday { background: var(--a-primary); }
+.att2 .att-sw-weekly_off { background: color-mix(in srgb, var(--a-text-2) 60%, transparent); }
+.att2 .att-sw-none { background: var(--a-card); border-color: var(--a-border); }
+
+.att2 .att-detail { border-radius: 14px; border-color: var(--a-border); background: var(--a-bg); padding: 18px 20px; margin-top: 18px; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .att2 .att-detail { background: var(--surface-2); } }
+:root[data-theme='dark'] .att2 .att-detail { background: var(--surface-2); }
+
+/* ------------------------------------------------ correction requests --- */
+
+.att2 .att-reqcard .ts-toggle {
+  height: 36px; padding: 3px; border-radius: 11px; background: var(--a-bg); border-color: var(--a-border);
+}
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .att2 .att-reqcard .ts-toggle { background: var(--surface-2); } }
+:root[data-theme='dark'] .att2 .att-reqcard .ts-toggle { background: var(--surface-2); }
+.att2 .att-reqcard .ts-toggle-btn { padding: 0 14px; font-size: 12.5px; border-radius: 8px; }
+.att2 .att-reqcard .ts-toggle-on,
+.att2 .att-reqcard .ts-toggle-on:hover {
+  background: var(--a-primary); color: #fff; box-shadow: 0 3px 8px rgba(23, 105, 170, 0.28);
+}
+.att2 .att-reqcard .empty-state {
+  padding: 34px 20px 38px; border: 1.5px dashed var(--a-border); border-radius: 14px;
+  background: var(--a-bg);
+}
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .att2 .att-reqcard .empty-state { background: var(--surface-2); } }
+:root[data-theme='dark'] .att2 .att-reqcard .empty-state { background: var(--surface-2); }
+.att2 .att-reqcard .empty-icon {
+  width: 56px; height: 56px; margin: 0 auto 12px; display: grid; place-items: center; border-radius: 16px;
+  background: var(--a-soft); color: var(--a-primary);
+}
+.att2 .att-reqcard .empty-title { font-size: 15.5px; font-weight: 700; color: var(--a-text); }
+.att2 .att-reqcard .empty-body { max-width: 52ch; margin: 6px auto 0; font-size: 13px; line-height: 1.6; color: var(--a-text-2); }
+
+/* --------------------------------------------------------- skeletons --- */
+
+.att-skel {
+  display: block; border-radius: 10px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--a-text-2) 10%, transparent) 25%,
+    color-mix(in srgb, var(--a-text-2) 20%, transparent) 50%,
+    color-mix(in srgb, var(--a-text-2) 10%, transparent) 75%);
+  background-size: 200% 100%;
+  animation: att-shimmer 1.4s linear infinite;
+}
+@keyframes att-shimmer { to { background-position: -200% 0; } }
+.att-skel-stack { display: flex; flex-direction: column; gap: 12px; }
+.att-skel-pill { width: 130px; height: 26px; border-radius: 999px; }
+.att-skel-title { width: 180px; height: 34px; }
+.att-skel-line { width: 70%; height: 14px; }
+.att-skel-block { width: 100%; height: 84px; }
+.att-skel-kpi { height: 104px; border-radius: 14px; }
+.att-skel-cell { min-height: 62px; border-radius: 12px; }
+
+/* ------------------------------------------------------- responsive --- */
+
+@media (max-width: 1100px) {
+  .att-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .att2 .att-punch { grid-template-columns: minmax(0, 1fr); }
+  .att2 .att-hero-side { border-left: 0; border-top: 1px solid var(--a-border); }
+  .att2 .wm-choices { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .att2 { gap: 14px; }
+  .att2 > .card { padding: 16px; border-radius: 14px; }
+  .att2 .att-hero { padding: 0; }
+  .att2 .att-hero-main, .att2 .att-hero-side { padding: 18px 16px; }
+  .att2 .att-pairs { grid-template-columns: minmax(0, 1fr); }
+  .att2 .att-clock { font-size: 28px; }
+  .att2 .att-actions .btn { flex: 1 1 100%; }
+  .att-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .att2 .att-cal-grid { gap: 4px; }
+  .att2 .att-cell { min-height: 54px; padding: 6px 5px; border-radius: 9px; }
+  .att2 .att-cell[class*='att-present'], .att2 .att-cell[class*='att-absent'], .att2 .att-cell[class*='att-half_day'],
+  .att2 .att-cell[class*='att-on_leave'], .att2 .att-cell[class*='att-holiday'], .att2 .att-cell[class*='att-weekly_off'] { border-left-width: 3px; }
+  .att2 .att-daynum { font-size: 13px; }
+  .att2 .att-cell-time, .att2 .att-cell-label, .att2 .att-flags { display: none; }
+  .att2 .att-cal-nav { width: 100%; justify-content: space-between; }
+  .att2 .att-verdict, .att2 .att-hero > div:not(.att-punch) { margin: 0 16px 16px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .att2 *, .att2 *::before, .att2 *::after { animation: none !important; transition: none !important; }
+}
+
+/* Fill the tinted side panel: the four tiles share the height the left column
+   sets, and the office line sits at the bottom, so no blank band is left. */
+.att2 .att-hero-side { display: flex; flex-direction: column; }
+.att2 .att-hero-side .att-pairs { flex: 1 1 auto; grid-auto-rows: 1fr; }
+.att2 .att-hero-side .att-info { align-items: center; }
+.att2 .att-hero-side .att-offices { margin-top: 14px; }
+.att2 .wm-choices { align-items: stretch; }
+.att2 .wm-choice { align-content: center; }
+
+/* ===== Reference layout: header bar, stacked cards, chip-style offices ===== */
+
+.att2 .att-hero-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 26px;
+  border-bottom: 1px solid var(--a-border);
+  background: color-mix(in srgb, var(--a-primary) 3%, var(--a-card));
+}
+.att2 .att-hero-bar .att-geo { margin-left: auto; }
+.att2 .att-greet { font-size: 15px; font-weight: 650; color: var(--a-text); }
+.att-clockpill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 14px; border: 1px solid var(--a-border); border-radius: 999px;
+  background: var(--a-card); font-size: 13px; color: var(--a-text-2);
+}
+.att-clockpill svg { color: var(--a-primary); }
+.att-clockpill-time { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; font-weight: 650; color: var(--a-text); font-variant-numeric: tabular-nums; }
+.att-clockpill-sep { opacity: 0.5; }
+.att-geo {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 650;
+  border: 1px solid transparent;
+}
+.att-geo-ok { background: color-mix(in srgb, var(--a-good) 12%, transparent); border-color: color-mix(in srgb, var(--a-good) 35%, transparent); color: #0f7d51; }
+.att-geo-ask { background: color-mix(in srgb, var(--a-warn) 14%, transparent); border-color: color-mix(in srgb, var(--a-warn) 40%, transparent); color: #a15c07; }
+.att-geo-bad { background: color-mix(in srgb, var(--a-bad) 11%, transparent); border-color: color-mix(in srgb, var(--a-bad) 35%, transparent); color: #b42318; }
+
+.att2 .att-hero-main { padding: 28px 30px 30px; }
+.att2 .att-hero-side { padding: 28px 26px; background: color-mix(in srgb, var(--a-primary) 3%, var(--a-card)); }
+.att2 .att-clock { font-size: 40px; font-weight: 750; letter-spacing: -0.035em; }
+
+/* Work-location cards: icon, title, description stacked; question in capitals. */
+.att2 .wm-set { position: relative; }
+.att2 .wm-legend { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--a-text); }
+.att2 .wm-selected { display: block; position: absolute; top: 0; right: 0; font-size: 12.5px; font-weight: 650; color: var(--a-primary); }
+.att2 .wm-choices { margin-top: 2px; }
+.att2 .wm-choice {
+  grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 16px 18px 18px; align-content: start;
+}
+.att2 .wm-choice svg { grid-row: auto; margin-bottom: 8px; width: 40px; height: 40px; padding: 10px; border-radius: 11px; }
+.att2 .wm-choice-label { font-size: 15px; }
+.att2 .wm-choice-hint { font-size: 12.5px; line-height: 1.5; }
+
+/* Note */
+.att2 .att-notefield-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.att-inputwrap { position: relative; display: block; }
+.att-inputwrap svg { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--a-text-2); pointer-events: none; }
+.att2 .att-inputwrap .att-note-input { padding-right: 40px; }
+
+/* Buttons */
+.att2 .att-btn-in { background: linear-gradient(90deg, #0b82c8, #2563eb); border-color: transparent; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3); }
+.att2 .att-btn-in:hover:not(:disabled) { box-shadow: 0 12px 26px rgba(37, 99, 235, 0.38); }
+
+/* Today tiles: label and icon on one line, value and note beneath. */
+.att2 .att-hero-side .att-pairs { flex: 0 0 auto; grid-auto-rows: auto; gap: 14px; }
+.att2 .att-info { display: block; padding: 16px 18px 18px; border-radius: 16px; }
+.att2 .att-hero-side .att-info { align-items: initial; }
+.att-info-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.att2 .att-pair-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--a-text-2); }
+.att2 .att-info-icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid transparent; }
+.att-tone-indigo { background: color-mix(in srgb, #4f46e5 12%, transparent); color: #4f46e5; }
+.att2 .att-pair-value { font-size: 17px; font-weight: 700; }
+.att2 .att-pair-meta { margin-top: 4px; font-size: 12.5px; line-height: 1.5; }
+
+/* Office locations: a bordered card pinned to the bottom of the side panel. */
+.att2 .att-hero-side .att-offices {
+  margin-top: auto; padding: 14px 16px; border: 1px solid var(--a-border); border-radius: 14px;
+  background: var(--a-card); font-size: 13px;
+}
+.att2 .att-hero-side .att-pairs + * { margin-top: 12px; }
+.att2 .att-hero-side .att-offices { padding-top: 14px; }
+.att-offices-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--a-text); }
+.att-offices-head svg { color: var(--a-primary); }
+.att-offices-list { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--a-text); }
+.att-office { display: inline-flex; align-items: center; gap: 6px; }
+.att-chip {
+  padding: 1px 8px; border-radius: 6px; background: color-mix(in srgb, var(--a-text-2) 12%, transparent);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 12px; color: var(--a-text-2);
+}
+
+@media (max-width: 900px) {
+  .att2 .att-hero-bar { padding: 12px 16px; }
+  .att2 .att-hero-bar .att-geo { margin-left: 0; }
+  .att2 .att-hero-main, .att2 .att-hero-side { padding: 20px 16px; }
+  .att2 .wm-selected { position: static; margin: -4px 0 8px; }
+}

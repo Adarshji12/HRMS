@@ -31,7 +31,10 @@ const BILL_TABS: [Tab, string][] = [
 ]
 
 export default function ErpBilling() {
-  const [tab, setTab] = useState<Tab>('invoices')
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = new URLSearchParams(window.location.search).get('tab')
+    return BILL_TABS.some(([key]) => key === asked) ? (asked as Tab) : 'invoices'
+  })
   const [params, setParams] = useSearchParams()
   const [openId, setOpenId] = useState<string | null>(params.get('open'))
   useEffect(() => { if (params.get('open')) { setOpenId(params.get('open')); setParams({}, { replace: true }) } }, [params, setParams])
@@ -83,10 +86,10 @@ export function ErpInvoices() {
   )
 }
 
-type PayState = 'draft' | 'pending' | 'unpaid' | 'partial' | 'overdue' | 'paid' | 'issued' | 'cancelled' | 'rejected'
+export type PayState = 'draft' | 'pending' | 'unpaid' | 'partial' | 'overdue' | 'paid' | 'issued' | 'cancelled' | 'rejected'
 
 /** Where an invoice stands, in the words a biller uses. */
-function payState(i: Invoice): PayState {
+export function payState(i: Invoice): PayState {
   if (i.status === 'draft') return 'draft'
   if (i.status === 'cancelled') return 'cancelled'
   if (i.status === 'rejected') return 'rejected'
@@ -97,7 +100,7 @@ function payState(i: Invoice): PayState {
   if (i.days_overdue > 0) return 'overdue'
   return Number(i.amount_received) + Number(i.amount_credited) > 0 ? 'partial' : 'unpaid'
 }
-const PAY_LABEL: Record<PayState, string> = {
+export const PAY_LABEL: Record<PayState, string> = {
   draft: 'Draft', pending: 'Awaiting approval', unpaid: 'Unpaid', partial: 'Partly paid',
   overdue: 'Overdue', paid: 'Paid', issued: 'Issued', cancelled: 'Cancelled', rejected: 'Rejected',
 }
@@ -721,7 +724,7 @@ function seedFrom(inv: Invoice, copy: boolean) {
   }
 }
 
-function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, copy }: {
+export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, copy }: {
   onClose: () => void
   onSaved: (inv: Invoice) => void
   /** On the Invoices page itself rather than in a dialog. */
@@ -1406,7 +1409,7 @@ function ItemPicker({ value, items, onText, onPick, inputRef, manual }: {
 }
 
 /** Print straight from the list: load the full invoice, then the sheet. */
-function PrintById({ id, onClose }: { id: string; onClose: () => void }) {
+export function PrintById({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery(`erp-invoice-${id}`, () => erp.invoice(id))
   if (q.error) return <Dialog title="Print" onClose={onClose}><div style={{ padding: 20 }}><ErrorNote>{erpError(q.cause, 'Could not load the invoice')}</ErrorNote></div></Dialog>
   if (!q.data) return null
@@ -1579,7 +1582,7 @@ function amountInWords(amount: number): string {
 /** One invoice, opened over the page in the centre: a toolbar with every
  *  action across the top, the invoice itself on the left, and its money —
  *  balance, payments, credit notes, who did what — down the right. */
-function InvoiceDrawer({ id, onOpen, onClose, onChanged }: { id: string; onOpen: (id: string) => void; onClose: () => void; onChanged: () => void }) {
+export function InvoiceDrawer({ id, onOpen, onClose, onChanged }: { id: string; onOpen: (id: string) => void; onClose: () => void; onChanged: () => void }) {
   const { can } = useAccess()
   const { user } = useAuth()
   const q = useQuery(`erp-invoice-${id}`, () => erp.invoice(id))
