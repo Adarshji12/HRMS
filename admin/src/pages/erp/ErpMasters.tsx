@@ -16,6 +16,22 @@ import { DateText, Dialog, Drawer, ErpPage, ErpState, Facts, Field, Note, Reason
 import { MasterTrail } from '../masters/MasterBack'
 import { crm } from '../crm/api'
 
+/** A state picked from the State Master. Stored by name, as the vendor record keeps it;
+ *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
+function StateSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const list = useQuery<Array<{ id: string; name: string; is_active?: boolean }>>(
+    'crm-master-states-all', () => crm.masters('states'),
+  )
+  const names = (list.data ?? []).filter((r) => r.is_active !== false).map((r) => r.name)
+  if (value && !names.includes(value)) names.push(value)
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off">
+      <option value="">{list.loading ? 'Loading…' : 'Select state'}</option>
+      {names.sort((x, y) => x.localeCompare(y)).map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  )
+}
+
 type Tab = 'items' | 'warehouses' | 'vendors' | 'customers'
 
 const TABS: Array<{ key: Tab; label: string }> = [
@@ -760,7 +776,7 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
                 placeholder="AAAAA0000A" maxLength={10} />
             </Field>
             <Field label="State">
-              <input value={value('state')} onChange={(e) => set('state', e.target.value)} placeholder="e.g. Maharashtra" />
+              <StateSelect value={value('state')} onChange={(v) => set('state', v)} />
             </Field>
             <Field label="Agreement expiry">
               <input type="date" value={value('agreement_expiry')} onChange={(e) => set('agreement_expiry', e.target.value)} />

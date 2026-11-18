@@ -9,6 +9,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { PAGES, PERMISSIONS } from '../../../../lib/employeeFields'
 import { money, toPaise } from '../../../../lib/format'
+import { useQuery } from '../../../../lib/useQuery'
+import { crm, type CityRow, type Country, type StateRow } from '../../../crm/api'
 import type { Department, Designation, PayComponent, Team, User, WorkSchedule } from '../../../../lib/types'
 import type { OrgRole } from '../../roles/Roles'
 import type { Asset } from '../../assets/assetLib'
@@ -261,19 +263,72 @@ export function PersonalStep(p: StepProps) {
   )
 }
 
+/** Country, state and city come from the Geography master. Stored by name
+ *  (country by its two-letter code), as on the employee profile page. */
+function useGeography() {
+  const countries = useQuery<Country[]>('geo-countries', () => crm.masters<Country>('countries'))
+  const states = useQuery<StateRow[]>('geo-states', () => crm.masters<StateRow>('states'))
+  const cities = useQuery<CityRow[]>('geo-cities', () => crm.masters<CityRow>('cities'))
+  return {
+    countries: (countries.data ?? []).filter((c) => c.is_active && c.iso2),
+    states: (states.data ?? []).filter((x) => x.is_active),
+    cities: (cities.data ?? []).filter((c) => c.is_active),
+  }
+}
+
+/** Keeps a value typed before the master existed, so an old record never blanks. */
+function GeoSelect({
+  label, value, options, disabled, onChange, placeholder,
+}: {
+  label: string
+  value: string
+  options: Array<{ value: string; label: string }>
+  disabled?: boolean
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  const known = options.some((o) => o.value === value)
+  return (
+    <Field label={label}>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{placeholder ?? 'Select'}</option>
+        {value && !known && <option value={value}>{value}</option>}
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </Field>
+  )
+}
+
 function AddressBlock({ p, prefix }: { p: StepProps; prefix: 'current' | 'permanent' }) {
+  const geo = useGeography()
   const k = (s: string) => `${prefix}_${s}` as keyof HireDraft
+  const val = (s: string) => p.d[k(s)] as string
+  const put = (patch: Record<string, string>) => {
+    const out: Partial<HireDraft> = {}
+    for (const [s, v] of Object.entries(patch)) (out as Record<string, string>)[k(s)] = v
+    p.set(out)
+  }
+  const country = geo.countries.find((c) => c.iso2 === val('country'))
+  const states = country ? geo.states.filter((x) => x.country_id === country.id) : geo.states
+  const state = geo.states.find((x) => x.name === val('state') && (!country || x.country_id === country.id))
+  const cities = state ? geo.cities.filter((c) => c.state_id === state.id) : []
+  const names = (rows: Array<{ name: string }>) => rows.map((r) => ({ value: r.name, label: r.name }))
   return (
     <>
       <Field label="Address" wide error={shown(p, k('address'))}>
-        <textarea rows={2} value={p.d[k('address')] as string}
+        <textarea rows={2} value={val('address')}
                   placeholder="House / flat, street, locality"
-                  onChange={(e) => p.set({ [k('address')]: e.target.value } as Partial<HireDraft>)} />
+                  onChange={(e) => put({ address: e.target.value })} />
       </Field>
-      <Text p={p} k={k('city')} label="City" />
-      <Text p={p} k={k('state')} label="State" />
+      <GeoSelect label="Country" value={val('country')} placeholder="Select country"
+                 options={geo.countries.map((c) => ({ value: c.iso2 ?? '', label: c.name }))}
+                 onChange={(v) => put({ country: v, state: '', city: '' })} />
+      <GeoSelect label="State" value={val('state')} placeholder="Select state" options={names(states)}
+                 onChange={(v) => put({ state: v, city: '' })} />
+      <GeoSelect label="City" value={val('city')} disabled={!state}
+                 placeholder={state ? 'Select city' : 'Pick a state first'} options={names(cities)}
+                 onChange={(v) => put({ city: v })} />
       <Text p={p} k={k('postal_code')} label="PIN / postal code" />
-      <Text p={p} k={k('country')} label="Country code" upper maxLength={2} placeholder="IN" />
     </>
   )
 }

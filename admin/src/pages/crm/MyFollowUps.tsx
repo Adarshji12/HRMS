@@ -590,9 +590,9 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
         <div className="crm-field crm-form-wide">
           <span className="crm-field-label">{kind === 'lead' ? 'Lead' : 'Customer'}<span className="lf-req"> *</span></span>
           {kind === 'lead' ? (
-            <LeadPicker value={lead} onPick={setLead} autoFocus />
+            <LeadPicker value={lead} onPick={(l) => { setLead(l); if (l?.owner_id) setOwnerId(l.owner_id) }} autoFocus />
           ) : (
-            <CustomerPicker value={customer} onPick={setCustomer} autoFocus />
+            <CustomerPicker value={customer} onPick={(c) => { setCustomer(c); if (c?.manager_id) setOwnerId(c.manager_id) }} autoFocus />
           )}
         </div>
         <Field label="Due" required>

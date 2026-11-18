@@ -383,7 +383,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
           <input placeholder="e.g. 1500"
             type="number"
             min={0}
-            step={50}
+            step="any"
             value={form.hourly_rate_rupees}
             onChange={(e) => setForm({ ...form, hourly_rate_rupees: Number(e.target.value) })}
           />
@@ -393,7 +393,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
           <input placeholder="e.g. 120"
             type="number"
             min={0}
-            step={10}
+            step="any"
             value={form.budget_hours}
             onChange={(e) => setForm({ ...form, budget_hours: Number(e.target.value) })}
           />

@@ -47,6 +47,8 @@ class OpportunityIn(CrmBase):
     notes: str | None = Field(default=None, max_length=4000)
     #: Left out, a new opportunity is Qualified and an edit keeps its stage.
     stage: str | None = Field(default=None, pattern=r"^(qualified|proposal|commit|won|lost)$")
+    #: Required when the stage becomes Lost.
+    lost_reason: str | None = Field(default=None, max_length=300)
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -75,6 +77,8 @@ STAGES = ("qualified", "proposal", "commit", "won", "lost")
 
 class StageIn(CrmBase):
     stage: str = Field(pattern=r"^(qualified|proposal|commit|won|lost)$")
+    #: Required when the stage is Lost.
+    lost_reason: str | None = Field(default=None, max_length=300)
 
 
 class CostsheetDecisionIn(CrmBase):
@@ -108,6 +112,7 @@ class OpportunityOut(ORMModel):
     team_name: str | None = None
     is_mail_send: bool = False
     stage: str = "qualified"
+    lost_reason: str | None = None
     costsheet_status: str = "none"
     notes: str | None = None
     #: The lead's owner — the opportunity's salesperson.

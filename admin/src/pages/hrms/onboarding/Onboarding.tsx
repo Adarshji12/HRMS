@@ -350,11 +350,16 @@ export default function Onboarding() {
   const allowed =
     canAdminister(user) && permits(user as unknown as Record<string, unknown> | null, 'can_manage_onboarding')
 
-  const [includeClosed, setIncludeClosed] = useState(false)
+  const [includeClosed, setIncludeClosed] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
+  /* Asking for "Completed" or "Cancelled" is asking for closed checklists, so
+     the list must load them even with the box unticked — otherwise the filter
+     can only ever show nothing. */
+  const loadClosed = includeClosed || statusFilter === 'completed' || statusFilter === 'cancelled'
 
   const instances = useQuery<OnbInstance[]>(
-    `onboarding-instances-${includeClosed}`,
-    () => api.get<OnbInstance[]>(`/onboarding/instances?include_closed=${includeClosed}`),
+    `onboarding-instances-${loadClosed}`,
+    () => api.get<OnbInstance[]>(`/onboarding/instances?include_closed=${loadClosed}`),
     { enabled: allowed },
   )
   const templates = useQuery<OnbTemplate[]>(
@@ -370,7 +375,6 @@ export default function Onboarding() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(false)
   const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
 
   /** Lifecycle status by user id. The pipeline row shows whether the hire can
    *  log in yet, and only the roster knows. */
@@ -519,7 +523,8 @@ export default function Onboarding() {
         <label className="ob-muted" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
           <input
             type="checkbox"
-            checked={includeClosed}
+            checked={loadClosed}
+            disabled={loadClosed && !includeClosed}
             onChange={(e) => setIncludeClosed(e.target.checked)}
           />
           Include completed and cancelled

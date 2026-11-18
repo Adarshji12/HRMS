@@ -11,6 +11,7 @@
  * before it is opened.
  */
 
+import { useEffect } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/masterhub.css'
@@ -108,6 +109,11 @@ function TileCount({ kind }: { kind: string }) {
     `crm-master-count-${kind}`,
     () => crm.masters(kind),
   )
+  const { reload } = rows
+  useEffect(() => {
+    window.addEventListener('master-changed', reload)
+    return () => window.removeEventListener('master-changed', reload)
+  }, [reload])
   if (!rows.data) return <span className="mh-tile-count"><strong>–</strong></span>
   const total = rows.data.length
   const live = rows.data.filter((r) => r.is_active !== false).length

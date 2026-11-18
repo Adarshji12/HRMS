@@ -12,11 +12,15 @@ import { IconBriefcase, IconClose, IconDownload, IconStar, IconUpload } from '..
 import { api, download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { crm, crmError, type Opportunity, type OpportunityFile, type OpportunityStage } from './api'
-import { LfField, LfInput, LfSection, MasterSelect } from './parts'
+import { LfField, LfInput, LfSection, LostReasonSelect, MasterSelect } from './parts'
+
+/** The chance of winning each stage stands for; choosing a stage fills it in. */
+const STAGE_CHANCE: Record<OpportunityStage, number> = { qualified: 10, proposal: 40, commit: 80, won: 100, lost: 0 }
 
 export interface Deal {
   /** Blank means "<lead> opportunity". */
   title: string
+  lostReason: string
   stage: OpportunityStage
   probability: string
   closing: string
@@ -37,7 +41,7 @@ export interface Deal {
 }
 
 export const blankDeal = (): Deal => ({
-  title: '', stage: 'qualified',
+  title: '', lostReason: '', stage: 'qualified',
   probability: '10', closing: '', customerId: '', priority: 0, tags: [], tagDraft: '', requirementId: '', oemId: '',
   rawCost: '', teamId: '', mailSent: false, approve: false, notes: '', files: { costsheet: null, quotation: null },
   removed: { costsheet: false, quotation: false },
@@ -48,6 +52,7 @@ export const dealFromOpportunity = (o: Opportunity): Deal => ({
   ...blankDeal(),
   title: o.title,
   stage: o.stage,
+  lostReason: o.lost_reason ?? '',
   probability: String(o.probability),
   closing: o.expected_closing ? o.expected_closing.slice(0, 10) : '',
   customerId: o.customer_id ?? '',
@@ -94,6 +99,7 @@ export async function saveDeal(
   const body = {
     title: d.title.trim() || title || `${leadName} opportunity`,
     stage: d.stage,
+    lost_reason: d.stage === 'lost' ? d.lostReason.trim() || null : null,
     customer_id: d.customerId || null,
     expected_revenue: revenue.trim(),
     probability: Number(d.probability),
@@ -223,7 +229,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
                onChange={(e) => set({ title: e.target.value })} />
       </LfField>
       <LfField label="Stage">
-        <select value={deal.stage} aria-label="Opportunity stage" onChange={(e) => set({ stage: e.target.value as OpportunityStage })}>
+        <select value={deal.stage} aria-label="Opportunity stage" onChange={(e) => { const stage = e.target.value as OpportunityStage; set({ stage, probability: String(STAGE_CHANCE[stage]) }) }}>
           <option value="qualified">Qualified</option>
           <option value="proposal">Proposal</option>
           <option value="commit">Commit</option>
@@ -231,6 +237,11 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
           <option value="lost">Lost</option>
         </select>
       </LfField>
+      {deal.stage === 'lost' && (
+        <LfField label="Reason lost" required>
+          <LostReasonSelect value={deal.lostReason} onChange={(v) => set({ lostReason: v })} />
+        </LfField>
+      )}
       <LfField label="Requirement type" required={req}>
         <MasterSelect kind="requirement-types" value={deal.requirementId} onChange={(v) => set({ requirementId: v })} placeholder="Select requirement type" />
       </LfField>

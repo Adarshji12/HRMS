@@ -159,7 +159,7 @@ function NewCategory({
 
   return (
     <section className="card ex-newclaim">
-      <h2 className="card-title">Add a category</h2>
+      <h2 className="card-title" style={{ marginBottom: 14 }}>Add a category</h2>
       <div className="ex-row">
         <input placeholder="Name — e.g. Travel" value={name}
                onChange={(e) => setName(e.target.value)} />

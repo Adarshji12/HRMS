@@ -310,7 +310,8 @@ def test_stage_starts_qualified_and_can_be_moved(client, acme):
     assert row["stage"] == "qualified"
     for stage in ("proposal", "commit", "won", "lost", "qualified"):
         moved = client.post(
-            f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": stage}, headers=acme.headers()
+            f"/api/v1/crm/opportunities/{row['id']}/stage",
+            json={"stage": stage, "lost_reason": "Price"}, headers=acme.headers(),
         )
         assert moved.status_code == 200, moved.text
         assert moved.json()["stage"] == stage
@@ -318,6 +319,43 @@ def test_stage_starts_qualified_and_can_be_moved(client, acme):
         f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": "nope"}, headers=acme.headers()
     )
     assert bad.status_code == 422
+
+
+def _stage(client, tenant, opp_id, stage, **extra):
+    return client.post(
+        f"/api/v1/crm/opportunities/{opp_id}/stage", json={"stage": stage, **extra}, headers=tenant.headers()
+    )
+
+
+def _lead_status(client, tenant, lead_id):
+    return client.get(f"/api/v1/crm/leads/{lead_id}", headers=tenant.headers()).json()["status_name"]
+
+
+def test_each_stage_sets_the_probability(client, acme):
+    row = _opportunity(client, acme, _lead(client, acme)["id"]).json()
+    for stage, chance in (("proposal", 40), ("commit", 80), ("won", 100), ("qualified", 10)):
+        assert _stage(client, acme, row["id"], stage).json()["probability"] == chance
+
+
+def test_lost_needs_a_reason_and_keeps_it(client, acme):
+    row = _opportunity(client, acme, _lead(client, acme)["id"]).json()
+    refused = _stage(client, acme, row["id"], "lost")
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["reason"] == "lost_reason_required"
+    lost = _stage(client, acme, row["id"], "lost", lost_reason="Went with a competitor").json()
+    assert lost["lost_reason"] == "Went with a competitor" and lost["probability"] == 0
+    assert _stage(client, acme, row["id"], "proposal").json()["lost_reason"] is None
+
+
+def test_won_and_lost_close_the_lead_and_leaving_reopens_it(client, acme):
+    lead = _lead(client, acme)
+    row = _opportunity(client, acme, lead["id"]).json()
+    _stage(client, acme, row["id"], "won")
+    assert _lead_status(client, acme, lead["id"]) == "Won"
+    _stage(client, acme, row["id"], "lost", lost_reason="Budget cut")
+    assert _lead_status(client, acme, lead["id"]) == "Lost"
+    _stage(client, acme, row["id"], "commit")
+    assert _lead_status(client, acme, lead["id"]) not in ("Won", "Lost")
 
 
 def test_another_company_cannot_move_the_stage(client, acme, globex):

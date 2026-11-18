@@ -85,7 +85,13 @@ export default function QuotationSetupPanel() {
   }
 
   const original = fromSettings(settings.data)
-  const dirty = JSON.stringify(draft) !== JSON.stringify(original)
+  /* The image flags are not form fields: an upload changes them on the server at
+     once, so they are left out of the comparison and read live below. */
+  const stripImages = (d: Draft) => {
+    const { has_logo: _l, has_stamp: _s, images_version: _v, ...rest } = d.setup
+    return { ...d, setup: rest }
+  }
+  const dirty = JSON.stringify(stripImages(draft)) !== JSON.stringify(stripImages(original))
   const setup = draft.setup
   const set = (patch: Partial<QuotationSetup>) =>
     setDraft((d) => (d ? { ...d, setup: { ...d.setup, ...patch } } : d))
@@ -236,7 +242,7 @@ export default function QuotationSetupPanel() {
               </Field>
             </div>
             <ImageField kind="logo" label="Logo" hint="PNG or JPG, under 2 MB."
-                        present={setup.has_logo ?? false} version={version} onChange={afterImage} />
+                        present={settings.data.quotation_setup.has_logo ?? false} version={version} onChange={afterImage} />
           </Card>
 
           <Card icon={<span className="qs-hash" aria-hidden>#</span>} title="Numbering & defaults"
@@ -337,7 +343,7 @@ export default function QuotationSetupPanel() {
             </div>
             <ImageField kind="stamp" label="Company stamp"
                         hint="Printed over the signature line. A transparent PNG looks like the real stamp — a JPG brings its white box with it."
-                        present={setup.has_stamp ?? false} version={version} onChange={afterImage} />
+                        present={settings.data.quotation_setup.has_stamp ?? false} version={version} onChange={afterImage} />
           </Card>
         </div>
       </div>}

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import audit
 from app.models import (
     CrmCustomer,
+    CrmLeadStatus,
     CrmItemCompany,
     CrmLead,
     CrmOpportunity,
@@ -28,6 +29,7 @@ from app.models import (
     Team,
     User,
 )
+from app.models.crm import StatusBehaviour
 from app.schemas import crm_opportunity as S
 from app.services import crm as crm_svc
 from app.services import storage
@@ -116,6 +118,7 @@ def to_out(db: Session, row: CrmOpportunity) -> S.OpportunityOut:
         team_name=team.name if team else None,
         is_mail_send=row.is_mail_send,
         stage=row.stage,
+        lost_reason=row.lost_reason,
         costsheet_status=row.costsheet_status,
         notes=row.notes,
         owner_id=lead.owner_id if lead else None,
@@ -171,6 +174,70 @@ def list_all(
     return [to_out(db, row) for row in rows]
 
 
+#: What each stage means for the chance of winning. Moving a deal sets it, so
+#: the column totals can be read as a forecast; a figure typed by hand holds
+#: until the next move.
+STAGE_PROBABILITY = {"qualified": 10, "proposal": 40, "commit": 80, "won": 100, "lost": 0}
+
+
+def _transition(row: CrmOpportunity, stage: str, reason: str | None) -> bool:
+    """Put the opportunity in a stage. Returns whether the stage changed."""
+    reason = (reason or "").strip() or None
+    if stage == row.stage:
+        if stage == "lost" and reason:
+            row.lost_reason = reason
+        return False
+    if stage == "lost" and not reason:
+        raise _refuse("Say why this deal was lost.", "lost_reason_required", 422)
+    row.lost_reason = reason if stage == "lost" else None
+    row.stage = stage
+    row.probability = STAGE_PROBABILITY[stage]
+    return True
+
+
+def _sync_lead(db: Session, viewer: User, row: CrmOpportunity) -> None:
+    """Won and Lost close the lead as well; leaving them reopens it.
+
+    Without this the board and the lead disagree: a deal in Won on a lead still
+    shown as open. Reopening goes to the first in-progress stage the workspace has.
+    """
+    lead = db.get(CrmLead, row.lead_id)
+    if lead is None:
+        return
+    current = lead.status.behaviour if lead.status else None
+    wanted = {"won": StatusBehaviour.WON.value, "lost": StatusBehaviour.LOST.value}.get(row.stage)
+    if wanted is not None:
+        if current == wanted:
+            if wanted == StatusBehaviour.LOST.value and row.lost_reason:
+                lead.lost_reason = row.lost_reason
+                db.commit()
+            return
+        behaviours = [wanted]
+    else:
+        if current not in (StatusBehaviour.WON.value, StatusBehaviour.LOST.value):
+            return
+        behaviours = [StatusBehaviour.IN_PROGRESS.value, StatusBehaviour.DEFAULT.value]
+    for behaviour in behaviours:
+        target = db.scalars(
+            select(CrmLeadStatus)
+            .where(
+                CrmLeadStatus.org_id == row.org_id,
+                CrmLeadStatus.behaviour == behaviour,
+                CrmLeadStatus.is_active.is_(True),
+            )
+            .order_by(CrmLeadStatus.sort_order)
+        ).first()
+        if target is not None:
+            crm_svc.move_status(
+                db, viewer, lead.id,
+                crm_svc.S.LeadStatusMove(
+                    status_id=target.id,
+                    note=row.lost_reason if wanted == StatusBehaviour.LOST.value else None,
+                ),
+            )
+            return
+
+
 def _apply(row: CrmOpportunity, payload: S.OpportunityIn) -> None:
     row.title = payload.title
     row.customer_id = payload.customer_id
@@ -195,7 +262,10 @@ def _apply(row: CrmOpportunity, payload: S.OpportunityIn) -> None:
         row.costsheet_status = "none"
     row.notes = payload.notes
     if payload.stage:
-        row.stage = payload.stage
+        if row.stage is None and payload.stage == "qualified":
+            row.stage = "qualified"  # a new deal keeps the probability typed on the form
+        else:
+            _transition(row, payload.stage, payload.lost_reason)
 
 
 def create(
@@ -226,6 +296,8 @@ def create(
           detail={"lead_id": str(lead.id)})
     db.commit()
     db.refresh(row)
+    if row.stage in ("won", "lost"):
+        _sync_lead(db, viewer, row)
     return to_out(db, row)
 
 
@@ -239,11 +311,14 @@ def update(
 ) -> S.OpportunityOut:
     row = _get(db, viewer, opportunity_id)
     _check_references(db, viewer.org_id, payload)
+    before = row.stage
     _apply(row, payload)
     audit(db, org_id=viewer.org_id, actor=viewer, action="crm.opportunity_updated",
           request=request, target_type="crm_opportunity", target_id=str(row.id))
     db.commit()
     db.refresh(row)
+    if row.stage != before:
+        _sync_lead(db, viewer, row)
     return to_out(db, row)
 
 
@@ -252,22 +327,26 @@ def set_stage(
     viewer: User,
     opportunity_id: uuid.UUID,
     stage: str,
+    lost_reason: str | None = None,
     *,
     request: Request | None = None,
 ) -> S.OpportunityOut:
-    """Move an opportunity along the pipeline board (or to Lost)."""
+    """Move an opportunity along the pipeline board (or to Lost).
+
+    The probability follows the stage, and Won / Lost close the lead with it.
+    """
     row = _get(db, viewer, opportunity_id)
     previous = row.stage
-    if previous != stage:
-        row.stage = stage
+    if _transition(row, stage, lost_reason):
         lead = db.get(CrmLead, row.lead_id)
         if lead is not None:
             crm_svc._log(db, lead, viewer, "note", f"Opportunity {row.title}: {previous} → {stage}")
         audit(db, org_id=viewer.org_id, actor=viewer, action="crm.opportunity_stage",
               request=request, target_type="crm_opportunity", target_id=str(row.id),
-              detail={"from": previous, "to": stage})
+              detail={"from": previous, "to": stage, "lost_reason": row.lost_reason})
         db.commit()
         db.refresh(row)
+        _sync_lead(db, viewer, row)
     return to_out(db, row)
 
 

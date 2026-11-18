@@ -446,11 +446,14 @@ export function MasterTable({ list }: { list: ListDef }) {
     q ? String(row.name ?? '').toLowerCase().includes(q.toLowerCase()) : true,
   )
 
+  /** Reload the table and tell the count tiles above it to recount. */
+  const refresh = () => { rows.reload(); window.dispatchEvent(new Event('master-changed')) }
+
   async function remove(row: Record<string, unknown>) {
     setError(null)
     try {
       await crm.deleteMaster(list.kind, String(row.id))
-      rows.reload()
+      refresh()
     } catch (err) {
       setError(crmError(err, 'That entry could not be deleted'))
     }
@@ -460,7 +463,7 @@ export function MasterTable({ list }: { list: ListDef }) {
     setError(null)
     try {
       await crm.updateMaster(list.kind, String(row.id), { ...row, is_active: !row.is_active })
-      rows.reload()
+      refresh()
     } catch (err) {
       setError(crmError(err, 'That entry could not be changed'))
     }
@@ -568,7 +571,7 @@ export function MasterTable({ list }: { list: ListDef }) {
             row={editing}
             defaultParentId={parentId}
             onClose={() => { setAdding(false); setEditing(null) }}
-            onSaved={() => { setAdding(false); setEditing(null); rows.reload() }}
+            onSaved={() => { setAdding(false); setEditing(null); refresh() }}
           />
         )
       })()}
@@ -584,7 +587,7 @@ export function MasterTable({ list }: { list: ListDef }) {
           onSaved={() => {
             setAdding(false)
             setEditing(null)
-            rows.reload()
+            refresh()
           }}
         />
       )}

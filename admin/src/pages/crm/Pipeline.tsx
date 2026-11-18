@@ -14,7 +14,7 @@ import { useQuery } from '../../lib/useQuery'
 import { api } from '../../lib/api'
 import { crm, crmError, rupees, type Lead, type Opportunity, type OpportunityStage } from './api'
 import { OpportunityForm } from './OpportunityForm'
-import { Dialog, Field } from './parts'
+import { Dialog, Field, LostReasonSelect } from './parts'
 
 const STAGES: Array<{ key: OpportunityStage; label: string }> = [
   { key: 'qualified', label: 'Qualified' },
@@ -31,13 +31,16 @@ export default function Pipeline() {
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<OpportunityStage | null>(null)
   const [picking, setPicking] = useState(false)
+  /* A move to Lost waits here until the reason is given. */
+  const [losing, setLosing] = useState<Opportunity | null>(null)
   const [form, setForm] = useState<{ lead: Lead; opportunity: Opportunity | null } | null>(null)
 
-  async function move(row: Opportunity, stage: OpportunityStage) {
+  async function move(row: Opportunity, stage: OpportunityStage, lostReason?: string) {
     if (row.stage === stage) return
+    if (stage === 'lost' && !lostReason) { setLosing(row); return }
     setError(null)
     try {
-      await crm.setOpportunityStage(row.id, stage)
+      await crm.setOpportunityStage(row.id, stage, lostReason)
       list.reload()
     } catch (err) {
       setError(crmError(err, 'That opportunity could not be moved'))
@@ -83,6 +86,7 @@ export default function Pipeline() {
           {STAGES.map(({ key, label }) => {
             const cards = rows.filter((r) => r.stage === key)
             const total = cards.reduce((sum, r) => sum + Number(r.expected_revenue), 0)
+            const weighted = cards.reduce((sum, r) => sum + Number(r.expected_revenue) * r.probability / 100, 0)
             return (
               <section
                 key={key}
@@ -95,7 +99,7 @@ export default function Pipeline() {
                 <header className="pipe-head">
                   <h2>{label}</h2>
                   <span className="pipe-count">{cards.length}</span>
-                  <span className="pipe-total">{rupees(total)}</span>
+                  <span className="pipe-total" title={key === 'won' || key === 'lost' ? undefined : `Weighted by probability: ${rupees(weighted)}`}>{rupees(total)}</span>
                 </header>
                 <div className="pipe-cards">
                   {cards.length === 0 && <p className="pipe-empty">No opportunities</p>}
@@ -110,6 +114,7 @@ export default function Pipeline() {
                       <button type="button" className="pipe-title" onClick={() => void edit(row)}>{row.title}</button>
                       <div className="pipe-sub">{row.customer_name ?? row.lead_name ?? '—'}</div>
                       <div className="pipe-money">{rupees(row.expected_revenue)}</div>
+                      {row.stage === 'lost' && row.lost_reason && <div className="pipe-lost">Lost: {row.lost_reason}</div>}
                       <div className="pipe-foot">
                         <span className="pipe-stars" aria-label={`${row.priority} star priority`}>
                           {[1, 2, 3].map((n) => (
@@ -137,6 +142,13 @@ export default function Pipeline() {
         </div>
       )}
 
+      {losing && (
+        <LostDialog
+          row={losing}
+          onClose={() => setLosing(null)}
+          onConfirm={(reason) => { const row = losing; setLosing(null); void move(row, 'lost', reason) }}
+        />
+      )}
       {picking && (
         <LeadPicker
           taken={new Set(rows.map((r) => r.lead_id))}
@@ -183,6 +195,30 @@ function LeadPicker({ onClose, onPick, taken }: { onClose: () => void; onPick: (
               <option key={l.id} value={l.id}>{l.name}{l.company ? ` · ${l.company}` : ''} · {l.mobile}</option>
             ))}
           </select>
+        </Field>
+      </div>
+    </Dialog>
+  )
+}
+
+/** Moving a deal to Lost asks why, so the reason is on the record. */
+function LostDialog({ row, onClose, onConfirm }: { row: Opportunity; onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState('')
+  return (
+    <Dialog
+      title="Mark as lost"
+      subtitle={row.title}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" type="button" disabled={!reason} onClick={() => onConfirm(reason)}>Mark lost</button>
+        </>
+      }
+    >
+      <div className="crm-form">
+        <Field label="Reason lost" wide required>
+          <LostReasonSelect value={reason} onChange={setReason} autoFocus />
         </Field>
       </div>
     </Dialog>

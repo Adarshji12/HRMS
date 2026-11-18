@@ -35,7 +35,7 @@ def set_opportunity_stage(
     db: DbSession,
     request: Request,
 ) -> S.OpportunityOut:
-    return svc.set_stage(db, viewer, opportunity_id, payload.stage, request=request)
+    return svc.set_stage(db, viewer, opportunity_id, payload.stage, payload.lost_reason, request=request)
 
 
 @router.post("/opportunities/{opportunity_id}/costsheet-decision", response_model=S.OpportunityOut)

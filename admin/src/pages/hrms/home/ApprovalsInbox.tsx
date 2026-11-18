@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import '../../../styles/hrmshome.css'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
@@ -1115,7 +1115,10 @@ function QueueRow({
     }
   }
 
-  const expanded = open || rejecting || Boolean(failure) || Boolean(settled)
+  /* The outcome note opens by itself once a decision lands, but it is then an
+     ordinary open row: the chevron can fold it away again. */
+  useEffect(() => { if (settled) setOpen(true) }, [settled])
+  const expanded = open || rejecting || Boolean(failure)
 
   return (
     <>

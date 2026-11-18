@@ -406,6 +406,20 @@ export function MasterSelect({
   )
 }
 
+/** Why a deal was lost, from the Lost Reasons master. Holds the reason's name:
+ *  an opportunity keeps the words it was lost with, not a link that can be edited away. */
+export function LostReasonSelect({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  const list = useQuery<Master[]>('crm-master-lost-reasons-all', () => crm.masters<Master>('lost-reasons'))
+  const names = (list.data ?? []).filter((r) => r.is_active).map((r) => r.name)
+  if (value && !names.includes(value)) names.push(value)
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} autoFocus={autoFocus} aria-label="Reason lost">
+      <option value="">{list.loading ? 'Loading…' : 'Select a reason'}</option>
+      {names.map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  )
+}
+
 /** The people this workspace can assign work to.
  *
  * A salesperson cannot read the roster, and that is correct — they can only

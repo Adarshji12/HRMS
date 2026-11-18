@@ -94,6 +94,8 @@ class CrmOpportunity(UUIDMixin, TimestampMixin, Base):
     stage: Mapped[str] = mapped_column(
         String(12), default="qualified", server_default="qualified", nullable=False, index=True
     )
+    #: Why the deal was lost; only set while the stage is Lost.
+    lost_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     is_mail_send: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

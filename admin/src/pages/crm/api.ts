@@ -52,6 +52,7 @@ export interface Opportunity {
   team_name: string | null
   is_mail_send: boolean
   stage: OpportunityStage
+  lost_reason: string | null
   /** none = not sent; pending = sent for approval; then the decision. */
   costsheet_status: CostsheetStatus
   notes: string | null
@@ -80,6 +81,8 @@ export interface OpportunityInput {
   send_costsheet_for_approval: boolean
   notes: string | null
   stage?: OpportunityStage | null
+  /** Required when the stage becomes Lost. */
+  lost_reason?: string | null
 }
 
 export interface LeadStatus extends Master {
@@ -674,8 +677,8 @@ export const crm = {
   updateOpportunity: (id: string, body: OpportunityInput) =>
     api.put<Opportunity>(`/crm/opportunities/${id}`, body),
   deleteOpportunity: (id: string) => api.del(`/crm/opportunities/${id}`),
-  setOpportunityStage: (id: string, stage: OpportunityStage) =>
-    api.post<Opportunity>(`/crm/opportunities/${id}/stage`, { stage }),
+  setOpportunityStage: (id: string, stage: OpportunityStage, lostReason?: string) =>
+    api.post<Opportunity>(`/crm/opportunities/${id}/stage`, { stage, lost_reason: lostReason ?? null }),
   decideCostsheet: (id: string, decision: 'approved' | 'rejected') =>
     api.post<Opportunity>(`/crm/opportunities/${id}/costsheet-decision`, { decision }),
   uploadOpportunityFile: (id: string, which: OpportunityFile, file: File) => {

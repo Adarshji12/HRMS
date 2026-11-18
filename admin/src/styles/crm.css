@@ -4442,3 +4442,5 @@ table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .pipe-stage { margin-left: auto; max-width: 110px; padding: 3px 24px 3px 8px; font-size: 12px; min-height: 0; }
 .pipe-col.is-won .pipe-head h2 { color: var(--status-ok, #16a34a); }
 .pipe-col.is-lost .pipe-head h2 { color: var(--status-bad, #dc2626); }
+
+.pipe-lost { margin-top: 2px; font-size: 12px; color: var(--status-critical); }
