@@ -5,7 +5,7 @@
  * `can_decide` — the chain's current rung, or the capability when there is no
  * chain — so an Approve button that appears is one that will be accepted. */
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
@@ -13,6 +13,7 @@ import { IconAlert, IconCheck, IconClock, IconClose, IconSearch, IconSliders } f
 import { CrmPage } from '../crm/parts'
 import { erp, erpError, FLOW_LABEL, rupees, type ApprovalRow, type PendingApproval } from './api'
 import { ReasonDialog, useRun } from './parts'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../components/ViewSettings'
 import '../../styles/approvals.css'
 
 type Kind = PendingApproval['kind']
@@ -29,6 +30,28 @@ const LINK: Record<Kind, string> = {
   credit_note: '/erp/billing?open=',
 }
 const linkTo = (r: ApprovalRow) => (LINK[r.kind].endsWith('=') ? `${LINK[r.kind]}${r.id}` : LINK[r.kind])
+
+interface ApprovalCtx { index: number }
+type ApprovalColumn = ColumnDef & { td: (r: ApprovalRow, ctx: ApprovalCtx) => ReactNode; className?: string; thClass?: string }
+const APPROVAL_COLUMNS: ApprovalColumn[] = [
+  { key: 'n', label: '#', thClass: 'apl-n', className: 'apl-n', td: (_r, c) => <>{c.index}</> },
+  { key: 'kind', label: 'Document type', td: (r) => <><span className={`apl-kind is-${r.kind}`}>{FLOW_LABEL[r.kind]}</span>{r.level && <small className="apl-sub">{r.level}</small>}</> },
+  { key: 'number', label: 'Document no.', locked: true, td: (r) => <Link className="apl-no" to={linkTo(r)}>{r.number ?? 'Awaiting number'}</Link> },
+  { key: 'title', label: 'Party / details', className: 'apl-title', td: (r) => <>{r.title}</> },
+  { key: 'amount', label: 'Amount', thClass: 'crm-num', className: 'crm-num apl-amt', td: (r) => <>{rupees(r.amount)}</> },
+  { key: 'by', label: 'Requested by', td: (r) => <>{r.subject_name ?? '—'}</> },
+  { key: 'when', label: 'Request date', className: 'apl-when', td: (r) => <>{stamp(r.submitted_at)}</> },
+  { key: 'status', label: 'Status', className: 'apl-status', td: (r) => (
+    <>
+      <span className={`apl-state is-${r.state}`}><i aria-hidden />{r.state === 'pending' ? 'Pending' : r.state === 'approved' ? 'Approved' : 'Rejected'}</span>
+      {r.state !== 'pending' && <small className="apl-sub">{r.reviewed_by_name ? `by ${r.reviewed_by_name}` : ''}</small>}
+      {r.review_note && <small className="apl-sub apl-note" title={r.review_note}>“{r.review_note}”</small>}
+    </>
+  ) },
+  { key: 'reviewed_by', label: 'Decided by', initial: false, td: (r) => <>{r.reviewed_by_name ?? '—'}</> },
+  { key: 'reviewed_at', label: 'Decided on', initial: false, className: 'apl-when', td: (r) => <>{r.reviewed_at ? stamp(r.reviewed_at) : '—'}</> },
+  { key: 'note', label: 'Review note', initial: false, td: (r) => <>{r.review_note ?? '—'}</> },
+]
 
 function decide(row: ApprovalRow, approve: boolean, note?: string) {
   switch (row.kind) {
@@ -55,6 +78,7 @@ function inRange(iso: string | null, range: Range) {
 }
 
 export default function ErpApprovals() {
+  const columns = useColumns('erp-approvals', APPROVAL_COLUMNS)
   const q = useQuery('erp-approval-register', () => erp.approvalRegister())
   const [tab, setTab] = useState<TabKey>('pending')
   const [text, setText] = useState('')
@@ -148,6 +172,7 @@ export default function ErpApprovals() {
             </>
           )}
         </div>
+        <ColumnSettings defs={APPROVAL_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
         {filtered && <button type="button" className="btn" onClick={reset}>Clear</button>}
       </div>
 
@@ -163,23 +188,19 @@ export default function ErpApprovals() {
           <>
             <div className="table-wrap"><table className="apl-table">
               <thead><tr>
-                <th className="apl-n">#</th><th>Document type</th><th>Document no.</th><th>Party / details</th><th className="crm-num">Amount</th>
-                <th>Requested by</th><th>Request date</th><th>Status</th><th className="apl-act">Actions</th>
+                {columns.visible.map((c) => <th key={c.key} className={(c as ApprovalColumn).thClass}>{c.label}</th>)}
+                <th className="apl-act">Actions</th>
               </tr></thead>
               <tbody>{shown.map((r, i) => (
                 <tr key={`${r.kind}-${r.id}`}>
-                  <td className="apl-n">{at * PAGE + i + 1}</td>
-                  <td><span className={`apl-kind is-${r.kind}`}>{FLOW_LABEL[r.kind]}</span>{r.level && <small className="apl-sub">{r.level}</small>}</td>
-                  <td><Link className="apl-no" to={linkTo(r)}>{r.number ?? 'Awaiting number'}</Link></td>
-                  <td className="apl-title" title={r.title}>{r.title}</td>
-                  <td className="crm-num apl-amt">{rupees(r.amount)}</td>
-                  <td>{r.subject_name ?? '—'}</td>
-                  <td className="apl-when">{stamp(r.submitted_at)}</td>
-                  <td className="apl-status">
-                    <span className={`apl-state is-${r.state}`}><i aria-hidden />{r.state === 'pending' ? 'Pending' : r.state === 'approved' ? 'Approved' : 'Rejected'}</span>
-                    {r.state !== 'pending' && <small className="apl-sub">{r.reviewed_by_name ? `by ${r.reviewed_by_name}` : ''}</small>}
-                    {r.review_note && <small className="apl-sub apl-note" title={r.review_note}>“{r.review_note}”</small>}
-                  </td>
+                  {columns.visible.map((c) => {
+                    const col = c as ApprovalColumn
+                    return (
+                      <td key={col.key} className={col.className} title={col.key === 'title' ? r.title : undefined}>
+                        {col.td(r, { index: at * PAGE + i + 1 })}
+                      </td>
+                    )
+                  })}
                   <td className="apl-act">
                     <div className="apl-btns">
                       <Link className="btn btn-sm" to={linkTo(r)}>View</Link>

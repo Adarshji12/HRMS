@@ -18,8 +18,11 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconCheck, IconPlus } from '../../components/Icons'
 import { crm, crmError } from '../crm/api'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../components/ViewSettings'
 import { Dialog, Field, MasterSelect, OwnerSelect } from '../crm/parts'
-import { BILLING_CYCLES, PlanForm, PRODUCT_CATEGORIES, ProductForm } from './ProductPlanForms'
 
 /* ---------------------------------------------------------- master shapes --- */
 
@@ -65,10 +68,8 @@ const FORECAST_CATEGORIES = [
 
 /** Stored values a cell shows by their human label instead. */
 const VALUE_LABELS: Record<string, Record<string, string>> = {
-  category: Object.fromEntries(PRODUCT_CATEGORIES.map((o) => [o.value, o.label])),
   forecast_category: Object.fromEntries(FORECAST_CATEGORIES.map((o) => [o.value, o.label])),
   outcome: { lost: 'Lost', no_decision: 'No decision' },
-  billing_cycle: Object.fromEntries(BILLING_CYCLES.map((o) => [o.value, o.label])),
 }
 
 export const LISTS: ListDef[] = [
@@ -189,51 +190,6 @@ export const LISTS: ListDef[] = [
     description: 'What a lead or customer does, for segmenting the pipeline and setting vertical-wise targets.',
     columns: [{ key: 'name', label: 'Industry' }],
     fields: [{ key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Manufacturing' }],
-  },
-  {
-    kind: 'products',
-    label: 'Product / Service',
-    description:
-      'What you sell. The rate, GST and HSN/SAC here are the starting point for a quotation line — the line keeps whatever it was saved with afterwards.',
-    columns: [
-      { key: 'name', label: 'Product / Service' },
-      { key: 'rate', label: 'Basic rate' },
-      { key: 'gst_percent', label: 'GST %' },
-      { key: 'hsn_sac', label: 'HSN / SAC' },
-      { key: 'plan_count', label: 'Plans' },
-    ],
-    fields: [
-      { key: 'name', label: 'Product name', kind: 'text', placeholder: 'e.g. Attendance software licence' },
-      { key: 'rate', label: 'Basic rate (₹)', kind: 'number', placeholder: '5000', required: true },
-      { key: 'gst_percent', label: 'GST %', kind: 'number', placeholder: '18', required: true },
-      { key: 'hsn_sac', label: 'HSN / SAC code', kind: 'text', placeholder: '998314', required: true },
-      { key: 'description', label: 'Description', kind: 'text', placeholder: 'e.g. Annual subscription, up to 50 users' },
-    ],
-  },
-  {
-    kind: 'plans',
-    label: 'Plan Master',
-    keepMaster: true,
-    description:
-      'A priced term of a product. The duration is what a renewal date is worked out from; leave it blank for a one-off sale with no renewal.',
-    columns: [
-      { key: 'name', label: 'Plan' },
-      { key: 'code', label: 'Code' },
-      { key: 'product_name', label: 'Product' },
-      { key: 'billing_cycle', label: 'Billing cycle' },
-      { key: 'price', label: 'Price' },
-      { key: 'duration_days', label: 'Days' },
-    ],
-    fields: [
-      { key: 'product_id', label: 'Product', kind: 'parent', parentKind: 'products' },
-      { key: 'name', label: 'Plan name', kind: 'text', placeholder: 'e.g. Business Annual' },
-      { key: 'code', label: 'Plan code', kind: 'text', placeholder: 'e.g. BIZ-12' },
-      { key: 'price', label: 'Price (₹)', kind: 'number', placeholder: '12000' },
-      { key: 'billing_cycle', label: 'Billing cycle', kind: 'select', options: BILLING_CYCLES },
-      { key: 'duration_days', label: 'Duration in days', kind: 'number', placeholder: '365' },
-      { key: 'description', label: 'Description', kind: 'text', placeholder: 'e.g. Includes support and updates' },
-    ],
-    parent: { kind: 'products', label: 'Product', field: 'product_id' },
   },
   {
     kind: 'dispositions',
@@ -428,6 +384,34 @@ export const LISTS: ListDef[] = [
   },
 ]
 
+/* ------------------------------------------------------ view settings defs --- */
+
+/** The columns a master list can show: today's, then the list's other plain
+ *  fields (hidden until chosen). The name is the row's identity and stays. */
+function masterColumnDefs(list: ListDef): ColumnDef[] {
+  const shown = new Set(list.columns.map((c) => c.key))
+  const defs: ColumnDef[] = list.columns.map((c) => ({ key: c.key, label: c.label, locked: c.key === 'name' }))
+  for (const f of list.fields) {
+    if (shown.has(f.key) || f.kind === 'parent' || f.kind === 'user' || f.kind === 'states') continue
+    defs.push({ key: f.key, label: f.label, initial: false })
+  }
+  return defs
+}
+
+const MASTER_SECTIONS: FieldSection[] = [{ id: 'main', label: 'Details' }]
+
+/** What the server insists on stays fixed: the name, anything the list marks
+ *  required, and the country / state a state, district or city hangs off. */
+function masterFieldDefs(list: ListDef): FieldDef[] {
+  return list.fields.map((f) => ({
+    key: f.key,
+    label: f.label,
+    section: 'main',
+    fixed: f.key === 'name' || !!f.required || (f.kind === 'parent' && (f.parentKind === 'countries' || f.parentKind === 'states')),
+    optionalOnly: f.kind === 'check' || f.kind === 'select' || f.kind === 'colour',
+  }))
+}
+
 /* ------------------------------------------------------------ master table --- */
 
 export function MasterTable({ list }: { list: ListDef }) {
@@ -436,6 +420,8 @@ export function MasterTable({ list }: { list: ListDef }) {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const columnDefs = masterColumnDefs(list)
+  const columns = useColumns('master:' + list.kind, columnDefs)
 
   const rows = useQuery<Array<Record<string, unknown>>>(
     `crm-master-table-${list.kind}-${parentId}`,
@@ -495,6 +481,8 @@ export function MasterTable({ list }: { list: ListDef }) {
             aria-label={`Search ${list.label}`}
           />
           <span className="crm-sub">{data.length}</span>
+          <ColumnSettings defs={columnDefs} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
             <IconPlus size={14} /> Add
           </button>
@@ -524,7 +512,7 @@ export function MasterTable({ list }: { list: ListDef }) {
           <table>
             <thead>
               <tr>
-                {list.columns.map((column) => (
+                {columns.visible.map((column) => (
                   <th key={column.key}>{column.label}</th>
                 ))}
                 <th>Active</th>
@@ -534,7 +522,7 @@ export function MasterTable({ list }: { list: ListDef }) {
             <tbody>
               {data.map((row) => (
                 <tr key={String(row.id)} style={{ opacity: row.is_active === false ? 0.55 : 1 }}>
-                  {list.columns.map((column) => (
+                  {columns.visible.map((column) => (
                     <td key={column.key}>{renderCell(column.key, row)}</td>
                   ))}
                   <td>
@@ -564,18 +552,7 @@ export function MasterTable({ list }: { list: ListDef }) {
         </div>
       )}
 
-      {(adding || editing) && (list.kind === 'products' || list.kind === 'plans') && (() => {
-        const Form = list.kind === 'products' ? ProductForm : PlanForm
-        return (
-          <Form
-            row={editing}
-            defaultParentId={parentId}
-            onClose={() => { setAdding(false); setEditing(null) }}
-            onSaved={() => { setAdding(false); setEditing(null); refresh() }}
-          />
-        )
-      })()}
-      {(adding || editing) && list.kind !== 'products' && list.kind !== 'plans' && (
+      {(adding || editing) && (
         <MasterForm
           list={list}
           row={editing}
@@ -661,6 +638,10 @@ function MasterForm({
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fieldDefs = masterFieldDefs(list)
+  const fields = useFieldModes('master:' + list.kind, fieldDefs)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   async function save() {
     setBusy(true)
@@ -686,7 +667,10 @@ function MasterForm({
       return
     }
     const missing = list.fields.find(
-      (field) => field.required && (body[field.key] === null || String(body[field.key]).trim() === ''),
+      (field) =>
+        (field.required || fm(field.key) === 'mandatory') && fm(field.key) !== 'hide' &&
+        (body[field.key] === null || String(body[field.key]).trim() === '' ||
+          (Array.isArray(body[field.key]) && (body[field.key] as unknown[]).length === 0)),
     )
     if (missing) {
       setError(`Fill in ${missing.label}.`)
@@ -724,7 +708,13 @@ function MasterForm({
             <ErrorNote>{error}</ErrorNote>
           </div>
         )}
-        {list.fields.map((field) => {
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={fieldDefs} sections={MASTER_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
+        {fields.orderOf('main').map((key) => {
+          const field = list.fields.find((f) => f.key === key)
+          if (!field || fm(key) === 'hide') return null
           const value = values[field.key]
           const set = (next: unknown) =>
             setValues((current) => {
@@ -765,7 +755,7 @@ function MasterForm({
           }
           if (field.kind === 'parent') {
             return (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field key={field.key} label={field.label} hint={field.hint} required={rq(field.key)}>
                 <MasterSelect
                   kind={field.parentKind!}
                   value={String(value ?? '')}
@@ -778,28 +768,28 @@ function MasterForm({
           }
           if (field.kind === 'date') {
             return (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field key={field.key} label={field.label} hint={field.hint} required={rq(field.key)}>
                 <input type="date" value={String(value ?? '')} onChange={(event) => set(event.target.value)} />
               </Field>
             )
           }
           if (field.kind === 'user') {
             return (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field key={field.key} label={field.label} hint={field.hint} required={rq(field.key)}>
                 <OwnerSelect value={String(value ?? '')} onChange={set} placeholder="— nobody —" />
               </Field>
             )
           }
           if (field.kind === 'states') {
             return (
-              <Field key={field.key} label={field.label} hint={field.hint} wide>
+              <Field key={field.key} label={field.label} hint={field.hint} wide required={rq(field.key)}>
                 <StatePicker value={Array.isArray(value) ? (value as string[]) : []} onChange={set} />
               </Field>
             )
           }
           if (field.kind === 'colour') {
             return (
-              <Field key={field.key} label={field.label}>
+              <Field key={field.key} label={field.label} required={rq(field.key)}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     className="crm-swatch"
@@ -814,7 +804,7 @@ function MasterForm({
             )
           }
           return (
-            <Field key={field.key} label={field.label} hint={field.hint} required={field.required || field.key === 'name'}>
+            <Field key={field.key} label={field.label} hint={field.hint} required={field.required || field.key === 'name' || rq(field.key)}>
               <input
                 value={String(value ?? '')}
                 onChange={(event) => set(event.target.value)}
@@ -881,8 +871,8 @@ export const MASTER_GROUPS: MasterGroup[] = [
   {
     key: 'lead',
     title: 'Lead Master',
-    description: 'How a lead is described from the moment it is captured, and what it is interested in buying.',
-    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'products', 'plans', 'requirement-types'],
+    description: 'How a lead is described from the moment it is captured.',
+    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'requirement-types'],
   },
   {
     key: 'erp',
@@ -917,6 +907,9 @@ export const MASTER_GROUPS: MasterGroup[] = [
     links: [
       { label: 'Department', to: '/departments' },
       { label: 'Designation', to: '/designations' },
+      { label: 'Branch', to: '/branches' },
+      { label: 'Location', to: '/locations' },
+      { label: 'Holiday', to: '/holidays' },
     ],
   },
 ]

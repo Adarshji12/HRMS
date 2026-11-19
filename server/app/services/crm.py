@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import audit
 from app.models import (
+    CrmAccess,
     CrmActivity,
     CrmCity,
     CrmCountry,
@@ -61,8 +62,6 @@ from app.models import (
     CrmLeadStatus,
     CrmLostReason,
     CrmOpportunityStage,
-    CrmPlan,
-    CrmProduct,
     CrmQuotation,
     CrmQuotationLine,
     CrmReminder,
@@ -131,20 +130,56 @@ def _now() -> datetime:
 # --------------------------------------------------------------------------- #
 
 
-def visible_owner_ids(db: Session, viewer: User) -> set[uuid.UUID] | None:
+def visible_owner_ids(db: Session, viewer: User, kind: str | None = None) -> set[uuid.UUID] | None:
     """Whose pipeline this person may read. ``None`` means everybody's.
 
     ``None`` rather than "the set of all users" on purpose: a company-scoped
     reader must also see the leads owned by *nobody*, and an explicit set would
     exclude the unassigned pool that a manager's whole job is to hand out.
+
+    ``kind`` is ``"lead"`` or ``"customer"`` for the two books Settings > Access
+    controls person by person. A person with a setting there gets exactly it;
+    anybody without one gets what their role and reporting line already gave.
     """
     from app.services.hierarchy import visible_user_ids
 
     if viewer.sees_others and viewer.role_enum.can_administer:
         return None
+    chosen = access_scope(db, viewer, kind)
+    if chosen == "own":
+        return {viewer.id}
+    if chosen in ("all", "all_assign"):
+        return None
     if viewer.sees_others:
         return set(visible_user_ids(db, viewer))
     return {viewer.id}
+
+
+def access_scope(db: Session, viewer: User, kind: str | None) -> str | None:
+    """The explicit setting for this person, or None when they have none."""
+    if kind not in ("lead", "customer"):
+        return None
+    row = db.scalar(select(CrmAccess).where(CrmAccess.user_id == viewer.id))
+    if row is None:
+        return None
+    return row.lead_scope if kind == "lead" else row.customer_scope
+
+
+def require_may_assign(db: Session, viewer: User, kind: str) -> None:
+    """Handing leads or customers to somebody else needs the assign right.
+
+    Administrators always have it, and so does anybody nobody has configured —
+    the rule only bites once Settings > Access has set that person to something.
+    """
+    if can_administer_crm(viewer):
+        return
+    chosen = access_scope(db, viewer, kind)
+    if chosen is not None and chosen != "all_assign":
+        what = "leads" if kind == "lead" else "customers"
+        raise HTTPException(
+            http_status.HTTP_403_FORBIDDEN,
+            f"You can see {what} but not hand them to somebody else. Ask an administrator for the assign right.",
+        )
 
 
 def _scoped(stmt: Select, column, scope: set[uuid.UUID] | None) -> Select:
@@ -475,8 +510,6 @@ MASTER_MODELS: dict[str, Any] = {
     "states": CrmState,
     "districts": CrmDistrict,
     "cities": CrmCity,
-    "products": CrmProduct,
-    "plans": CrmPlan,
     "dispositions": CrmDisposition,
     "visit-types": CrmVisitType,
     "territories": CrmTerritory,
@@ -504,12 +537,6 @@ MASTER_GUARDS: dict[str, list[tuple[Any, Any, str]]] = {
         (CrmLead, CrmLead.industry_id, "lead"),
         (CrmCustomer, CrmCustomer.industry_id, "customer"),
     ],
-    "products": [
-        (CrmLead, CrmLead.product_id, "lead"),
-        (CrmCustomerPlan, CrmCustomerPlan.product_id, "customer plan"),
-        (CrmQuotationLine, CrmQuotationLine.product_id, "quotation line"),
-    ],
-    "plans": [(CrmCustomerPlan, CrmCustomerPlan.plan_id, "customer plan")],
     "dispositions": [(CrmInteraction, CrmInteraction.disposition_id, "logged call")],
     "visit-types": [(CrmVisit, CrmVisit.visit_type_id, "visit")],
     "states": [(CrmLead, CrmLead.state_id, "lead"), (CrmCustomer, CrmCustomer.state_id, "customer")],
@@ -708,7 +735,7 @@ def _follow_up_out(row: CrmFollowUp) -> S.FollowUpOut:
 def _plan_out(row: CrmCustomerPlan) -> S.CustomerPlanOut:
     days = (row.renewal_on - date.today()).days if row.renewal_on else None
     return S.CustomerPlanOut(
-        id=row.id, customer_id=row.customer_id, product_id=row.product_id, plan_id=row.plan_id,
+        id=row.id, customer_id=row.customer_id, product_id=row.product_id,
         product_name=row.product_name, plan_name=row.plan_name, start_on=row.start_on,
         end_on=row.end_on, renewal_on=row.renewal_on, amount=row.amount,
         payment_status=row.payment_status, status=row.status, notes=row.notes,
@@ -832,10 +859,63 @@ def get_lead(db: Session, org_id: uuid.UUID, lead_id: uuid.UUID) -> CrmLead:
 
 def _readable_lead(db: Session, viewer: User, lead_id: uuid.UUID) -> CrmLead:
     lead = get_lead(db, viewer.org_id, lead_id)
-    scope = visible_owner_ids(db, viewer)
+    scope = visible_owner_ids(db, viewer, "lead")
     if scope is not None and lead.owner_id is not None and lead.owner_id not in scope:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Lead not found")
     return lead
+
+
+def _mobile_digits(value: str | None) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def find_lead_by_mobile(
+    db: Session, viewer: User, mobile: str, exclude_id: uuid.UUID | None = None
+) -> dict[str, Any]:
+    """Is this number already a lead in the workspace?
+
+    Compared on digits alone, so "+91 98765-43210" and "919876543210" are the
+    same number. The match covers every lead, not just the ones the viewer may
+    open -- a duplicate is a duplicate whoever owns it -- but a lead outside
+    their reach is reported without its name.
+    """
+    digits = _mobile_digits(mobile)
+    if len(digits) < 6:
+        return {"exists": False}
+    stored = func.replace(func.replace(func.replace(CrmLead.mobile, " ", ""), "-", ""), "+", "")
+    stmt = select(CrmLead).where(CrmLead.org_id == viewer.org_id, stored == digits)
+    if exclude_id is not None:
+        stmt = stmt.where(CrmLead.id != exclude_id)
+    lead = db.scalars(stmt.order_by(CrmLead.created_at)).first()
+    if lead is None:
+        return {"exists": False}
+    scope = visible_owner_ids(db, viewer, "lead")
+    visible = scope is None or lead.owner_id is None or lead.owner_id in scope
+    owner = db.get(User, lead.owner_id) if lead.owner_id else None
+    return {
+        "exists": True,
+        "code": lead.code,
+        "name": lead.name if visible else None,
+        "owner_name": owner.full_name if owner else None,
+        "lead_id": lead.id if visible else None,
+    }
+
+
+def _refuse_duplicate_mobile(
+    db: Session, viewer: User, mobile: str, exclude_id: uuid.UUID | None = None
+) -> None:
+    found = find_lead_by_mobile(db, viewer, mobile, exclude_id)
+    if not found["exists"]:
+        return
+    who = f" ({found['name']})" if found.get("name") else ""
+    owner = f", owned by {found['owner_name']}" if found.get("owner_name") else ""
+    raise HTTPException(
+        http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "reason": "duplicate_mobile",
+            "message": f"This mobile number is already lead {found['code']}{who}{owner}.",
+        },
+    )
 
 
 def list_leads(
@@ -865,7 +945,7 @@ def list_leads(
     reaches tens of thousands of rows, and shipping all of them to draw twenty-
     five is the difference between a page that opens and one that hangs.
     """
-    scope = visible_owner_ids(db, viewer)
+    scope = visible_owner_ids(db, viewer, "lead")
     stmt = select(CrmLead).where(CrmLead.org_id == viewer.org_id)
     stmt = _scoped(stmt, CrmLead.owner_id, scope)
 
@@ -976,6 +1056,7 @@ def create_lead(
     request: Request | None = None,
 ) -> S.LeadOut:
     ensure_defaults(db, viewer.org_id)
+    _refuse_duplicate_mobile(db, viewer, payload.mobile)
     status_id = payload.status_id
     if status_id is None:
         fallback = default_status(db, viewer.org_id)
@@ -1021,6 +1102,10 @@ def update_lead(
 ) -> S.LeadOut:
     lead = _readable_lead(db, viewer, lead_id)
     changes = payload.model_dump(exclude_unset=True)
+    # Only a number that is being changed is checked: a lead saved before this
+    # rule existed must still be editable.
+    if changes.get("mobile") and _mobile_digits(changes["mobile"]) != _mobile_digits(lead.mobile):
+        _refuse_duplicate_mobile(db, viewer, changes["mobile"], lead.id)
 
     if "status_id" in changes and changes["status_id"] != lead.status_id:
         return move_status(
@@ -1029,6 +1114,7 @@ def update_lead(
             extra=changes, request=request,
         )
     if "owner_id" in changes and changes["owner_id"] != lead.owner_id:
+        require_may_assign(db, viewer, "lead")
         new_owner = db.get(User, changes["owner_id"]) if changes["owner_id"] else None
         _log(db, lead, viewer, "assignment",
              f"Assigned to {new_owner.full_name}" if new_owner else "Returned to the unassigned pool")
@@ -1090,7 +1176,8 @@ def bulk_assign(
     db: Session, viewer: User, payload: S.LeadBulkAssign, *, request: Request | None = None
 ) -> int:
     """Hand a batch of leads to one person. Returns how many actually moved."""
-    scope = visible_owner_ids(db, viewer)
+    require_may_assign(db, viewer, "lead")
+    scope = visible_owner_ids(db, viewer, "lead")
     stmt = select(CrmLead).where(
         CrmLead.org_id == viewer.org_id, CrmLead.id.in_(payload.lead_ids)
     )
@@ -1180,6 +1267,50 @@ def add_activity(db: Session, viewer: User, lead_id: uuid.UUID, payload: S.Activ
     )
 
 
+def email_lead(
+    db: Session, viewer: User, lead_id: uuid.UUID, payload: S.LeadEmailIn,
+    *, request: Request | None = None,
+) -> S.ActivityOut:
+    """Send an email to a lead through the workspace's mail connector and put it
+    on the lead's timeline.
+
+    Refused outright, with the reason, when no connector is set up: the shared
+    sender would otherwise only write the message to the server log and report
+    success, and "sent" for a mail that never left is worse than an error.
+    """
+    from app.services import email, mailconfig
+
+    lead = _readable_lead(db, viewer, lead_id)
+    if not mailconfig.resolve(db, org_id=viewer.org_id).configured:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            "Email is not set up yet. Ask an administrator to set up the mail connector, then send again.",
+        )
+    greeting = (payload.name or lead.name or "").strip()
+    body = payload.body.strip()
+    if not email.send(payload.to, payload.subject.strip(), body, org_id=viewer.org_id, bcc=payload.bcc):
+        detail = email.last_error()
+        raise HTTPException(
+            http_status.HTTP_502_BAD_GATEWAY,
+            "The mail server did not accept this message." + (f" ({detail})" if detail else ""),
+        )
+    note = f"Emailed {greeting or payload.to} <{payload.to}> — {payload.subject.strip()}"
+    if payload.bcc:
+        note += f" (bcc {', '.join(payload.bcc)})"
+    row = CrmActivity(org_id=lead.org_id, lead_id=lead.id, actor_id=viewer.id, kind="note", body=note)
+    db.add(row)
+    lead.last_contacted_at = _now()
+    if request is not None:
+        audit(db, org_id=viewer.org_id, actor=viewer, action="crm.lead.email", request=request,
+              target_type="crm_leads", target_id=str(lead.id), detail={"to": payload.to})
+    db.commit()
+    db.refresh(row)
+    return S.ActivityOut(
+        id=row.id, kind=row.kind, body=row.body, actor_id=row.actor_id,
+        actor_name=viewer.full_name, created_at=row.created_at,
+    )
+
+
 def import_leads(
     db: Session, viewer: User, payload: S.LeadImportIn, *, request: Request | None = None
 ) -> S.LeadImportResult:
@@ -1201,7 +1332,13 @@ def import_leads(
         }
 
     statuses, sources = _cache(CrmLeadStatus), _cache(CrmLeadSource)
-    products, states, cities = _cache(CrmProduct), _cache(CrmState), _cache(CrmCity)
+    states, cities = _cache(CrmState), _cache(CrmCity)
+    from app.models.erp import ErpItem
+
+    products = {
+        item.name.strip().lower(): item
+        for item in db.scalars(select(ErpItem).where(ErpItem.org_id == org_id))
+    }
 
     existing_mobiles: set[str] = set()
     if payload.skip_duplicates:
@@ -1609,7 +1746,7 @@ def _readable_customer(db: Session, viewer: User, customer_id: uuid.UUID) -> Crm
     row = db.get(CrmCustomer, customer_id)
     if row is None or row.org_id != viewer.org_id:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Customer not found")
-    scope = visible_owner_ids(db, viewer)
+    scope = visible_owner_ids(db, viewer, "customer")
     if scope is not None and row.manager_id is not None and row.manager_id not in scope:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Customer not found")
     return row
@@ -1629,7 +1766,7 @@ def list_customers(
     manager_id: uuid.UUID | None = None,
     renewal: str | None = None,
 ) -> list[S.CustomerOut]:
-    scope = visible_owner_ids(db, viewer)
+    scope = visible_owner_ids(db, viewer, "customer")
     stmt = (
         select(CrmCustomer)
         .where(CrmCustomer.org_id == viewer.org_id)
@@ -1704,7 +1841,10 @@ def update_customer(
     db: Session, viewer: User, customer_id: uuid.UUID, payload: S.CustomerPatch
 ) -> S.CustomerOut:
     row = _readable_customer(db, viewer, customer_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "manager_id" in changes and changes["manager_id"] != row.manager_id:
+        require_may_assign(db, viewer, "customer")
+    for field, value in changes.items():
         setattr(row, field, value)
     db.commit()
     db.refresh(row)
@@ -1788,18 +1928,17 @@ def customer_detail(db: Session, viewer: User, customer_id: uuid.UUID) -> S.Cust
 
 
 def _plan_defaults(db: Session, org_id: uuid.UUID, payload: S.CustomerPlanIn) -> tuple[str, str | None, date | None]:
-    """Resolve a plan line's snapshot names and its end date.
+    """Resolve a plan line's snapshot name.
 
-    ``end_on`` is computed from the plan's duration when the caller did not
-    give one, which is what makes "sold a 12-month licence today" a two-field
-    entry rather than a date-arithmetic exercise.
+    The renewal date is typed by the person recording the sale; it is not worked
+    out from a plan term any more, because there is no plan master. The end date
+    is whatever was given.
     """
-    product = db.get(CrmProduct, payload.product_id) if payload.product_id else None
-    plan = db.get(CrmPlan, payload.plan_id) if payload.plan_id else None
+    from app.models.erp import ErpItem
+
+    product = db.get(ErpItem, payload.product_id) if payload.product_id else None
     if product is not None and product.org_id != org_id:
         product = None
-    if plan is not None and plan.org_id != org_id:
-        plan = None
 
     name = payload.product_name or (product.name if product else None)
     if not name:
@@ -1807,10 +1946,7 @@ def _plan_defaults(db: Session, org_id: uuid.UUID, payload: S.CustomerPlanIn) ->
             http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"reason": "no_product", "message": "Say what the customer bought."},
         )
-    end_on = payload.end_on
-    if end_on is None and plan is not None and plan.term_days:
-        end_on = payload.start_on + timedelta(days=plan.term_days)
-    return name, payload.plan_name or (plan.name if plan else None), end_on
+    return name, payload.plan_name, payload.end_on
 
 
 def add_plan(
@@ -1820,7 +1956,7 @@ def add_plan(
     product_name, plan_name, end_on = _plan_defaults(db, viewer.org_id, payload)
     row = CrmCustomerPlan(
         org_id=viewer.org_id, customer_id=customer.id, product_id=payload.product_id,
-        plan_id=payload.plan_id, product_name=product_name, plan_name=plan_name,
+        product_name=product_name, plan_name=plan_name,
         start_on=payload.start_on, end_on=end_on,
         # Defaulted to the end date: a renewal conversation that is not
         # scheduled is a renewal that gets noticed after it lapses.
@@ -1843,7 +1979,6 @@ def update_plan(
     _readable_customer(db, viewer, row.customer_id)
     product_name, plan_name, end_on = _plan_defaults(db, viewer.org_id, payload)
     row.product_id = payload.product_id
-    row.plan_id = payload.plan_id
     row.product_name = product_name
     row.plan_name = plan_name
     row.start_on = payload.start_on
@@ -1910,7 +2045,7 @@ def convert_lead(
         product_name, plan_name, end_on = _plan_defaults(db, viewer.org_id, payload.plan)
         db.add(CrmCustomerPlan(
             org_id=viewer.org_id, customer_id=customer.id,
-            product_id=payload.plan.product_id, plan_id=payload.plan.plan_id,
+            product_id=payload.plan.product_id,
             product_name=product_name, plan_name=plan_name,
             start_on=payload.plan.start_on, end_on=end_on,
             renewal_on=payload.plan.renewal_on or end_on,
@@ -2480,7 +2615,6 @@ def _price_lines(
 
         priced.append({
             "product_id": line.product_id,
-            "plan_id": line.plan_id,
             "name": line.name,
             "description": line.description,
             "hsn_sac": line.hsn_sac,
@@ -2721,7 +2855,7 @@ def duplicate_quotation(db: Session, viewer: User, quotation_id: uuid.UUID) -> S
         delivery_terms=source.delivery_terms, warranty_terms=source.warranty_terms,
         lines=[
             S.QuotationLineIn(
-                name=line.name, product_id=line.product_id, plan_id=line.plan_id,
+                name=line.name, product_id=line.product_id,
                 description=line.description, hsn_sac=line.hsn_sac, quantity=line.quantity,
                 rate=line.rate, discount=line.discount,
                 discount_is_percent=line.discount_is_percent, gst_percent=line.gst_percent,
@@ -2914,7 +3048,7 @@ def dashboard(
     workspace ever outgrows it, the fix is a materialised daily rollup, not
     eight queries that can disagree with each other.
     """
-    scope = visible_owner_ids(db, viewer)
+    scope = visible_owner_ids(db, viewer, "lead")
     start = datetime.combine(date_from, time.min, timezone.utc)
     end = datetime.combine(date_to, time.max, timezone.utc)
 
@@ -3154,3 +3288,64 @@ def run_due_reminders(*, on: date | None = None) -> dict:
                 fired += 1
         db.commit()
     return {"reminders_fired": fired}
+
+
+# --------------------------------------------------------------------------- #
+# Settings > Access
+# --------------------------------------------------------------------------- #
+
+
+def list_access(db: Session, viewer: User) -> list[S.AccessMemberOut]:
+    """Every active person, what they own, and their lead and customer scope."""
+    require_admin_crm(viewer)
+    org_id = viewer.org_id
+    people = db.scalars(
+        select(User).where(User.org_id == org_id, User.is_active.is_(True)).order_by(User.full_name)
+    ).all()
+    settings_by_user = {
+        row.user_id: row for row in db.scalars(select(CrmAccess).where(CrmAccess.org_id == org_id))
+    }
+    leads = dict(db.execute(
+        select(CrmLead.owner_id, func.count()).where(CrmLead.org_id == org_id, CrmLead.owner_id.is_not(None))
+        .group_by(CrmLead.owner_id)
+    ).all())
+    customers = dict(db.execute(
+        select(CrmCustomer.manager_id, func.count())
+        .where(CrmCustomer.org_id == org_id, CrmCustomer.manager_id.is_not(None))
+        .group_by(CrmCustomer.manager_id)
+    ).all())
+    out = []
+    for person in people:
+        row = settings_by_user.get(person.id)
+        default = "their team's" if person.sees_others else "their own"
+        out.append(S.AccessMemberOut(
+            user_id=person.id, name=person.full_name, email=person.email,
+            team=person.department_name,
+            is_admin=person.sees_others and person.role_enum.can_administer,
+            own_leads=leads.get(person.id, 0), own_customers=customers.get(person.id, 0),
+            lead_scope=row.lead_scope if row else None,
+            customer_scope=row.customer_scope if row else None,
+            lead_default=default, customer_default=default,
+        ))
+    return out
+
+
+def set_access(
+    db: Session, viewer: User, user_id: uuid.UUID, payload: S.AccessPatch, *, request: Request | None = None
+) -> S.AccessMemberOut:
+    require_admin_crm(viewer)
+    person = db.get(User, user_id)
+    if person is None or person.org_id != viewer.org_id:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "That person is not in this workspace")
+    row = db.scalar(select(CrmAccess).where(CrmAccess.user_id == user_id))
+    if row is None:
+        row = CrmAccess(org_id=viewer.org_id, user_id=user_id)
+        db.add(row)
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(row, field, value)
+    if request is not None:
+        audit(db, org_id=viewer.org_id, actor=viewer, action="crm.access.set", request=request,
+              target_type="users", target_id=str(user_id), detail=changes)
+    db.commit()
+    return next(m for m in list_access(db, viewer) if m.user_id == user_id)

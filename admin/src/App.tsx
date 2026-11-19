@@ -9,6 +9,8 @@ import {
   canSee,
   firstRouteIn,
   itemsIn,
+  costsheetGranted,
+  dashboardOpen,
   locate,
   menuOpen,
   routeOpen,
@@ -51,8 +53,10 @@ import OrgStructure from './pages/OrgStructure'
 import ModuleHub from './components/ModuleHub'
 import DepartmentMaster from './pages/masters/DepartmentMaster'
 import DesignationMaster from './pages/masters/DesignationMaster'
+import BranchMaster from './pages/masters/BranchMaster'
+import LocationMaster from './pages/masters/LocationMaster'
+import HolidayMaster from './pages/masters/HolidayMaster'
 import Hierarchy from './pages/Hierarchy'
-import CostsheetApprovals from './pages/crm/CostsheetApprovals'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Timesheets from './pages/Timesheets'
@@ -111,7 +115,6 @@ import EmployeeHome from './pages/hrms/home/EmployeeHome'
 import LeadDashboard from './pages/crm/LeadDashboard'
 import LeadDetail from './pages/crm/LeadDetail'
 import MyLeads from './pages/crm/MyLeads'
-import Pipeline from './pages/crm/Pipeline'
 import MyFollowUps from './pages/crm/MyFollowUps'
 import MyVisits from './pages/crm/MyVisits'
 import SupportCenter from './pages/crm/SupportCenter'
@@ -148,7 +151,8 @@ function Shell() {
   const hiddenPages = user?.hidden_pages ?? []
   const access = {
     isAdmin, canViewTeam: canViewTeam(user), isOwner: owner, hiddenPages,
-    canApprove: canApproveSomething(user),
+    // The Costsheet tab on its own is reason enough to open the inbox.
+    canApprove: canApproveSomething(user) || costsheetGranted(user?.menu_rights),
     menuRights: user?.menu_rights ?? null,
   }
   const hrmsItems = HRMS_NAV_ITEMS.filter((item) => canSee(item, access))
@@ -645,23 +649,23 @@ function Shell() {
           <Route element={<ModulePanel group={mod('dashboard')} />}>
             <Route
               path="/dashboard"
-              element={access.canViewTeam ? <CompanyOverview /> : <Navigate to="/home" replace />}
+              element={dashboardOpen(access) ? <CompanyOverview /> : <Navigate to="/home" replace />}
             />
             <Route
               path="/dashboards/hr"
-              element={access.canViewTeam ? <HrDashboard /> : <Navigate to="/home" replace />}
+              element={dashboardOpen(access) ? <HrDashboard /> : <Navigate to="/home" replace />}
             />
             <Route
               path="/dashboards/crm"
-              element={access.canViewTeam ? <LeadDashboard overview /> : <Navigate to="/home" replace />}
+              element={dashboardOpen(access) ? <LeadDashboard overview /> : <Navigate to="/home" replace />}
             />
             <Route
               path="/dashboards/erp"
-              element={access.canViewTeam ? <ErpDashboard /> : <Navigate to="/home" replace />}
+              element={dashboardOpen(access) ? <ErpDashboard /> : <Navigate to="/home" replace />}
             />
             <Route
               path="/dashboards/monitor"
-              element={access.canViewTeam ? <Dashboard /> : <Navigate to="/home" replace />}
+              element={dashboardOpen(access) ? <Dashboard /> : <Navigate to="/home" replace />}
             />
           </Route>
 
@@ -704,6 +708,8 @@ function Shell() {
             path="/approvals"
             element={access.canApprove ? <ApprovalsInbox /> : <Navigate to="/home" replace />}
           />
+          {/* Costsheets live on a tab of Approvals; an old link lands there. */}
+          <Route path="/costsheet-approvals" element={<Navigate to="/approvals" replace />} />
           {/* --- Modules ----------------------------------------------------
               Every route below sits inside a PATHLESS layout route, so each page
               gains its module's category rail while keeping the exact URL it
@@ -769,10 +775,6 @@ function Shell() {
                 is not `end`, and would light up beside this one. The data is
                 the CRM's and is scoped by it; the page says so when CRM is not
                 licensed. */}
-            <Route
-              path="/costsheet-approvals"
-              element={access.canViewTeam ? <CostsheetApprovals /> : <Navigate to="/me" replace />}
-            />
           </Route>
 
           {/* No `page(...)` wrapper from here down: that helper enforces the
@@ -962,6 +964,18 @@ function Shell() {
             }
           />
           <Route
+            path="/branches"
+            element={access.canViewTeam ? <BranchMaster /> : <Navigate to="/employees" replace />}
+          />
+          <Route
+            path="/holidays"
+            element={access.canViewTeam ? <HolidayMaster /> : <Navigate to="/employees" replace />}
+          />
+          <Route
+            path="/locations"
+            element={access.canViewTeam ? <LocationMaster /> : <Navigate to="/employees" replace />}
+          />
+          <Route
             path="/masters/:kind"
             element={isAdmin ? <MasterListPage /> : <Navigate to="/" replace />}
           />
@@ -978,7 +992,6 @@ function Shell() {
           <Route element={<ModulePanel group={mod('crm')} />}>
             <Route path="/crm" element={<LeadDashboard />} />
             <Route path="/crm/leads" element={<MyLeads />} />
-            <Route path="/crm/pipeline" element={<Pipeline />} />
             <Route path="/crm/leads/:leadId" element={<LeadDetail />} />
             <Route path="/crm/follow-ups" element={<MyFollowUps />} />
             <Route path="/crm/visits" element={<MyVisits />} />

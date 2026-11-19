@@ -23,8 +23,11 @@ class HrSettingsIn(BaseModel):
     emp_code_next: int = Field(1, ge=1, le=10_000_000)
     default_probation_months: int = Field(6, ge=0, le=36)
     default_notice_days: int = Field(30, ge=0, le=365)
-    probation_warn_days: int = Field(30, ge=1, le=365)
+    #: 0 = never warn.
+    probation_warn_days: int = Field(30, ge=0, le=365)
     document_warn_days: int = Field(60, ge=1, le=365)
+    #: 0 = list no birthdays.
+    birthday_lookahead_days: int = Field(30, ge=0, le=365)
 
 
 class HrSettingsOut(HrSettingsIn):
@@ -43,6 +46,7 @@ def _out(db, org_id) -> HrSettingsOut:
         default_notice_days=row.default_notice_days,
         probation_warn_days=row.probation_warn_days,
         document_warn_days=row.document_warn_days,
+        birthday_lookahead_days=row.birthday_lookahead_days,
         next_code=svc.preview_code(db, org_id),
     )
 

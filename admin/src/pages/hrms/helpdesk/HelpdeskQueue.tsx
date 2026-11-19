@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/helpdesk.css'
 import { api } from '../../../lib/api'
@@ -8,6 +8,7 @@ import { dateTime, relativeTime } from '../../../lib/format'
 import type { User } from '../../../lib/types'
 import { Empty, EmptyState, ErrorNote, Loading, StatTile } from '../../../components/ui'
 import { IconInfo } from '../../../components/Icons'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
 import {
   PRIORITIES,
   PRIORITY_LABEL,
@@ -89,6 +90,57 @@ function isEntitled(detail: QueueDetail): detail is EntitledDetail {
 
 /* ----------------------------------------------------------------- page --- */
 
+type QueueColumn = ColumnDef & {
+  td: (row: QueueRow, ctx: { onSelect: () => void }) => ReactNode
+  className?: string
+}
+
+const QUEUE_COLUMNS: QueueColumn[] = [
+  { key: 'ticket', label: 'Ticket', locked: true, td: (row, ctx) => (
+    <>
+      <button className="hd-rowbtn" onClick={ctx.onSelect}>
+        <div className="hd-subject">{row.subject}</div>
+        <div className="hd-sub">
+          {row.raised_by_name ?? 'Former employee'}
+          {' · '}
+          {row.category_name ?? 'Uncategorised'}
+        </div>
+      </button>
+      <div className="hd-detail-meta" style={{ marginTop: 6 }}>
+        <TicketStatusPill value={row.status} />
+        <PriorityTag value={row.priority} />
+      </div>
+    </>
+  ) },
+  { key: 'assignee', label: 'Assignee', td: (row) => row.assigned_to_name ?? <span className="hd-muted">unassigned</span> },
+  { key: 'notes', label: 'Notes', td: (row) => {
+    /* Counts render only on the rows the API sent them for. A row without
+       them is not a row with none — see D-026 and `counts()`. */
+    const c = counts(row)
+    return c ? (
+      <span className="hd-counts">
+        <b>{c.comment_count}</b> total
+        {c.internal_comment_count > 0 && (
+          <>
+            {' · '}
+            <span className="hd-count-int">{c.internal_comment_count} internal</span>
+          </>
+        )}
+      </span>
+    ) : (
+      <span className="hd-unknown" title="Not shown for this ticket">
+        —
+      </span>
+    )
+  } },
+  { key: 'age', label: 'Age', className: 'hd-when', td: (row) => relativeTime(row.created_at) },
+  { key: 'status', label: 'Status', initial: false, td: (row) => <TicketStatusPill value={row.status} /> },
+  { key: 'priority', label: 'Priority', initial: false, td: (row) => <PriorityTag value={row.priority} /> },
+  { key: 'category', label: 'Category', initial: false, td: (row) => row.category_name ?? 'Uncategorised' },
+  { key: 'raised_by', label: 'Raised by', initial: false, td: (row) => row.raised_by_name ?? 'Former employee' },
+  { key: 'raised_on', label: 'Raised on', initial: false, className: 'hd-when', td: (row) => dateTime(row.created_at) },
+]
+
 export default function HelpdeskQueue() {
   const { user } = useAuth()
   /* Role first, then the flag — the same order the server composes them in.
@@ -103,6 +155,7 @@ export default function HelpdeskQueue() {
   const [status, setStatus] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [openOnly, setOpenOnly] = useState(true)
+  const columns = useColumns('hd-queue', QUEUE_COLUMNS)
 
   const key = `hd-queue:${scope}:${status}:${categoryId}:${openOnly}`
   const queue = useQuery<QueueRow[]>(
@@ -241,6 +294,8 @@ export default function HelpdeskQueue() {
           <span>Only open and in progress</span>
         </label>
         <span className="filter-count">{rows.length} shown</span>
+        <ColumnSettings defs={QUEUE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
       </div>
 
       <div className="hd-split">
@@ -265,10 +320,9 @@ export default function HelpdeskQueue() {
               <table>
                 <thead>
                   <tr>
-                    <th>Ticket</th>
-                    <th>Assignee</th>
-                    <th>Notes</th>
-                    <th>Age</th>
+                    {(columns.visible as QueueColumn[]).map((col) => (
+                      <th key={col.key}>{col.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -276,6 +330,7 @@ export default function HelpdeskQueue() {
                     <QueueRowView
                       key={row.id}
                       row={row}
+                      columns={columns.visible as QueueColumn[]}
                       selected={row.id === selected}
                       onSelect={() => select(row.id)}
                     />
@@ -310,51 +365,20 @@ export default function HelpdeskQueue() {
 
 function QueueRowView({
   row,
+  columns,
   selected,
   onSelect,
 }: {
   row: QueueRow
+  columns: QueueColumn[]
   selected: boolean
   onSelect: () => void
 }) {
-  const c = counts(row)
   return (
     <tr className={selected ? 'hd-row-selected' : undefined}>
-      <td>
-        <button className="hd-rowbtn" onClick={onSelect}>
-          <div className="hd-subject">{row.subject}</div>
-          <div className="hd-sub">
-            {row.raised_by_name ?? 'Former employee'}
-            {' · '}
-            {row.category_name ?? 'Uncategorised'}
-          </div>
-        </button>
-        <div className="hd-detail-meta" style={{ marginTop: 6 }}>
-          <TicketStatusPill value={row.status} />
-          <PriorityTag value={row.priority} />
-        </div>
-      </td>
-      <td>{row.assigned_to_name ?? <span className="hd-muted">unassigned</span>}</td>
-      <td>
-        {/* Counts render only on the rows the API sent them for. A row without
-            them is not a row with none — see D-026 and `counts()`. */}
-        {c ? (
-          <span className="hd-counts">
-            <b>{c.comment_count}</b> total
-            {c.internal_comment_count > 0 && (
-              <>
-                {' · '}
-                <span className="hd-count-int">{c.internal_comment_count} internal</span>
-              </>
-            )}
-          </span>
-        ) : (
-          <span className="hd-unknown" title="Not shown for this ticket">
-            —
-          </span>
-        )}
-      </td>
-      <td className="hd-when">{relativeTime(row.created_at)}</td>
+      {columns.map((col) => (
+        <td key={col.key} className={col.className}>{col.td(row, { onSelect })}</td>
+      ))}
     </tr>
   )
 }

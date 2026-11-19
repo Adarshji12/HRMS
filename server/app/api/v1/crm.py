@@ -57,8 +57,6 @@ MASTER_SCHEMAS: dict[str, tuple[type, type]] = {
     "states": (S.StateIn, S.StateOut),
     "districts": (S.DistrictIn, S.DistrictOut),
     "cities": (S.CityIn, S.CityOut),
-    "products": (S.ProductIn, S.ProductOut),
-    "plans": (S.PlanIn, S.PlanOut),
     "dispositions": (S.DispositionIn, S.DispositionOut),
     "visit-types": (S.VisitTypeIn, S.VisitTypeOut),
     "territories": (S.TerritoryIn, S.TerritoryOut),
@@ -104,7 +102,7 @@ def _serialise_master(kind: str, row, db, org_id) -> dict:
     """
     from sqlalchemy import func, select
 
-    from app.models import CrmLead, CrmPlan
+    from app.models import CrmLead
 
     _, out_model = _master_schemas(kind)
     data = {
@@ -118,10 +116,6 @@ def _serialise_master(kind: str, row, db, org_id) -> dict:
                 CrmLead.org_id == org_id, CrmLead.status_id == row.id
             )
         ) or 0
-    if kind == "products":
-        data["plan_count"] = db.scalar(
-            select(func.count()).select_from(CrmPlan).where(CrmPlan.product_id == row.id)
-        ) or 0
     if kind == "states":
         data["country_name"] = row.country.name if row.country else None
     if kind == "cities":
@@ -130,8 +124,6 @@ def _serialise_master(kind: str, row, db, org_id) -> dict:
         data["district_name"] = row.district.name if row.district else None
     if kind == "districts":
         data["state_name"] = row.state.name if row.state else None
-    if kind == "plans":
-        data["product_name"] = row.product.name if row.product else None
     if kind == "territories":
         from app.models import CrmState
 
@@ -431,6 +423,26 @@ def lead_dashboard(
 # --------------------------------------------------------------------------- #
 
 
+@router.get("/access", response_model=list[S.AccessMemberOut])
+def list_access(viewer: CurrentUser, db: DbSession) -> list[S.AccessMemberOut]:
+    return svc.list_access(db, viewer)
+
+
+@router.put("/access/{user_id}", response_model=S.AccessMemberOut)
+def set_access(
+    user_id: uuid.UUID, payload: S.AccessPatch, viewer: CurrentUser, db: DbSession, request: Request
+) -> S.AccessMemberOut:
+    return svc.set_access(db, viewer, user_id, payload, request=request)
+
+
+@router.get("/leads/check-mobile")
+def check_lead_mobile(
+    viewer: CurrentUser, db: DbSession, mobile: str, exclude_id: uuid.UUID | None = None
+) -> dict:
+    """Whether a number is already a lead -- asked as the form is filled in."""
+    return svc.find_lead_by_mobile(db, viewer, mobile, exclude_id)
+
+
 @router.get("/leads", response_model=S.LeadPage)
 def list_leads(
     viewer: CurrentUser,
@@ -542,6 +554,13 @@ def add_activity(
     lead_id: uuid.UUID, payload: S.ActivityIn, viewer: CurrentUser, db: DbSession
 ) -> S.ActivityOut:
     return svc.add_activity(db, viewer, lead_id, payload)
+
+
+@router.post("/leads/{lead_id}/email", response_model=S.ActivityOut)
+def email_lead(
+    lead_id: uuid.UUID, payload: S.LeadEmailIn, viewer: CurrentUser, db: DbSession, request: Request
+) -> S.ActivityOut:
+    return svc.email_lead(db, viewer, lead_id, payload, request=request)
 
 
 @router.post("/leads/{lead_id}/convert", response_model=S.CustomerOut,

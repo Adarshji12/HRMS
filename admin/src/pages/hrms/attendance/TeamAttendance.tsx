@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import '../../../styles/attendance.css'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
@@ -17,6 +17,7 @@ import {
   type AttendanceDay,
   type AttendanceStatus,
 } from './MyAttendance'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
 import {
   canApproveRegularization,
   DayRegularization,
@@ -28,6 +29,58 @@ import {
 const DETAIL_DAYS = 30
 
 type Panel = 'muster' | 'corrections'
+
+type MusterColumn = ColumnDef & {
+  td: (row: AttendanceDay, ctx: { timezone: string | undefined; onOpen: (userId: string, name: string) => void }) => ReactNode
+  className?: string
+  thClass?: string
+}
+
+const WORK_MODE_LABEL: Record<string, string> = {
+  office: 'Office',
+  work_from_home: 'Work from home',
+  on_duty: 'On duty',
+}
+
+const MUSTER_COLUMNS: MusterColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (row, ctx) => (
+    <Identity
+      name={row.user_name ?? 'Unnamed'}
+      small
+      meta={
+        row.user_id ? (
+          <button
+            className="link-btn"
+            onClick={() => ctx.onOpen(row.user_id!, row.user_name ?? 'Employee')}
+          >
+            Last {DETAIL_DAYS} days
+          </button>
+        ) : null
+      }
+    />
+  ) },
+  { key: 'shift', label: 'Shift', className: 'muted-sm', td: (row) => (
+    row.shift_name ? (
+      <>
+        {row.shift_name}
+        <div className="muted-sm">
+          {row.shift_start_time} – {row.shift_end_time}
+        </div>
+      </>
+    ) : (
+      'Unassigned'
+    )
+  ) },
+  { key: 'in', label: 'In', td: (row, ctx) => clockTime(row.check_in_at, ctx.timezone) },
+  { key: 'out', label: 'Out', td: (row, ctx) => clockTime(row.check_out_at, ctx.timezone) },
+  { key: 'worked', label: 'Worked', className: 'num', thClass: 'num', td: (row) => <b>{hm(row.worked_minutes)}</b> },
+  { key: 'status', label: 'Status', td: (row) => <StatusPill status={row.status} /> },
+  { key: 'flags', label: 'Flags', td: (row) => <DayFlags day={row} /> },
+  { key: 'work_mode', label: 'Work mode', initial: false, td: (row) => (row.work_mode ? WORK_MODE_LABEL[row.work_mode] ?? row.work_mode : '—') },
+  { key: 'late', label: 'Late by', initial: false, className: 'num', thClass: 'num', td: (row) => (row.is_late ? hm(row.late_minutes) : '—') },
+  { key: 'early_out', label: 'Early out by', initial: false, className: 'num', thClass: 'num', td: (row) => (row.is_early_out ? hm(row.early_out_minutes) : '—') },
+  { key: 'note', label: 'Note', initial: false, className: 'muted-sm', td: (row) => row.note || '—' },
+]
 
 export default function TeamAttendance() {
   const { user, organization } = useAuth()
@@ -162,6 +215,7 @@ function Muster({
   timezone: string | undefined
   onOpen: (userId: string, name: string) => void
 }) {
+  const columns = useColumns('attendance-muster', MUSTER_COLUMNS)
   const { data, error, loading, refetching } = useQuery<AttendanceDay[]>(`att-team:${day}`, () =>
     api.get<AttendanceDay[]>(`/attendance/team?start=${day}&end=${day}`),
   )
@@ -215,6 +269,8 @@ function Muster({
         <div className="card-head">
           <h2 className="card-title">Muster</h2>
           <span className="card-note">{hm(counts.worked)} worked across the team</span>
+          <ColumnSettings defs={MUSTER_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
         </div>
 
         {/* Said plainly, because the alternative is a manager concluding that
@@ -244,57 +300,19 @@ function Muster({
             <table>
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Shift</th>
-                  <th>In</th>
-                  <th>Out</th>
-                  <th className="num">Worked</th>
-                  <th>Status</th>
-                  <th>Flags</th>
+                  {columns.visible.map((col) => (
+                    <th key={col.key} className={(col as MusterColumn).thClass}>{col.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.user_id ?? row.date}>
-                    <td>
-                      <Identity
-                        name={row.user_name ?? 'Unnamed'}
-                        small
-                        meta={
-                          row.user_id ? (
-                            <button
-                              className="link-btn"
-                              onClick={() => onOpen(row.user_id!, row.user_name ?? 'Employee')}
-                            >
-                              Last {DETAIL_DAYS} days
-                            </button>
-                          ) : null
-                        }
-                      />
-                    </td>
-                    <td className="muted-sm">
-                      {row.shift_name ? (
-                        <>
-                          {row.shift_name}
-                          <div className="muted-sm">
-                            {row.shift_start_time} – {row.shift_end_time}
-                          </div>
-                        </>
-                      ) : (
-                        'Unassigned'
-                      )}
-                    </td>
-                    <td>{clockTime(row.check_in_at, timezone)}</td>
-                    <td>{clockTime(row.check_out_at, timezone)}</td>
-                    <td className="num">
-                      <b>{hm(row.worked_minutes)}</b>
-                    </td>
-                    <td>
-                      <StatusPill status={row.status} />
-                    </td>
-                    <td>
-                      <DayFlags day={row} />
-                    </td>
+                    {columns.visible.map((col) => (
+                      <td key={col.key} className={(col as MusterColumn).className}>
+                        {(col as MusterColumn).td(row, { timezone, onOpen })}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

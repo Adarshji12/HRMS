@@ -15,6 +15,8 @@ import {
 import { CrmPage } from '../crm/parts'
 import { todayISO } from '../crm/api'
 import { erp, erpError, qtyText, rupees, type Comparison, type Rfq, type Vendor } from './api'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import { cells, type Col } from './listColumns'
 import RfqPrint from './RfqPrint'
 import '../../styles/invoice.css'
 import '../../styles/so-view.css'
@@ -61,7 +63,59 @@ function pageWindow(page: number, pages: number): number[] {
   return [...near].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b)
 }
 
+type RfqColumn = Col<Rfq> & { sort?: string; num?: boolean }
+const RFQ_COLUMNS: RfqColumn[] = [
+  { key: 'number', label: 'RFQ no.', locked: true, sort: 'number', td: (r) => {
+    const late = overdue(r, todayISO())
+    return (
+      <>
+        <span className="pol-no">{r.number}</span>
+        {(late || r.requisition_number) && (
+          <span className="sol-tags">
+            {late && <em className="is-high">Overdue</em>}
+            {r.requisition_number && <em title="Raised from this requisition">{r.requisition_number}</em>}
+          </span>
+        )}
+      </>
+    )
+  } },
+  { key: 'created', label: 'RFQ date', sort: 'created', td: (r) => fullDate(r.rfq_date ?? r.created_at) },
+  { key: 'title', label: 'Title', sort: 'title', className: 'rfl-title', td: (r) => (
+    <>
+      <b title={r.title}>{r.title}</b>
+      <small>{r.lines.length} {r.lines.length === 1 ? 'item' : 'items'}{r.lines[0] ? ` · ${r.lines[0].description}${r.lines.length > 1 ? ` +${r.lines.length - 1}` : ''}` : ''}</small>
+    </>
+  ) },
+  { key: 'due_date', label: 'Quotes due', sort: 'due_date', className: (r) => (overdue(r, todayISO()) ? 'rfl-late' : ''),
+    td: (r) => fullDate(r.due_date) ?? <span className="itl-muted">—</span> },
+  { key: 'quotes', label: 'Quotes', sort: 'quotes', td: (r) => {
+    const got = quoted(r)
+    return (
+      <span className="rfl-bar" title={`${got} of ${r.vendors.length} vendors have quoted`}>
+        <i style={{ width: `${r.vendors.length ? (got / r.vendors.length) * 100 : 0}%` }} /><em>{got} / {r.vendors.length}</em>
+      </span>
+    )
+  } },
+  { key: 'lowest', label: 'Lowest landed', sort: 'lowest', num: true, className: 'crm-num',
+    td: (r) => (r.lowest_landed ? <b className="pol-amt">{rupees(r.lowest_landed)}</b> : <span className="itl-muted">—</span>) },
+  { key: 'awarded', label: 'Awarded to', className: 'rfl-award', td: (r) => (
+    r.awarded_vendor ? <><b title={r.awarded_vendor}>{r.awarded_vendor}</b>{r.purchase_order_number && <small>{r.purchase_order_number}</small>}</> : <span className="itl-muted">—</span>
+  ) },
+  { key: 'status', label: 'Status', sort: 'status', td: (r) => {
+    const st = stage(r)
+    return <span className={`crm-state crm-state-${st === 'to_award' ? 'good' : TONE[r.status]}`}>{STAGE_TEXT[st]}</span>
+  } },
+  { key: 'warehouse', label: 'Deliver to', initial: false, td: (r) => r.warehouse_name || '—' },
+  { key: 'required_by', label: 'Goods needed by', initial: false, td: (r) => fullDate(r.required_by) ?? '—' },
+  { key: 'contact', label: 'Contact', initial: false, td: (r) => r.contact_person || '—' },
+  { key: 'payment_terms', label: 'Payment terms', initial: false, td: (r) => r.payment_terms || '—' },
+  { key: 'delivery_terms', label: 'Delivery terms', initial: false, td: (r) => r.delivery_terms || '—' },
+  { key: 'awarded_total', label: 'Awarded value', initial: false, thClass: 'crm-num', className: 'crm-num', td: (r) => (r.awarded_total ? rupees(r.awarded_total) : '—') },
+  { key: 'created_by', label: 'Created by', initial: false, td: (r) => r.created_by_name || '—' },
+]
+
 export default function ErpRfqs() {
+  const columns = useColumns('erp-rfqs', RFQ_COLUMNS)
   const { can } = useAccess()
   const buyer = can('can_manage_procurement')
   const navigate = useNavigate()
@@ -251,6 +305,8 @@ export default function ErpRfqs() {
               </>
             )}
           </div>
+          <ColumnSettings defs={RFQ_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
           <div className="ivl-export">
             <button type="button" className="btn" disabled={!total} aria-haspopup="menu" aria-expanded={exporting}
               title={total ? `Export all ${total} matching` : 'Nothing to export'} onClick={() => setExporting((v) => !v)}>
@@ -281,47 +337,14 @@ export default function ErpRfqs() {
         ) : (
           <div className="table-wrap"><table className="itl sol rfl">
             <thead><tr>
-              <SortTh col="number" sort={sort} dir={dir} onSort={onSort}>RFQ no.</SortTh>
-              <SortTh col="created" sort={sort} dir={dir} onSort={onSort}>RFQ date</SortTh>
-              <SortTh col="title" sort={sort} dir={dir} onSort={onSort}>Title</SortTh>
-              <SortTh col="due_date" sort={sort} dir={dir} onSort={onSort}>Quotes due</SortTh>
-              <SortTh col="quotes" sort={sort} dir={dir} onSort={onSort}>Quotes</SortTh>
-              <SortTh col="lowest" sort={sort} dir={dir} onSort={onSort} num>Lowest landed</SortTh>
-              <th>Awarded to</th>
-              <SortTh col="status" sort={sort} dir={dir} onSort={onSort}>Status</SortTh>
-              <th className="itl-c-act">Actions</th>
+              {(columns.visible as RfqColumn[]).map((c) => c.sort
+                ? <SortTh key={c.key} col={c.sort} sort={sort} dir={dir} onSort={onSort} num={c.num}>{c.label}</SortTh>
+                : <th key={c.key} className={c.thClass}>{c.label}</th>)}<th className="itl-c-act">Actions</th>
             </tr></thead>
             <tbody>{pageRows.map((r) => {
-              const late = overdue(r, today)
-              const got = quoted(r)
-              const st = stage(r)
               return (
                 <tr key={r.id} onClick={() => setOpenId(r.id)} className={`sol-row${r.status === 'cancelled' ? ' is-off' : ''}`}>
-                  <td>
-                    <span className="pol-no">{r.number}</span>
-                    {(late || r.requisition_number) && (
-                      <span className="sol-tags">
-                        {late && <em className="is-high">Overdue</em>}
-                        {r.requisition_number && <em title="Raised from this requisition">{r.requisition_number}</em>}
-                      </span>
-                    )}
-                  </td>
-                  <td>{fullDate(r.rfq_date ?? r.created_at)}</td>
-                  <td className="rfl-title">
-                    <b title={r.title}>{r.title}</b>
-                    <small>{r.lines.length} {r.lines.length === 1 ? 'item' : 'items'}{r.lines[0] ? ` · ${r.lines[0].description}${r.lines.length > 1 ? ` +${r.lines.length - 1}` : ''}` : ''}</small>
-                  </td>
-                  <td className={late ? 'rfl-late' : undefined}>{fullDate(r.due_date) ?? <span className="itl-muted">—</span>}</td>
-                  <td>
-                    <span className="rfl-bar" title={`${got} of ${r.vendors.length} vendors have quoted`}>
-                      <i style={{ width: `${r.vendors.length ? (got / r.vendors.length) * 100 : 0}%` }} /><em>{got} / {r.vendors.length}</em>
-                    </span>
-                  </td>
-                  <td className="crm-num">{r.lowest_landed ? <b className="pol-amt">{rupees(r.lowest_landed)}</b> : <span className="itl-muted">—</span>}</td>
-                  <td className="rfl-award">
-                    {r.awarded_vendor ? <><b title={r.awarded_vendor}>{r.awarded_vendor}</b>{r.purchase_order_number && <small>{r.purchase_order_number}</small>}</> : <span className="itl-muted">—</span>}
-                  </td>
-                  <td><span className={`crm-state crm-state-${st === 'to_award' ? 'good' : TONE[r.status]}`}>{STAGE_TEXT[st]}</span></td>
+                  {cells<Rfq>(columns.visible, r)}
                   <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="crm-row-actions itl-actions">
                       <button className="crm-icon-btn" title="View" aria-label={`View ${r.number}`} onClick={() => setOpenId(r.id)}><IconSheet size={14} /></button>
@@ -403,6 +426,26 @@ interface FormLine { key: string; id?: string; item_id: string; description: str
 const newKey = () => Math.random().toString(36).slice(2)
 const blank = (): FormLine => ({ key: newKey(), item_id: '', description: '', specification: '', quantity: '1', uom: 'Nos', target_rate: '', linked: false })
 
+const RFQ_SECTIONS: FieldSection[] = [
+  { id: 'details', label: 'RFQ details' },
+  { id: 'notes', label: 'Terms & notes' },
+]
+// The title is what the server requires of an RFQ. The items and the vendors to
+// ask are not part of this list.
+const RFQ_FIELDS: FieldDef[] = [
+  { key: 'title', label: 'Title', section: 'details', fixed: true },
+  { key: 'rfq_date', label: 'RFQ date', section: 'details' },
+  { key: 'due_date', label: 'Quotes due by', section: 'details' },
+  { key: 'required_by', label: 'Goods needed by', section: 'details' },
+  { key: 'warehouse_id', label: 'Deliver to', section: 'details' },
+  { key: 'contact_person', label: 'Contact person', section: 'details' },
+  { key: 'payment_terms', label: 'Payment terms', section: 'details' },
+  { key: 'delivery_terms', label: 'Delivery terms', section: 'details' },
+  { key: 'quote_validity_days', label: 'Quote valid for (days)', section: 'details' },
+  { key: 'terms', label: 'Terms and instructions for vendors', section: 'notes' },
+  { key: 'notes', label: 'Internal notes (not printed)', section: 'notes' },
+]
+
 function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => void; onSaved: (r: Rfq, issued: boolean) => void }) {
   const items = useItems()
   const warehouses = useQuery('erp-wh-active', () => erp.warehouses(true))
@@ -434,8 +477,39 @@ function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => vo
   const dueBad = Boolean(head.due_date && head.due_date < head.rfq_date)
   const needBad = Boolean(head.required_by && head.required_by < head.rfq_date)
   const target = used.reduce((t, l) => t + Number(l.quantity || 0) * Number(l.target_rate || 0), 0)
+  const fields = useFieldModes('erp-rfq-form', RFQ_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = {
+    rfq_date: !head.rfq_date, due_date: !head.due_date, required_by: !head.required_by, warehouse_id: !head.warehouse_id,
+    contact_person: !head.contact_person.trim(), payment_terms: !head.payment_terms.trim(), delivery_terms: !head.delivery_terms.trim(),
+    quote_validity_days: !head.quote_validity_days.trim(), terms: !head.terms.trim(), notes: !head.notes.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const fieldNodes: Record<string, ReactNode> = {
+    title: <Field label="Title" required wide><input value={head.title} maxLength={200} onChange={set('title')} placeholder="e.g. Network switches for the Pune branch" /></Field>,
+    rfq_date: fm('rfq_date') !== 'hide' && <Field label="RFQ date" required={rq('rfq_date')}><input type="date" value={head.rfq_date} onChange={set('rfq_date')} /></Field>,
+    due_date: fm('due_date') !== 'hide' && <Field label="Quotes due by" required={rq('due_date')}><input type="date" value={head.due_date} min={head.rfq_date} className={dueBad ? 'is-bad' : undefined} onChange={set('due_date')} /></Field>,
+    required_by: fm('required_by') !== 'hide' && <Field label="Goods needed by" required={rq('required_by')}><input type="date" value={head.required_by} min={head.rfq_date} className={needBad ? 'is-bad' : undefined} onChange={set('required_by')} /></Field>,
+    warehouse_id: fm('warehouse_id') !== 'hide' && (
+      <Field label="Deliver to" required={rq('warehouse_id')}>
+        <select value={head.warehouse_id} onChange={set('warehouse_id')}>
+          <option value="">Select warehouse</option>
+          {(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </Field>
+    ),
+    contact_person: fm('contact_person') !== 'hide' && <Field label="Contact person" required={rq('contact_person')}><input value={head.contact_person} maxLength={120} onChange={set('contact_person')} placeholder="Who vendors should call" /></Field>,
+    payment_terms: fm('payment_terms') !== 'hide' && <Field label="Payment terms" required={rq('payment_terms')}><input list="rff-pay" value={head.payment_terms} maxLength={160} onChange={set('payment_terms')} placeholder="e.g. 30 days from invoice" /></Field>,
+    delivery_terms: fm('delivery_terms') !== 'hide' && <Field label="Delivery terms" required={rq('delivery_terms')}><input list="rff-del" value={head.delivery_terms} maxLength={160} onChange={set('delivery_terms')} placeholder="e.g. FOR destination" /></Field>,
+    quote_validity_days: fm('quote_validity_days') !== 'hide' && <Field label="Quote valid for (days)" required={rq('quote_validity_days')}><input inputMode="numeric" value={head.quote_validity_days} onChange={(e) => setHead({ ...head, quote_validity_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="30" /></Field>,
+    terms: fm('terms') !== 'hide' && <Field label="Terms and instructions for vendors" required={rq('terms')}><textarea rows={3} value={head.terms} onChange={set('terms')} placeholder="e.g. Quote with make and model. Prices inclusive of packing. Mention GST separately." /></Field>,
+    notes: fm('notes') !== 'hide' && <Field label="Internal notes (not printed)" required={rq('notes')}><textarea rows={3} value={head.notes} onChange={set('notes')} placeholder="e.g. Budget approved up to ₹1.2 lakh" /></Field>,
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
   const block = !head.title.trim() ? 'Give the RFQ a title' : !used.length ? 'Add at least one item' : lineBad ? 'Every item needs a quantity above 0'
-    : dueBad ? 'Quotes cannot be due before the RFQ date' : needBad ? 'The goods cannot be needed before the RFQ date' : !picked.length ? 'Pick at least one vendor' : null
+    : dueBad ? 'Quotes cannot be due before the RFQ date' : needBad ? 'The goods cannot be needed before the RFQ date' : !picked.length ? 'Pick at least one vendor' : missing ? 'Fill in the fields marked *' : null
   const shownVendors = (vendors.data ?? []).filter((v) => !vq.trim() || `${v.legal_name} ${v.code} ${v.category ?? ''}`.toLowerCase().includes(vq.trim().toLowerCase()))
   const vendorName = (id: string) => (vendors.data ?? []).find((v) => v.id === id)?.legal_name ?? rfq?.vendors.find((v) => v.vendor_id === id)?.legal_name ?? 'Vendor'
 
@@ -469,23 +543,14 @@ function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => vo
       <div className="rff-body">
         <section className="rff-sec">
           <h3>RFQ details</h3>
-          <div className="rff-grid">
-            <Field label="Title" required wide><input value={head.title} maxLength={200} onChange={set('title')} placeholder="e.g. Network switches for the Pune branch" /></Field>
-            <Field label="RFQ date"><input type="date" value={head.rfq_date} onChange={set('rfq_date')} /></Field>
-            <Field label="Quotes due by"><input type="date" value={head.due_date} min={head.rfq_date} className={dueBad ? 'is-bad' : undefined} onChange={set('due_date')} /></Field>
-            <Field label="Goods needed by"><input type="date" value={head.required_by} min={head.rfq_date} className={needBad ? 'is-bad' : undefined} onChange={set('required_by')} /></Field>
-            <Field label="Deliver to">
-              <select value={head.warehouse_id} onChange={set('warehouse_id')}>
-                <option value="">Select warehouse</option>
-                {(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Contact person"><input value={head.contact_person} maxLength={120} onChange={set('contact_person')} placeholder="Who vendors should call" /></Field>
-            <Field label="Payment terms"><input list="rff-pay" value={head.payment_terms} maxLength={160} onChange={set('payment_terms')} placeholder="e.g. 30 days from invoice" /></Field>
-            <Field label="Delivery terms"><input list="rff-del" value={head.delivery_terms} maxLength={160} onChange={set('delivery_terms')} placeholder="e.g. FOR destination" /></Field>
-            <Field label="Quote valid for (days)"><input inputMode="numeric" value={head.quote_validity_days} onChange={(e) => setHead({ ...head, quote_validity_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="30" /></Field>
+          <div className="lf-settings">
+            <FieldSettings defs={RFQ_FIELDS} sections={RFQ_SECTIONS} modes={fields.modes} order={fields.order}
+              onSave={fields.save} onReset={fields.reset} />
           </div>
-          <datalist id="rff-pay">{PAYMENT_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
+          <div className="rff-grid">
+            {fieldsOf('details')}
+          </div>
+                    <datalist id="rff-pay">{PAYMENT_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
           <datalist id="rff-del">{DELIVERY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
           <datalist id="rff-units">{UNITS.map((t) => <option key={t} value={t} />)}</datalist>
         </section>
@@ -552,8 +617,7 @@ function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => vo
         </section>
 
         <section className="rff-sec rff-two">
-          <Field label="Terms and instructions for vendors"><textarea rows={3} value={head.terms} onChange={set('terms')} placeholder="e.g. Quote with make and model. Prices inclusive of packing. Mention GST separately." /></Field>
-          <Field label="Internal notes (not printed)"><textarea rows={3} value={head.notes} onChange={set('notes')} placeholder="e.g. Budget approved up to ₹1.2 lakh" /></Field>
+          {fieldsOf('notes')}
         </section>
       </div>
     </Dialog>

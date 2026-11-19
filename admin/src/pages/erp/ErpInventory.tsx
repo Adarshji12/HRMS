@@ -14,7 +14,9 @@ import { downloadCsv, downloadXlsx } from '../../lib/sheet'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconCard, IconDownload, IconPlus, IconSearch, IconSliders, IconTrash } from '../../components/Icons'
 import { todayISO } from '../crm/api'
-import { CONDITIONS, erp, erpError, qtyText, rupees, type StockDoc } from './api'
+import { CONDITIONS, erp, erpError, qtyText, rupees, type Movement, type StockBalance, type StockDoc } from './api'
+import { ColumnSettings, useColumns } from '../../components/ViewSettings'
+import { cells, heads, type Col } from './listColumns'
 import { DATE_RANGES, rangeDates, type DateRange } from './ErpBilling'
 import {
   ChainView, DecideBar, Dialog, ErpPage, ErpState, Facts, label, Note, ReasonDialog, SearchSelect,
@@ -156,10 +158,32 @@ function localDay(iso: string) {
 type StockView = '' | 'low' | 'reserved' | 'unsaleable'
 const STOCK_VIEWS: [Exclude<StockView, ''>, string][] = [['low', 'Low stock'], ['reserved', 'Reserved'], ['unsaleable', 'Not saleable']]
 
+const stockLow = (r: { reorder_level: string; available_qty: string }) => Number(r.reorder_level) > 0 && Number(r.available_qty) <= Number(r.reorder_level)
+type StockColumn = Col<StockBalance>
+const STOCK_COLUMNS: StockColumn[] = [
+  { key: 'item', label: 'Item', locked: true, td: (r) => <><span className="ivl-no">{r.item_code}</span><small className="ivl-kind stk-name" title={r.item_name}>{r.item_name}</small></> },
+  { key: 'warehouse', label: 'Warehouse', td: (r) => r.warehouse_name },
+  { key: 'condition', label: 'Condition', td: (r) => <span className={`stk-kind is-${r.condition === 'good' ? 'in' : 'adjustment'}`}>{label(r.condition)}</span> },
+  { key: 'on_hand', label: 'On hand', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (r) => <>{qtyText(r.quantity)} <small className="stk-uom">{r.uom}</small></> },
+  { key: 'reserved', label: 'Reserved', thClass: 'crm-num', className: (r) => `crm-num${Number(r.reserved_qty) > 0 ? '' : ' ivl-zero'}`, td: (r) => qtyText(r.reserved_qty) },
+  { key: 'available', label: 'Available', thClass: 'crm-num', className: 'crm-num', td: (r) => (
+    <>
+      <span className={stockLow(r) ? 'ivl-due' : 'ivl-amt'}>{qtyText(r.available_qty)}</span>
+      {stockLow(r) && <small className="ivl-kind">Reorder at {qtyText(r.reorder_level)}</small>}
+    </>
+  ) },
+  { key: 'avg_cost', label: 'Avg cost', thClass: 'crm-num', className: 'crm-num', td: (r) => rupees(r.avg_cost) },
+  { key: 'value', label: 'Value', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (r) => rupees(r.value) },
+  { key: 'uom', label: 'Unit', initial: false, td: (r) => r.uom },
+  { key: 'reorder', label: 'Reorder level', initial: false, thClass: 'crm-num', className: 'crm-num', td: (r) => qtyText(r.reorder_level) },
+  { key: 'serialised', label: 'Serial tracked', initial: false, td: (r) => (r.is_serialized ? 'Yes' : '—') },
+]
+
 function StockTab({ onLedger, onStart }: { onLedger: (itemId: string, warehouseId: string) => void; onStart: (kind: DocKind) => void }) {
   const { can } = useAccess()
   const warehouses = useWarehouses()
   const q = useQuery('erp-stock', () => erp.stock())
+  const columns = useColumns('erp-stock', STOCK_COLUMNS)
   const [term, setTerm] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [condition, setCondition] = useState('')
@@ -216,6 +240,8 @@ function StockTab({ onLedger, onStart }: { onLedger: (itemId: string, warehouseI
                 <option value="">All stock</option>{STOCK_VIEWS.map(([k, name]) => <option key={k} value={k}>{name}</option>)}
               </select></label>
           </FilterMenu>
+          <ColumnSettings defs={STOCK_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
           <ExportMenu name="stock-on-hand" sheet="Stock on hand" money={[9, 10]}
             header={['Item code', 'Item', 'Warehouse', 'Condition', 'On hand', 'Unit', 'Reserved', 'Available', 'Reorder level', 'Avg cost', 'Value']}
             rows={rows.map((r) => [r.item_code, r.item_name, r.warehouse_name, label(r.condition), Number(r.quantity), r.uom, Number(r.reserved_qty), Number(r.available_qty), Number(r.reorder_level), Number(r.avg_cost), Number(r.value)])} />
@@ -235,20 +261,10 @@ function StockTab({ onLedger, onStart }: { onLedger: (itemId: string, warehouseI
           <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search or the filters." />
         ) : (
           <div className="table-wrap"><table className="ivl">
-            <thead><tr><th>Item</th><th>Warehouse</th><th>Condition</th><th className="crm-num">On hand</th><th className="crm-num">Reserved</th><th className="crm-num">Available</th><th className="crm-num">Avg cost</th><th className="crm-num">Value</th></tr></thead>
+            <thead><tr>{heads<StockBalance>(columns.visible)}</tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.id} onClick={() => onLedger(r.item_id, r.warehouse_id)} title="Open the ledger for this item here">
-                <td><span className="ivl-no">{r.item_code}</span><small className="ivl-kind stk-name" title={r.item_name}>{r.item_name}</small></td>
-                <td>{r.warehouse_name}</td>
-                <td><span className={`stk-kind is-${r.condition === 'good' ? 'in' : 'adjustment'}`}>{label(r.condition)}</span></td>
-                <td className="crm-num ivl-amt">{qtyText(r.quantity)} <small className="stk-uom">{r.uom}</small></td>
-                <td className={`crm-num${Number(r.reserved_qty) > 0 ? '' : ' ivl-zero'}`}>{qtyText(r.reserved_qty)}</td>
-                <td className="crm-num">
-                  <span className={isLow(r) ? 'ivl-due' : 'ivl-amt'}>{qtyText(r.available_qty)}</span>
-                  {isLow(r) && <small className="ivl-kind">Reorder at {qtyText(r.reorder_level)}</small>}
-                </td>
-                <td className="crm-num">{rupees(r.avg_cost)}</td>
-                <td className="crm-num ivl-amt">{rupees(r.value)}</td>
+                {cells<StockBalance>(columns.visible, r)}
               </tr>
             ))}</tbody>
           </table></div>
@@ -264,6 +280,22 @@ const LEDGER_LIMIT = 300
 const MOVE_KINDS = ['opening', 'grn', 'issue', 'return', 'transfer_out', 'transfer_in', 'adjustment', 'dispatch', 'reversal']
 const moveName = (kind: string) => (kind === 'grn' ? 'Goods receipt' : kind === 'opening' ? 'Opening stock' : label(kind))
 
+type MoveColumn = Col<Movement>
+const MOVE_COLUMNS: MoveColumn[] = [
+  { key: 'when', label: 'When', className: 'ivl-date-cell', td: (m) => dateTime(m.created_at) },
+  { key: 'item', label: 'Item', locked: true, td: (m) => <><span className="ivl-no">{m.item_code}</span><small className="ivl-kind stk-name" title={m.item_name}>{m.item_name}</small></> },
+  { key: 'warehouse', label: 'Warehouse', td: (m) => <>{m.warehouse_name}{m.condition !== 'good' && <small className="ivl-kind">{label(m.condition)}</small>}</> },
+  { key: 'movement', label: 'Movement', td: (m) => <span className={`stk-kind is-${Number(m.quantity) < 0 ? 'out' : 'in'}`}>{moveName(m.kind)}</span> },
+  { key: 'document', label: 'Document', td: (m) => <>{m.ref_number ?? '—'}{m.reason && <small className="ivl-kind stk-name" title={m.reason}>{m.reason}</small>}</> },
+  { key: 'qty', label: 'Qty', thClass: 'crm-num', className: (m) => `crm-num stk-qty is-${Number(m.quantity) < 0 ? 'out' : 'in'}`, td: (m) => <>{Number(m.quantity) > 0 ? '+' : ''}{qtyText(m.quantity)}</> },
+  { key: 'balance', label: 'Balance', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (m) => qtyText(m.balance_after) },
+  { key: 'value', label: 'Value', thClass: 'crm-num', className: 'crm-num', td: (m) => rupees(Math.abs(Number(m.value))) },
+  { key: 'by', label: 'By', td: (m) => m.created_by_name ?? '—' },
+  { key: 'unit_cost', label: 'Unit cost', initial: false, thClass: 'crm-num', className: 'crm-num', td: (m) => rupees(m.unit_cost) },
+  { key: 'uom', label: 'Unit', initial: false, td: (m) => m.uom },
+  { key: 'serials', label: 'Serial numbers', initial: false, td: (m) => (m.serials?.length ? m.serials.join(', ') : '—') },
+]
+
 function MovementsTab({ initial }: { initial: { itemId: string; warehouseId: string } }) {
   const items = useItems('goods')
   const warehouses = useWarehouses()
@@ -272,6 +304,7 @@ function MovementsTab({ initial }: { initial: { itemId: string; warehouseId: str
   const [kind, setKind] = useState('')
   const [term, setTerm] = useState('')
   const dates = useDates()
+  const columns = useColumns('erp-ledger', MOVE_COLUMNS)
   const q = useQuery(`erp-moves-${itemId}-${warehouseId}`, () => erp.movements({ item_id: itemId || undefined, warehouse_id: warehouseId || undefined }))
   const all = q.data ?? []
   const needle = term.trim().toLowerCase()
@@ -313,6 +346,8 @@ function MovementsTab({ initial }: { initial: { itemId: string; warehouseId: str
               </select></label>
             {dates.fields}
           </FilterMenu>
+          <ColumnSettings defs={MOVE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
           <ExportMenu name="stock-ledger" sheet="Stock ledger" money={[8]}
             header={['When', 'Item code', 'Item', 'Warehouse', 'Condition', 'Movement', 'Document', 'Quantity', 'Value', 'Balance', 'Reason', 'By']}
             rows={rows.map((m) => [dateTime(m.created_at), m.item_code, m.item_name, m.warehouse_name, label(m.condition), moveName(m.kind), m.ref_number, Number(m.quantity), Number(m.value), Number(m.balance_after), m.reason, m.created_by_name])} />
@@ -323,18 +358,10 @@ function MovementsTab({ initial }: { initial: { itemId: string; warehouseId: str
         {q.error ? null : !q.data ? <Loading /> : all.length === 0 ? <EmptyState icon={<IconCard size={22} />} title="No movements" body="Every receipt, issue, transfer and dispatch writes a line here." />
           : rows.length === 0 ? <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search or the filters." /> : (
           <div className="table-wrap"><table className="ivl is-plain">
-            <thead><tr><th>When</th><th>Item</th><th>Warehouse</th><th>Movement</th><th>Document</th><th className="crm-num">Qty</th><th className="crm-num">Balance</th><th className="crm-num">Value</th><th>By</th></tr></thead>
+            <thead><tr>{heads<Movement>(columns.visible)}</tr></thead>
             <tbody>{rows.map((m) => (
               <tr key={m.id}>
-                <td className="ivl-date-cell">{dateTime(m.created_at)}</td>
-                <td><span className="ivl-no">{m.item_code}</span><small className="ivl-kind stk-name" title={m.item_name}>{m.item_name}</small></td>
-                <td>{m.warehouse_name}{m.condition !== 'good' && <small className="ivl-kind">{label(m.condition)}</small>}</td>
-                <td><span className={`stk-kind is-${Number(m.quantity) < 0 ? 'out' : 'in'}`}>{moveName(m.kind)}</span></td>
-                <td>{m.ref_number ?? '—'}{m.reason && <small className="ivl-kind stk-name" title={m.reason}>{m.reason}</small>}</td>
-                <td className={`crm-num stk-qty is-${Number(m.quantity) < 0 ? 'out' : 'in'}`}>{Number(m.quantity) > 0 ? '+' : ''}{qtyText(m.quantity)}</td>
-                <td className="crm-num ivl-amt">{qtyText(m.balance_after)}</td>
-                <td className="crm-num">{rupees(Math.abs(Number(m.value)))}</td>
-                <td>{m.created_by_name ?? '—'}</td>
+                {cells<Movement>(columns.visible, m)}
               </tr>
             ))}</tbody>
           </table></div>
@@ -399,6 +426,24 @@ function SerialsTab() {
 
 /* ------------------------------------------------------------- documents --- */
 
+type DocColumn = Col<StockDoc>
+const DOC_COLUMNS: DocColumn[] = [
+  { key: 'number', label: 'Number', locked: true, td: (d) => <span className="ivl-no">{d.number}</span> },
+  { key: 'kind', label: 'Kind', td: (d) => <span className={`stk-kind is-${d.kind}`}>{KIND_TITLE[d.kind]}</span> },
+  { key: 'route', label: 'From → to', className: 'stk-route', td: (d) => (d.from_warehouse_name && (d.to_warehouse_name || d.recipient_name || d.project_name)
+    ? <>{d.from_warehouse_name} <i aria-hidden>→</i> {d.to_warehouse_name ?? d.recipient_name ?? d.project_name}{d.recipient_name && d.project_name && <small className="ivl-kind">{d.project_name}</small>}</>
+    : d.from_warehouse_name ?? d.to_warehouse_name ?? '—') },
+  { key: 'date', label: 'Date', className: 'ivl-date-cell', td: (d) => fullDate(d.doc_date) },
+  { key: 'reason', label: 'Reason', td: (d) => <span className="stk-name" title={d.reason ?? undefined}>{d.reason ?? '—'}</span> },
+  { key: 'raised_by', label: 'Raised by', td: (d) => d.created_by_name ?? '—' },
+  { key: 'value', label: 'Value', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (d) => rupees(d.value) },
+  { key: 'status', label: 'Status', td: (d) => <ErpState value={d.status} /> },
+  { key: 'notes', label: 'Notes', initial: false, td: (d) => d.notes || '—' },
+  { key: 'project', label: 'Project', initial: false, td: (d) => d.project_name || '—' },
+  { key: 'recipient', label: 'Issued to', initial: false, td: (d) => d.recipient_name || '—' },
+  { key: 'reviewed_by', label: 'Decided by', initial: false, td: (d) => d.reviewed_by_name || '—' },
+]
+
 function DocsTab({ startKind, onStarted }: { startKind: DocKind | null; onStarted: () => void }) {
   const { can } = useAccess()
   const [kind, setKind] = useState('')
@@ -406,6 +451,7 @@ function DocsTab({ startKind, onStarted }: { startKind: DocKind | null; onStarte
   const [term, setTerm] = useState('')
   const dates = useDates()
   const q = useQuery('erp-docs', () => erp.stockDocs())
+  const columns = useColumns('erp-stock-docs', DOC_COLUMNS)
   const [open, setOpen] = useState<StockDoc | null>(null)
   // A document that saved but could not then be posted opens saying why.
   const [problem, setProblem] = useState<string | null>(null)
@@ -447,6 +493,8 @@ function DocsTab({ startKind, onStarted }: { startKind: DocKind | null; onStarte
               </select></label>
             {dates.fields}
           </FilterMenu>
+          <ColumnSettings defs={DOC_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
           <ExportMenu name="stock-documents" sheet="Stock documents" money={[8]}
             header={['Number', 'Kind', 'From', 'To', 'Issued to', 'Project', 'Date', 'Reason', 'Value', 'Status', 'Raised by']}
             rows={rows.map((d) => [d.number, KIND_TITLE[d.kind], d.from_warehouse_name, d.to_warehouse_name, d.recipient_name, d.project_name, d.doc_date, d.reason, Number(d.value), label(d.status), d.created_by_name])} />
@@ -458,19 +506,10 @@ function DocsTab({ startKind, onStarted }: { startKind: DocKind | null; onStarte
         {q.error ? null : !q.data ? <Loading /> : all.length === 0 ? <EmptyState icon={<IconCard size={22} />} title="No stock documents" body="Issue to a project, return, transfer between warehouses, or adjust after a count." />
           : rows.length === 0 ? <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search or the filters." /> : (
           <div className="table-wrap"><table className="ivl">
-            <thead><tr><th>Number</th><th>Kind</th><th>From → to</th><th>Date</th><th>Reason</th><th>Raised by</th><th className="crm-num">Value</th><th>Status</th></tr></thead>
+            <thead><tr>{heads<StockDoc>(columns.visible)}</tr></thead>
             <tbody>{rows.map((d) => (
               <tr key={d.id} onClick={() => setOpen(d)}>
-                <td><span className="ivl-no">{d.number}</span></td>
-                <td><span className={`stk-kind is-${d.kind}`}>{KIND_TITLE[d.kind]}</span></td>
-                <td className="stk-route">{d.from_warehouse_name && (d.to_warehouse_name || d.recipient_name || d.project_name)
-                  ? <>{d.from_warehouse_name} <i aria-hidden>→</i> {d.to_warehouse_name ?? d.recipient_name ?? d.project_name}{d.recipient_name && d.project_name && <small className="ivl-kind">{d.project_name}</small>}</>
-                  : d.from_warehouse_name ?? d.to_warehouse_name ?? '—'}</td>
-                <td className="ivl-date-cell">{fullDate(d.doc_date)}</td>
-                <td><span className="stk-name" title={d.reason ?? undefined}>{d.reason ?? '—'}</span></td>
-                <td>{d.created_by_name ?? '—'}</td>
-                <td className="crm-num ivl-amt">{rupees(d.value)}</td>
-                <td><ErpState value={d.status} /></td>
+                {cells<StockDoc>(columns.visible, d)}
               </tr>
             ))}</tbody>
           </table></div>

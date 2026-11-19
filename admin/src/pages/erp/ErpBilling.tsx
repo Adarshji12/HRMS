@@ -18,6 +18,7 @@ import { CrmPage, OwnerSelect } from '../crm/parts'
 import '../../styles/invoice.css'
 import '../../styles/salebill.css'
 import InvoicePrint, { downloadInvoicePdf } from './InvoicePrint'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 import {
   ChainView, DateText, DecideBar, Dialog, ErpPage, ErpState,
   Note, ReasonDialog, useAccess, useItems, useRun,
@@ -191,6 +192,103 @@ function invoiceSheet(rows: Invoice[]) {
   return { header, data, money: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22] }
 }
 
+const BILL_SECTIONS: FieldSection[] = [
+  { id: 'head', label: 'Bill header' }, { id: 'more', label: 'More details' },
+  { id: 'order', label: 'Order & tax' }, { id: 'transport', label: 'Transport' }, { id: 'notes', label: 'Notes & terms' },
+]
+// Header and the More details panel only; the item grid and totals are untouched.
+// The party is the one thing the server requires.
+const BILL_FIELDS: FieldDef[] = [
+  { key: 'customer', label: 'Name (party)', section: 'head', fixed: true },
+  { key: 'invoice_date', label: 'Date', section: 'head' },
+  { key: 'bill_no', label: 'Bill no. (assigned automatically)', section: 'head', optionalOnly: true },
+  { key: 'bill_type', label: 'Type (credit / cash)', section: 'head' },
+  { key: 'salesperson_id', label: 'Salesman', section: 'head' },
+  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head' },
+  { key: 'due_date', label: 'Due', section: 'head' },
+  { key: 'billing_address', label: 'Billing address', section: 'more' },
+  { key: 'shipping_address', label: 'Shipping address', section: 'more', optionalOnly: true },
+  { key: 'delivery_date', label: 'Delivery date', section: 'more' },
+  { key: 'recipient_bank', label: 'Recipient bank', section: 'more' },
+  { key: 'payment_reference', label: 'Payment reference', section: 'more' },
+  { key: 'customer_po_number', label: 'Customer PO number', section: 'order' },
+  { key: 'reverse_charge', label: 'Reverse charge', section: 'order', optionalOnly: true },
+  { key: 'dispatch_doc_number', label: 'Dispatch doc. no.', section: 'transport' },
+  { key: 'transporter_name', label: 'Transporter name', section: 'transport' },
+  { key: 'vehicle_number', label: 'Vehicle no.', section: 'transport' },
+  { key: 'eway_bill_number', label: 'E-way bill no.', section: 'transport' },
+  { key: 'lr_number', label: 'LR / receipt no.', section: 'transport' },
+  { key: 'notes', label: 'Notes', section: 'notes' },
+  { key: 'terms', label: 'Terms & conditions', section: 'notes' },
+]
+
+/* The invoice list's columns. The ones from Invoice to Status are what the list has always
+   shown; the rest are extras a person can add. The Actions column stays last, outside. */
+const invoicePaid = (i: Invoice) => i.status === 'posted' && i.kind !== 'proforma'
+type InvoiceColumn = ColumnDef & {
+  td: (i: Invoice) => ReactNode
+  className?: string | ((i: Invoice) => string | undefined)
+  thClass?: string
+}
+const INV_DASH = <span className="itl-muted">—</span>
+const INVOICE_COLUMNS: InvoiceColumn[] = [
+  { key: 'number', label: 'Invoice / credit note no.', locked: true, td: (i) => (
+    <>
+      <span className="ivl-no">{i.number ?? <em>Draft</em>}</span>
+      {/* A tax invoice is the usual thing; only say so when it is not. */}
+      {(i.kind === 'proforma' || i.kind === 'credit_note') && <small className="ivl-kind">{INV_TITLE[i.kind] ?? i.kind}</small>}
+    </>
+  ) },
+  { key: 'customer', label: 'Customer', td: (i) => (
+    <span className="ivl-cust" title={i.gstin ? `${i.customer_name} · ${i.gstin}` : i.customer_name}>{i.customer_name}</span>
+  ) },
+  { key: 'date', label: 'Date', className: 'ivl-date-cell', td: (i) => <DateText iso={i.invoice_date} /> },
+  { key: 'due', label: 'Due', className: 'ivl-date-cell', td: (i) => (
+    <>
+      <DateText iso={i.due_date} />
+      {payState(i) === 'overdue' && <small className="ivl-late">{i.days_overdue}d overdue</small>}
+    </>
+  ) },
+  { key: 'grand_total', label: 'Grand total', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (i) => <>{rupees(i.grand_total)}</> },
+  { key: 'paid', label: 'Paid', thClass: 'crm-num', className: (i) => `crm-num${Number(i.amount_received) > 0 ? ' ivl-paid' : ' ivl-zero'}`, td: (i) => (
+    <>
+      {invoicePaid(i) ? rupees(i.amount_received) : '—'}
+      {Number(i.amount_credited) > 0 && <small className="ivl-kind">+ {rupees(i.amount_credited)} credited</small>}
+    </>
+  ) },
+  { key: 'balance', label: 'Balance due', thClass: 'crm-num',
+    className: (i) => `crm-num${Number(i.outstanding) > 0 && invoicePaid(i) ? ' ivl-due' : ' ivl-zero'}`,
+    td: (i) => <>{invoicePaid(i) ? rupees(i.outstanding) : '—'}</> },
+  { key: 'status', label: 'Status', td: (i) => { const st = payState(i); return <span className={`ivl-state is-${st}`}><i aria-hidden />{PAY_LABEL[st]}</span> } },
+  { key: 'kind', label: 'Type', initial: false, td: (i) => <>{INV_TITLE[i.kind] ?? i.kind}</> },
+  { key: 'gstin', label: 'Party GSTIN', initial: false, td: (i) => <>{i.gstin ?? INV_DASH}</> },
+  { key: 'order', label: 'Sales order', initial: false, td: (i) => <>{i.order_number ?? INV_DASH}</> },
+  { key: 'po', label: 'Customer PO', initial: false, td: (i) => <>{i.customer_po_number ?? INV_DASH}</> },
+  { key: 'salesperson', label: 'Salesperson', initial: false, td: (i) => <>{i.salesperson_name ?? INV_DASH}</> },
+  { key: 'place', label: 'Place of supply', initial: false, td: (i) => <>{i.place_of_supply ?? INV_DASH}</> },
+  { key: 'created_by', label: 'Created by', initial: false, td: (i) => <>{i.created_by_name ?? INV_DASH}</> },
+  { key: 'original', label: 'Credit against', initial: false, td: (i) => <>{i.original_number ?? INV_DASH}</> },
+]
+
+type ReceiptRow = InvoiceReceipt & { invoiceId: string; invoice: string | null; customer: string }
+type ReceiptColumn = ColumnDef & { td: (r: ReceiptRow) => ReactNode; className?: string; thClass?: string }
+const RECEIPT_COLUMNS: ReceiptColumn[] = [
+  { key: 'number', label: 'Receipt', locked: true,
+    td: (r) => <><span className="ivl-no">{r.number}</span>{r.created_by_name ? <small className="ivl-kind">by {r.created_by_name}</small> : null}</> },
+  { key: 'invoice', label: 'Invoice', className: 'ivl-date-cell', td: (r) => <>{r.invoice}</> },
+  { key: 'customer', label: 'Customer', td: (r) => <span className="ivl-cust" title={r.customer}>{r.customer}</span> },
+  { key: 'date', label: 'Date', className: 'ivl-date-cell', td: (r) => <DateText iso={r.received_on} /> },
+  { key: 'mode', label: 'Mode', td: (r) => <>{r.mode.toUpperCase()}{r.reference ? <small className="ivl-kind">{r.reference}</small> : null}</> },
+  { key: 'amount', label: 'Amount', thClass: 'crm-num', className: 'crm-num ivl-amt rcl-amt', td: (r) => <>{rupees(r.amount)}</> },
+  { key: 'tds', label: 'TDS', thClass: 'crm-num', className: 'crm-num rcl-amt', td: (r) => <>{rupees(r.tds_amount)}</> },
+  { key: 'status', label: 'Status', td: (r) => <ErpState value={r.status} /> },
+  { key: 'reversal', label: 'Reversal', className: 'rcl-why', td: (r) => r.status === 'reversed' ? (
+    <>{r.reverse_reason ?? '—'}<small className="ivl-kind">{r.reversed_at ? <DateText iso={r.reversed_at} /> : null}{r.reversed_by_name ? ` · ${r.reversed_by_name}` : ''}</small></>
+  ) : <>—</> },
+  { key: 'deposit', label: 'Deposited into', initial: false, td: (r) => <>{r.deposit_account ?? '—'}</> },
+  { key: 'notes', label: 'Notes', initial: false, td: (r) => <>{r.notes || '—'}</> },
+]
+
 function InvoiceList({ kind, onOpen, onNew }: {
   kind: 'invoice' | 'credit_note'
   onOpen: (id: string) => void
@@ -200,6 +298,7 @@ function InvoiceList({ kind, onOpen, onNew }: {
 }) {
   const { can } = useAccess()
   const biller = can('can_manage_billing')
+  const columns = useColumns(kind === 'invoice' ? 'invoices' : 'credit-notes', INVOICE_COLUMNS)
   const [q, setQ] = useState('')
   const [docStatus, setDocStatus] = useState<'' | Invoice['status']>('')
   const [state, setState] = useState<'' | PayState>('')
@@ -392,6 +491,7 @@ function InvoiceList({ kind, onOpen, onNew }: {
             </div>
           )}
         </div>
+        <ColumnSettings defs={INVOICE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
         {kind === 'invoice' && biller && <button className="btn btn-primary" onClick={() => (onNew ? onNew() : setCreating(true))}><IconPlus size={15} /> {onNew ? 'New invoice' : 'Service / proforma invoice'}</button>}
         </div>
       </div>
@@ -407,36 +507,21 @@ function InvoiceList({ kind, onOpen, onNew }: {
         ) : (
           <div className="table-wrap"><table className="ivl">
             <thead><tr>
-              <th>{kind === 'invoice' ? 'Invoice' : 'Credit note'}</th><th>Customer</th><th>Date</th><th>Due</th>
-              <th className="crm-num">Grand total</th><th className="crm-num">Paid</th><th className="crm-num">Balance due</th><th>Status</th><th className="ivl-c-act">Actions</th>
+              {columns.visible.map((c) => {
+                const col = c as InvoiceColumn
+                return <th key={col.key} className={col.thClass}>{col.key === 'number' ? (kind === 'invoice' ? 'Invoice' : 'Credit note') : col.label}</th>
+              })}
+              <th className="ivl-c-act">Actions</th>
             </tr></thead>
             <tbody>{rows.map((i) => {
               const st = payState(i)
               const canEdit = biller && i.status === 'draft' && editableKinds.includes(i.kind)
               return (
                 <tr key={i.id} onClick={() => onOpen(i.id)} className={`is-${st}`}>
-                  <td>
-                    <span className="ivl-no">{i.number ?? <em>Draft</em>}</span>
-                    {/* A tax invoice is the usual thing; only say so when it is not. */}
-                    {(i.kind === 'proforma' || i.kind === 'credit_note') && <small className="ivl-kind">{INV_TITLE[i.kind] ?? i.kind}</small>}
-                  </td>
-                  <td>
-                    <span className="ivl-cust" title={i.gstin ? `${i.customer_name} · ${i.gstin}` : i.customer_name}>{i.customer_name}</span>
-                  </td>
-                  <td className="ivl-date-cell"><DateText iso={i.invoice_date} /></td>
-                  <td className="ivl-date-cell">
-                    <DateText iso={i.due_date} />
-                    {st === 'overdue' && <small className="ivl-late">{i.days_overdue}d overdue</small>}
-                  </td>
-                  <td className="crm-num ivl-amt">{rupees(i.grand_total)}</td>
-                  <td className={`crm-num${Number(i.amount_received) > 0 ? ' ivl-paid' : ' ivl-zero'}`}>
-                    {i.status === 'posted' && i.kind !== 'proforma' ? rupees(i.amount_received) : '—'}
-                    {Number(i.amount_credited) > 0 && <small className="ivl-kind">+ {rupees(i.amount_credited)} credited</small>}
-                  </td>
-                  <td className={`crm-num${Number(i.outstanding) > 0 && i.status === 'posted' && i.kind !== 'proforma' ? ' ivl-due' : ' ivl-zero'}`}>
-                    {i.status === 'posted' && i.kind !== 'proforma' ? rupees(i.outstanding) : '—'}
-                  </td>
-                  <td><span className={`ivl-state is-${st}`}><i aria-hidden />{PAY_LABEL[st]}</span></td>
+                  {columns.visible.map((c) => {
+                    const col = c as InvoiceColumn
+                    return <td key={col.key} className={typeof col.className === 'function' ? col.className(i) : col.className}>{col.td(i)}</td>
+                  })}
                   <td className="ivl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="ivl-actions">
                       <button className="crm-icon-btn" title="Open" aria-label={`Open ${i.number ?? 'draft'}`} onClick={() => onOpen(i.id)}><IconSheet size={14} /></button>
@@ -774,8 +859,12 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const [addingCharge, setAddingCharge] = useState(false)
   const [roundOff, setRoundOff] = useState(seed?.roundOff ?? true)
   const [transport, setTransport] = useState<Transport>(seed?.transport ?? NO_TRANSPORT)
+  const fields = useFieldModes('sale-bill-form', BILL_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => rq(key) ? <b className="pof-req"> *</b> : null
   const setT = <K extends keyof Transport>(k: K, v: Transport[K]) => setTransport((t) => ({ ...t, [k]: v }))
-  const transportOk = vehicleOk(transport.vehicle_number) && ewayOk(transport.eway_bill_number)
+  const transportOk = (fm('vehicle_number') === 'hide' || vehicleOk(transport.vehicle_number)) && (fm('eway_bill_number') === 'hide' || ewayOk(transport.eway_bill_number))
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const customerRef = useRef<HTMLSelectElement>(null)
@@ -834,7 +923,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const chargesTotal = chargeMath.reduce((n, m) => n + m.taxable, 0)
   const reasonMissing = addlAmt > 0 && !discReason.trim()
   const discOk = !discTooBig && !reasonMissing && billPct <= 100
-  const posMissing = kind === 'service' && !placeOfSupply.trim()
+  const posMissing = fm('place_of_supply') !== 'hide' && (kind === 'service' || rq('place_of_supply')) && !placeOfSupply.trim()
   const cessBad = cessOn && filled.some((l) => Number(l.cess || 0) > 300)
   const taxable = all.reduce((n, m) => n + m.taxable, 0)
   const tax = all.reduce((n, m) => n + m.tax, 0)
@@ -844,7 +933,19 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const net = roundOff ? Math.round(exact) : exact
   const rounding = r2(net - exact)
   const qtyTotal = filled.reduce((n, l) => n + Number(l.quantity || 0) + Number(l.free || 0), 0)
-  const ready = Boolean(customerId) && filled.length > 0 && due >= invoiceDate && transportOk && discOk && !posMissing && !cessBad
+  // A field the person made mandatory must be filled in, unless they hid it. The place
+  // of supply has its own rule above.
+  const emptyField: Record<string, boolean> = {
+    invoice_date: !invoiceDate, salesperson_id: !salespersonId, due_date: !due, billing_address: !billingAddress.trim(),
+    delivery_date: !deliveryDate, recipient_bank: !chosenBankId, payment_reference: !payRefStandard && !payRef.trim(),
+    customer_po_number: !transport.customer_po_number.trim(), dispatch_doc_number: !transport.dispatch_doc_number.trim(),
+    transporter_name: !transport.transporter_name.trim(), vehicle_number: !transport.vehicle_number.trim(),
+    eway_bill_number: !transport.eway_bill_number.trim(), lr_number: !transport.lr_number.trim(),
+    notes: !notes.trim(), terms: !termsText.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const dueBad = fm('due_date') !== 'hide' && due < invoiceDate
+  const ready = Boolean(customerId) && filled.length > 0 && !dueBad && transportOk && discOk && !posMissing && !cessBad && !missing
 
   const active = rows.find((l) => l.key === activeKey) ?? null
   const activeItem = active?.item_id ? (items.data ?? []).find((i) => i.id === active.item_id) ?? null : null
@@ -972,6 +1073,146 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
     fields[e.key === 'Enter' ? Math.min(at + 1, fields.length - 1) : Math.max(at - 1, 0)]?.focus()
   }
 
+  const headNodes: Record<string, ReactNode> = {
+    customer: (
+        <label className="sb-f sb-f-name">
+          <span>Name <kbd>F3</kbd></span>
+          <select ref={customerRef} value={customerId} aria-label="Party"
+            onChange={(e) => { setCustomerId(e.target.value); setPlace(null); setBilling(null); setShipTo('same') }}>
+            <option value="">Select party…</option>
+            {(customers.data ?? []).map((c) => <option key={c.customer_id} value={c.customer_id}>{partyLabel(c)}</option>)}
+          </select>
+        </label>
+    ),
+    invoice_date: fm('invoice_date') !== 'hide' && (
+        <label className="sb-f sb-f-date">
+          <span>Date{star('invoice_date')}</span>
+          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value || todayISO())} />
+        </label>
+    ),
+    bill_no: fm('bill_no') !== 'hide' && (
+        <div className="sb-f sb-f-billno">
+          <span>Bill no.</span>
+          <em title="The next number in the series — issued when the bill is saved">{nextNo.data?.number ?? '—'}</em>
+          <small className="sb-next">next</small>
+        </div>
+    ),
+    bill_type: fm('bill_type') !== 'hide' && (
+        <label className="sb-f">
+          <span>Type{star('bill_type')}</span>
+          <select value={billType} onChange={(e) => { setBillType(e.target.value as 'credit' | 'cash'); setDueOverride('') }}>
+            <option value="credit">Credit</option>
+            <option value="cash">Cash</option>
+          </select>
+        </label>
+    ),
+    salesperson_id: fm('salesperson_id') !== 'hide' && (
+        <label className="sb-f">
+          <span>Salesman{star('salesperson_id')}</span>
+          <OwnerSelect value={salespersonId} onChange={setSalespersonId} placeholder="— None —" />
+        </label>
+    ),
+    place_of_supply: fm('place_of_supply') !== 'hide' && (
+        <label className="sb-f">
+          <span>Supply{(kind === 'service' || rq('place_of_supply')) && <b className="pof-req"> *</b>}</span>
+          <input value={placeOfSupply} onChange={(e) => setPlace(e.target.value)} placeholder="Place of supply (state)" />
+        </label>
+    ),
+    due_date: fm('due_date') !== 'hide' && (
+        <label className="sb-f">
+          <span>Due{star('due_date')}</span>
+          <input type="date" value={due} min={invoiceDate} onChange={(e) => setDueOverride(e.target.value)} />
+        </label>
+    ),
+  }
+  const showOrder = ['customer_po_number', 'reverse_charge'].some((k) => fm(k) !== 'hide')
+  const showTransport = ['dispatch_doc_number', 'transporter_name', 'vehicle_number', 'eway_bill_number', 'lr_number'].some((k) => fm(k) !== 'hide')
+  const moreNodes: Record<string, ReactNode> = {
+    billing_address: fm('billing_address') !== 'hide' && (
+          <label><span>Billing address{star('billing_address')}</span>
+            <textarea rows={2} value={billingAddress} onChange={(e) => setBilling(e.target.value)} placeholder={customer ? 'Billing address' : 'Select a party'} /></label>
+    ),
+    shipping_address: fm('shipping_address') !== 'hide' && (
+          <label><span>Shipping address</span>
+            <select value={shipTo} onChange={(e) => setShipTo(e.target.value)}>
+              <option value="same">Same as billing address</option>
+              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="other">Other address…</option>
+            </select>
+            {shipTo === 'other' && <textarea rows={1} value={shipOther} onChange={(e) => setShipOther(e.target.value)} placeholder="Delivery address" />}
+          </label>
+    ),
+    delivery_date: fm('delivery_date') !== 'hide' && (
+          <label><span>Delivery date{star('delivery_date')}</span>
+            <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} /></label>
+    ),
+    recipient_bank: fm('recipient_bank') !== 'hide' && (
+          <label><span>Recipient bank{star('recipient_bank')}</span>
+            <select value={chosenBankId} onChange={(e) => setBankId(e.target.value)}>
+              <option value="">{banks.length ? 'None' : 'None — add in ERP settings'}</option>
+              {banks.map((b) => <option key={b.id} value={b.id}>{b.label || b.bank_name} · ••{b.account_number.slice(-4)}</option>)}
+            </select></label>
+    ),
+    payment_reference: fm('payment_reference') !== 'hide' && (
+          <label><span>Payment reference{star('payment_reference')}</span>
+            <input value={payRefStandard ? (nextNo.data?.number ?? '') : payRef} disabled={payRefStandard}
+              onChange={(e) => setPayRef(e.target.value)} placeholder="e.g. customer PO number" maxLength={60} />
+            <span className="sb-check"><input type="checkbox" checked={payRefStandard} onChange={(e) => setPayRefStandard(e.target.checked)} /> Standard communication</span>
+          </label>
+    ),
+    customer_po_number: fm('customer_po_number') !== 'hide' && (
+              <label><span>Customer PO number{star('customer_po_number')}</span>
+                <input value={transport.customer_po_number} maxLength={60} placeholder="e.g. PO-4501-778"
+                  onChange={(e) => setT('customer_po_number', e.target.value)} /></label>
+    ),
+    reverse_charge: fm('reverse_charge') !== 'hide' && (
+              <div className="sb-more-field">
+                <span>Reverse charge</span>
+                <div className="sb-yn" role="radiogroup" aria-label="Reverse charge">
+                  {([[false, 'No'], [true, 'Yes']] as const).map(([v, label]) => (
+                    <button key={label} type="button" role="radio" aria-checked={transport.reverse_charge === v}
+                      className={transport.reverse_charge === v ? 'is-on' : ''} onClick={() => setT('reverse_charge', v)}>{label}</button>
+                  ))}
+                </div>
+              </div>
+    ),
+    dispatch_doc_number: fm('dispatch_doc_number') !== 'hide' && (
+              <label><span>Dispatch doc. no.{star('dispatch_doc_number')}</span>
+                <input value={transport.dispatch_doc_number} maxLength={40} placeholder="Delivery challan no."
+                  onChange={(e) => setT('dispatch_doc_number', e.target.value)} /></label>
+    ),
+    transporter_name: fm('transporter_name') !== 'hide' && (
+              <label><span>Transporter name{star('transporter_name')}</span>
+                <input value={transport.transporter_name} maxLength={120} placeholder="e.g. VRL Logistics"
+                  onChange={(e) => setT('transporter_name', e.target.value)} /></label>
+    ),
+    vehicle_number: fm('vehicle_number') !== 'hide' && (
+              <label className={vehicleOk(transport.vehicle_number) ? '' : 'is-bad'}><span>Vehicle no.{star('vehicle_number')}</span>
+                <input value={transport.vehicle_number} maxLength={20} placeholder="MH12AB1234" className="sb-mono-in"
+                  onChange={(e) => setT('vehicle_number', e.target.value.toUpperCase())} />
+                {!vehicleOk(transport.vehicle_number) && <small>Like MH12AB1234</small>}</label>
+    ),
+    eway_bill_number: fm('eway_bill_number') !== 'hide' && (
+              <label className={ewayOk(transport.eway_bill_number) ? '' : 'is-bad'}><span>E-way bill no.{star('eway_bill_number')}</span>
+                <input value={transport.eway_bill_number} maxLength={14} placeholder="12 digits" inputMode="numeric" className="sb-mono-in"
+                  onChange={(e) => setT('eway_bill_number', e.target.value.replace(/[^\d\s]/g, ''))} />
+                {!ewayOk(transport.eway_bill_number) && <small>Must be 12 digits</small>}</label>
+    ),
+    lr_number: fm('lr_number') !== 'hide' && (
+              <label title="LR / transport receipt number"><span>LR / receipt no.{star('lr_number')}</span>
+                <input value={transport.lr_number} maxLength={40} placeholder="LR / docket no."
+                  onChange={(e) => setT('lr_number', e.target.value)} /></label>
+    ),
+    notes: fm('notes') !== 'hide' && (
+          <label className="sb-more-wide"><span>Notes{star('notes')}</span>
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Shown on the invoice — PO reference, delivery note…" /></label>
+    ),
+    terms: fm('terms') !== 'hide' && (
+          <label className="sb-more-wide"><span>Terms &amp; conditions{star('terms')}</span>
+            <textarea rows={2} value={termsText} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms, jurisdiction…" /></label>
+    ),
+  }
+
   const bill = (
     <div className={`sb${inline ? ' sb-page' : ''}`} onKeyDown={onNavKey}>
       <div className="sb-bar">
@@ -999,6 +1240,8 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
         <label className={`sb-incl${ratesIncl ? ' is-on' : ''}`} title="The rate typed in the grid already includes GST">
           <input type="checkbox" checked={ratesIncl} onChange={(e) => setRatesIncl(e.target.checked)} /> Rates include GST
         </label>
+        <FieldSettings defs={BILL_FIELDS} sections={BILL_SECTIONS} modes={fields.modes} order={fields.order}
+          onSave={fields.save} onReset={fields.reset} />
         <button type="button" className={`btn btn-sm${more ? ' is-on' : ''}`} onClick={() => setMore((m) => !m)}>
           <IconSliders size={14} /> More details
         </button>
@@ -1009,109 +1252,27 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
       </div>
 
       <div className="sb-head">
-        <label className="sb-f sb-f-name">
-          <span>Name <kbd>F3</kbd></span>
-          <select ref={customerRef} value={customerId} aria-label="Party"
-            onChange={(e) => { setCustomerId(e.target.value); setPlace(null); setBilling(null); setShipTo('same') }}>
-            <option value="">Select party…</option>
-            {(customers.data ?? []).map((c) => <option key={c.customer_id} value={c.customer_id}>{partyLabel(c)}</option>)}
-          </select>
-        </label>
-        <label className="sb-f sb-f-date">
-          <span>Date</span>
-          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value || todayISO())} />
-        </label>
-        <div className="sb-f sb-f-billno">
-          <span>Bill no.</span>
-          <em title="The next number in the series — issued when the bill is saved">{nextNo.data?.number ?? '—'}</em>
-          <small className="sb-next">next</small>
-        </div>
-        <label className="sb-f">
-          <span>Type</span>
-          <select value={billType} onChange={(e) => { setBillType(e.target.value as 'credit' | 'cash'); setDueOverride('') }}>
-            <option value="credit">Credit</option>
-            <option value="cash">Cash</option>
-          </select>
-        </label>
-        <label className="sb-f">
-          <span>Salesman</span>
-          <OwnerSelect value={salespersonId} onChange={setSalespersonId} placeholder="— None —" />
-        </label>
-        <label className="sb-f">
-          <span>Supply</span>
-          <input value={placeOfSupply} onChange={(e) => setPlace(e.target.value)} placeholder="Place of supply (state)" />
-        </label>
-        <label className="sb-f">
-          <span>Due</span>
-          <input type="date" value={due} min={invoiceDate} onChange={(e) => setDueOverride(e.target.value)} />
-        </label>
+        {fields.orderOf('head').map((key) => <Fragment key={key}>{headNodes[key]}</Fragment>)}
       </div>
 
       {more && (
         <div className="sb-more">
-          <label><span>Billing address</span>
-            <textarea rows={2} value={billingAddress} onChange={(e) => setBilling(e.target.value)} placeholder={customer ? 'Billing address' : 'Select a party'} /></label>
-          <label><span>Shipping address</span>
-            <select value={shipTo} onChange={(e) => setShipTo(e.target.value)}>
-              <option value="same">Same as billing address</option>
-              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              <option value="other">Other address…</option>
-            </select>
-            {shipTo === 'other' && <textarea rows={1} value={shipOther} onChange={(e) => setShipOther(e.target.value)} placeholder="Delivery address" />}
-          </label>
-          <label><span>Delivery date</span>
-            <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} /></label>
-          <label><span>Recipient bank</span>
-            <select value={chosenBankId} onChange={(e) => setBankId(e.target.value)}>
-              <option value="">{banks.length ? 'None' : 'None — add in ERP settings'}</option>
-              {banks.map((b) => <option key={b.id} value={b.id}>{b.label || b.bank_name} · ••{b.account_number.slice(-4)}</option>)}
-            </select></label>
-          <label><span>Payment reference</span>
-            <input value={payRefStandard ? (nextNo.data?.number ?? '') : payRef} disabled={payRefStandard}
-              onChange={(e) => setPayRef(e.target.value)} placeholder="e.g. customer PO number" maxLength={60} />
-            <span className="sb-check"><input type="checkbox" checked={payRefStandard} onChange={(e) => setPayRefStandard(e.target.checked)} /> Standard communication</span>
-          </label>
+          {fields.orderOf('more').map((key) => <Fragment key={key}>{moreNodes[key]}</Fragment>)}
           <div className="sb-more-row">
-            <fieldset className="sb-more-set sb-more-order">
-              <legend>Order &amp; tax</legend>
-              <label><span>Customer PO number</span>
-                <input value={transport.customer_po_number} maxLength={60} placeholder="e.g. PO-4501-778"
-                  onChange={(e) => setT('customer_po_number', e.target.value)} /></label>
-              <div className="sb-more-field">
-                <span>Reverse charge</span>
-                <div className="sb-yn" role="radiogroup" aria-label="Reverse charge">
-                  {([[false, 'No'], [true, 'Yes']] as const).map(([v, label]) => (
-                    <button key={label} type="button" role="radio" aria-checked={transport.reverse_charge === v}
-                      className={transport.reverse_charge === v ? 'is-on' : ''} onClick={() => setT('reverse_charge', v)}>{label}</button>
-                  ))}
-                </div>
-              </div>
-            </fieldset>
-            <fieldset className="sb-more-set sb-more-transport">
-              <legend>Transport <small>optional</small></legend>
-              <label><span>Dispatch doc. no.</span>
-                <input value={transport.dispatch_doc_number} maxLength={40} placeholder="Delivery challan no."
-                  onChange={(e) => setT('dispatch_doc_number', e.target.value)} /></label>
-              <label><span>Transporter name</span>
-                <input value={transport.transporter_name} maxLength={120} placeholder="e.g. VRL Logistics"
-                  onChange={(e) => setT('transporter_name', e.target.value)} /></label>
-              <label className={vehicleOk(transport.vehicle_number) ? '' : 'is-bad'}><span>Vehicle no.</span>
-                <input value={transport.vehicle_number} maxLength={20} placeholder="MH12AB1234" className="sb-mono-in"
-                  onChange={(e) => setT('vehicle_number', e.target.value.toUpperCase())} />
-                {!vehicleOk(transport.vehicle_number) && <small>Like MH12AB1234</small>}</label>
-              <label className={ewayOk(transport.eway_bill_number) ? '' : 'is-bad'}><span>E-way bill no.</span>
-                <input value={transport.eway_bill_number} maxLength={14} placeholder="12 digits" inputMode="numeric" className="sb-mono-in"
-                  onChange={(e) => setT('eway_bill_number', e.target.value.replace(/[^\d\s]/g, ''))} />
-                {!ewayOk(transport.eway_bill_number) && <small>Must be 12 digits</small>}</label>
-              <label title="LR / transport receipt number"><span>LR / receipt no.</span>
-                <input value={transport.lr_number} maxLength={40} placeholder="LR / docket no."
-                  onChange={(e) => setT('lr_number', e.target.value)} /></label>
-            </fieldset>
+            {showOrder && (
+              <fieldset className="sb-more-set sb-more-order">
+                <legend>Order &amp; tax</legend>
+                {fields.orderOf('order').map((key) => <Fragment key={key}>{moreNodes[key]}</Fragment>)}
+              </fieldset>
+            )}
+            {showTransport && (
+              <fieldset className="sb-more-set sb-more-transport">
+                <legend>Transport <small>optional</small></legend>
+                {fields.orderOf('transport').map((key) => <Fragment key={key}>{moreNodes[key]}</Fragment>)}
+              </fieldset>
+            )}
           </div>
-          <label className="sb-more-wide"><span>Notes</span>
-            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Shown on the invoice — PO reference, delivery note…" /></label>
-          <label className="sb-more-wide"><span>Terms &amp; conditions</span>
-            <textarea rows={2} value={termsText} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms, jurisdiction…" /></label>
+          {fields.orderOf('notes').map((key) => <Fragment key={key}>{moreNodes[key]}</Fragment>)}
         </div>
       )}
 
@@ -1333,6 +1494,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
           </p>
           {!companyState && <p className="sb-warn">Company state is not set — GST is treated as intra-state. Set it in Settings → Company.</p>}
           {posMissing && <p className="error sb-error">Enter the place of supply — GST depends on it.</p>}
+          {missing && <p className="error sb-error">Fill in the fields marked *</p>}
           {cessBad && <p className="error sb-error">A cess rate cannot be above 300%.</p>}
           {error && <p className="error sb-error">{error}</p>}
           {!transportOk && <p className="error sb-error">Check the vehicle / e-way bill number in More details.</p>}
@@ -2325,11 +2487,12 @@ function CreditNoteForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () =>
 }
 
 function Receipts({ onOpen }: { onOpen: (id: string) => void }) {
+  const columns = useColumns('receipts', RECEIPT_COLUMNS)
   const list = useQuery('erp-receipts', () => erp.invoices({ kind: 'invoice' }))
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [mode, setMode] = useState('')
-  const all = (list.data ?? []).flatMap((i) => i.receipts.map((r) => ({ ...r, invoiceId: i.id, invoice: i.number, customer: i.customer_name })))
+  const all: ReceiptRow[] = (list.data ?? []).flatMap((i) => i.receipts.map((r) => ({ ...r, invoiceId: i.id, invoice: i.number, customer: i.customer_name })))
   const needle = q.trim().toLowerCase()
   const rows = all.filter((r) => (!status || r.status === status) && (!mode || r.mode === mode)
     && (!needle || [r.number, r.invoice, r.customer, r.reference].some((v) => v && v.toLowerCase().includes(needle))))
@@ -2359,6 +2522,7 @@ function Receipts({ onOpen }: { onOpen: (id: string) => void }) {
           <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
             <option value="">All statuses</option><option value="posted">Posted</option><option value="reversed">Reversed</option>
           </select>
+          <ColumnSettings defs={RECEIPT_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
           <select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Payment mode">
             <option value="">All modes</option>
             {modes.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -2373,19 +2537,10 @@ function Receipts({ onOpen }: { onOpen: (id: string) => void }) {
           <EmptyState icon={<IconSearch size={22} />} title="Nothing matches" body="Change the search or the filters." />
         ) : (
           <div className="table-wrap"><table className="ivl">
-            <thead><tr><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Date</th><th>Mode</th><th className="crm-num">Amount</th><th className="crm-num">TDS</th><th>Status</th><th>Reversal</th></tr></thead>
+            <thead><tr>{columns.visible.map((c) => <th key={c.key} className={(c as ReceiptColumn).thClass}>{c.label}</th>)}</tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.id} className={r.status === 'reversed' ? 'rcl-rev' : undefined} onClick={() => onOpen(r.invoiceId)} title="Open the invoice">
-                <td><span className="ivl-no">{r.number}</span>{r.created_by_name ? <small className="ivl-kind">by {r.created_by_name}</small> : null}</td>
-                <td className="ivl-date-cell">{r.invoice}</td>
-                <td><span className="ivl-cust" title={r.customer}>{r.customer}</span></td>
-                <td className="ivl-date-cell"><DateText iso={r.received_on} /></td>
-                <td>{r.mode.toUpperCase()}{r.reference ? <small className="ivl-kind">{r.reference}</small> : null}</td>
-                <td className="crm-num ivl-amt rcl-amt">{rupees(r.amount)}</td><td className="crm-num rcl-amt">{rupees(r.tds_amount)}</td>
-                <td><ErpState value={r.status} /></td>
-                <td className="rcl-why">{r.status === 'reversed' ? (
-                  <>{r.reverse_reason ?? '—'}<small className="ivl-kind">{r.reversed_at ? <DateText iso={r.reversed_at} /> : null}{r.reversed_by_name ? ` · ${r.reversed_by_name}` : ''}</small></>
-                ) : '—'}</td>
+                {columns.visible.map((c) => { const col = c as ReceiptColumn; return <td key={col.key} className={col.className}>{col.td(r)}</td> })}
               </tr>
             ))}</tbody>
           </table></div>

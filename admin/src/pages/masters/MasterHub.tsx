@@ -1,7 +1,6 @@
 /* Sales Master and Product Master — a master family on its own page.
  *
- * These two are not set once and forgotten like geography: products get
- * repriced, plans added, stages and territories tuned as the sales team
+ * These two are not set once and forgotten like geography: stages and territories are tuned as the sales team
  * grows. So each has a page of its own, reached from the chips at the top of
  * the Master menu, instead of a card on it.
  *
@@ -32,8 +31,6 @@ const TAGLINES: Record<string, string> = {
   competitors: 'Who you bid against',
   territories: 'Sales regions by state',
   'contact-designations': 'Customer-side job titles',
-  products: 'Rates, GST and categories',
-  plans: 'Priced terms and renewals',
   countries: 'Top of the address chain',
   states: 'Decides which GST applies',
   districts: 'Within a state',

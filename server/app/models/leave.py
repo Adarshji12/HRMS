@@ -540,6 +540,19 @@ class Holiday(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_optional: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: public | national | festival | optional | company. 'optional' is the Optional / Restricted
+    #: type and always goes with ``is_optional``.
+    holiday_type: Mapped[str] = mapped_column(String(16), default="public", nullable=False)
+    #: The one branch that observes it; none means every branch.
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True
+    )
+    branch: Mapped["Branch | None"] = relationship("Branch", lazy="joined")
+
+    @property
+    def branch_name(self) -> str | None:
+        return self.branch.name if self.branch is not None else None
+
     # Next year's calendar is drafted while this year's is still stamping
     # attendance, so a holiday needs to exist without being in force.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

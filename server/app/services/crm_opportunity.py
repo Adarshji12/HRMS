@@ -129,10 +129,41 @@ def to_out(db: Session, row: CrmOpportunity) -> S.OpportunityOut:
     )
 
 
-def _get(db: Session, viewer: User, opportunity_id: uuid.UUID) -> CrmOpportunity:
+APPROVALS_MENU = "/approvals"
+
+
+def costsheet_grant(viewer: User) -> bool | None:
+    """What Roles & Permission says about the Costsheet tab of Approvals.
+
+    ``True`` / ``False`` when the person's role has Approvals and ticks (or unticks) that
+    tab, ``None`` when it does not say (an unrestricted role, no Approvals, or a role saved
+    before tabs existed) - in which case the older rule applies: managers and
+    administrators approve.
+    """
+    role = viewer.org_role
+    if viewer.role_enum.value == "owner":
+        return None
+    if role is None or role.menu_rights is None:
+        return None
+    row = role.menu_rights.get(APPROVALS_MENU)
+    if row is None or not row.get("access") or "tab_costsheet" not in row:
+        return None
+    return bool(row["tab_costsheet"])
+
+
+def may_approve_costsheets(viewer: User) -> bool:
+    grant = costsheet_grant(viewer)
+    return viewer.sees_others if grant is None else grant
+
+
+def _get(db: Session, viewer: User, opportunity_id: uuid.UUID, *, as_approver: bool = False) -> CrmOpportunity:
     row = db.get(CrmOpportunity, opportunity_id)
     if row is None or row.org_id != viewer.org_id:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Opportunity not found")
+    # A person the role names as a costsheet approver decides every costsheet, not
+    # only those on leads they own; anyone else is held to the lead's own scope.
+    if as_approver and costsheet_grant(viewer) is True:
+        return row
     # Reading the lead applies the same ownership scope the lead itself has.
     crm_svc._readable_lead(db, viewer, row.lead_id)
     return row
@@ -163,6 +194,12 @@ def list_all(
         .where(CrmOpportunity.org_id == viewer.org_id)
     )
     scope = crm_svc.visible_owner_ids(db, viewer)
+    if costsheet_status == "requested":
+        grant = costsheet_grant(viewer)
+        if grant is False:
+            raise _refuse("Your role does not include the Costsheet tab of Approvals.", "permission_denied", 403)
+        if grant is True:
+            scope = None  # an approver the role names sees the whole queue
     if scope is not None:
         query = query.where(or_(CrmLead.owner_id.is_(None), CrmLead.owner_id.in_(scope)))
     if costsheet_status == "requested":
@@ -365,13 +402,13 @@ def decide_costsheet(
     steps. It takes someone who sees other people's work — a manager or an
     administrator, the same people the approvals tab is shown to.
     """
-    if not viewer.sees_others:
+    if not may_approve_costsheets(viewer):
         raise _refuse(
-            "Only a manager or administrator can approve or reject a costsheet.",
+            "Only someone whose role includes the Costsheet tab of Approvals, or a manager or administrator, can approve or reject a costsheet.",
             "permission_denied",
             403,
         )
-    row = _get(db, viewer, opportunity_id)
+    row = _get(db, viewer, opportunity_id, as_approver=True)
     if row.costsheet_status == "none":
         raise _refuse("This costsheet has not been sent for approval.", "not_requested", 409)
     if not row.costsheet_key:

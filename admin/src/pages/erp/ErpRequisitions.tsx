@@ -14,6 +14,8 @@ import { IconClose, IconDownload, IconEdit, IconMore, IconPlus, IconSearch, Icon
 import { CrmPage } from '../crm/parts'
 import { todayISO } from '../crm/api'
 import { erp, erpError, qtyText, rupees, type Requisition } from './api'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import { cells, type Col } from './listColumns'
 import '../../styles/invoice.css'
 import '../../styles/so-view.css'
 import '../../styles/erp-req.css'
@@ -60,7 +62,51 @@ function pageWindow(page: number, pages: number): number[] {
   return [...near].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b)
 }
 
+interface ReqCtx { house: Record<string, string> }
+type ReqColumn = Col<Requisition, ReqCtx> & { sort?: string; num?: boolean }
+const REQ_COLUMNS: ReqColumn[] = [
+  { key: 'number', label: 'Requisition no.', locked: true, sort: 'number', td: (r) => {
+    const overdue = late(r, todayISO())
+    return (
+      <>
+        <span className="pol-no">{r.number}</span>
+        {(overdue || r.sales_order_id) && (
+          <span className="sol-tags">
+            {overdue && <em className="is-high">Overdue</em>}
+            {r.sales_order_id && <em>Sales order</em>}
+          </span>
+        )}
+      </>
+    )
+  } },
+  { key: 'created', label: 'Raised on', sort: 'created', td: (r) => fullDate(r.created_at) },
+  { key: 'title', label: 'Title', sort: 'title', className: 'rql-title', td: (r) => (
+    <>
+      <b title={r.title}>{r.title}</b>
+      <small>{r.lines.length} {r.lines.length === 1 ? 'item' : 'items'}{r.lines[0] ? ` · ${r.lines[0].description}${r.lines.length > 1 ? ` +${r.lines.length - 1}` : ''}` : ''}</small>
+    </>
+  ) },
+  { key: 'requested_by', label: 'Requested by', sort: 'requested_by', td: (r) => r.requested_by_name ?? '—' },
+  { key: 'warehouse', label: 'Deliver to', td: (r, ctx) => ctx.house[r.warehouse_id ?? ''] ?? <span className="itl-muted">—</span> },
+  { key: 'required_by', label: 'Needed by', sort: 'required_by',
+    className: (r) => (late(r, todayISO()) ? 'rql-late' : ''),
+    td: (r) => fullDate(r.required_by) ?? <span className="itl-muted">—</span> },
+  { key: 'estimate', label: 'Estimate', sort: 'estimate', num: true, className: 'crm-num', td: (r) => <b className="pol-amt">{rupees(r.estimated_total)}</b> },
+  { key: 'ordered', label: 'Ordered', sort: 'ordered', td: (r) => {
+    const pct = ordered(r)
+    return ['approved', 'closed'].includes(r.status) ? (
+      <span className="rql-bar" title={`${pct}% ordered`}><i style={{ width: `${pct}%` }} /><em>{pct}%</em></span>
+    ) : <span className="itl-muted">—</span>
+  } },
+  { key: 'status', label: 'Status', sort: 'status', td: (r) => <span className={`crm-state crm-state-${TONE[r.status] ?? 'idle'}`}>{STATUS_TEXT[r.status] ?? r.status}</span> },
+  { key: 'purpose', label: 'Justification', initial: false, td: (r) => r.purpose || '—' },
+  { key: 'lines', label: 'Lines', initial: false, td: (r) => r.lines.length },
+  { key: 'reviewed_by', label: 'Decided by', initial: false, td: (r) => r.reviewed_by_name || '—' },
+  { key: 'review_note', label: 'Decision note', initial: false, td: (r) => r.review_note || '—' },
+]
+
 export default function ErpRequisitions() {
+  const columns = useColumns('erp-requisitions', REQ_COLUMNS)
   const { user } = useAuth()
   const { can } = useAccess()
   const procurement = can('can_manage_procurement')
@@ -248,6 +294,8 @@ export default function ErpRequisitions() {
               </>
             )}
           </div>
+          <ColumnSettings defs={REQ_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
           <div className="ivl-export">
             <button type="button" className="btn" disabled={!total} aria-haspopup="menu" aria-expanded={exporting}
               title={total ? `Export all ${total} matching` : 'Nothing to export'} onClick={() => setExporting((v) => !v)}>
@@ -276,46 +324,14 @@ export default function ErpRequisitions() {
         ) : (
           <div className="table-wrap"><table className="itl sol rql">
             <thead><tr>
-              <SortTh col="number" sort={sort} dir={dir} onSort={onSort}>Requisition no.</SortTh>
-              <SortTh col="created" sort={sort} dir={dir} onSort={onSort}>Raised on</SortTh>
-              <SortTh col="title" sort={sort} dir={dir} onSort={onSort}>Title</SortTh>
-              <SortTh col="requested_by" sort={sort} dir={dir} onSort={onSort}>Requested by</SortTh>
-              <th>Deliver to</th>
-              <SortTh col="required_by" sort={sort} dir={dir} onSort={onSort}>Needed by</SortTh>
-              <SortTh col="estimate" sort={sort} dir={dir} onSort={onSort} num>Estimate</SortTh>
-              <SortTh col="ordered" sort={sort} dir={dir} onSort={onSort}>Ordered</SortTh>
-              <SortTh col="status" sort={sort} dir={dir} onSort={onSort}>Status</SortTh>
-              <th className="itl-c-act">Actions</th>
+              {(columns.visible as ReqColumn[]).map((c) => c.sort
+                ? <SortTh key={c.key} col={c.sort} sort={sort} dir={dir} onSort={onSort} num={c.num}>{c.label}</SortTh>
+                : <th key={c.key}>{c.label}</th>)}<th className="itl-c-act">Actions</th>
             </tr></thead>
             <tbody>{pageRows.map((r) => {
-              const pct = ordered(r)
-              const overdue = late(r, today)
               return (
                 <tr key={r.id} onClick={() => setOpen(r)} className={`sol-row${['cancelled', 'rejected'].includes(r.status) ? ' is-off' : ''}`}>
-                  <td>
-                    <span className="pol-no">{r.number}</span>
-                    {(overdue || r.sales_order_id) && (
-                      <span className="sol-tags">
-                        {overdue && <em className="is-high">Overdue</em>}
-                        {r.sales_order_id && <em>Sales order</em>}
-                      </span>
-                    )}
-                  </td>
-                  <td>{fullDate(r.created_at)}</td>
-                  <td className="rql-title">
-                    <b title={r.title}>{r.title}</b>
-                    <small>{r.lines.length} {r.lines.length === 1 ? 'item' : 'items'}{r.lines[0] ? ` · ${r.lines[0].description}${r.lines.length > 1 ? ` +${r.lines.length - 1}` : ''}` : ''}</small>
-                  </td>
-                  <td>{r.requested_by_name ?? '—'}</td>
-                  <td>{house[r.warehouse_id ?? ''] ?? <span className="itl-muted">—</span>}</td>
-                  <td className={overdue ? 'rql-late' : undefined}>{fullDate(r.required_by) ?? <span className="itl-muted">—</span>}</td>
-                  <td className="crm-num"><b className="pol-amt">{rupees(r.estimated_total)}</b></td>
-                  <td>
-                    {['approved', 'closed'].includes(r.status) ? (
-                      <span className="rql-bar" title={`${pct}% ordered`}><i style={{ width: `${pct}%` }} /><em>{pct}%</em></span>
-                    ) : <span className="itl-muted">—</span>}
-                  </td>
-                  <td><span className={`crm-state crm-state-${TONE[r.status] ?? 'idle'}`}>{STATUS_TEXT[r.status] ?? r.status}</span></td>
+                  {cells<Requisition, ReqCtx>(columns.visible, r, { house })}
                   <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="crm-row-actions itl-actions">
                       <button className="crm-icon-btn" title="View" aria-label={`View ${r.number}`} onClick={() => setOpen(r)}><IconSheet size={14} /></button>
@@ -391,8 +407,17 @@ export default function ErpRequisitions() {
   )
 }
 
-function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; onClose: () => void; onSaved: (r: Requisition) => void }) {
-  const items = useItems()
+const REQ_SECTIONS: FieldSection[] = [{ id: 'main', label: 'Requisition' }]
+// What it is for is what the server requires of a requisition; the lines are
+// not part of this list.
+const REQ_FIELDS: FieldDef[] = [
+  { key: 'title', label: 'What is it for', section: 'main', fixed: true },
+  { key: 'required_by', label: 'Needed by', section: 'main' },
+  { key: 'warehouse_id', label: 'Deliver to', section: 'main' },
+  { key: 'purpose', label: 'Justification', section: 'main' },
+]
+
+function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; onClose: () => void; onSaved: (r: Requisition) => void }) {  const items = useItems()
   const warehouses = useQuery('erp-wh-active', () => erp.warehouses(true))
   const [title, setTitle] = useState(req?.title ?? '')
   const [purpose, setPurpose] = useState(req?.purpose ?? '')
@@ -402,12 +427,33 @@ function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; o
     key: l.id, item_id: l.item_id ?? '', description: l.description, quantity: l.quantity, rate: l.estimated_rate, gst_percent: '0',
   })) : [blankLine()])
   const { busy, error, run } = useRun()
+  const fields = useFieldModes('erp-requisition-form', REQ_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = {
+    required_by: !requiredBy, warehouse_id: !warehouseId, purpose: !purpose.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const fieldNodes: Record<string, ReactNode> = {
+    title: <Field label="What is it for" wide required><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Switches for the Pune rollout" /></Field>,
+    required_by: fm('required_by') !== 'hide' && <Field label="Needed by" required={rq('required_by')}><input type="date" value={requiredBy} onChange={(e) => setRequiredBy(e.target.value)} /></Field>,
+    warehouse_id: fm('warehouse_id') !== 'hide' && (
+      <Field label="Deliver to" required={rq('warehouse_id')}>
+        <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+          <option value="">—</option>
+          {(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </Field>
+    ),
+    purpose: fm('purpose') !== 'hide' && <Field label="Justification" wide required={rq('purpose')}><textarea placeholder="e.g. Replacement stock for the Pune branch" rows={2} value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>,
+  }
   return (
     <Dialog wide title={req ? `Edit ${req.number}` : 'New requisition'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
+        {missing && <span className="error">Fill in the fields marked *</span>}
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={busy || !title.trim()} onClick={() => void run(async () => onSaved(await erp.saveRequisition({
+        <button className="btn btn-primary" disabled={busy || !title.trim() || missing} onClick={() => void run(async () => onSaved(await erp.saveRequisition({
           title, purpose, required_by: requiredBy || null, warehouse_id: warehouseId || null,
           lines: linesPayload(lines, 'estimated_rate'),
         }, req?.id)))}>Save draft</button>
@@ -415,17 +461,12 @@ function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; o
     }>
       <div style={{ padding: '0 20px 12px' }}>
         <div className="crm-form" style={{ marginBottom: 12 }}>
-          <Field label="What is it for" wide><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Switches for the Pune rollout" /></Field>
-          <Field label="Needed by"><input type="date" value={requiredBy} onChange={(e) => setRequiredBy(e.target.value)} /></Field>
-          <Field label="Deliver to">
-            <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-              <option value="">—</option>
-              {(warehouses.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Justification" wide><textarea placeholder="e.g. Replacement stock for the Pune branch" rows={2} value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field>
-        </div>
-        <LineEditor lines={lines} onChange={setLines} items={items.data ?? []} rateFrom="standard_cost" />
+          <div className="crm-form-wide lf-settings">
+            <FieldSettings defs={REQ_FIELDS} sections={REQ_SECTIONS} modes={fields.modes} order={fields.order}
+              onSave={fields.save} onReset={fields.reset} />
+          </div>
+          {fields.orderOf('main').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
+        </div><LineEditor lines={lines} onChange={setLines} items={items.data ?? []} rateFrom="standard_cost" />
         <p className="crm-sub">Rates are estimates — the purchase order carries the vendor's price.</p>
       </div>
     </Dialog>

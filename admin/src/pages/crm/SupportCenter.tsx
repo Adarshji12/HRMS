@@ -40,8 +40,8 @@ import {
   type CustomerDetail,
   type Disposition,
   type Interaction,
-  type Product,
 } from './api'
+import { erp, type Item } from '../erp/api'
 import { Assignee, CustomerPicker, DuePill, Field, StateText, WhatsAppButton } from './parts'
 
 export default function SupportCenter() {
@@ -444,11 +444,11 @@ function VisitsTable({ customer }: { customer: CustomerDetail | null }) {
   )
 }
 
-/** What this customer has not bought: the active catalogue minus the products
+/** What this customer has not bought: the active items minus the ones
  *  on their plans. A set difference over a few dozen products, so it is worked
  *  out here rather than given an endpoint of its own. */
 function CrossSell({ customer }: { customer: CustomerDetail | null }) {
-  const products = useQuery<Product[]>('crm-products-all', () => crm.masters<Product>('products'),
+  const products = useQuery<Item[]>('crm-erp-items', () => erp.items({ active_only: true }),
     { enabled: Boolean(customer) })
   const owned = useMemo(
     () => new Set((customer?.plans ?? []).map((plan) => plan.product_id).filter(Boolean) as string[]),
@@ -459,7 +459,7 @@ function CrossSell({ customer }: { customer: CustomerDetail | null }) {
     <table className="sd-table">
       <thead>
         <tr>
-          <th>Product / Service</th>
+          <th>Item</th>
           <th>Description</th>
           <th className="crm-num">List rate</th>
           <th className="crm-num">Offer it</th>
@@ -471,14 +471,14 @@ function CrossSell({ customer }: { customer: CustomerDetail | null }) {
         ) : products.loading && !products.data ? (
           <EmptyRow cols={4}>Loading…</EmptyRow>
         ) : !(products.data ?? []).some((product) => product.is_active) ? (
-          <EmptyRow cols={4}>No products in the catalogue yet. Add them under CRM masters.</EmptyRow>
+          <EmptyRow cols={4}>No items yet. Add them under ERP → Items.</EmptyRow>
         ) : rest.length === 0 ? (
-          <EmptyRow cols={4}>This customer already has everything on the catalogue.</EmptyRow>
+          <EmptyRow cols={4}>This customer already has every item.</EmptyRow>
         ) : rest.map((product) => (
           <tr key={product.id}>
             <td className="crm-strong">{product.name}</td>
             <td className="sd-remarks">{product.description ?? <span className="crm-muted">—</span>}</td>
-            <td className="crm-num">{rupees(product.rate)}</td>
+            <td className="crm-num">{rupees(product.sale_price)}</td>
             <td className="crm-num">
               <Link className="btn btn-sm" to={`/crm/quotations/new?customer=${customer.id}`}>Quote it</Link>
             </td>

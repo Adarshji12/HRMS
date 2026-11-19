@@ -84,8 +84,15 @@ export interface OfficeLocation {
   id: string
   name: string
   address: string | null
-  lat: number
-  lng: number
+  /** The branch this site belongs to, and where it is; set from Organisation → Location. */
+  branch_id?: string | null
+  branch_name?: string | null
+  state?: string | null
+  district?: string | null
+  city?: string | null
+  /** Null until the site is mapped; an unmapped site cannot verify a punch. */
+  lat: number | null
+  lng: number | null
   radius_m: number
   is_active: boolean
   created_at: string
@@ -101,6 +108,16 @@ export interface AttendanceSettingsPayload {
   geofence_office: Enforcement | null
   geofence_work_from_home: Enforcement | null
   geofence_on_duty: Enforcement | null
+  /* Overtime policy: whether it counts, the minutes below which nothing counts,
+     and whether work on a day off counts. */
+  overtime_enabled: boolean
+  overtime_min_minutes: number
+  overtime_on_off_days: boolean
+  manual_enabled: boolean
+  manual_web_enabled: boolean
+  manual_mobile_enabled: boolean
+  face_enabled: boolean
+  biometric_enabled: boolean
 }
 
 /* ---------------------------------------------------------------- helpers -- */
@@ -508,6 +525,7 @@ export default function MyAttendance() {
         error={todayQ.error}
         yesterday={yesterdayQ.data?.[0] ?? null}
         enforcement={settingsQ.data?.geofence_enforcement}
+        manualOff={Boolean(settingsQ.data && (!settingsQ.data.manual_enabled || !settingsQ.data.manual_web_enabled))}
         offices={officesQ.data}
         timezone={tz}
         onPunched={reloadAll}
@@ -551,6 +569,7 @@ function PunchCard({
   error,
   yesterday,
   enforcement,
+  manualOff,
   offices,
   timezone,
   onPunched,
@@ -560,6 +579,8 @@ function PunchCard({
   error: string | null
   yesterday: AttendanceDay | null
   enforcement: Enforcement | undefined
+  /** The company has switched manual check-in on the web off (Settings → Attendance → Methods). */
+  manualOff: boolean
   offices: OfficeLocation[] | undefined
   timezone: string | undefined
   onPunched: () => void
@@ -580,8 +601,8 @@ function PunchCard({
   const busy = phase !== null
   const openNightShift =
     yesterday && yesterday.check_in_at && !yesterday.check_out_at ? yesterday : null
-  const canPunchIn = !today?.check_in_at && !openNightShift
-  const canPunchOut = Boolean((today?.check_in_at && !today.check_out_at) || openNightShift)
+  const canPunchIn = !manualOff && !today?.check_in_at && !openNightShift
+  const canPunchOut = !manualOff && Boolean((today?.check_in_at && !today.check_out_at) || openNightShift)
   const activeOffices = (offices ?? []).filter((o) => o.is_active)
 
   async function punch(kind: 'in' | 'out') {
@@ -720,7 +741,9 @@ function PunchCard({
                   {phase?.kind === 'out' ? <span className="att-btn-spin" aria-hidden /> : <IconSignOut size={16} />}
                   {label('out', 'Punch out')}
                 </button>
-                {!canPunchIn && !canPunchOut && (
+                {manualOff ? (
+                  <span className="muted-sm">Manual check-in and check-out is switched off for your company.</span>
+                ) : !canPunchIn && !canPunchOut && (
                   <span className="muted-sm">Today is closed. Nothing left to punch.</span>
                 )}
               </div>

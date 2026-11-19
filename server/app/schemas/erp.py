@@ -73,7 +73,6 @@ class ItemIn(_In):
     reorder_level: Decimal = Field(default=Decimal("0"), ge=0)
     min_level: Decimal = Field(default=Decimal("0"), ge=0)
     max_level: Decimal = Field(default=Decimal("0"), ge=0)
-    crm_product_id: uuid.UUID | None = None
     #: A data URL; ~400 KB is far more than a resized thumbnail needs.
     image: str | None = Field(default=None, max_length=400_000)
     barcode: str | None = Field(default=None, max_length=64)

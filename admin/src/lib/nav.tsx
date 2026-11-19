@@ -21,7 +21,6 @@ import {
   IconSheet,
   IconSitemap,
   IconUsers,
-  IconGrid,
 } from '../components/Icons'
 import type { MenuRights } from './types'
 
@@ -59,6 +58,12 @@ export interface NavItem {
    * `canApproveSomething`.
    */
   approverOnly?: boolean
+  /**
+   * Follows the role's Dashboard row on Roles & Permission: open when the role has
+   * it on, closed when it has it off, and for a role that does not say, open to
+   * whoever sees beyond themselves — the rule these pages had before.
+   */
+  dashboard?: boolean
   /**
    * Key used by the per-employee page deny-list. Only set on pages the server
    * can actually refuse — see PAGE_GUARDS in app/api/deps.py. A key here with
@@ -118,11 +123,11 @@ export const NAV: NavGroup[] = [
     key: 'dashboard',
     icon: IconDashboard,
     items: [
-      { to: '/dashboard', label: 'Overview', icon: IconDashboard, end: true, teamOnly: true },
-      { to: '/dashboards/hr', label: 'HR', icon: IconUsers, teamOnly: true },
-      { to: '/dashboards/crm', label: 'CRM', icon: IconStar, teamOnly: true },
-      { to: '/dashboards/erp', label: 'ERP', icon: IconBuilding, teamOnly: true },
-      { to: '/dashboards/monitor', label: 'Desk Monitor', icon: IconGauge, teamOnly: true },
+      { to: '/dashboard', label: 'Overview', icon: IconDashboard, end: true, dashboard: true },
+      { to: '/dashboards/hr', label: 'HR', icon: IconUsers, dashboard: true },
+      { to: '/dashboards/crm', label: 'CRM', icon: IconStar, dashboard: true },
+      { to: '/dashboards/erp', label: 'ERP', icon: IconBuilding, dashboard: true },
+      { to: '/dashboards/monitor', label: 'Desk Monitor', icon: IconGauge, dashboard: true },
     ],
   },
   /* Employee. Formerly "People", and the rename is the point: the module is
@@ -145,9 +150,6 @@ export const NAV: NavGroup[] = [
       /* Not teamOnly: knowing who you report to is the one org question an
          employee genuinely has, and the tree is already scoped. */
       { page: 'hierarchy', to: '/hierarchy', label: 'Hierarchy', icon: IconSitemap },
-      /* Opportunities whose costsheet has been approved, from the CRM. Here
-         because this is where the people who sign them off already work. */
-      { to: '/costsheet-approvals', label: 'Costsheet Approval', icon: IconSheet, teamOnly: true },
       /* Departments and designations live under Settings → Teams & Departments
          only; they are company setup, not something looked up per employee. */
     ],
@@ -331,7 +333,6 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/crm', label: 'Lead Dashboard', icon: IconDashboard, end: true },
       { to: '/crm/leads', label: 'My Leads', icon: IconUsers },
-      { to: '/crm/pipeline', label: 'Pipeline', icon: IconGrid },
       { to: '/crm/follow-ups', label: 'My Follow-ups', icon: IconClock },
       { to: '/crm/visits', label: 'My Visit', icon: IconGlobe },
       { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
@@ -470,7 +471,40 @@ export function routeOpen(pathname: string, rights: MenuRights | null | undefine
 }
 
 /** Whether this person may open a single entry. */
+/** Whether a tab of the Approvals inbox is open to this person. The role's Approvals
+ *  row names the tabs it ticked; a tab it does not mention follows the older rule
+ *  — the lanes were always shown to whoever could decide them, and the Costsheet
+ *  tab to whoever sees other people's work (`legacy`). */
+export function approvalTabOpen(
+  rights: MenuRights | null | undefined, tab: string, legacy: boolean,
+): boolean {
+  const row = rights?.['/approvals']
+  const said = row && row.access ? row[`tab_${tab}`] : undefined
+  if (said !== undefined) return said
+  return tab === 'costsheet' ? legacy : true
+}
+
+/** Whether a role has been given any Approvals tab outright — enough to open the
+ *  inbox, even for somebody who does not decide anything in it yet. */
+export function costsheetGranted(rights: MenuRights | null | undefined): boolean {
+  const row = rights?.['/approvals']
+  return Boolean(row && row.access && Object.entries(row).some(([k, v]) => k.startsWith('tab_') && v === true))
+}
+
+export function mayApproveCostsheets(access: Pick<NavAccess, 'canViewTeam' | 'menuRights'>): boolean {
+  return approvalTabOpen(access.menuRights, 'costsheet', access.canViewTeam)
+}
+
+/** Whether the dashboards are open to this person: the role's Dashboard row when
+ *  it names one, otherwise anybody who sees beyond themselves. */
+export function dashboardOpen(access: Pick<NavAccess, 'canViewTeam' | 'menuRights'>): boolean {
+  const row = access.menuRights?.['/']
+  return row === undefined ? access.canViewTeam : row.access
+}
+
+/** Whether this person may open a single entry. */
 export function canSee(item: NavItem, access: NavAccess): boolean {
+  if (item.dashboard) return dashboardOpen(access) && !(item.page && access.hiddenPages.includes(item.page))
   return (
     (!item.adminOnly || access.isAdmin) &&
     (!item.teamOnly || access.canViewTeam) &&

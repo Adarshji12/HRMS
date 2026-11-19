@@ -163,3 +163,22 @@ def test_the_menu_catalogue_is_served(client, tenants):
     groups = client.get("/api/v1/roles/menus", headers=acme.headers()).json()
     leads = next(m for g in groups for m in g["menus"] if m["key"] == "/crm/leads")
     assert leads["actions"] == ["add", "edit", "delete"]
+
+
+def test_approvals_tabs_are_in_the_catalogue_and_survive_saving():
+    approvals = menus.BY_KEY["/approvals"]
+    assert [k for k, _ in approvals.tabs][-1] == "costsheet"
+    assert menus.BY_KEY.get("/costsheet-approvals") is None
+
+    cleaned = menus.clean_menu_rights({
+        "/approvals": {"access": True, "tab_leave": False, "tab_costsheet": True, "tab_nonsense": True},
+    })["/approvals"]
+    assert cleaned["tab_leave"] is False and cleaned["tab_costsheet"] is True
+    assert cleaned["tab_loan"] is True            # not mentioned: keeps showing
+    assert "tab_nonsense" not in cleaned
+
+    # Costsheet not mentioned stays unsaid, so it keeps following the manager rule.
+    assert "tab_costsheet" not in menus.clean_menu_rights({"/approvals": {"access": True}})["/approvals"]
+    # A closed menu closes every tab.
+    closed = menus.clean_menu_rights({"/approvals": {"access": False, "tab_leave": True}})["/approvals"]
+    assert not any(closed[f"tab_{k}"] for k, _ in approvals.tabs)

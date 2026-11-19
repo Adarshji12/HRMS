@@ -309,6 +309,22 @@ class CompanyProfileIn(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _a_real_time_zone(cls, value: str | None) -> str | None:
+        """Attendance and every day-boundary read this, so an unknown name would
+        break them quietly rather than at the moment it was typed."""
+        if value is None:
+            return value
+        from zoneinfo import ZoneInfo
+
+        try:
+            ZoneInfo(value)
+        except Exception as exc:  # unknown key, malformed, or no tz database
+            raise ValueError("That is not a known time zone") from exc
+        return value
+
     legal_name: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=80)
     website: str | None = Field(default=None, max_length=255)

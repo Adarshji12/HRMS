@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import ORMModel
 
@@ -55,13 +57,22 @@ class DesignationIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     # 1 is the most senior; larger numbers sit further down the ladder.
     level: int = Field(default=1, ge=1, le=100)
+    #: A few letters for the title. Blank is stored as none; kept upper case.
+    code: str | None = Field(default=None, max_length=12)
     department_id: uuid.UUID | None = None
     is_active: bool = True
+
+    @field_validator("code")
+    @classmethod
+    def _tidy_code(cls, value: str | None) -> str | None:
+        value = (value or "").strip().upper()
+        return value or None
 
 
 class DesignationOut(ORMModel):
     id: uuid.UUID
     name: str
+    code: str | None = None
     level: int
     department_id: uuid.UUID | None = None
     department_name: str | None = None
@@ -105,3 +116,62 @@ class AssignRequest(BaseModel):
     clear_team: bool = False
     clear_department: bool = False
     clear_manager: bool = False
+
+
+_EMAIL = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]{2,}$")
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+class BranchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    code: str | None = Field(default=None, max_length=12)
+    address: str | None = Field(default=None, max_length=500)
+    country: str | None = Field(default=None, max_length=80)
+    state: str | None = Field(default=None, max_length=120)
+    district: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    pincode: str | None = Field(default=None, max_length=12)
+    phone: str | None = Field(default=None, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
+    is_head_office: bool = False
+    is_active: bool = True
+
+    @field_validator("address", "country", "state", "district", "city", "pincode", "phone", "email")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        return _blank_to_none(value)
+
+    @field_validator("code")
+    @classmethod
+    def _tidy_code(cls, value: str | None) -> str | None:
+        value = (value or "").strip().upper()
+        return value or None
+
+    @field_validator("email")
+    @classmethod
+    def _an_address(cls, value: str | None) -> str | None:
+        if value is not None and not _EMAIL.match(value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
+class BranchOut(ORMModel):
+    id: uuid.UUID
+    name: str
+    code: str | None = None
+    address: str | None = None
+    country: str | None = None
+    state: str | None = None
+    district: str | None = None
+    city: str | None = None
+    pincode: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    is_head_office: bool
+    is_active: bool
+    #: Locations that belong to this branch.
+    location_count: int = 0

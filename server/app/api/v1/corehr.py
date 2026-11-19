@@ -114,6 +114,20 @@ def probation_due(
         _fail(error)
 
 
+@router.get("/reports/birthdays")
+def birthdays(
+    viewer: CurrentUser,
+    db: DbSession,
+    within_days: int = Query(default=30, ge=1, le=365),
+) -> list[dict]:
+    """Upcoming birthdays, for the HR dashboard. Dates only, never the year of birth."""
+    try:
+        return [{**row, "user_id": str(row["user_id"]), "on": row["on"].isoformat()}
+                for row in svc.birthdays_soon(db, viewer, within_days=within_days)]
+    except svc.CoreHRError as error:
+        _fail(error)
+
+
 @router.get("/reports/documents-expiring", response_model=list[EmployeeDocumentOut])
 def documents_expiring(
     viewer: CurrentUser,

@@ -31,11 +31,11 @@ import {
   rupees,
   todayISO,
   type Customer,
-  type Product,
   type Quotation,
   type QuotationLine,
 } from './api'
 import { CrmPage, Field, StateText } from './parts'
+import { erp, type Item } from '../erp/api'
 
 interface DraftLine extends QuotationLine {
   key: string
@@ -44,7 +44,6 @@ interface DraftLine extends QuotationLine {
 const emptyLine = (gst = '0'): DraftLine => ({
   key: Math.random().toString(36).slice(2),
   product_id: null,
-  plan_id: null,
   name: '',
   description: null,
   hsn_sac: null,
@@ -67,7 +66,7 @@ export default function QuotationEditor() {
     { enabled: !isNew },
   )
 
-  const products = useQuery<Product[]>('crm-products-all', () => crm.masters<Product>('products'))
+  const products = useQuery<Item[]>('crm-erp-items', () => erp.items({ active_only: true }))
   /* Terms, validity, the default GST rate and the company's own GST state —
      the last read here only to tell the person which way the document will be
      taxed *before* they save; the decision itself is the server's. Readable by
@@ -288,13 +287,12 @@ export default function QuotationEditor() {
     const product = (products.data ?? []).find((row) => row.id === productId)
     patchLine(key, {
       product_id: productId || null,
-      plan_id: null,
       name:
         lines.find((line) => line.key === key)?.name?.trim() ||
         product?.name ||
         '',
       hsn_sac: product?.hsn_sac ?? null,
-      rate: product ? product.rate : '0',
+      rate: product ? product.sale_price : '0',
       // The default rate stands in only where the product carries none.
       gst_percent: product && product.gst_percent != null && product.gst_percent !== '' ? product.gst_percent : defaultGst,
     })
@@ -331,7 +329,6 @@ export default function QuotationEditor() {
         .filter((line) => line.name.trim())
         .map((line) => ({
           product_id: line.product_id,
-          plan_id: line.plan_id,
           name: line.name,
           description: line.description,
           hsn_sac: line.hsn_sac,
@@ -572,7 +569,7 @@ export default function QuotationEditor() {
 
       <section className="card qe-card">
         <div className="crm-panel-head">
-          <h2 className="crm-panel-title">Products &amp; services</h2>
+          <h2 className="crm-panel-title">Items</h2>
           <span className="crm-field-hint">
             Rate and GST come from the master; changing them here does not move it.
           </span>
@@ -590,7 +587,7 @@ export default function QuotationEditor() {
             <thead>
               <tr>
                 <th style={{ width: 28 }}>#</th>
-                <th>Product / Service</th>
+                <th>Item</th>
                 <th>HSN / SAC</th>
                 <th>Qty</th>
                 <th>Rate (₹)</th>
@@ -623,7 +620,7 @@ export default function QuotationEditor() {
                             .filter((product) => product.is_active)
                             .map((product) => (
                               <option key={product.id} value={product.id}>
-                                {product.name}
+                                {product.name} · {product.code}
                               </option>
                             ))}
                         </select>

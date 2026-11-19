@@ -11,9 +11,9 @@
  * figure a list shows.
  */
 
-import { useState, type KeyboardEvent } from 'react'
+import { Fragment, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ErrorNote } from '../../components/ui'
-import { IconClose, IconDownload, IconStar, IconTrash, IconUpload } from '../../components/Icons'
+import { IconClose, IconDownload, IconTrash, IconUpload } from '../../components/Icons'
 import { api, download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import {
@@ -25,10 +25,37 @@ import {
   type OpportunityInput,
 } from './api'
 import { Dialog, Field, MasterSelect } from './parts'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 
 const FILES: Array<{ which: OpportunityFile; label: string }> = [
   { which: 'costsheet', label: 'Costsheet' },
   { which: 'quotation', label: 'Quotation' },
+]
+
+/** What the opportunity form can show, make mandatory or hide. The name,
+ *  revenue, probability and closing date are what a deal is, so they stay. */
+const OPP_SECTIONS: FieldSection[] = [
+  { id: 'deal', label: 'Opportunity' },
+  { id: 'costing', label: 'Costing' },
+  { id: 'files', label: 'Files & notes' },
+]
+const OPP_FIELDS: FieldDef[] = [
+  { key: 'title', label: 'Opportunity', section: 'deal', fixed: true },
+  { key: 'customer', label: 'Customer', section: 'deal' },
+  { key: 'tags', label: 'Tags', section: 'deal' },
+  { key: 'revenue', label: 'Expected revenue', section: 'deal', fixed: true },
+  { key: 'probability', label: 'Probability', section: 'deal', fixed: true },
+  { key: 'closing', label: 'Expected closing', section: 'deal', fixed: true },
+  { key: 'requirement', label: 'Requirement type', section: 'costing' },
+  { key: 'oem', label: 'OEM', section: 'costing' },
+  { key: 'rawcost', label: 'Raw cost', section: 'costing' },
+  { key: 'team', label: 'Sales team', section: 'costing' },
+  { key: 'margin', label: 'Margin (₹)', section: 'costing', optionalOnly: true },
+  { key: 'marginpct', label: 'Margin (%)', section: 'costing', optionalOnly: true },
+  { key: 'costsheet', label: 'Costsheet', section: 'files' },
+  { key: 'quotation', label: 'Quotation', section: 'files' },
+  { key: 'mail', label: 'Mail sent to the customer', section: 'files', optionalOnly: true },
+  { key: 'notes', label: 'Internal notes', section: 'files' },
 ]
 
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
@@ -51,7 +78,8 @@ export function OpportunityForm({
   const [revenue, setRevenue] = useState(opportunity ? opportunity.expected_revenue : '')
   const [probability, setProbability] = useState(String(opportunity?.probability ?? 10))
   const [closing, setClosing] = useState(opportunity?.expected_closing ?? '')
-  const [priority, setPriority] = useState(opportunity?.priority ?? 0)
+  // Not shown or edited any more; carried through so an existing value is not wiped on save.
+  const [priority] = useState(opportunity?.priority ?? 0)
   const [tags, setTags] = useState<string[]>(opportunity?.tags ?? [])
   const [tagDraft, setTagDraft] = useState('')
   const [requirementId, setRequirementId] = useState(opportunity?.requirement_type_id ?? '')
@@ -71,6 +99,10 @@ export function OpportunityForm({
     quotation: opportunity?.quotation ?? null,
   })
   const [removed, setRemoved] = useState<Record<OpportunityFile, boolean>>({ costsheet: false, quotation: false })
+
+  const fields = useFieldModes('opportunity-form', OPP_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   const [touched, setTouched] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -107,6 +139,15 @@ export function OpportunityForm({
             ? 'Raw cost must be a number.'
             : null
 
+  /* A mandatory field this person has chosen, left empty. */
+  const hasFile = (which: OpportunityFile) => Boolean(picked[which] ?? (removed[which] ? null : stored[which]))
+  const emptyField: Record<string, boolean> = {
+    customer: !customerId, tags: tags.length === 0 && !tagDraft.trim(),
+    requirement: !requirementId, oem: !oemId, rawcost: rawCost.trim() === '', team: !teamId,
+    costsheet: !hasFile('costsheet'), quotation: !hasFile('quotation'), notes: notes.trim() === '',
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+
   function addTag(raw: string) {
     const text = raw.trim()
     if (text && !tags.some((t) => t.toLowerCase() === text.toLowerCase())) setTags([...tags, text])
@@ -123,8 +164,8 @@ export function OpportunityForm({
 
   async function submit() {
     setTouched(true)
-    if (problem) {
-      setError(problem)
+    if (problem || missing) {
+      setError(problem ?? 'Fill in the fields marked *.')
       return
     }
     setSaving(true)
@@ -194,137 +235,13 @@ export function OpportunityForm({
 
   const showError = (bad: boolean) => touched && bad
 
-  return (
-    <Dialog
-      wide
-      title={savedId ? 'Edit opportunity' : 'New opportunity'}
-      subtitle={
-        <>
-          For <strong>{lead.name}</strong> · {lead.mobile}
-          {lead.owner_name ? <> · salesperson {lead.owner_name}</> : null}
-        </>
-      }
-      onClose={onClose}
-      footer={
-        <>
-          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
-          {savedId && (
-            <button className="btn btn-danger" type="button" onClick={remove} disabled={saving}>
-              <IconTrash size={15} /> Delete
-            </button>
-          )}
-          {savedId && (
-            <button className="btn" type="button" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
-          )}
-          <button className="btn btn-primary" type="button" onClick={submit} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </>
-      }
-    >
-      <div className="crm-form">
-        {error && (
-          <div className="crm-form-wide">
-            <ErrorNote>{error}</ErrorNote>
-          </div>
-        )}
-
-        <Field label="Opportunity" wide required>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200}
-                 placeholder="e.g. 20 desktops for the accounts team" autoFocus
-                 aria-invalid={showError(!title.trim())} />
-        </Field>
-
-        <Field label="Customer" hint="Only if this deal is for an existing customer.">
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value="">Select customer</option>
-            {(customers.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.company ? ` · ${c.company}` : ''}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Tags" hint="Press Enter or comma after each tag.">
-          <div className="opp-tags">
-            {tags.map((tag) => (
-              <span className="opp-tag" key={tag}>
-                {tag}
-                <button type="button" aria-label={`Remove ${tag}`} onClick={() => setTags(tags.filter((t) => t !== tag))}>
-                  <IconClose size={11} />
-                </button>
-              </span>
-            ))}
-            <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={onTagKey}
-                   onBlur={() => addTag(tagDraft)} placeholder={tags.length ? '' : 'e.g. Hardware, Urgent'}
-                   maxLength={40} />
-          </div>
-        </Field>
-
-        <Field label="Expected revenue (₹)" required>
-          <input value={revenue} onChange={(e) => setRevenue(e.target.value)} inputMode="decimal"
-                 placeholder="e.g. 250000" aria-invalid={showError(revenueBad)} />
-        </Field>
-        <Field label="Probability (%)" required>
-          <input value={probability} onChange={(e) => setProbability(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
-                 inputMode="numeric" placeholder="e.g. 30" aria-invalid={showError(probabilityBad)} />
-        </Field>
-
-        <Field label="Expected closing" required>
-          <input type="date" value={closing} onChange={(e) => setClosing(e.target.value)}
-                 aria-invalid={showError(!closing)} />
-        </Field>
-        <Field label="Priority">
-          <div className="opp-stars" role="radiogroup" aria-label="Priority">
-            {[1, 2, 3].map((n) => (
-              <button key={n} type="button" role="radio" aria-checked={priority === n}
-                      className={n <= priority ? 'is-on' : undefined}
-                      aria-label={`${n} star${n === 1 ? '' : 's'}`}
-                      onClick={() => setPriority(priority === n ? 0 : n)}>
-                <IconStar size={20} />
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Requirement type">
-          <MasterSelect kind="requirement-types" value={requirementId} onChange={setRequirementId}
-                        placeholder="Select requirement type" />
-        </Field>
-        <Field label="OEM">
-          <MasterSelect kind="item-companies" value={oemId} onChange={setOemId} placeholder="Select OEM" />
-        </Field>
-
-
-        <Field label="Raw cost (₹)" hint={costBad ? <span className="lf-req">Enter a number.</span> : undefined}>
-          <input value={rawCost} onChange={(e) => setRawCost(e.target.value)} inputMode="decimal"
-                 placeholder="e.g. 200000" aria-invalid={costBad} />
-        </Field>
-        <Field label="Sales team">
-          <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-            <option value="">Select sales team</option>
-            {(teams.data ?? []).filter((t) => t.is_active || t.id === teamId).map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Margin (₹)" hint="Revenue less raw cost.">
-          <input value={margin === null ? '' : rupees(margin)} readOnly tabIndex={-1} placeholder="Worked out from the cost" />
-        </Field>
-        <Field label="Margin (%)">
-          <input value={marginPercent === null ? '' : `${marginPercent.toFixed(2)}%`} readOnly tabIndex={-1}
-                 placeholder="Worked out from the cost" />
-        </Field>
-
-        {FILES.map(({ which, label }) => {
+  /* One of the two file fields: the costsheet, or the quotation. */
+  const fileField = ({ which, label }: (typeof FILES)[number]) => {
           const current = picked[which] ?? (removed[which] ? null : stored[which])
           const name = picked[which]?.name ?? current?.name
           return (
             <div className="crm-field" key={which}>
-              <span className="crm-field-label">{label}</span>
+              <span className="crm-field-label">{label}{rq(which) && <span className="lf-req"> *</span>}</span>
               <div className="opp-file">
                 <label className="btn btn-sm">
                   <IconUpload size={14} /> {name ? 'Replace file' : 'Upload your file'}
@@ -338,7 +255,7 @@ export function OpportunityForm({
                 {/* Approval sits beside the button, on the costsheet only. */}
                 {which === 'costsheet' && (
                   <label className="crm-check opp-approve"
-                         title="Sends the costsheet to the Costsheet Approval tab, where a manager approves or rejects it">
+                         title="Sends the costsheet to the Costsheet tab on the Approvals page, where a manager approves or rejects it">
                     <input type="checkbox" checked={sendForApproval}
                            onChange={(e) => setSendForApproval(e.target.checked)} />
                     Approve
@@ -372,19 +289,195 @@ export function OpportunityForm({
               <span className="crm-field-hint">Up to 15 MB.</span>
             </div>
           )
-        })}
+  }
 
-        <div className="crm-field crm-form-wide">
+  /* Every field of the form as an element, so the order a person arranged in
+     Settings can place them. A hidden field is nothing at all. */
+  const fieldNodes: Record<string, ReactNode> = {
+    title: (
+          <Field label="Opportunity" wide required>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200}
+                 placeholder="e.g. 20 desktops for the accounts team" autoFocus
+                 aria-invalid={showError(!title.trim())} />
+        </Field>
+        ),
+    customer: fm('customer') !== 'hide' && (
+          <Field label="Customer" required={rq('customer')} hint="Only if this deal is for an existing customer.">
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">Select customer</option>
+            {(customers.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.company ? ` · ${c.company}` : ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+        ),
+    tags: fm('tags') !== 'hide' && (
+          <Field label="Tags" required={rq('tags')} hint="Press Enter or comma after each tag.">
+          <div className="opp-tags">
+            {tags.map((tag) => (
+              <span className="opp-tag" key={tag}>
+                {tag}
+                <button type="button" aria-label={`Remove ${tag}`} onClick={() => setTags(tags.filter((t) => t !== tag))}>
+                  <IconClose size={11} />
+                </button>
+              </span>
+            ))}
+            <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={onTagKey}
+                   onBlur={() => addTag(tagDraft)} placeholder={tags.length ? '' : 'e.g. Hardware, Urgent'}
+                   maxLength={40} />
+          </div>
+        </Field>
+        ),
+    revenue: (
+          <Field label="Expected revenue (₹)" required>
+          <input value={revenue} onChange={(e) => setRevenue(e.target.value)} inputMode="decimal"
+                 placeholder="e.g. 250000" aria-invalid={showError(revenueBad)} />
+        </Field>
+        ),
+    probability: (
+          <Field label="Probability (%)" required>
+          <input value={probability} onChange={(e) => setProbability(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
+                 inputMode="numeric" placeholder="e.g. 30" aria-invalid={showError(probabilityBad)} />
+        </Field>
+        ),
+    closing: (
+          <Field label="Expected closing" required>
+          <input type="date" value={closing} onChange={(e) => setClosing(e.target.value)}
+                 aria-invalid={showError(!closing)} />
+        </Field>
+        ),
+    requirement: fm('requirement') !== 'hide' && (
+          <Field label="Requirement type" required={rq('requirement')}>
+          <MasterSelect kind="requirement-types" value={requirementId} onChange={setRequirementId}
+                        placeholder="Select requirement type" />
+        </Field>
+        ),
+    oem: fm('oem') !== 'hide' && (
+          <Field label="OEM" required={rq('oem')}>
+          <MasterSelect kind="item-companies" value={oemId} onChange={setOemId} placeholder="Select OEM" />
+        </Field>
+        ),
+    rawcost: fm('rawcost') !== 'hide' && (
+          <Field label="Raw cost (₹)" required={rq('rawcost')} hint={costBad ? <span className="lf-req">Enter a number.</span> : undefined}>
+          <input value={rawCost} onChange={(e) => setRawCost(e.target.value)} inputMode="decimal"
+                 placeholder="e.g. 200000" aria-invalid={costBad} />
+        </Field>
+        ),
+    team: fm('team') !== 'hide' && (
+          <Field label="Sales team" required={rq('team')}>
+          <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <option value="">Select sales team</option>
+            {(teams.data ?? []).filter((t) => t.is_active || t.id === teamId).map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </Field>
+        ),
+    margin: fm('margin') !== 'hide' && (
+          <Field label="Margin (₹)" required={rq('margin')} hint="Revenue less raw cost.">
+          <input value={margin === null ? '' : rupees(margin)} readOnly tabIndex={-1} placeholder="Worked out from the cost" />
+        </Field>
+        ),
+    marginpct: fm('marginpct') !== 'hide' && (
+          <Field label="Margin (%)" required={rq('marginpct')}>
+          <input value={marginPercent === null ? '' : `${marginPercent.toFixed(2)}%`} readOnly tabIndex={-1}
+                 placeholder="Worked out from the cost" />
+        </Field>
+        ),
+    costsheet: fm('costsheet') !== 'hide' && fileField(FILES[0]),
+    quotation: fm('quotation') !== 'hide' && fileField(FILES[1]),
+    mail: fm('mail') !== 'hide' && (
+          <div className="crm-field crm-form-wide">
           <label className="crm-check">
             <input type="checkbox" checked={mailSent} onChange={(e) => setMailSent(e.target.checked)} />
             Mail sent to the customer
           </label>
         </div>
-
-        <Field label="Internal notes" wide>
+        ),
+    notes: fm('notes') !== 'hide' && (
+          <Field label="Internal notes" required={rq('notes')} wide>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={4000}
                     placeholder="Anything the team should know about this deal" />
         </Field>
+        ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
+  return (
+    <Dialog
+      wide
+      title={savedId ? 'Edit opportunity' : 'New opportunity'}
+      subtitle={
+        <>
+          For <strong>{lead.name}</strong> · {lead.mobile}
+          {lead.owner_name ? <> · salesperson {lead.owner_name}</> : null}
+        </>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          {touched && missing
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
+          {savedId && (
+            <button className="btn btn-danger" type="button" onClick={remove} disabled={saving}>
+              <IconTrash size={15} /> Delete
+            </button>
+          )}
+          {savedId && (
+            <button className="btn" type="button" onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+          )}
+          <button className="btn btn-primary" type="button" onClick={submit} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="crm-form">
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={OPP_FIELDS} sections={OPP_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} title="Opportunity fields" />
+        </div>
+        {error && (
+          <div className="crm-form-wide">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+        {fieldsOf('deal')}
+        {fieldsOf('costing')}
+        {fieldsOf('files')}
+
+        
+
+        
+        
+
+        
+        
+
+        
+        
+
+        
+        
+
+
+        
+        
+
+        
+        
+
+
+
+
+
+        
       </div>
     </Dialog>
   )

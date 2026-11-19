@@ -5,7 +5,7 @@
  * revision and goes back for approval. Goods are received from the order
  * itself, so a GRN can only ever be against what was ordered. */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { useAuth } from '../../lib/auth'
@@ -22,6 +22,8 @@ import { amountInWords } from './InvoicePrint'
 import { downloadCsv, downloadXlsx } from '../../lib/sheet'
 import { CrmPage } from '../crm/parts'
 import { RowMenu } from './ErpBilling'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import { cells, heads, type Col } from './listColumns'
 import PurchaseOrderPrint, { downloadPurchaseOrderPdf, purchaseOrderPdfBase64 } from './PurchaseOrderPrint'
 import '../../styles/salebill.css'
 import '../../styles/so-form.css'
@@ -44,7 +46,54 @@ function receivedShare(po: PurchaseOrder) {
   return ordered > 0 ? Math.min(100, Math.round((got / ordered) * 100)) : 0
 }
 
+type PoColumn = Col<PurchaseOrder>
+const PO_COLUMNS: PoColumn[] = [
+  { key: 'po', label: 'Purchase order', locked: true, td: (po) => (
+    <>
+      <span className="pol-no">{po.number}{po.revision > 0 && <em>rev {po.revision}</em>}</span>
+      <small className="pol-sub">{po.lines.length} {po.lines.length === 1 ? 'item' : 'items'}{po.company ? ` · ${po.company}` : ''}</small>
+    </>
+  ) },
+  { key: 'vendor', label: 'Vendor', thClass: 'pol-c-vendor', className: 'pol-c-vendor', td: (po) => (
+    <span className="itl-item">
+      <span className="vdl-avatar pol-avatar" aria-hidden>{poInitials(po.vendor_name ?? '?')}</span>
+      <span className="itl-name"><b title={po.vendor_name ?? ''}>{po.vendor_name}</b><small>{po.vendor_code}{po.warehouse_name ? ` · to ${po.warehouse_name}` : ''}</small></span>
+    </span>
+  ) },
+  { key: 'ordered', label: 'Ordered', td: (po) => <DateText iso={po.order_date} /> },
+  { key: 'expected', label: 'Expected', className: (po) => (po.is_overdue ? 'pol-late' : ''), td: (po) => {
+    const due = po.committed_date ?? po.expected_date
+    return (
+      <>
+        {due ? <DateText iso={due} /> : <span className="itl-muted">—</span>}
+        {po.is_overdue && <small>Overdue</small>}
+        {po.committed_date && !po.is_overdue && <small className="pol-sub">Committed</small>}
+      </>
+    )
+  } },
+  { key: 'received', label: 'Received', thClass: 'pol-c-recv', className: 'pol-c-recv', td: (po) => {
+    const share = receivedShare(po)
+    return OPEN_STATES.includes(po.status) || po.status === 'received' || po.status === 'closed' ? (
+      <span className="pol-recv"><span className="pol-bar"><i style={{ width: `${share}%` }} /></span><small>{share}%</small></span>
+    ) : <span className="itl-muted">—</span>
+  } },
+  { key: 'value', label: 'Value', thClass: 'crm-num', className: 'crm-num',
+    td: (po) => <><b className="pol-amt">{rupees(po.grand_total)}</b><small className="pol-sub">Taxable {rupees(po.sub_total)}</small></> },
+  { key: 'status', label: 'Status', td: (po) => <ErpState value={po.status} /> },
+  { key: 'approval', label: 'Approval', className: 'poa-cell', td: (po) => approvalLine(po) },
+  { key: 'company', label: 'Company', initial: false, td: (po) => po.company || '—' },
+  { key: 'warehouse', label: 'Deliver to', initial: false, td: (po) => po.warehouse_name || '—' },
+  { key: 'vendor_quote', label: 'Vendor quote', initial: false, td: (po) => po.vendor_quote_ref || '—' },
+  { key: 'payment_terms', label: 'Payment terms', initial: false, td: (po) => po.payment_terms || '—' },
+  { key: 'delivery_terms', label: 'Delivery terms', initial: false, td: (po) => po.delivery_terms || '—' },
+  { key: 'taxable', label: 'Taxable', initial: false, thClass: 'crm-num', className: 'crm-num', td: (po) => rupees(po.sub_total) },
+  { key: 'tax', label: 'Tax', initial: false, thClass: 'crm-num', className: 'crm-num', td: (po) => rupees(po.tax_total) },
+  { key: 'created_by', label: 'Created by', initial: false, td: (po) => po.created_by_name || '—' },
+  { key: 'reviewed_by', label: 'Reviewed by', initial: false, td: (po) => po.reviewed_by_name || '—' },
+]
+
 export default function ErpPurchaseOrders() {
+  const columns = useColumns('erp-purchase-orders', PO_COLUMNS)
   const { can, loaded } = useAccess()
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
@@ -152,7 +201,11 @@ export default function ErpPurchaseOrders() {
         <label className="pol-date"><span>To</span><input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
         {filtered && <button type="button" className="btn btn-sm" onClick={clear}>Clear</button>}
         {list.data && <span className="itl-count">{rows.length} of {all.length}</span>}
-        <div className="pol-export crm-push">
+        <div className="crm-push" style={{ display: 'flex', alignItems: 'center' }}>
+          <ColumnSettings defs={PO_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+            onSave={columns.save} onReset={columns.reset} />
+        </div>
+        <div className="pol-export">
           <button type="button" className="btn" disabled={!rows.length} onClick={() => setExporting((x) => !x)}><IconDownload size={15} /> Export</button>
           {exporting && (
             <div className="pol-export-menu" role="menu" onMouseLeave={() => setExporting(false)}>
@@ -176,38 +229,13 @@ export default function ErpPurchaseOrders() {
         ) : (
           <div className="table-wrap"><table className="itl pol">
             <thead><tr>
-              <th>Purchase order</th><th className="pol-c-vendor">Vendor</th><th>Ordered</th><th>Expected</th>
-              <th className="pol-c-recv">Received</th><th className="crm-num">Value</th><th>Status</th><th>Approval</th><th className="itl-c-act">Actions</th>
+              {heads<PurchaseOrder>(columns.visible)}
+              <th className="itl-c-act">Actions</th>
             </tr></thead>
             <tbody>{rows.map((po) => {
-              const share = receivedShare(po)
-              const due = po.committed_date ?? po.expected_date
               return (
                 <tr key={po.id} onClick={() => setOpenId(po.id)} className={`pol-row${po.status === 'cancelled' ? ' is-off' : ''}`}>
-                  <td>
-                    <span className="pol-no">{po.number}{po.revision > 0 && <em>rev {po.revision}</em>}</span>
-                    <small className="pol-sub">{po.lines.length} {po.lines.length === 1 ? 'item' : 'items'}{po.company ? ` · ${po.company}` : ''}</small>
-                  </td>
-                  <td className="pol-c-vendor">
-                    <span className="itl-item">
-                      <span className="vdl-avatar pol-avatar" aria-hidden>{poInitials(po.vendor_name ?? '?')}</span>
-                      <span className="itl-name"><b title={po.vendor_name ?? ''}>{po.vendor_name}</b><small>{po.vendor_code}{po.warehouse_name ? ` · to ${po.warehouse_name}` : ''}</small></span>
-                    </span>
-                  </td>
-                  <td><DateText iso={po.order_date} /></td>
-                  <td className={po.is_overdue ? 'pol-late' : ''}>
-                    {due ? <DateText iso={due} /> : <span className="itl-muted">—</span>}
-                    {po.is_overdue && <small>Overdue</small>}
-                    {po.committed_date && !po.is_overdue && <small className="pol-sub">Committed</small>}
-                  </td>
-                  <td className="pol-c-recv">
-                    {OPEN_STATES.includes(po.status) || po.status === 'received' || po.status === 'closed' ? (
-                      <span className="pol-recv"><span className="pol-bar"><i style={{ width: `${share}%` }} /></span><small>{share}%</small></span>
-                    ) : <span className="itl-muted">—</span>}
-                  </td>
-                  <td className="crm-num"><b className="pol-amt">{rupees(po.grand_total)}</b><small className="pol-sub">Taxable {rupees(po.sub_total)}</small></td>
-                  <td><ErpState value={po.status} /></td>
-                  <td className="poa-cell">{approvalLine(po)}</td>
+                  {cells<PurchaseOrder>(columns.visible, po)}
                   <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="crm-row-actions itl-actions">
                       <button className="crm-icon-btn" title="Open" aria-label={`Open ${po.number}`} onClick={() => setOpenId(po.id)}><IconSheet size={14} /></button>
@@ -603,6 +631,37 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase())
 const DELIVERY_TERMS = ['Door delivery', 'FOR destination', 'Ex-works', 'Freight extra', 'Courier', 'Pickup by us']
 const PAY_TERMS = ['Advance', '15 days', '30 days', '45 days', '60 days', 'Against delivery']
 
+const PO_SECTIONS: FieldSection[] = [
+  { id: 'header', label: 'Order details' },
+  { id: 'charges', label: 'Charges & late-delivery penalty' },
+  { id: 'notes', label: 'Notes & terms' },
+  { id: 'bill', label: 'Bill to' },
+]
+// The vendor is what the server requires of an order, and the number is assigned,
+// so both stay. The charges and penalty always hold a value (0), so they can be
+// moved or hidden but not made "mandatory". The date starts mandatory because the
+// form already marks it required. The lines and the totals are not configurable.
+const PO_FIELDS: FieldDef[] = [
+  { key: 'vendor_id', label: 'Vendor', section: 'header', fixed: true },
+  { key: 'po_number', label: 'PO no. (assigned)', section: 'header', fixed: true },
+  { key: 'order_date', label: 'Date', section: 'header', initial: 'mandatory' },
+  { key: 'company', label: 'Company', section: 'header' },
+  { key: 'warehouse_id', label: 'Deliver to', section: 'header' },
+  { key: 'expected_date', label: 'Expected', section: 'header' },
+  { key: 'payment_terms', label: 'Payment', section: 'header' },
+  { key: 'delivery_terms', label: 'Delivery', section: 'header' },
+  { key: 'vendor_quote_ref', label: 'Vendor quote', section: 'header' },
+  { key: 'vendor_quote_date', label: 'Quote date', section: 'header' },
+  { key: 'contact_person', label: 'Contact', section: 'header' },
+  { key: 'freight', label: 'Freight charges', section: 'charges', optionalOnly: true },
+  { key: 'other_charges', label: 'Other charges', section: 'charges', optionalOnly: true },
+  { key: 'ld_percent_per_week', label: 'LD % per week late', section: 'charges', optionalOnly: true },
+  { key: 'ld_cap_percent', label: 'LD cap', section: 'charges', optionalOnly: true },
+  { key: 'notes', label: 'Notes to vendor', section: 'notes' },
+  { key: 'terms', label: 'Terms & conditions', section: 'notes' },
+  { key: 'billing_address', label: 'Billing address', section: 'bill' },
+]
+
 /** A purchase order: who from, where to, when, on what terms — then the lines.
  *  The number is the series' next one, taken when the draft is first saved. */
 /** The purchase order, as a full page in the family of the sale bill and the
@@ -677,13 +736,134 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
   const filled = lines.filter((l) => l.item_id || l.description.trim())
   const lineDatesBad = filled.some((l) => l.expected_date && head.order_date && l.expected_date < head.order_date)
   const linesBad = filled.some((l) => !(Number(l.quantity) > 0) || Number(l.rate) < 0 || !(Number(l.discount_percent || 0) <= 100))
+  const fields = useFieldModes('erp-po-form', PO_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => rq(key) && <> <b className="pof-req">*</b></>
+  const emptyField: Record<string, boolean> = {
+    order_date: !head.order_date, company: !head.company, warehouse_id: !head.warehouse_id, expected_date: !head.expected_date,
+    payment_terms: !head.payment_terms.trim(), delivery_terms: !head.delivery_terms.trim(),
+    vendor_quote_ref: !head.vendor_quote_ref.trim(), vendor_quote_date: !head.vendor_quote_date,
+    contact_person: !head.contact_person.trim(), notes: !head.notes.trim(), terms: !head.terms.trim(),
+    billing_address: !head.billing_address.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const fieldNodes: Record<string, ReactNode> = {
+    vendor_id: (
+      <div className="sb-f c5 sof-cust">
+        <span>Vendor <b className="pof-req">*</b></span>
+        <SearchSelect label="Vendor" value={head.vendor_id} onChange={(v) => set('vendor_id', v)} options={vendorOptions}
+          placeholder={vendors.data && activeVendors === 0 ? 'No active vendor yet' : 'Search vendor by name, code or GSTIN'}
+          empty="No vendor matches"
+          footer={vendors.data && activeVendors < vendors.data.length
+            ? <>Only <b>active</b> vendors can be ordered from. Approve others in Master › ERP Master › Vendors.</> : undefined} />
+      </div>
+    ),
+    po_number: (
+      <div className="sb-f sb-f-billno c2">
+        <span>PO no.</span>
+        <em title={po || stored ? 'Assigned' : 'Auto-generated'}>{po?.number ?? stored?.number ?? next.data?.number ?? '…'}</em>
+      </div>
+    ),
+    order_date: fm('order_date') !== 'hide' && (
+      <label className="sb-f c2">
+        <span>Date{star('order_date')}</span>
+        <input type="date" value={head.order_date} max={todayISO()} aria-label="PO date" onChange={(e) => set('order_date', e.target.value)} />
+      </label>
+    ),
+    company: fm('company') !== 'hide' && (
+      <div className="sb-f c3 sof-cust sof-pop-end">
+        <span>Company{star('company')}</span>
+        <SearchSelect label="Company" value={head.company} onChange={(v) => set('company', v)} options={companyOptions} clearable
+          placeholder="Any company / make" empty="No companies — add them in Master › ERP Master › Company Master" />
+      </div>
+    ),
+    warehouse_id: fm('warehouse_id') !== 'hide' && (
+      <div className="sb-f c3 sof-cust">
+        <span>Deliver to{star('warehouse_id')}</span>
+        <SearchSelect label="Deliver to" value={head.warehouse_id} onChange={(v) => set('warehouse_id', v)} options={whOptions} clearable
+          placeholder="Choose a warehouse" empty="No active warehouse" />
+      </div>
+    ),
+    expected_date: fm('expected_date') !== 'hide' && (
+      <label className={`sb-f c3${datesBad ? ' is-bad' : ''}`} title={datesBad ? 'Cannot be before the PO date' : undefined}>
+        <span>Expected{star('expected_date')}</span>
+        <input type="date" value={head.expected_date} min={head.order_date || undefined} aria-label="Expected delivery date"
+          onChange={(e) => set('expected_date', e.target.value)} />
+      </label>
+    ),
+    payment_terms: fm('payment_terms') !== 'hide' && (
+      <label className="sb-f c3">
+        <span>Payment{star('payment_terms')}</span>
+        <input list="pof-pay" value={head.payment_terms} aria-label="Payment terms" onChange={(e) => set('payment_terms', e.target.value)}
+          placeholder={vendor ? `${vendor.payment_terms_days} days (vendor default)` : 'From the vendor if blank'} />
+      </label>
+    ),
+    delivery_terms: fm('delivery_terms') !== 'hide' && (
+      <label className="sb-f c3">
+        <span>Delivery{star('delivery_terms')}</span>
+        <input list="pof-del" value={head.delivery_terms} aria-label="Delivery terms" onChange={(e) => set('delivery_terms', e.target.value)} placeholder="e.g. Door delivery" />
+      </label>
+    ),
+    vendor_quote_ref: fm('vendor_quote_ref') !== 'hide' && (
+      <label className="sb-f c4">
+        <span>Vendor quote{star('vendor_quote_ref')}</span>
+        <input value={head.vendor_quote_ref} maxLength={80} aria-label="Vendor quotation no." onChange={(e) => set('vendor_quote_ref', e.target.value)} placeholder="The vendor's quotation no." />
+      </label>
+    ),
+    vendor_quote_date: fm('vendor_quote_date') !== 'hide' && (
+      <label className={`sb-f c3${quoteBad ? ' is-bad' : ''}`} title={quoteBad ? 'Cannot be in the future' : undefined}>
+        <span>Quote date{star('vendor_quote_date')}</span>
+        <input type="date" value={head.vendor_quote_date} max={todayISO()} aria-label="Vendor quotation date" onChange={(e) => set('vendor_quote_date', e.target.value)} />
+      </label>
+    ),
+    contact_person: fm('contact_person') !== 'hide' && (
+      <label className="sb-f c5">
+        <span>Contact{star('contact_person')}</span>
+        <input value={head.contact_person} maxLength={120} aria-label="Contact person" onChange={(e) => set('contact_person', e.target.value)} placeholder="Who the vendor should talk to" />
+      </label>
+    ),
+    freight: fm('freight') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">Freight charges</span>
+        <span className="pof-affix"><i>₹</i><input placeholder="0" inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
+    ),
+    other_charges: fm('other_charges') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">Other charges</span>
+        <span className="pof-affix"><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
+          onChange={(e) => set('other_charges', e.target.value)} /></span></label>
+    ),
+    ld_percent_per_week: fm('ld_percent_per_week') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">LD % per week late</span>
+        <span className="pof-affix"><input placeholder="0.5" inputMode="decimal" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
+    ),
+    ld_cap_percent: fm('ld_cap_percent') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">LD cap</span>
+        <span className="pof-affix"><input placeholder="5" inputMode="decimal" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
+    ),
+    notes: fm('notes') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">Notes to vendor{star('notes')}</span>
+        <textarea rows={2} value={head.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything the vendor should know" /></label>
+    ),
+    terms: fm('terms') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">Terms &amp; conditions{star('terms')}</span>
+        <textarea rows={2} value={head.terms} onChange={(e) => set('terms', e.target.value)} placeholder="Left blank, the terms from ERP settings are used" /></label>
+    ),
+    billing_address: fm('billing_address') !== 'hide' && (
+      <label className="pof-f"><span className="pof-l">Billing address{star('billing_address')}</span>
+        <textarea rows={3} maxLength={1000} value={head.billing_address} onChange={(e) => set('billing_address', e.target.value)}
+          placeholder="Where the vendor sends the invoice. Left blank, the address in Quotation setup is used." /></label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
   const problem = !head.vendor_id ? 'Choose a vendor to begin'
     : !filled.length ? 'Add at least one item'
       : linesBad ? 'Each item needs a quantity above 0, a rate and a discount of 100 % or less'
         : datesBad || lineDatesBad ? 'A delivery date cannot be before the PO date'
           : quoteBad ? 'The vendor quotation cannot be dated in the future'
           : chargesBad ? 'Check the freight and other charges'
-            : null
+            : missing ? 'Fill in the fields marked *'
+              : null
   const ready = !problem && !busy
 
   function save(submit = false) {
@@ -745,67 +925,16 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
         </div>
         <span className="sb-bar-gap" />
         <small className="sof-req-note">Fields marked <b className="pof-req">*</b> are required</small>
+        <FieldSettings defs={PO_FIELDS} sections={PO_SECTIONS} modes={fields.modes} order={fields.order}
+          onSave={fields.save} onReset={fields.reset} />
         <button type="button" className="btn btn-sm" onClick={onShowAll}><IconSheet size={14} /> All purchase orders</button>
       </div>
 
       <div className="sb-head sof-head">
-        <div className="sb-f c5 sof-cust">
-          <span>Vendor <b className="pof-req">*</b></span>
-          <SearchSelect label="Vendor" value={head.vendor_id} onChange={(v) => set('vendor_id', v)} options={vendorOptions}
-            placeholder={vendors.data && activeVendors === 0 ? 'No active vendor yet' : 'Search vendor by name, code or GSTIN'}
-            empty="No vendor matches"
-            footer={vendors.data && activeVendors < vendors.data.length
-              ? <>Only <b>active</b> vendors can be ordered from. Approve others in Master › ERP Master › Vendors.</> : undefined} />
-        </div>
-        <div className="sb-f sb-f-billno c2">
-          <span>PO no.</span>
-          <em title={po || stored ? 'Assigned' : 'Auto-generated'}>{po?.number ?? stored?.number ?? next.data?.number ?? '…'}</em>
-        </div>
-        <label className="sb-f c2">
-          <span>Date <b className="pof-req">*</b></span>
-          <input type="date" value={head.order_date} max={todayISO()} aria-label="PO date" onChange={(e) => set('order_date', e.target.value)} />
-        </label>
-        <div className="sb-f c3 sof-cust sof-pop-end">
-          <span>Company</span>
-          <SearchSelect label="Company" value={head.company} onChange={(v) => set('company', v)} options={companyOptions} clearable
-            placeholder="Any company / make" empty="No companies — add them in Master › ERP Master › Company Master" />
-        </div>
-
-        <div className="sb-f c3 sof-cust">
-          <span>Deliver to</span>
-          <SearchSelect label="Deliver to" value={head.warehouse_id} onChange={(v) => set('warehouse_id', v)} options={whOptions} clearable
-            placeholder="Choose a warehouse" empty="No active warehouse" />
-        </div>
-        <label className={`sb-f c3${datesBad ? ' is-bad' : ''}`} title={datesBad ? 'Cannot be before the PO date' : undefined}>
-          <span>Expected</span>
-          <input type="date" value={head.expected_date} min={head.order_date || undefined} aria-label="Expected delivery date"
-            onChange={(e) => set('expected_date', e.target.value)} />
-        </label>
-        <label className="sb-f c3">
-          <span>Payment</span>
-          <input list="pof-pay" value={head.payment_terms} aria-label="Payment terms" onChange={(e) => set('payment_terms', e.target.value)}
-            placeholder={vendor ? `${vendor.payment_terms_days} days (vendor default)` : 'From the vendor if blank'} />
-        </label>
-        <label className="sb-f c3">
-          <span>Delivery</span>
-          <input list="pof-del" value={head.delivery_terms} aria-label="Delivery terms" onChange={(e) => set('delivery_terms', e.target.value)} placeholder="e.g. Door delivery" />
-        </label>
-        <label className="sb-f c4">
-          <span>Vendor quote</span>
-          <input value={head.vendor_quote_ref} maxLength={80} aria-label="Vendor quotation no." onChange={(e) => set('vendor_quote_ref', e.target.value)} placeholder="The vendor's quotation no." />
-        </label>
-        <label className={`sb-f c3${quoteBad ? ' is-bad' : ''}`} title={quoteBad ? 'Cannot be in the future' : undefined}>
-          <span>Quote date</span>
-          <input type="date" value={head.vendor_quote_date} max={todayISO()} aria-label="Vendor quotation date" onChange={(e) => set('vendor_quote_date', e.target.value)} />
-        </label>
-        <label className="sb-f c5">
-          <span>Contact</span>
-          <input value={head.contact_person} maxLength={120} aria-label="Contact person" onChange={(e) => set('contact_person', e.target.value)} placeholder="Who the vendor should talk to" />
-        </label>
+        {fieldsOf('header')}
         <datalist id="pof-pay">{PAY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
         <datalist id="pof-del">{DELIVERY_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
       </div>
-
       {vendor && (
         <div className="pof-vendor">
           <span><em>GSTIN</em>{vendor.gstin ?? '—'}</span>
@@ -823,15 +952,7 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
         <section className="pof-sec sof-p-a">
           <header className="pof-sec-head"><h3>Charges &amp; late-delivery penalty</h3></header>
           <div className="sof-fields">
-            <label className="pof-f"><span className="pof-l">Freight charges</span>
-              <span className="pof-affix"><i>₹</i><input placeholder="0" inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
-            <label className="pof-f"><span className="pof-l">Other charges</span>
-              <span className="pof-affix"><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
-                onChange={(e) => set('other_charges', e.target.value)} /></span></label>
-            <label className="pof-f"><span className="pof-l">LD % per week late</span>
-              <span className="pof-affix"><input placeholder="0.5" inputMode="decimal" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
-            <label className="pof-f"><span className="pof-l">LD cap</span>
-              <span className="pof-affix"><input placeholder="5" inputMode="decimal" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
+            {fieldsOf('charges')}
           </div>
           <p className="pof-note">Liquidated damages are charged on the value received late, up to the cap.</p>
         </section>
@@ -839,18 +960,13 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
         <section className="pof-sec sof-p-b">
           <header className="pof-sec-head"><h3>Notes &amp; terms</h3></header>
           <div className="sof-stack">
-            <label className="pof-f"><span className="pof-l">Notes to vendor</span>
-              <textarea rows={2} value={head.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything the vendor should know" /></label>
-            <label className="pof-f"><span className="pof-l">Terms &amp; conditions</span>
-              <textarea rows={2} value={head.terms} onChange={(e) => set('terms', e.target.value)} placeholder="Left blank, the terms from ERP settings are used" /></label>
+            {fieldsOf('notes')}
           </div>
         </section>
 
         <section className="pof-sec sof-p-notes">
           <header className="pof-sec-head"><h3>Bill to</h3></header>
-          <label className="pof-f"><span className="pof-l">Billing address</span>
-            <textarea rows={3} maxLength={1000} value={head.billing_address} onChange={(e) => set('billing_address', e.target.value)}
-              placeholder="Where the vendor sends the invoice. Left blank, the address in Quotation setup is used." /></label>
+          {fieldsOf('bill')}
           <small className="sdt-note">The goods ship to the warehouse chosen above.</small>
         </section>
 

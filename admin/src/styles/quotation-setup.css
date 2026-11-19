@@ -128,3 +128,122 @@
 @media (max-width: 1100px) {
   .crm .qs-columns, .crm .qs-styles { grid-template-columns: 1fr; }
 }
+
+/* Quotation setup, second pass: the same surface as General. Header with the
+   hint beside the title, tidy two-column fields, tags and suffix chips. */
+.crm .cs-page .qs { gap: 18px; }
+.crm .qs .qs-card { border-radius: 14px; border: 1px solid var(--crm-hair); box-shadow: 0 1px 3px rgba(20, 18, 31, .05); overflow: hidden; }
+.crm .qs .qs-card-head { padding: 16px 20px; gap: 14px; background: var(--crm-sunken); border-bottom: 1px solid var(--crm-hair-soft); }
+.crm .qs .qs-card-icon {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  color: var(--brand-ink); background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.crm .qs .qs-card-titles { flex: 1; min-width: 0; }
+.crm .qs .qs-card-head h2 { font-size: 15px; font-weight: 700; }
+.crm .qs .qs-card-hint { margin: 2px 0 0; font-size: 12.5px; line-height: 1.45; }
+.crm .qs .qs-card-body { padding: 20px; gap: 18px; }
+.crm .qs .qs-card .crm-grid-2 { gap: 16px 18px; }
+
+.crm .qs .crm-field { gap: 7px; }
+.crm .qs .crm-field-label {
+  font-size: 11.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted);
+}
+.crm .qs .crm-field-hint { font-size: 12px; line-height: 1.45; }
+.crm .qs input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),
+.crm .qs select { height: 42px; padding: 0 14px; font-size: 13.5px; border-radius: 10px; }
+.crm .qs textarea { padding: 10px 14px; font-size: 13.5px; border-radius: 10px; line-height: 1.5; }
+.crm .qs input:focus-visible, .crm .qs textarea:focus-visible, .crm .qs select:focus-visible {
+  outline: none; border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+.crm .qs .qs-mono { font-size: 13px; letter-spacing: .01em; }
+
+/* Label-row asides and small chips. */
+.crm .qs .crm-field-aside { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.crm .qs .qs-state, .crm .qs .qs-active, .crm .qs .qs-tag {
+  display: inline-block; border-radius: 6px; font-weight: 650;
+}
+.crm .qs .qs-state {
+  padding: 2px 8px; font-size: 11.5px; color: var(--status-good); font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  background: color-mix(in srgb, var(--status-good) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-good) 28%, transparent);
+}
+.crm .qs .qs-active {
+  padding: 3px 11px; font-size: 11.5px; color: var(--brand-ink); border-radius: 999px;
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+}
+.crm .qs .qs-tag {
+  margin-left: 6px; padding: 2px 7px; font-size: 10px; font-style: normal; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--crm-sunken);
+}
+.crm .qs .qs-style.is-on .qs-tag { color: var(--brand-ink); background: color-mix(in srgb, var(--brand) 14%, transparent); }
+.crm .qs .qs-count { font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: .03em; text-transform: none; }
+
+/* Inputs with a unit or tag inside the right edge. */
+.crm .qs .qs-affixed { position: relative; display: block; }
+.crm .qs .qs-affixed input { padding-right: 72px; width: 100%; }
+.crm .qs .qs-affix {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;
+  padding: 3px 9px; border-radius: 6px; font-size: 12px; color: var(--text-muted); background: var(--crm-sunken);
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+.crm .qs .qs-affix-tag { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; background: transparent; }
+.crm .qs .qs-mono[readonly] { background: color-mix(in srgb, var(--brand) 6%, var(--surface-2)); color: var(--brand-ink); }
+
+/* Style choice: roomy radio cards with a little page thumbnail. */
+.crm .qs .qs-styles { gap: 16px; }
+.crm .qs .qs-style { gap: 14px; padding: 18px 20px; border-radius: 12px; align-items: flex-start; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+.crm .qs .qs-style.is-on { box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); }
+.crm .qs .qs-style .qs-style-text { flex: 1; min-width: 0; }
+.crm .qs .qs-style strong { font-size: 14px; display: flex; align-items: center; }
+.crm .qs .qs-radio { width: 18px; height: 18px; margin-top: 1px; }
+.crm .qs .qs-thumb {
+  flex: none; display: grid; gap: 5px; align-content: start; width: 48px; height: 58px; padding: 8px;
+  border-radius: 6px; border: 1px solid var(--crm-hair); background: var(--surface-1);
+}
+.crm .qs .qs-thumb i { display: block; height: 5px; border-radius: 2px; background: var(--crm-hair); }
+.crm .qs .qs-thumb i:first-child { background: color-mix(in srgb, var(--text-muted) 40%, transparent); width: 70%; }
+.crm .qs .qs-thumb i:nth-child(3) { width: 55%; }
+.crm .qs .qs-thumb.is-detailed { border-color: color-mix(in srgb, var(--brand) 40%, transparent); box-shadow: 4px -4px 0 -1px var(--surface-1), 4px -4px 0 0 color-mix(in srgb, var(--brand) 30%, transparent); }
+.crm .qs .qs-thumb.is-detailed i:first-child { background: var(--brand); }
+
+/* Sub tabs and their caption. */
+.crm .qs .qs-subbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm .qs .qs-subtabs {
+  gap: 4px; padding: 4px; border: 1px solid var(--crm-hair); border-radius: 12px; background: var(--surface-1);
+  box-shadow: 0 1px 3px rgba(20, 18, 31, .05);
+}
+.crm .qs .qs-subtab { margin: 0; padding: 0 14px; height: 34px; border: 0; border-radius: 8px; transition: color .15s ease, background-color .15s ease; }
+.crm .qs .qs-subtab:hover:not(.is-on) { background: var(--crm-hover); }
+.crm .qs .qs-subtab.is-on {
+  color: var(--brand-ink); background: var(--brand-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+.crm .qs .qs-caption { font-size: 12.5px; color: var(--text-muted); }
+
+/* Payment blocks and images. */
+.crm .qs .qs-toggle { border-radius: 12px; }
+.crm .qs .qs-toggle-head { padding: 14px 16px; }
+.crm .qs .qs-toggle-head strong { font-size: 14px; }
+.crm .qs .qs-toggle-body { padding: 0 16px 16px; }
+.crm .qs .qs-image { padding: 16px 0 0; }
+.crm .qs .qs-image-row {
+  gap: 12px; padding: 12px; border: 1px solid var(--crm-hair); border-radius: 12px; background: var(--crm-sunken);
+}
+.crm .qs .qs-image-box { width: 96px; height: 56px; border-radius: 8px; border-style: solid; border-color: var(--crm-hair); }
+.crm .qs .qs-image-row .btn { height: 34px; border-radius: 8px; }
+.crm .qs .qs-image-row .link-btn { color: var(--status-critical); font-weight: 600; }
+.crm .qs .qs-columns { gap: 20px; }
+.crm .qs .qs-column { gap: 20px; }
+
+@media (max-width: 1100px) {
+  .crm .qs .qs-card-body { padding: 16px; }
+}
+
+.crm .crm-field-label:has(.crm-field-aside) { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.crm .qs .qs-style .qs-style-text { display: grid; gap: 4px; }
+.crm .qs .qs-style .qs-style-text > span { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.crm .qs .qs-style > .qs-thumb { display: grid; }

@@ -63,6 +63,7 @@ import {
   type AttendanceDay,
   type TypedFailure,
 } from './MyAttendance'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
 
 /* ------------------------------------------------------------------ types --
    Page-local, mirroring app/schemas/regularization.py exactly. Field names are
@@ -357,6 +358,66 @@ function Outcome({
 }
 
 /* ----------------------------------------------------------------- form -- */
+
+/* ------------------------------------------------------ table columns -- */
+
+type RegCtx = {
+  timeZone: string | undefined
+  superseded: Map<string, RegRequest>
+  onOpenDay?: (date: string) => void
+}
+type RegColumn = ColumnDef & { td: (row: RegRequest, ctx: RegCtx) => ReactNode; className?: string; thClass?: string }
+
+const filedOn = (row: RegRequest) => (row.created_at ? row.created_at.slice(0, 10) : '—')
+
+const MY_REG_COLUMNS: RegColumn[] = [
+  { key: 'day', label: 'Day', locked: true, td: (row, ctx) => {
+    const filer = filerLabel(row)
+    return (
+      <>
+        {ctx.onOpenDay ? (
+          <button className="link-btn" onClick={() => ctx.onOpenDay!(row.date)}>
+            {longDate(row.date)}
+          </button>
+        ) : (
+          longDate(row.date)
+        )}
+        {filer && <div className="att-reg-meta">filed by {filer}</div>}
+      </>
+    )
+  } },
+  { key: 'asked', label: 'Asked for', className: 'att-reg-asked', td: (row, ctx) => askedLabel(row, ctx.timeZone) },
+  { key: 'reason', label: 'Reason', className: 'att-reg-reason', td: (row) => row.reason },
+  { key: 'status', label: 'Status', td: (row) => <RegStatusPill status={row.status} /> },
+  { key: 'outcome', label: 'What happened', td: (row, ctx) => (
+    <Outcome row={row} timeZone={ctx.timeZone} supersededBy={ctx.superseded.get(row.id)} />
+  ) },
+  { key: 'filed_on', label: 'Filed on', initial: false, td: (row) => filedOn(row) },
+  { key: 'reviewer', label: 'Decided by', initial: false, td: (row) => row.reviewer_name ?? '—' },
+  { key: 'review_note', label: 'Reviewer note', initial: false, td: (row) => row.review_note || '—' },
+]
+
+const DECIDED_REG_COLUMNS: RegColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (row) => <Identity name={row.user_name ?? 'Unnamed'} small /> },
+  { key: 'day', label: 'Day', td: (row) => {
+    const filer = filerLabel(row)
+    return (
+      <>
+        {longDate(row.date)}
+        {filer && <div className="att-reg-meta">filed by {filer}</div>}
+      </>
+    )
+  } },
+  { key: 'asked', label: 'Asked for', className: 'att-reg-asked', td: (row, ctx) => askedLabel(row, ctx.timeZone) },
+  { key: 'reason', label: 'Reason', className: 'att-reg-reason', td: (row) => row.reason },
+  { key: 'outcome', label: 'What happened', td: (row, ctx) => (
+    <Outcome row={row} timeZone={ctx.timeZone} supersededBy={ctx.superseded.get(row.id)} />
+  ) },
+  { key: 'status', label: 'Status', initial: false, td: (row) => <RegStatusPill status={row.status} /> },
+  { key: 'filed_on', label: 'Filed on', initial: false, td: (row) => filedOn(row) },
+  { key: 'reviewer', label: 'Decided by', initial: false, td: (row) => row.reviewer_name ?? '—' },
+  { key: 'review_note', label: 'Reviewer note', initial: false, td: (row) => row.review_note || '—' },
+]
 
 interface Draft {
   wantIn: boolean
@@ -764,6 +825,7 @@ export function MyRegularizations({
   onOpenDay?: (date: string) => void
 }) {
   const [view, setView] = useState<'all' | RegStatus>('all')
+  const columns = useColumns('my-regularizations', MY_REG_COLUMNS)
   const superseded = useMemo(() => supersededIds(rows ?? []), [rows])
   const shown = useMemo(
     () => (rows ?? []).filter((row) => (view === 'all' ? true : row.status === view)),
@@ -778,6 +840,8 @@ export function MyRegularizations({
           <h2 className="card-title">My correction requests</h2>
           <p className="att-card-sub">Ask for a fix when a punch is missing or wrong. A manager decides each one.</p>
         </div>
+        <ColumnSettings defs={MY_REG_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         <div className="ts-toggle ts-toggle-xs">
           {(['all', 'pending', 'approved', 'rejected'] as const).map((key) => (
             <button
@@ -810,43 +874,21 @@ export function MyRegularizations({
               <table>
                 <thead>
                   <tr>
-                    <th>Day</th>
-                    <th>Asked for</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    <th>What happened</th>
+                    {columns.visible.map((col) => (
+                      <th key={col.key} className={(col as RegColumn).thClass}>{col.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((row) => {
-                    const filer = filerLabel(row)
-                    return (
-                      <tr key={row.id}>
-                        <td>
-                          {onOpenDay ? (
-                            <button className="link-btn" onClick={() => onOpenDay(row.date)}>
-                              {longDate(row.date)}
-                            </button>
-                          ) : (
-                            longDate(row.date)
-                          )}
-                          {filer && <div className="att-reg-meta">filed by {filer}</div>}
+                  {shown.map((row) => (
+                    <tr key={row.id}>
+                      {columns.visible.map((col) => (
+                        <td key={col.key} className={(col as RegColumn).className}>
+                          {(col as RegColumn).td(row, { timeZone, superseded, onOpenDay })}
                         </td>
-                        <td className="att-reg-asked">{askedLabel(row, timeZone)}</td>
-                        <td className="att-reg-reason">{row.reason}</td>
-                        <td>
-                          <RegStatusPill status={row.status} />
-                        </td>
-                        <td>
-                          <Outcome
-                            row={row}
-                            timeZone={timeZone}
-                            supersededBy={superseded.get(row.id)}
-                          />
-                        </td>
-                      </tr>
-                    )
-                  })}
+                      ))}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1187,38 +1229,31 @@ export function RegularizationQueue({ timeZone }: { timeZone: string | undefined
 
 function DecidedTable({ rows, timeZone }: { rows: RegRequest[]; timeZone: string | undefined }) {
   const superseded = useMemo(() => supersededIds(rows), [rows])
+  const columns = useColumns('regularizations-decided', DECIDED_REG_COLUMNS)
   return (
     <div className="table-wrap">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ColumnSettings defs={DECIDED_REG_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
+      </div>
       <table>
         <thead>
           <tr>
-            <th>Employee</th>
-            <th>Day</th>
-            <th>Asked for</th>
-            <th>Reason</th>
-            <th>What happened</th>
+            {columns.visible.map((col) => (
+              <th key={col.key} className={(col as RegColumn).thClass}>{col.label}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
-            const filer = filerLabel(row)
-            return (
-              <tr key={row.id}>
-                <td>
-                  <Identity name={row.user_name ?? 'Unnamed'} small />
+          {rows.map((row) => (
+            <tr key={row.id}>
+              {columns.visible.map((col) => (
+                <td key={col.key} className={(col as RegColumn).className}>
+                  {(col as RegColumn).td(row, { timeZone, superseded })}
                 </td>
-                <td>
-                  {longDate(row.date)}
-                  {filer && <div className="att-reg-meta">filed by {filer}</div>}
-                </td>
-                <td className="att-reg-asked">{askedLabel(row, timeZone)}</td>
-                <td className="att-reg-reason">{row.reason}</td>
-                <td>
-                  <Outcome row={row} timeZone={timeZone} supersededBy={superseded.get(row.id)} />
-                </td>
-              </tr>
-            )
-          })}
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

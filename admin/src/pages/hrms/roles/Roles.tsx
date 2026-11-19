@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { ErrorNote, Loading } from '../../../components/ui'
@@ -30,6 +31,7 @@ import {
   IconPlus, IconSearch, IconShield, IconStar, IconUsers,
 } from '../../../components/Icons'
 import '../../../styles/roles.css'
+import '../../../styles/viewSettings.css'
 
 export interface OrgRole {
   id: string
@@ -50,6 +52,8 @@ interface MenuDef {
   note: string | null
   actions: Action[]
   rights: string[]
+  /** Tabs a role can be limited to inside this screen (Approvals). */
+  tabs?: Array<{ key: string; label: string }>
 }
 
 interface MenuGroup {
@@ -137,9 +141,12 @@ function allMenus(groups: MenuGroup[]): MenuDef[] {
   return groups.flatMap((g) => g.menus)
 }
 
-function fullRow(menu: MenuDef, on: boolean): MenuRight {
+/** withTabs also sets every tab outright, for "All" and "None"; left off, a tab is
+ *  left to its default. */
+function fullRow(menu: MenuDef, on: boolean, withTabs = false): MenuRight {
   const row: MenuRight = { access: on }
   for (const a of menu.actions) row[a] = on
+  if (withTabs) for (const t of menu.tabs ?? []) row[`tab_${t.key}`] = on
   return row
 }
 
@@ -201,19 +208,21 @@ export default function Roles() {
     setDetailsOpen(id === 'new')
   }
 
-  async function save() {
-    if (!draft) return
+  /** Saves the draft, or the one a drawer has just changed when state has not caught up. */
+  async function save(next: Draft | null = null) {
+    const d = next ?? draft
+    if (!d) return
     setBusy(true)
     setError(null)
     try {
       const body: Record<string, unknown> = {
-        name: draft.name,
-        description: draft.description,
-        base_role: draft.base_role,
-        data_scope: draft.data_scope,
-        permissions: draft.permissions,
+        name: d.name,
+        description: d.description,
+        base_role: d.base_role,
+        data_scope: d.data_scope,
+        permissions: d.permissions,
       }
-      if (!isOwner) body.menu_rights = draft.rights
+      if (!isOwner) body.menu_rights = d.rights
       if (creating) {
         const made = await api.post<OrgRole>('/roles', body)
         setSelected(made.id)
@@ -291,6 +300,9 @@ export default function Roles() {
         draft={draft}
         setDraft={setDraft}
         locked={isOwner || busy}
+        /* The tabs drawer has its own Save, so it saves the role too; a role that does
+           not exist yet has nothing to save to and waits for Create role. */
+        onCommit={creating ? undefined : (next) => { if (next.name.trim()) void save(next) }}
       />
 
       {(dirty || saved) && (
@@ -404,12 +416,13 @@ function Details({
 /* -------------------------------------------------------------- matrix --- */
 
 function MenuMatrix({
-  groups, draft, setDraft, locked,
+  groups, draft, setDraft, locked, onCommit,
 }: {
   groups: MenuGroup[]
   draft: Draft
   setDraft: (d: Draft) => void
   locked: boolean
+  onCommit?: (next: Draft) => void
 }) {
   const [q, setQ] = useState('')
   const menus = allMenus(groups)
@@ -422,15 +435,22 @@ function MenuMatrix({
     })
   }
 
+  /** A row changed from its own drawer: update the draft and save it. */
+  function commitRow(menu: MenuDef, row: MenuRight) {
+    const next = { ...draft, rights: { ...draft.rights, [menu.key]: row } }
+    setDraft(next)
+    onCommit?.(next)
+  }
+
   function setRowAll(menu: MenuDef, value: boolean) {
-    setRow(menu, fullRow(menu, value), Object.fromEntries(menu.rights.map((k) => [k, value])))
+    setRow(menu, fullRow(menu, value, true), Object.fromEntries(menu.rights.map((k) => [k, value])))
   }
 
   function setEverything(value: boolean) {
     const rights: MenuRights = {}
     const perms: Record<string, boolean> = { ...draft.permissions }
     for (const m of menus) {
-      rights[m.key] = fullRow(m, value)
+      rights[m.key] = fullRow(m, value, true)
       for (const k of m.rights) perms[k] = value
     }
     setDraft({ ...draft, rights, permissions: perms })
@@ -491,8 +511,8 @@ function MenuMatrix({
                   <span role="columnheader" className="r">Select all</span>
                 </div>
                 {g.menus.map((m) => (
-                  <MenuRow key={m.key} menu={m} icon={<Icon size={15} />} row={draft.rights[m.key] ?? { access: false }}
-                           perms={draft.permissions} locked={locked} setRow={setRow} setRowAll={setRowAll} />
+                  <MenuRow key={m.key} baseRole={draft.base_role} menu={m} icon={<Icon size={15} />} row={draft.rights[m.key] ?? { access: false }}
+                           perms={draft.permissions} locked={locked} setRow={setRow} setRowAll={setRowAll} commitRow={commitRow} />
                 ))}
               </div>
             </div>
@@ -504,8 +524,10 @@ function MenuMatrix({
 }
 
 function MenuRow({
-  menu, icon, row, perms, locked, setRow, setRowAll,
+  menu, icon, row, perms, locked, setRow, setRowAll, commitRow, baseRole,
 }: {
+  baseRole: string
+  commitRow: (menu: MenuDef, row: MenuRight) => void
   menu: MenuDef
   icon: ReactNode
   row: MenuRight
@@ -554,7 +576,11 @@ function MenuRow({
       ))}
 
       <span className="rp-rights" role="cell">
-        {menu.rights.length === 0 && <span className="rp-na">—</span>}
+        {menu.rights.length === 0 && !menu.tabs?.length && <span className="rp-na">—</span>}
+        {menu.tabs && menu.tabs.length > 0 && (
+          <TabsPicker menu={menu} row={row} baseRole={baseRole} disabled={locked || off}
+                      onChange={(next) => commitRow(menu, next)} />
+        )}
         {menu.rights.map((k) => (
           <button type="button" key={k} className={`rp-chip${perms[k] ? ' is-on' : ''}`}
                   aria-pressed={Boolean(perms[k])} disabled={locked || off} title={DESCRIPTION[k]}
@@ -569,5 +595,103 @@ function MenuRow({
         <button type="button" className="rp-mini" disabled={locked} onClick={() => setRowAll(menu, false)}>None</button>
       </span>
     </div>
+  )
+}
+
+/** Which tabs of a screen a role sees — a drawer from the right edge, opened from
+ *  the menu's Other rights cell, like the Form Fields drawer elsewhere. Saved on
+ *  the menu's row as `tab_<key>`. A tab never ticked either way follows its old
+ *  rule, shown here as Show for lanes and, for Costsheet, for the roles that could
+ *  always approve (owner, administrator, manager). */
+function TabsPicker({
+  menu, row, baseRole, disabled, onChange,
+}: {
+  menu: MenuDef
+  row: MenuRight
+  baseRole: string
+  disabled: boolean
+  onChange: (row: MenuRight) => void
+}) {
+  const tabs = menu.tabs ?? []
+  const byDefault = (key: string) => (key === 'costsheet' ? ['owner', 'admin', 'manager'].includes(baseRole) : true)
+  const current = (key: string) => row[`tab_${key}`] ?? byDefault(key)
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<Record<string, boolean>>({})
+  const [search, setSearch] = useState('')
+  const shown = tabs.filter((t) => current(t.key)).length
+
+  useEffect(() => {
+    if (!open) return
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
+    window.addEventListener('keydown', key, true)
+    return () => window.removeEventListener('keydown', key, true)
+  }, [open])
+
+  function openDrawer() {
+    setDraft(Object.fromEntries(tabs.map((t) => [t.key, current(t.key)])))
+    setSearch('')
+    setOpen(true)
+  }
+  function save() {
+    onChange({ ...row, ...Object.fromEntries(tabs.map((t) => [`tab_${t.key}`, draft[t.key]])) })
+    setOpen(false)
+  }
+  const needle = search.trim().toLowerCase()
+  const rows = tabs.filter((t) => !needle || t.label.toLowerCase().includes(needle))
+
+  return (
+    <>
+      <button type="button" className={`rp-chip rp-tabs-btn${shown > 0 ? ' is-on' : ''}`}
+              disabled={disabled} aria-haspopup="dialog" aria-expanded={open} onClick={openDrawer}
+              title="Choose which tabs this role sees">
+        {shown === tabs.length ? 'All tabs' : shown === 0 ? 'No tabs' : `${shown} of ${tabs.length} tabs`}
+        <span aria-hidden> ▸</span>
+      </button>
+      {open && createPortal(
+        <div className="vw-drawer-wrap">
+          <div className="vw-drawer-backdrop" onMouseDown={() => setOpen(false)} />
+          <aside className="vw-drawer" role="dialog" aria-label={`Tabs shown in ${menu.label}`}>
+            <header className="vw-drawer-head">
+              <h3>{menu.label} tabs</h3>
+              <button type="button" className="vw-drawer-x" aria-label="Close" onClick={() => setOpen(false)}>×</button>
+            </header>
+            <div className="vw-drawer-search">
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+                     placeholder="Search here…" aria-label="Search tabs" />
+            </div>
+            <div className="vw-drawer-body">
+              <p className="vw-note">
+                Which tabs of {menu.label} this role sees. A role with only Costsheet set to Show opens
+                {' '}{menu.label} with just that queue.
+              </p>
+              <h4 className="vw-sec">Tabs</h4>
+              {rows.map((t) => (
+                <div className="vw-row" key={t.key}>
+                  <span className="vw-field-name">{t.label}</span>
+                  <div className="vw-seg" role="radiogroup" aria-label={t.label}>
+                    {([true, false] as const).map((value) => (
+                      <button key={String(value)} type="button" role="radio" aria-checked={draft[t.key] === value}
+                              className={draft[t.key] === value ? 'is-on' : undefined}
+                              onClick={() => setDraft({ ...draft, [t.key]: value })}>
+                        {value ? 'Show' : 'Hide'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {rows.length === 0 && <p className="vw-note">No tab matches.</p>}
+            </div>
+            <footer className="vw-drawer-foot">
+              <button type="button" className="vw-link"
+                      onClick={() => setDraft(Object.fromEntries(tabs.map((t) => [t.key, byDefault(t.key)])))}>Default</button>
+              <span className="vw-spacer" />
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={save}>Save</button>
+            </footer>
+          </aside>
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }

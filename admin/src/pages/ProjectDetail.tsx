@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import '../styles/projects.css'
 import { api } from '../lib/api'
@@ -9,6 +9,15 @@ import type { Project, ProjectMember, ProjectRule, Task, User } from '../lib/typ
 import { Loading, ErrorNote, StatTile } from '../components/ui'
 import Tabs, { TabPanel } from '../components/Tabs'
 import { ProjectStatusPill, rupees } from './Projects'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../components/ViewSettings'
+
+const TASK_FIELDS: FieldDef[] = [
+  { key: 'title', label: 'Title', section: 'task', fixed: true },
+  { key: 'assignee_user_id', label: 'Assignee', section: 'task' },
+  { key: 'estimate_hours', label: 'Estimate (hours)', section: 'task' },
+  { key: 'due_on', label: 'Due', section: 'task' },
+]
+const TASK_SECTIONS: FieldSection[] = [{ id: 'task', label: 'Task' }]
 
 type Tab = 'tasks' | 'members' | 'rules'
 
@@ -260,9 +269,21 @@ function NewTask({ projectId, onDone }: { projectId: string; onDone: () => void 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const people = useQuery<User[]>('employees', () => api.get<User[]>('/admin/employees'))
+  const fields = useFieldModes('project-task-form', TASK_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => (rq(key) ? <span className="lf-req"> *</span> : null)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (
+      (rq('assignee_user_id') && !form.assignee_user_id) ||
+      (rq('estimate_hours') && !form.estimate_hours) ||
+      (rq('due_on') && !form.due_on)
+    ) {
+      setError('Fill in the fields marked *.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -279,35 +300,51 @@ function NewTask({ projectId, onDone }: { projectId: string; onDone: () => void 
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    title: (
+      <label className="setting">
+        Title
+        <input placeholder="e.g. Design the onboarding flow" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
+      </label>
+    ),
+    assignee_user_id: fm('assignee_user_id') !== 'hide' && (
+      <label className="setting">
+        Assignee{star('assignee_user_id')}
+        <select value={form.assignee_user_id} onChange={(e) => setForm({ ...form, assignee_user_id: e.target.value })}>
+          <option value="">Unassigned</option>
+          {people.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </select>
+      </label>
+    ),
+    estimate_hours: fm('estimate_hours') !== 'hide' && (
+      <label className="setting">
+        Estimate (hours){star('estimate_hours')}
+        <input placeholder="e.g. 8"
+          type="number"
+          min={0}
+          step={0.5}
+          value={form.estimate_hours}
+          onChange={(e) => setForm({ ...form, estimate_hours: Number(e.target.value) })}
+        />
+      </label>
+    ),
+    due_on: fm('due_on') !== 'hide' && (
+      <label className="setting">
+        Due{star('due_on')}
+        <input type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })} />
+      </label>
+    ),
+  }
+
   return (
     <form className="card" style={{ marginBottom: 14 }} onSubmit={submit}>
+      <div className="lf-settings">
+        <FieldSettings defs={TASK_FIELDS} sections={TASK_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Task fields" />
+      </div>
       {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
       <div className="settings-grid">
-        <label className="setting">
-          Title
-          <input placeholder="e.g. Design the onboarding flow" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
-        </label>
-        <label className="setting">
-          Assignee
-          <select value={form.assignee_user_id} onChange={(e) => setForm({ ...form, assignee_user_id: e.target.value })}>
-            <option value="">Unassigned</option>
-            {people.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
-        </label>
-        <label className="setting">
-          Estimate (hours)
-          <input placeholder="e.g. 8"
-            type="number"
-            min={0}
-            step={0.5}
-            value={form.estimate_hours}
-            onChange={(e) => setForm({ ...form, estimate_hours: Number(e.target.value) })}
-          />
-        </label>
-        <label className="setting">
-          Due
-          <input type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })} />
-        </label>
+        {fields.orderOf('task').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
       <div style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy}>{busy ? 'Adding…' : 'Add task'}</button>

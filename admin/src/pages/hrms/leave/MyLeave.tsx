@@ -1,9 +1,13 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { useAuth } from '../../../lib/auth'
 import { dateTime, shortDate, todayISO } from '../../../lib/format'
 import { Empty, EmptyState, ErrorNote, Loading, Meter, StatTile } from '../../../components/ui'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 import '../../../styles/leave.css'
 
 /* ===========================================================================
@@ -109,6 +113,11 @@ export interface Holiday {
   description: string | null
   is_optional: boolean
   is_active: boolean
+  /** public | national | festival | optional | company. */
+  holiday_type?: string
+  /** The one branch that observes it; null means every branch. */
+  branch_id?: string | null
+  branch_name?: string | null
   opted_in: boolean
   opt_in_count: number | null
 }
@@ -520,6 +529,18 @@ interface ApplyState {
   reason: string
 }
 
+const APPLY_FIELDS: FieldDef[] = [
+  { key: 'leave_type_id', label: 'Leave type', section: 'dates', fixed: true },
+  { key: 'start_date', label: 'First day', section: 'dates', fixed: true },
+  { key: 'end_date', label: 'Last day', section: 'dates', fixed: true },
+  { key: 'is_half_day', label: 'Half day', section: 'dates', optionalOnly: true },
+  { key: 'reason', label: 'Reason', section: 'reason' },
+]
+const APPLY_SECTIONS: FieldSection[] = [
+  { id: 'dates', label: 'Leave' },
+  { id: 'reason', label: 'Reason' },
+]
+
 function ApplyForm({
   types,
   balances,
@@ -543,6 +564,9 @@ function ApplyForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reason, setReason] = useState<string | null>(null)
+  const fields = useFieldModes('leave-apply-form', APPLY_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   const selected = types.find((t) => t.id === form.leave_type_id) ?? null
   const balance = balances.find((b) => b.leave_type_id === form.leave_type_id) ?? null
@@ -576,6 +600,10 @@ function ApplyForm({
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!selected) return
+    if (rq('reason') && !form.reason.trim()) {
+      setError('Fill in the fields marked *.')
+      return
+    }
     setBusy(true)
     setError(null)
     setReason(null)
@@ -621,8 +649,119 @@ function ApplyForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    leave_type_id: (
+      <label className="setting">
+        Leave type
+        <select
+          value={form.leave_type_id}
+          onChange={(e) => patch({ leave_type_id: e.target.value, is_half_day: false })}
+          required
+        >
+          {types.map((t) => {
+            const b = balances.find((x) => x.leave_type_id === t.id)
+            return (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {b ? ` — ${days(b.available_milli_days)} available` : ''}
+              </option>
+            )
+          })}
+        </select>
+        {selected && !selected.requires_approval && (
+          <span className="setting-hint">
+            Approved on submission — this type is a declaration, not a request. It debits
+            straight away.
+          </span>
+        )}
+      </label>
+    ),
+    start_date: (
+      <label className="setting">
+        {form.is_half_day ? 'Date' : 'First day'}
+        <input
+          type="date"
+          value={form.start_date}
+          onChange={(e) => patch({ start_date: e.target.value })}
+          required
+        />
+        {earliest && (
+          <span className="setting-hint">
+            {selected?.name} needs {selected?.min_notice_days} days’ notice — the earliest
+            you can start is {shortDate(earliest)}.
+          </span>
+        )}
+      </label>
+    ),
+    end_date: !form.is_half_day && (
+      <label className="setting">
+        Last day
+        <input
+          type="date"
+          value={form.end_date}
+          min={form.start_date}
+          onChange={(e) => patch({ end_date: e.target.value })}
+          required
+        />
+      </label>
+    ),
+    is_half_day: fm('is_half_day') !== 'hide' && selected?.allow_half_day && (
+      <div className="setting">
+        Half day
+        <label className="check-field">
+          <input
+            type="checkbox"
+            checked={form.is_half_day}
+            onChange={(e) => patch({ is_half_day: e.target.checked })}
+          />
+          <span>Take half of one day</span>
+        </label>
+        {form.is_half_day && (
+          <>
+            <div className="lv-session" style={{ marginTop: 6 }}>
+              {(['first_half', 'second_half'] as const).map((session) => (
+                <label className="check-field" key={session}>
+                  <input
+                    type="radio"
+                    name="half_day_session"
+                    checked={form.half_day_session === session}
+                    onChange={() => patch({ half_day_session: session })}
+                  />
+                  <span>{session === 'first_half' ? 'First half' : 'Second half'}</span>
+                </label>
+              ))}
+            </div>
+            <span className="setting-hint">
+              Which half matters: attendance records the other one as a day you were
+              expected in.
+            </span>
+          </>
+        )}
+      </div>
+    ),
+    reason: fm('reason') !== 'hide' && (
+      <label className="setting" style={{ marginTop: 14 }}>
+        Reason{rq('reason') && <span className="lf-req"> *</span>}{' '}
+        <span className="setting-hint">{rq('reason') ? 'Your approver reads it.' : 'Optional, but your approver reads it.'}</span>
+        <textarea
+          className="set-textarea"
+          value={form.reason}
+          maxLength={2000}
+          onChange={(e) => setForm({ ...form, reason: e.target.value })}
+          placeholder="Family wedding, medical appointment…"
+        />
+      </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <form className="lv-form" onSubmit={submit}>
+      <div className="lf-settings">
+        <FieldSettings defs={APPLY_FIELDS} sections={APPLY_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Leave application fields" />
+      </div>
       {error && (
         <div style={{ marginBottom: 12 }}>
           <ErrorNote>
@@ -649,106 +788,10 @@ function ApplyForm({
       )}
 
       <div className="settings-grid">
-        <label className="setting">
-          Leave type
-          <select
-            value={form.leave_type_id}
-            onChange={(e) => patch({ leave_type_id: e.target.value, is_half_day: false })}
-            required
-          >
-            {types.map((t) => {
-              const b = balances.find((x) => x.leave_type_id === t.id)
-              return (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {b ? ` — ${days(b.available_milli_days)} available` : ''}
-                </option>
-              )
-            })}
-          </select>
-          {selected && !selected.requires_approval && (
-            <span className="setting-hint">
-              Approved on submission — this type is a declaration, not a request. It debits
-              straight away.
-            </span>
-          )}
-        </label>
-
-        <label className="setting">
-          {form.is_half_day ? 'Date' : 'First day'}
-          <input
-            type="date"
-            value={form.start_date}
-            onChange={(e) => patch({ start_date: e.target.value })}
-            required
-          />
-          {earliest && (
-            <span className="setting-hint">
-              {selected?.name} needs {selected?.min_notice_days} days’ notice — the earliest
-              you can start is {shortDate(earliest)}.
-            </span>
-          )}
-        </label>
-
-        {!form.is_half_day && (
-          <label className="setting">
-            Last day
-            <input
-              type="date"
-              value={form.end_date}
-              min={form.start_date}
-              onChange={(e) => patch({ end_date: e.target.value })}
-              required
-            />
-          </label>
-        )}
-
-        {selected?.allow_half_day && (
-          <div className="setting">
-            Half day
-            <label className="check-field">
-              <input
-                type="checkbox"
-                checked={form.is_half_day}
-                onChange={(e) => patch({ is_half_day: e.target.checked })}
-              />
-              <span>Take half of one day</span>
-            </label>
-            {form.is_half_day && (
-              <>
-                <div className="lv-session" style={{ marginTop: 6 }}>
-                  {(['first_half', 'second_half'] as const).map((session) => (
-                    <label className="check-field" key={session}>
-                      <input
-                        type="radio"
-                        name="half_day_session"
-                        checked={form.half_day_session === session}
-                        onChange={() => patch({ half_day_session: session })}
-                      />
-                      <span>{session === 'first_half' ? 'First half' : 'Second half'}</span>
-                    </label>
-                  ))}
-                </div>
-                <span className="setting-hint">
-                  Which half matters: attendance records the other one as a day you were
-                  expected in.
-                </span>
-              </>
-            )}
-          </div>
-        )}
+        {fieldsOf('dates')}
       </div>
 
-      <label className="setting" style={{ marginTop: 14 }}>
-        Reason <span className="setting-hint">Optional, but your approver reads it.</span>
-        <textarea
-          className="set-textarea"
-          value={form.reason}
-          maxLength={2000}
-          onChange={(e) => setForm({ ...form, reason: e.target.value })}
-          placeholder="Family wedding, medical appointment…"
-        />
-      </label>
+      {fieldsOf('reason')}
 
       <div className="lv-cost">
         <div className="lv-cost-head">What this will cost</div>
@@ -807,6 +850,29 @@ function ApplyForm({
 
 /* --------------------------------------------------------------- history -- */
 
+type HistoryColumn = ColumnDef & { td: (row: LeaveApplication) => ReactNode; className?: string; thClass?: string }
+
+const HISTORY_COLUMNS: HistoryColumn[] = [
+  { key: 'dates', label: 'Dates', locked: true, td: (row) => (
+    <>
+      <b>{rangeLabel(row.start_date, row.end_date)}</b>
+      <div className="lv-sub">
+        {row.is_half_day
+          ? `Half day, ${row.half_day_session === 'first_half' ? 'first half' : 'second half'}`
+          : `applied ${dateTime(row.applied_at)}`}
+      </div>
+    </>
+  ) },
+  { key: 'type', label: 'Type', td: (row) => row.leave_type_name ?? '—' },
+  { key: 'days', label: 'Days', className: 'num lv-mono', thClass: 'num', td: (row) => days(row.duration_milli_days) },
+  { key: 'status', label: 'Status', td: (row) => <StatusPill status={row.status} /> },
+  { key: 'decision', label: 'Decision', td: (row) => <DecisionCell application={row} /> },
+  { key: 'reason', label: 'Reason', initial: false, td: (row) => row.reason || '—' },
+  { key: 'applied', label: 'Applied on', initial: false, td: (row) => dateTime(row.applied_at) },
+  { key: 'reviewer', label: 'Decided by', initial: false, td: (row) => row.reviewed_by_name ?? '—' },
+  { key: 'reviewed', label: 'Decided on', initial: false, td: (row) => (row.reviewed_at ? dateTime(row.reviewed_at) : '—') },
+]
+
 const HISTORY_FILTERS: Array<{ id: string; label: string }> = [
   { id: '', label: 'All' },
   { id: 'pending', label: 'Awaiting' },
@@ -828,6 +894,7 @@ function History({
 }) {
   const [filter, setFilter] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
+  const columns = useColumns('leave-applications', HISTORY_COLUMNS)
 
   const rows = applications.filter((a) => !filter || a.status === filter)
 
@@ -847,6 +914,8 @@ function History({
             </button>
           ))}
         </div>
+        <ColumnSettings defs={HISTORY_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
       </div>
 
       {loading ? (
@@ -863,11 +932,9 @@ function History({
           <table>
             <thead>
               <tr>
-                <th>Dates</th>
-                <th>Type</th>
-                <th className="num">Days</th>
-                <th>Status</th>
-                <th>Decision</th>
+                {columns.visible.map((col) => (
+                  <th key={col.key} className={(col as HistoryColumn).thClass}>{col.label}</th>
+                ))}
                 <th />
               </tr>
             </thead>
@@ -878,20 +945,9 @@ function History({
                   (row.status === 'pending' || row.status === 'approved') && row.user_id === selfId
                 return [
                   <tr key={row.id}>
-                    <td>
-                      <b>{rangeLabel(row.start_date, row.end_date)}</b>
-                      <div className="lv-sub">
-                        {row.is_half_day
-                          ? `Half day, ${row.half_day_session === 'first_half' ? 'first half' : 'second half'}`
-                          : `applied ${dateTime(row.applied_at)}`}
-                      </div>
-                    </td>
-                    <td>{row.leave_type_name ?? '—'}</td>
-                    <td className="num lv-mono">{days(row.duration_milli_days)}</td>
-                    <td><StatusPill status={row.status} /></td>
-                    <td>
-                      <DecisionCell application={row} />
-                    </td>
+                    {columns.visible.map((col) => (
+                      <td key={col.key} className={(col as HistoryColumn).className}>{(col as HistoryColumn).td(row)}</td>
+                    ))}
                     <td className="num">
                       {cancellable && (
                         <button
@@ -905,7 +961,7 @@ function History({
                   </tr>,
                   open ? (
                     <tr key={`${row.id}-cancel`}>
-                      <td colSpan={6}>
+                      <td colSpan={columns.visible.length + 1}>
                         <CancelPanel
                           application={row}
                           onCancelled={onDone}

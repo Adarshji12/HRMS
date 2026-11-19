@@ -649,3 +649,7 @@
 /* Sections are always open — the label is a heading, not a control. */
 .rp-group-title { cursor: default; }
 .rp-group-title:hover .rp-group-text b { color: var(--text-secondary); }
+
+
+/* The tabs drawer reuses the vw-drawer styles; only the opening button is styled here. */
+.rp-tabs-btn { cursor: pointer; }

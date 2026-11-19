@@ -690,9 +690,9 @@ def _clip(text: str | None, limit: int) -> str | None:
 def from_quotation(db: Session, viewer: User, quotation_id: uuid.UUID, request: Request | None = None) -> dict:
     """Convert an accepted CRM quotation — J01's handoff, no re-entry.
 
-    Lines map to ERP items through ``ErpItem.crm_product_id``; a quotation line
-    whose product has no ERP item comes across as a service line, which is the
-    honest reading of "something sold that is not stocked".
+    A quotation line's ``product_id`` is already an ERP item; a line typed by
+    hand with no item comes across as a service line, which is the honest
+    reading of "something sold that is not stocked".
     """
     from app.models import CrmQuotationLine
 
@@ -706,8 +706,8 @@ def from_quotation(db: Session, viewer: User, quotation_id: uuid.UUID, request: 
         ErpSalesOrder.status != SalesOrderStatus.CANCELLED.value))
     if existing is not None:
         raise ErpError("already_ordered", f"{existing.number} was already booked from this quotation.", 409)
-    by_product = {i.crm_product_id: i for i in db.scalars(select(ErpItem).where(
-        ErpItem.org_id == viewer.org_id, ErpItem.crm_product_id.is_not(None)))}
+    by_product = {i.id: i for i in db.scalars(select(ErpItem).where(
+        ErpItem.org_id == viewer.org_id))}
     lines = []
     for ql in db.scalars(select(CrmQuotationLine).where(
             CrmQuotationLine.quotation_id == quotation.id).order_by(CrmQuotationLine.sort_order)):

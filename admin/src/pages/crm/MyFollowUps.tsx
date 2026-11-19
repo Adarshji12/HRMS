@@ -11,7 +11,7 @@
  * card is also the filter for its window.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
@@ -45,6 +45,7 @@ import {
   WhatsAppButton,
 } from './parts'
 import { splitCsvLine } from './MyLeads'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 
 type Window = '' | 'overdue' | 'today' | 'week' | 'upcoming'
 type Status = 'all' | 'pending' | 'done' | 'cancelled'
@@ -80,7 +81,55 @@ function countWindows(rows: FollowUp[]) {
   return { all: rows.length, overdue, today, week, upcoming }
 }
 
+/** What the follow-ups table can show. A person picks and orders these from
+ *  Settings; the first five are what it shows until they do. */
+type FollowUpColumn = ColumnDef & { td: (row: FollowUp) => ReactNode; className?: string }
+const dash = <span className="crm-muted">—</span>
+const FOLLOW_UP_COLUMNS: FollowUpColumn[] = [
+  { key: 'due', label: 'Due', locked: true, className: 'crm-nowrap', td: (r) => (
+    <Due iso={r.due_at} overdue={r.status === 'pending' && r.is_overdue} />
+  ) },
+  { key: 'contact', label: 'Contact', td: (r) => (
+    <div className="vs-who">
+      <span className="vs-avatar" aria-hidden>{initials(r.subject_name)}</span>
+      <span className="vs-who-text">
+        <span className="crm-strong">{r.subject_name ?? '—'}</span>
+        <span className="crm-sub">
+          <span className={`fu-kind is-${r.subject_kind === 'customer' ? 'customer' : 'lead'}`}>
+            {r.subject_kind === 'customer' ? 'Customer' : 'Lead'}
+          </span>
+          {r.subject_mobile ? ` ${r.subject_mobile}` : ''}
+        </span>
+      </span>
+    </div>
+  ) },
+  { key: 'purpose', label: 'Purpose', className: 'fu-purpose', td: (r) => (
+    <>
+      {r.purpose ?? dash}
+      {r.notes && <div className="crm-sub">{r.notes}</div>}
+      {r.outcome && <div className="crm-sub">Outcome: {r.outcome}</div>}
+    </>
+  ) },
+  { key: 'owner', label: 'Owner', td: (r) => r.owner_name ?? <span className="crm-muted">Unassigned</span> },
+  { key: 'status', label: 'Status', td: (r) => <StateText value={r.status} /> },
+  { key: 'kind', label: 'Lead / Customer', initial: false, td: (r) => (r.subject_kind === 'customer' ? 'Customer' : 'Lead') },
+  { key: 'mobile', label: 'Mobile', initial: false, className: 'crm-nowrap', td: (r) => r.subject_mobile ?? dash },
+  { key: 'created', label: 'Booked on', initial: false, className: 'crm-nowrap', td: (r) => new Date(r.created_at).toLocaleDateString('en-IN') },
+  { key: 'completed', label: 'Completed on', initial: false, className: 'crm-nowrap', td: (r) => (r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-IN') : dash) },
+]
+
+/** What the Add follow-up form can show, make mandatory or hide. Who it is for
+ *  and when it is due are always there. */
+const FOLLOW_UP_SECTIONS: FieldSection[] = [{ id: 'details', label: 'Follow-up details' }]
+const FOLLOW_UP_FIELDS: FieldDef[] = [
+  { key: 'due', label: 'Due', section: 'details', fixed: true },
+  { key: 'owner', label: 'Owner', section: 'details', initial: 'mandatory' },
+  { key: 'purpose', label: 'Purpose', section: 'details', initial: 'mandatory' },
+  { key: 'notes', label: 'Notes', section: 'details' },
+]
+
 export default function MyFollowUps() {
+  const columns = useColumns('follow-ups', FOLLOW_UP_COLUMNS)
   const [params] = useSearchParams()
   const [window, setWindow] = useState<Window>((params.get('window') ?? '') as Window)
   const [status, setStatus] = useState<Status>('pending')
@@ -117,7 +166,7 @@ export default function MyFollowUps() {
 
   const list = rows.data ?? []
   const c = countWindows(pending.data ?? [])
-  const extraFilters = [ownerId, kind, dueFrom, dueTo].filter(Boolean).length
+  const extraFilters = [status !== 'pending' ? status : '', ownerId, kind, dueFrom, dueTo].filter(Boolean).length
   const filtered = Boolean(q || window || ownerId || extraFilters)
 
   /* The box closes on a click outside it or on Escape, as on My Leads. */
@@ -233,22 +282,6 @@ export default function MyFollowUps() {
               aria-label="Search follow-ups"
             />
           </div>
-          <select
-            className="fu-bar-status"
-            value={status}
-            onChange={(event) => {
-              const next = event.target.value as Status
-              setStatus(next)
-              if (next !== 'pending') setWindow('')
-            }}
-            aria-label="Status"
-          >
-            {STATUSES.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
           <div className="ml-filter" ref={filterRef}>
             <button
               type="button"
@@ -263,6 +296,23 @@ export default function MyFollowUps() {
             {showFilters && (
               /* Each change applies at once, so there is no Apply to forget. */
               <div className="ml-pop fu-pop" role="dialog" aria-label="Filter follow-ups">
+                <label className="ml-pop-field">
+                  <span>Status</span>
+                  <select
+                    value={status}
+                    onChange={(event) => {
+                      const next = event.target.value as Status
+                      setStatus(next)
+                      if (next !== 'pending') setWindow('')
+                    }}
+                  >
+                    {STATUSES.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="ml-pop-field">
                   <span>Owner</span>
                   <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Any owner" />
@@ -290,7 +340,7 @@ export default function MyFollowUps() {
                 <button
                   type="button"
                   className="ml-pop-reset"
-                  onClick={() => { setOwnerId(''); setKind(''); setDueFrom(''); setDueTo('') }}
+                  onClick={() => { setStatus('pending'); setOwnerId(''); setKind(''); setDueFrom(''); setDueTo('') }}
                   disabled={extraFilters === 0}
                 >
                   Reset filters
@@ -298,6 +348,8 @@ export default function MyFollowUps() {
               </div>
             )}
           </div>
+          <ColumnSettings defs={FOLLOW_UP_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           <ExportButton
             iconOnly
             className="btn fu-icon-btn"
@@ -362,43 +414,18 @@ export default function MyFollowUps() {
                 <table className="vs-table">
                   <thead>
                     <tr>
-                      <th>Due</th>
-                      <th>Contact</th>
-                      <th>Purpose</th>
-                      <th>Owner</th>
-                      <th>Status</th>
+                      {(columns.visible as FollowUpColumn[]).map((col) => (
+                        <th key={col.key}>{col.label}</th>
+                      ))}
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {list.map((row) => (
                       <tr key={row.id} className={row.status === 'pending' && row.is_overdue ? 'fu-row-late' : undefined}>
-                        <td className="crm-nowrap">
-                          <Due iso={row.due_at} overdue={row.status === 'pending' && row.is_overdue} />
-                        </td>
-                        <td>
-                          <div className="vs-who">
-                            <span className="vs-avatar" aria-hidden>{initials(row.subject_name)}</span>
-                            <span className="vs-who-text">
-                              <span className="crm-strong">{row.subject_name ?? '—'}</span>
-                              <span className="crm-sub">
-                                <span className={`fu-kind is-${row.subject_kind === 'customer' ? 'customer' : 'lead'}`}>
-                                  {row.subject_kind === 'customer' ? 'Customer' : 'Lead'}
-                                </span>
-                                {row.subject_mobile ? ` ${row.subject_mobile}` : ''}
-                              </span>
-                            </span>
-                          </div>
-                        </td>
-                        <td className="fu-purpose">
-                          {row.purpose ?? <span className="crm-muted">—</span>}
-                          {row.notes && <div className="crm-sub">{row.notes}</div>}
-                          {row.outcome && <div className="crm-sub">Outcome: {row.outcome}</div>}
-                        </td>
-                        <td>{row.owner_name ?? <span className="crm-muted">Unassigned</span>}</td>
-                        <td>
-                          <StateText value={row.status} />
-                        </td>
+                        {(columns.visible as FollowUpColumn[]).map((col) => (
+                          <td key={col.key} className={col.className}>{col.td(row)}</td>
+                        ))}
                         <td>
                           <div className="crm-row-actions">
                             <WhatsAppButton mobile={row.subject_mobile} />
@@ -496,6 +523,9 @@ function Due({ iso, overdue }: { iso: string; overdue: boolean }) {
 /** Book a follow-up against a lead or a customer from this page, without
  *  opening the record first. */
 function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const fields = useFieldModes('follow-up-form', FOLLOW_UP_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
   const [kind, setKind] = useState<'lead' | 'customer'>('lead')
   const [lead, setLead] = useState<Lead | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -522,12 +552,16 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
       setError('Choose when the follow-up is due.')
       return
     }
-    if (!ownerId) {
+    if (rq('owner') && !ownerId) {
       setError('Choose who owns this follow-up.')
       return
     }
-    if (!purpose.trim()) {
+    if (rq('purpose') && !purpose.trim()) {
       setError('Say what the follow-up is for.')
+      return
+    }
+    if (rq('notes') && !notes.trim()) {
+      setError('Add the notes for this follow-up.')
       return
     }
     setBusy(true)
@@ -548,6 +582,33 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     }
   }
 
+  /* Every configurable field as an element, so the order a person arranged in
+     Settings can place them. A hidden field is nothing at all. */
+  const fieldNodes: Record<string, ReactNode> = {
+    due: (
+          <Field label="Due" required>
+          <input type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} />
+        </Field>
+        ),
+    owner: fm('owner') !== 'hide' && (
+          <Field label="Owner" required={rq('owner')}>
+          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Select owner" />
+        </Field>
+        ),
+    purpose: fm('purpose') !== 'hide' && (
+          <Field label="Purpose" wide required={rq('purpose')}>
+          <input value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Call back about the demo" />
+        </Field>
+        ),
+    notes: fm('notes') !== 'hide' && (
+          <Field label="Notes" wide required={rq('notes')}>
+          <textarea placeholder="e.g. Customer asked for a revised quote" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
+        </Field>
+        ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <Dialog
       title="Add follow-up"
@@ -564,6 +625,10 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
       }
     >
       <div className="crm-form">
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={FOLLOW_UP_FIELDS} sections={FOLLOW_UP_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} title="Follow-up fields" />
+        </div>
         {error && (
           <div className="crm-form-wide">
             <ErrorNote>{error}</ErrorNote>
@@ -595,18 +660,10 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
             <CustomerPicker value={customer} onPick={(c) => { setCustomer(c); if (c?.manager_id) setOwnerId(c.manager_id) }} autoFocus />
           )}
         </div>
-        <Field label="Due" required>
-          <input type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} />
-        </Field>
-        <Field label="Owner" required>
-          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Select owner" />
-        </Field>
-        <Field label="Purpose" wide required>
-          <input value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Call back about the demo" />
-        </Field>
-        <Field label="Notes" wide>
-          <textarea placeholder="e.g. Customer asked for a revised quote" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
-        </Field>
+        {fieldsOf('details')}
+        
+        
+        
       </div>
     </Dialog>
   )

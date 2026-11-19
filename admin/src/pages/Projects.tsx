@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../styles/projects.css'
 import { api } from '../lib/api'
@@ -9,6 +9,20 @@ import type { Department, Project, ProjectReport, User } from '../lib/types'
 import { EmptyState, ErrorNote, Loading, StatTile } from '../components/ui'
 import { ExportButton } from '../components/ExportButton'
 import { IconFolder } from '../components/Icons'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../components/ViewSettings'
+
+const PROJECT_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Project name', section: 'project', fixed: true },
+  { key: 'code', label: 'Code', section: 'project' },
+  { key: 'client_name', label: 'Client', section: 'project' },
+  { key: 'manager_user_id', label: 'Project manager', section: 'project' },
+  { key: 'department_id', label: 'Department', section: 'project' },
+  { key: 'hourly_rate_rupees', label: 'Hourly rate (₹)', section: 'project' },
+  { key: 'budget_hours', label: 'Budget (hours)', section: 'project' },
+  { key: 'color', label: 'Colour', section: 'project', optionalOnly: true },
+  { key: 'is_billable', label: 'Billable project', section: 'project', optionalOnly: true },
+]
+const PROJECT_SECTIONS: FieldSection[] = [{ id: 'project', label: 'Project' }]
 
 /** Paise → "₹1,23,456". Money is integer paise everywhere; format only here. */
 export function rupees(paise: number, withDecimals = false): string {
@@ -313,6 +327,10 @@ function NewProject({ onDone }: { onDone: () => void }) {
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('project-form', PROJECT_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => (rq(key) ? <span className="lf-req"> *</span> : null)
 
   const people = useQuery<User[]>('employees', () => api.get<User[]>('/admin/employees'))
   const departments = useQuery<Department[]>('departments', () =>
@@ -321,6 +339,18 @@ function NewProject({ onDone }: { onDone: () => void }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    const empty: Record<string, boolean> = {
+      code: !form.code.trim(),
+      client_name: !form.client_name.trim(),
+      manager_user_id: !form.manager_user_id,
+      department_id: !form.department_id,
+      hourly_rate_rupees: !form.hourly_rate_rupees,
+      budget_hours: !form.budget_hours,
+    }
+    if (Object.keys(empty).some((key) => rq(key) && empty[key])) {
+      setError('Fill in the fields marked *.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -339,20 +369,16 @@ function NewProject({ onDone }: { onDone: () => void }) {
     }
   }
 
-  return (
-    <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
-      <div className="card-head">
-        <h2 className="card-title">New project</h2>
-      </div>
-      {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
-
-      <div className="settings-grid">
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
         <label className="setting">
           Project name
           <input placeholder="e.g. Website Redesign" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
         </label>
+      ),
+    code: fm('code') !== 'hide' && (
         <label className="setting">
-          Code
+          Code{star('code')}
           <input
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
@@ -360,26 +386,34 @@ function NewProject({ onDone }: { onDone: () => void }) {
           />
           <span className="setting-hint">Short handle used in reports and rules.</span>
         </label>
+      ),
+    client_name: fm('client_name') !== 'hide' && (
         <label className="setting">
-          Client
+          Client{star('client_name')}
           <input placeholder="e.g. Acme Industries Pvt Ltd" value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
         </label>
+      ),
+    manager_user_id: fm('manager_user_id') !== 'hide' && (
         <label className="setting">
-          Project manager
+          Project manager{star('manager_user_id')}
           <select value={form.manager_user_id} onChange={(e) => setForm({ ...form, manager_user_id: e.target.value })}>
             <option value="">Unassigned</option>
             {people.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </select>
         </label>
+      ),
+    department_id: fm('department_id') !== 'hide' && (
         <label className="setting">
-          Department
+          Department{star('department_id')}
           <select value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
             <option value="">None</option>
             {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </label>
+      ),
+    hourly_rate_rupees: fm('hourly_rate_rupees') !== 'hide' && (
         <label className="setting">
-          Hourly rate (₹)
+          Hourly rate (₹){star('hourly_rate_rupees')}
           <input placeholder="e.g. 1500"
             type="number"
             min={0}
@@ -388,8 +422,10 @@ function NewProject({ onDone }: { onDone: () => void }) {
             onChange={(e) => setForm({ ...form, hourly_rate_rupees: Number(e.target.value) })}
           />
         </label>
+      ),
+    budget_hours: fm('budget_hours') !== 'hide' && (
         <label className="setting">
-          Budget (hours)
+          Budget (hours){star('budget_hours')}
           <input placeholder="e.g. 120"
             type="number"
             min={0}
@@ -399,10 +435,14 @@ function NewProject({ onDone }: { onDone: () => void }) {
           />
           <span className="setting-hint">0 means no budget tracking.</span>
         </label>
+      ),
+    color: fm('color') !== 'hide' && (
         <label className="setting">
-          Colour
+          Colour{star('color')}
           <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
         </label>
+      ),
+    is_billable: fm('is_billable') !== 'hide' && (
         <div className="setting">
           <label className="switch-row">
             <input
@@ -416,6 +456,20 @@ function NewProject({ onDone }: { onDone: () => void }) {
             Applies to time recorded from now on. Existing entries keep the flag they were saved with.
           </span>
         </div>
+      ),
+  }
+
+  return (
+    <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
+      <div className="card-head">
+        <h2 className="card-title">New project</h2>
+        <FieldSettings defs={PROJECT_FIELDS} sections={PROJECT_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Project fields" />
+      </div>
+      {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
+
+      <div className="settings-grid">
+        {fields.orderOf('project').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
 
       <div style={{ marginTop: 14 }}>

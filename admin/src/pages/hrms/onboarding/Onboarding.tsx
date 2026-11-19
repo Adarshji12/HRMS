@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import '../../../styles/onboarding.css'
 import { api, ApiError, download, getToken, setToken } from '../../../lib/api'
 import { getSlug } from '../../../lib/tenant'
@@ -16,6 +16,10 @@ import {
   StatTile,
 } from '../../../components/ui'
 import { IconAlert, IconCheck, IconDownload, IconSheet, IconUsers } from '../../../components/Icons'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 
 /* ---------------------------------------------------------------- types ---
    Page-local, as Timesheets.tsx and Assets.tsx do. These mirror
@@ -345,6 +349,83 @@ export function TaskTick({ status }: { status: string }) {
 
 /* ----------------------------------------------------------------- page --- */
 
+type InstanceColumn = ColumnDef & {
+  td: (row: OnbInstance, ctx: { lifecycle: (userId: string) => string | undefined }) => ReactNode
+  className?: string
+}
+
+const INSTANCE_COLUMNS: InstanceColumn[] = [
+  { key: 'hire', label: 'Hire', locked: true, td: (row, ctx) => (
+    <>
+      <Identity
+        name={row.user_name ?? 'Unknown'}
+        small
+        meta={
+          <>
+            {row.user_email}
+            {row.department_name ? ` · ${row.department_name}` : ''}
+          </>
+        }
+      />
+      <div style={{ marginTop: 4 }}>
+        <LifecyclePill status={ctx.lifecycle(row.user_id)} />
+      </div>
+    </>
+  ) },
+  { key: 'status', label: 'Status', td: (row) => <InstanceStatusPill value={row.status} /> },
+  { key: 'joining', label: 'Joining', className: 'ob-when', td: (row) => shortDate(row.joining_date) },
+  { key: 'template', label: 'Template', className: 'ob-muted', td: (row) => row.template_name ?? <em>ad hoc</em> },
+  { key: 'progress', label: 'Progress', td: (row) => {
+    const pct = progressOf(row)
+    const skipped = row.closed_tasks - row.completed_tasks
+    return (
+      <>
+        <div className="ob-progress">
+          <Meter value={row.closed_tasks} max={row.total_tasks} />
+          <span className="ob-progress-pct">{pct}%</span>
+        </div>
+        <div className="ob-progress-caption">
+          {row.total_tasks === 0
+            ? 'no tasks yet'
+            : `${row.completed_tasks} done${skipped > 0 ? `, ${skipped} n/a` : ''} of ${row.total_tasks}`}
+        </div>
+      </>
+    )
+  } },
+  { key: 'flags', label: 'Flags', td: (row) => (
+    <>
+      {row.overdue_tasks > 0 && (
+        <div className="ob-flag">
+          <IconAlert size={12} /> {row.overdue_tasks} overdue
+        </div>
+      )}
+      {row.documents_pending_verification > 0 && (
+        <div className="ob-muted">
+          {row.documents_pending_verification} doc
+          {row.documents_pending_verification === 1 ? '' : 's'} to verify
+        </div>
+      )}
+      {row.overdue_tasks === 0 && row.documents_pending_verification === 0 && (
+        <span className="ob-muted">—</span>
+      )}
+    </>
+  ) },
+  { key: 'department', label: 'Department', initial: false, td: (row) => row.department_name ?? '—' },
+  { key: 'designation', label: 'Designation', initial: false, td: (row) => row.designation_name ?? '—' },
+  { key: 'manager', label: 'Manager', initial: false, td: (row) => row.manager_name ?? '—' },
+  { key: 'started', label: 'Started', initial: false, td: (row) => (row.started_at ? shortDate(row.started_at) : '—') },
+  { key: 'completed', label: 'Completed', initial: false, td: (row) => (row.completed_at ? shortDate(row.completed_at) : '—') },
+]
+
+// The server needs to know who the hire is; everything else has a default.
+const START_FIELDS: FieldDef[] = [
+  { key: 'user', label: 'Hire', section: 'start', fixed: true },
+  { key: 'template', label: 'Template', section: 'start' },
+  { key: 'joining_date', label: 'Joining date', section: 'start' },
+  { key: 'notes', label: 'Notes', section: 'start' },
+]
+const START_SECTIONS: FieldSection[] = [{ id: 'start', label: 'Checklist' }]
+
 export default function Onboarding() {
   const { user } = useAuth()
   const allowed =
@@ -352,6 +433,7 @@ export default function Onboarding() {
 
   const [includeClosed, setIncludeClosed] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
+  const columns = useColumns('onboarding', INSTANCE_COLUMNS)
   /* Asking for "Completed" or "Cancelled" is asking for closed checklists, so
      the list must load them even with the box unticked — otherwise the filter
      can only ever show nothing. */
@@ -532,6 +614,8 @@ export default function Onboarding() {
         <span className="filter-count">
           {rows.length} of {(instances.data ?? []).length}
         </span>
+        <ColumnSettings defs={INSTANCE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         {filtered && (
           <button
             className="filter-reset"
@@ -572,74 +656,25 @@ export default function Onboarding() {
             <table>
               <thead>
                 <tr>
-                  <th>Hire</th>
-                  <th>Status</th>
-                  <th>Joining</th>
-                  <th>Template</th>
-                  <th>Progress</th>
-                  <th>Flags</th>
+                  {(columns.visible as InstanceColumn[]).map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
                   <th style={{ textAlign: 'right' }}>Checklist</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const pct = progressOf(row)
-                  const skipped = row.closed_tasks - row.completed_tasks
                   return (
                     <tr
                       key={row.id}
                       className={`ob-row-click${openId === row.id ? ' ob-row-open' : ''}`}
                       onClick={() => setOpenId(openId === row.id ? null : row.id)}
                     >
-                      <td>
-                        <Identity
-                          name={row.user_name ?? 'Unknown'}
-                          small
-                          meta={
-                            <>
-                              {row.user_email}
-                              {row.department_name ? ` · ${row.department_name}` : ''}
-                            </>
-                          }
-                        />
-                        <div style={{ marginTop: 4 }}>
-                          <LifecyclePill status={statusById.get(row.user_id)} />
-                        </div>
-                      </td>
-                      <td>
-                        <InstanceStatusPill value={row.status} />
-                      </td>
-                      <td className="ob-when">{shortDate(row.joining_date)}</td>
-                      <td className="ob-muted">
-                        {row.template_name ?? <em>ad hoc</em>}
-                      </td>
-                      <td>
-                        <div className="ob-progress">
-                          <Meter value={row.closed_tasks} max={row.total_tasks} />
-                          <span className="ob-progress-pct">{pct}%</span>
-                        </div>
-                        <div className="ob-progress-caption">
-                          {row.total_tasks === 0
-                            ? 'no tasks yet'
-                            : `${row.completed_tasks} done${skipped > 0 ? `, ${skipped} n/a` : ''} of ${row.total_tasks}`}
-                        </div>
-                      </td>
-                      <td>
-                        {row.overdue_tasks > 0 && (
-                          <div className="ob-flag">
-                            <IconAlert size={12} /> {row.overdue_tasks} overdue
-                          </div>
-                        )}
-                        {row.documents_pending_verification > 0 && (
-                          <div className="ob-muted">
-                            {row.documents_pending_verification} doc
-                            {row.documents_pending_verification === 1 ? '' : 's'} to verify
-                          </div>
-                        )}
-                        {row.overdue_tasks === 0 && row.documents_pending_verification === 0 && (
-                          <span className="ob-muted">—</span>
-                        )}
-                      </td>
+                      {(columns.visible as InstanceColumn[]).map((col) => (
+                        <td key={col.key} className={col.className}>
+                          {col.td(row, { lifecycle: (id) => statusById.get(id) })}
+                        </td>
+                      ))}
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="ob-actions">
                           <button
@@ -702,6 +737,15 @@ function StartForm({
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('onboarding-start-form', START_FIELDS)
+  const fm = fields.mode
+  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const emptyField: Record<string, boolean> = {
+    template: !templateId,
+    joining_date: !joiningDate,
+    notes: !notes.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
 
   const chosen = people.find((p) => p.id === userId)
 
@@ -724,6 +768,74 @@ function StartForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    user: (
+            <label className="setting">
+              Hire *
+              <select value={userId} onChange={(e) => setUserId(e.target.value)} required autoFocus>
+                <option value="">Choose an employee…</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name}
+                    {p.status === 'pending_setup' ? ' — pre-joiner' : ''}
+                    {p.status === 'inactive' ? ' — inactive' : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="setting-hint">
+                {chosen?.status === 'pending_setup'
+                  ? 'A pre-joiner: the account exists but cannot log in yet. Their checklist runs regardless — pre-boarding tasks are the point.'
+                  : 'Anyone on the roster. A hire does not need to be able to log in for their checklist to exist.'}
+              </span>
+            </label>
+    ),
+    template: fm('template') !== 'hide' && (
+            <label className="setting">
+              Template{star('template')}
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">
+                  {templates.length ? 'Match the hire’s department' : 'No templates — ad-hoc checklist'}
+                </option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.task_count} task{t.task_count === 1 ? '' : 's'})
+                  </option>
+                ))}
+              </select>
+              <span className="setting-hint">
+                Left empty, the server picks the template matching the hire's department, or starts an
+                empty checklist you add tasks to by hand.
+              </span>
+            </label>
+    ),
+    joining_date: fm('joining_date') !== 'hide' && (
+            <label className="setting">
+              Joining date{star('joining_date')}
+              <input
+                type="date"
+                value={joiningDate}
+                onChange={(e) => setJoiningDate(e.target.value)}
+              />
+              <span className="setting-hint">
+                Empty defaults to the employee's recorded joining day. Every task's due date is
+                resolved from this once, at the moment the checklist is created.
+              </span>
+            </label>
+    ),
+    notes: fm('notes') !== 'hide' && (
+            <label className="setting" style={{ gridColumn: '1 / -1' }}>
+              Notes{star('notes')}
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Anything the people working this checklist need to know."
+              />
+            </label>
+
+    ),
+  }
+
   return (
     <form className="ob-panel" onSubmit={submit}>
       <div className="ob-panel-head">
@@ -742,75 +854,22 @@ function StartForm({
         </div>
       )}
 
+      <div className="lf-settings">
+        <FieldSettings defs={START_FIELDS} sections={START_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
       <div className="settings-grid">
-        <label className="setting">
-          Hire
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} required autoFocus>
-            <option value="">Choose an employee…</option>
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.full_name}
-                {p.status === 'pending_setup' ? ' — pre-joiner' : ''}
-                {p.status === 'inactive' ? ' — inactive' : ''}
-              </option>
-            ))}
-          </select>
-          <span className="setting-hint">
-            {chosen?.status === 'pending_setup'
-              ? 'A pre-joiner: the account exists but cannot log in yet. Their checklist runs regardless — pre-boarding tasks are the point.'
-              : 'Anyone on the roster. A hire does not need to be able to log in for their checklist to exist.'}
-          </span>
-        </label>
-
-        <label className="setting">
-          Template
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">
-              {templates.length ? 'Match the hire’s department' : 'No templates — ad-hoc checklist'}
-            </option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.task_count} task{t.task_count === 1 ? '' : 's'})
-              </option>
-            ))}
-          </select>
-          <span className="setting-hint">
-            Left empty, the server picks the template matching the hire's department, or starts an
-            empty checklist you add tasks to by hand.
-          </span>
-        </label>
-
-        <label className="setting">
-          Joining date
-          <input
-            type="date"
-            value={joiningDate}
-            onChange={(e) => setJoiningDate(e.target.value)}
-          />
-          <span className="setting-hint">
-            Empty defaults to the employee's recorded joining day. Every task's due date is
-            resolved from this once, at the moment the checklist is created.
-          </span>
-        </label>
-
-        <label className="setting" style={{ gridColumn: '1 / -1' }}>
-          Notes
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Anything the people working this checklist need to know."
-          />
-        </label>
+        {fields.orderOf('start').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
 
       <div className="btn-group" style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy || !userId}>
+        <button className="btn btn-primary" disabled={busy || !userId || missing}>
           {busy ? 'Starting…' : 'Start the checklist'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
+        {missing && <span className="ob-muted">Fill in the fields marked *.</span>}
       </div>
     </form>
   )

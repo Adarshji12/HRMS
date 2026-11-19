@@ -22,7 +22,7 @@
       is allowed and ₹1,50,000 of it counts — the same thing the return would
       do — so the row says how much will actually be used. */
 
-import { useCallback, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
@@ -34,7 +34,16 @@ import type {
   TaxItem,
   TaxRegime,
 } from '../../../lib/types'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
 import '../../../styles/payroll.css'
+
+// The server needs the section and the amount; the proof can be attached later.
+const CLAIM_FIELDS: FieldDef[] = [
+  { key: 'section', label: 'Section', section: 'claim', fixed: true },
+  { key: 'amount', label: 'Amount', section: 'claim', fixed: true },
+  { key: 'proof', label: 'Proof', section: 'claim' },
+]
+const CLAIM_SECTIONS: FieldSection[] = [{ id: 'claim', label: 'Claim' }]
 
 /** The sections most people claim, with the label they know them by. Free text
  *  is still accepted — the server sums an unrecognised section rather than
@@ -425,6 +434,9 @@ function AddClaim({
   const [section, setSection] = useState(SECTIONS[0].section)
   const [amount, setAmount] = useState('')
   const [documentId, setDocumentId] = useState('')
+  const fields = useFieldModes('tax-claim-form', CLAIM_FIELDS)
+  const fm = fields.mode
+  const missing = fm('proof') === 'mandatory' && !documentId
 
   const docsQ = useQuery<EmployeeDocument[]>('my-tax-documents', () =>
     api.get<EmployeeDocument[]>(`/people/${declaration.user_id}/documents`),
@@ -432,10 +444,10 @@ function AddClaim({
   const chosen = SECTIONS.find((s) => s.section === section)
   const paise = toPaise(amount)
 
-  return (
-    <div className="pr-row pr-addclaim">
+  const fieldNodes: Record<string, ReactNode> = {
+    section: (
       <label className="pr-field">
-        <span className="pr-field-label">Section</span>
+        <span className="pr-field-label">Section *</span>
         <select value={section} onChange={(e) => setSection(e.target.value)}>
           {SECTIONS.map((option) => (
             <option key={option.section} value={option.section}>
@@ -445,14 +457,18 @@ function AddClaim({
         </select>
         {chosen?.hint && <span className="pr-field-hint">{chosen.hint}</span>}
       </label>
+    ),
+    amount: (
       <label className="pr-field">
-        <span className="pr-field-label">Amount</span>
+        <span className="pr-field-label">Amount *</span>
         <input value={amount} inputMode="decimal" placeholder="150000"
                className={amount && paise === null ? 'is-bad' : ''}
                onChange={(e) => setAmount(e.target.value)} />
       </label>
+    ),
+    proof: fm('proof') !== 'hide' && (
       <label className="pr-field">
-        <span className="pr-field-label">Proof</span>
+        <span className="pr-field-label">Proof{fm('proof') === 'mandatory' ? ' *' : ''}</span>
         <select value={documentId} onChange={(e) => setDocumentId(e.target.value)}>
           <option value="">Attach later</option>
           {(docsQ.data ?? []).map((doc) => (
@@ -465,7 +481,18 @@ function AddClaim({
           From your documents. Upload it under My profile first.
         </span>
       </label>
-      <button className="btn primary" disabled={!paise || busy}
+    ),
+  }
+
+  return (
+    <div className="pr-row pr-addclaim">
+      <div className="lf-settings" style={{ width: '100%' }}>
+        <FieldSettings defs={CLAIM_FIELDS} sections={CLAIM_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
+      {fields.orderOf('claim').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
+      <button className="btn primary" disabled={!paise || busy || missing}
+              title={missing ? 'Fill in the fields marked *' : undefined}
               onClick={() => act(async () => {
                 const updated = await api.post<Declaration>(
                   `/tax/declaration/${declaration.id}/items`,

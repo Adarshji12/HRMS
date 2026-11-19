@@ -1,10 +1,14 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import '../../../styles/attendance.css'
+import HolidayMaster from '../../masters/HolidayMaster'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { canAdminister, useAuth } from '../../../lib/auth'
 import type { User } from '../../../lib/types'
 import { Empty, EmptyState, ErrorNote, Loading } from '../../../components/ui'
+import { IconCalendar, IconCheck, IconClock, IconEdit, IconGauge, IconPin, IconPlus, IconTrash, IconUser } from '../../../components/Icons'
+import { Dialog, Field } from '../../crm/parts'
 import {
   addDays,
   hm,
@@ -15,6 +19,97 @@ import {
   type OfficeLocation,
   type TypedFailure,
 } from './MyAttendance'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
+
+/* ------------------------------------------------- view settings (tables, forms) -- */
+
+const star = (on: boolean) => (on ? <span className="lf-req"> *</span> : null)
+
+type LocationColumn = ColumnDef & { td: (row: OfficeLocation) => ReactNode; className?: string; thClass?: string }
+const LOCATION_COLUMNS: LocationColumn[] = [
+  { key: 'name', label: 'Name', locked: true, td: (row) => (
+    <>
+      <b>{row.name}</b>
+      {row.address && <div className="muted-sm">{row.address}</div>}
+    </>
+  ) },
+  { key: 'coords', label: 'Coordinates', className: 'muted-sm', td: (row) => (row.lat === null || row.lng === null ? 'Not mapped' : `${row.lat.toFixed(5)}, ${row.lng.toFixed(5)}`) },
+  { key: 'radius', label: 'Radius', className: 'num', thClass: 'num', td: (row) => `${row.radius_m} m` },
+  { key: 'state', label: 'State', td: (row) => (
+    <span className={`badge ${row.is_active ? 'badge-ok' : ''}`}>{row.is_active ? 'Active' : 'Inactive'}</span>
+  ) },
+  { key: 'address', label: 'Address', initial: false, className: 'muted-sm', td: (row) => row.address || '—' },
+  { key: 'added', label: 'Added on', initial: false, td: (row) => (row.created_at ? row.created_at.slice(0, 10) : '—') },
+]
+
+const LOCATION_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'location', fixed: true },
+  { key: 'address', label: 'Address', section: 'location' },
+  { key: 'lat', label: 'Latitude', section: 'location', fixed: true },
+  { key: 'lng', label: 'Longitude', section: 'location', fixed: true },
+  { key: 'radius_m', label: 'Radius (metres)', section: 'location', initial: 'mandatory' },
+  { key: 'is_active', label: 'Active', section: 'location', optionalOnly: true },
+]
+const LOCATION_SECTIONS: FieldSection[] = [{ id: 'location', label: 'Office location' }]
+
+type ShiftColumn = ColumnDef & { td: (row: Shift) => ReactNode; className?: string; thClass?: string }
+const SHIFT_COLUMNS: ShiftColumn[] = [
+  { key: 'name', label: 'Shift', locked: true, td: (row) => (
+    <>
+      <b>{row.name}</b>
+      {row.is_night_shift && <span className="badge" style={{ marginLeft: 8 }}>night</span>}
+    </>
+  ) },
+  { key: 'hours', label: 'Hours', td: (row) => <>{row.start_time} – {row.end_time}</> },
+  { key: 'expected', label: 'Expected', className: 'num', thClass: 'num', td: (row) => hm(row.expected_minutes) },
+  { key: 'grace', label: 'Grace', className: 'num', thClass: 'num', td: (row) => `${row.grace_minutes}m` },
+  { key: 'half', label: 'Half day under', className: 'num', thClass: 'num', td: (row) => hm(row.half_day_threshold_minutes) },
+  { key: 'assigned', label: 'On it now', className: 'num', thClass: 'num', td: (row) => row.assigned_count },
+  { key: 'state', label: 'State', td: (row) => (
+    <span className={`badge ${row.is_active ? 'badge-ok' : ''}`}>{row.is_active ? 'Active' : 'Inactive'}</span>
+  ) },
+  { key: 'night', label: 'Night shift', initial: false, td: (row) => (row.is_night_shift ? 'Yes' : 'No') },
+]
+
+const SHIFT_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'shift', fixed: true },
+  { key: 'start_time', label: 'Starts', section: 'shift', initial: 'mandatory' },
+  { key: 'end_time', label: 'Ends', section: 'shift', initial: 'mandatory' },
+  { key: 'grace_minutes', label: 'Grace (minutes)', section: 'shift', initial: 'mandatory' },
+  { key: 'half_day_threshold_hours', label: 'Half-day threshold (hours)', section: 'shift', initial: 'mandatory' },
+  { key: 'is_night_shift', label: 'Night shift', section: 'shift', optionalOnly: true },
+  { key: 'is_active', label: 'Active', section: 'shift', optionalOnly: true },
+]
+const SHIFT_SECTIONS: FieldSection[] = [{ id: 'shift', label: 'Shift' }]
+
+type RotaColumn = ColumnDef & { td: (row: ShiftAssignment) => ReactNode; className?: string; thClass?: string }
+const ROTA_COLUMNS: RotaColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (row) => row.user_name ?? '—' },
+  { key: 'shift', label: 'Shift', td: (row) => (
+    <>
+      {row.shift_name ?? '—'}
+      {row.shift_start_time && (
+        <div className="muted-sm">{row.shift_start_time} – {row.shift_end_time}</div>
+      )}
+    </>
+  ) },
+  { key: 'from', label: 'From', td: (row) => row.effective_from },
+  { key: 'to', label: 'To', td: (row) => row.effective_to ?? <span className="muted-sm">open-ended</span> },
+  { key: 'state', label: 'State', td: (row) => (
+    <span className={`badge ${row.is_current ? 'badge-ok' : ''}`}>{row.is_current ? 'Current' : 'Closed'}</span>
+  ) },
+]
+
+const ROTA_FIELDS: FieldDef[] = [
+  { key: 'user_id', label: 'Employee', section: 'assignment', fixed: true },
+  { key: 'shift_id', label: 'Shift', section: 'assignment', fixed: true },
+  { key: 'effective_from', label: 'Effective from', section: 'assignment', fixed: true },
+  { key: 'effective_to', label: 'Effective to', section: 'assignment' },
+]
+const ROTA_SECTIONS: FieldSection[] = [{ id: 'assignment', label: 'Assignment' }]
 
 /* ------------------------------------------------------------------ types -- */
 
@@ -100,8 +195,26 @@ const ENFORCEMENT_COPY: Array<{ value: Enforcement; title: string; desc: string 
 
 /* ------------------------------------------------------------------- page -- */
 
-export default function AttendanceSettings() {
+type AttendanceTab = 'methods' | 'shift' | 'holiday' | 'overtime'
+
+const ATTENDANCE_TABS: Array<{ key: AttendanceTab; label: string; icon: ReactNode }> = [
+  { key: 'methods', label: 'Methods', icon: <IconPin size={15} /> },
+  { key: 'shift', label: 'Shift', icon: <IconClock size={15} /> },
+  { key: 'holiday', label: 'Holiday', icon: <IconCalendar size={15} /> },
+  { key: 'overtime', label: 'Overtime', icon: <IconGauge size={15} /> },
+]
+
+/** `embedded` is how HR Settings shows it: under its own tabs, so the page heading is left out. */
+export default function AttendanceSettings({ embedded = false }: { embedded?: boolean }) {
   const { user, organization } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('sub') as AttendanceTab | null
+  const sub: AttendanceTab = ATTENDANCE_TABS.some((t) => t.key === asked) ? asked! : 'methods'
+  const go = (next: AttendanceTab) => {
+    const keep: Record<string, string> = {}
+    params.forEach((value, key) => { keep[key] = value })
+    setParams({ ...keep, sub: next }, { replace: true })
+  }
   const isAdmin = canAdminister(user)
   const today = orgToday(organization?.timezone)
 
@@ -137,61 +250,631 @@ export default function AttendanceSettings() {
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Attendance settings</h1>
-          <p className="page-sub">
-            Where punching counts from, which shifts exist, and who is on them.
-          </p>
+      {!embedded && (
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">Attendance settings</h1>
+            <p className="page-sub">
+              Where punching counts from, which shifts exist, and who is on them.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <GeofencePolicy
-        settings={settings}
-        loading={settingsQ.loading}
-        error={settingsQ.error}
-        onSaved={() => {
-          settingsQ.reload()
-          locationsQ.reload()
-        }}
-      />
+      <nav className="hs-tabs hs-subtabs" role="tablist" aria-label="Attendance settings">
+        {ATTENDANCE_TABS.map((t) => (
+          <button key={t.key} role="tab" type="button" aria-selected={sub === t.key}
+                  className={`hs-tab${sub === t.key ? ' is-on' : ''}`} onClick={() => go(t.key)}>
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      <Locations
-        locations={locations}
-        loading={locationsQ.loading}
-        error={locationsQ.error}
-        enforcement={settings?.geofence_enforcement}
-        onChanged={() => {
-          locationsQ.reload()
-          settingsQ.reload()
-        }}
-      />
+      {sub === 'methods' && (
+        <MethodsTab
+          settings={settings}
+          loading={settingsQ.loading}
+          error={settingsQ.error}
+          locations={locations}
+          onSaved={() => { settingsQ.reload(); locationsQ.reload() }}
+        />
+      )}
 
-      <Shifts
-        shifts={shifts}
-        loading={shiftsQ.loading}
-        error={shiftsQ.error}
-        onChanged={() => {
-          shiftsQ.reload()
-          rotaQ.reload()
-        }}
-      />
+      {sub === 'shift' && (
+        <>
+        <Shifts
+          shifts={shifts}
+          loading={shiftsQ.loading}
+          error={shiftsQ.error}
+          onChanged={() => {
+            shiftsQ.reload()
+            rotaQ.reload()
+          }}
+        />
 
-      <Rota
-        rota={rotaQ.data}
-        loading={rotaQ.loading}
-        error={rotaQ.error}
-        shifts={shifts}
-        employees={employeesQ.data ?? []}
-        today={today}
-        onChanged={() => {
-          rotaQ.reload()
-          shiftsQ.reload()
-        }}
-      />
+        <Rota
+          rota={rotaQ.data}
+          loading={rotaQ.loading}
+          error={rotaQ.error}
+          shifts={shifts}
+          employees={employeesQ.data ?? []}
+          today={today}
+          onChanged={() => {
+            rotaQ.reload()
+            shiftsQ.reload()
+          }}
+        />
 
-      <Recompute today={today} />
+        <Recompute today={today} />
+        </>
+      )}
+
+      {sub === 'holiday' && <HolidayMaster />}
+
+      {sub === 'overtime' && (
+        <OvertimePolicy
+          settings={settings}
+          loading={settingsQ.loading}
+          error={settingsQ.error}
+          onSaved={() => settingsQ.reload()}
+        />
+      )}
     </div>
+  )
+}
+
+/* ---------------------------------------------------------------- methods -- */
+
+type MethodKey = 'manual' | 'face' | 'biometric'
+
+interface AttendanceDevice {
+  id: string
+  kind: 'face' | 'biometric'
+  name: string
+  device_code: string | null
+  location_id: string | null
+  location_name: string | null
+  branch_id: string | null
+  branch_name: string | null
+  is_active: boolean
+  location_required: boolean
+  lat: number | null
+  lng: number | null
+  radius_m: number | null
+  ip_required: boolean
+  allowed_ips: string | null
+  cooldown_s: number
+  allowed_from_min: number
+  allowed_until_min: number
+}
+
+/** How people punch: Manual (the button on the dashboard or in the app), and the face and
+ *  biometric terminals the company owns. Manual is real. The two device methods keep a
+ *  register of the hardware; receiving their punches is not built yet, and the panels say so.
+ *  The geofence policy and office list (GeofencePolicy, Locations below) are not shown here: the
+ *  offices are kept in Master → Location. */
+function MethodsTab({
+  settings, loading, error, locations, onSaved,
+}: {
+  settings: AttendanceSettingsPayload | undefined
+  loading: boolean
+  error: string | null
+  locations: OfficeLocation[]
+  onSaved: () => void
+}) {
+  const [method, setMethod] = useState<MethodKey>('manual')
+  const action = useAction(onSaved)
+  const [draft, setDraft] = useState<{ manual: boolean; web: boolean; mobile: boolean; face: boolean; biometric: boolean } | null>(null)
+  if (loading && !settings) return <Loading />
+  if (error) return <ErrorNote>{error}</ErrorNote>
+  if (!settings) return null
+
+  // `?? default`: a page opened against an API that has not caught up still shows the real defaults.
+  const saved = {
+    manual: settings.manual_enabled ?? true, web: settings.manual_web_enabled ?? true, mobile: settings.manual_mobile_enabled ?? true,
+    face: settings.face_enabled ?? false, biometric: settings.biometric_enabled ?? false,
+  }
+  const form = draft ?? saved
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
+  const set = (patch: Partial<typeof form>) => setDraft({ ...form, ...patch })
+  const nothingOn = !form.manual && !form.face && !form.biometric
+
+  const tabs: Array<{ key: MethodKey; label: string }> = [
+    { key: 'manual', label: 'Manual Attendance' },
+    { key: 'face', label: 'Face Attendance Device' },
+    { key: 'biometric', label: 'Biometric Attendance' },
+  ]
+
+  return (
+    <>
+      <nav className="hs-methodtabs" role="tablist" aria-label="Attendance methods">
+        {tabs.map((t, index) => (
+          <button key={t.key} role="tab" type="button" aria-selected={method === t.key}
+                  className={`hs-methodtab${method === t.key ? ' is-on' : ''}`} onClick={() => setMethod(t.key)}>
+            <span className="hs-step">{index + 1}</span>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <Feedback failure={action.failure} notice={action.notice} />
+
+      {method === 'manual' && (
+        <>
+          <MethodCard
+            icon={<IconUser size={18} />}
+            title="Manual Attendance"
+            body="The employee presses Check In and Check Out themselves, on the dashboard or in the app."
+            enabled={form.manual}
+            onEnabled={(on) => set({ manual: on })}
+          >
+            <label className="hs-method-row">
+              <input type="checkbox" checked={form.web} disabled={!form.manual} onChange={(e) => set({ web: e.target.checked })} />
+              <span>
+                <b>Check In / Check Out on the web dashboard</b>
+                <span className="muted-sm">The button at the top of the employee’s dashboard and the Attendance page.</span>
+              </span>
+            </label>
+            <label className="hs-method-row">
+              <input type="checkbox" checked={form.mobile} disabled={!form.manual} onChange={(e) => set({ mobile: e.target.checked })} />
+              <span>
+                <b>Check In / Check Out in the mobile app</b>
+                <span className="muted-sm">The same day, the same register — a punch from either shows up in both.</span>
+              </span>
+            </label>
+            <p className="hs-method-note">
+              The first punch of the day is the <b>Check In</b> and the last is the <b>Check Out</b>; anything between them is
+              recorded and shown, but the working hours are measured from the first to the last. Nothing here proves <i>where</i>{' '}
+              somebody was — a signed-in session is all a button can prove — so pair it with the Geofence card if being on site matters.
+            </p>
+          </MethodCard>
+        </>
+      )}
+
+      {method === 'face' && (
+        <MethodCard
+          icon={<IconCheck size={18} />}
+          title="Face Attendance Device"
+          body="A tablet at the entrance that recognises faces with no code typed."
+          enabled={form.face}
+          onEnabled={(on) => set({ face: on })}
+        >
+          <DeviceRegister kind="face" locations={locations} />
+        </MethodCard>
+      )}
+
+      {method === 'biometric' && (
+        <MethodCard
+          icon={<IconCheck size={18} />}
+          title="Biometric Attendance"
+          body="A fingerprint terminal at the entrance that records the punch."
+          enabled={form.biometric}
+          onEnabled={(on) => set({ biometric: on })}
+        >
+          <DeviceRegister kind="biometric" locations={locations} />
+        </MethodCard>
+      )}
+
+      <div className="hs-methods-foot">
+        <span className="muted-sm">
+          {dirty ? 'Unsaved changes' : 'Everything saved'}
+          {nothingOn && ' — no method is on, so nobody can be marked present'}
+        </span>
+        <button
+          className="btn btn-primary"
+          disabled={!dirty || action.busy}
+          onClick={() =>
+            void action
+              .run(
+                () => api.put('/attendance/settings', {
+                  manual_enabled: form.manual, manual_web_enabled: form.web, manual_mobile_enabled: form.mobile,
+                  face_enabled: form.face, biometric_enabled: form.biometric,
+                }),
+                'Attendance methods saved.',
+              )
+              .then((ok) => { if (ok) setDraft(null) })
+          }
+        >
+          {action.busy ? 'Saving…' : 'Save methods'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+function MethodCard({
+  icon, title, body, enabled, onEnabled, children,
+}: {
+  icon: ReactNode
+  title: string
+  body: string
+  enabled: boolean
+  onEnabled: (on: boolean) => void
+  children: ReactNode
+}) {
+  return (
+    <section className="card hs-method" style={{ marginBottom: 14 }}>
+      <div className="hs-method-head">
+        <span className="hs-method-icon" aria-hidden>{icon}</span>
+        <div className="hs-method-titles">
+          <h2>{title}</h2>
+          <p>{body}</p>
+        </div>
+        <label className="hs-method-enabled">
+          <input type="checkbox" checked={enabled} onChange={(e) => onEnabled(e.target.checked)} />
+          Enabled
+        </label>
+      </div>
+      <div className="hs-method-body">{children}</div>
+    </section>
+  )
+}
+
+/** The terminals a company owns. A register only: it does not receive punches yet. */
+function DeviceRegister({ kind, locations }: { kind: 'face' | 'biometric'; locations: OfficeLocation[] }) {
+  const devicesQ = useQuery<AttendanceDevice[]>('att-devices', () => api.get<AttendanceDevice[]>('/attendance/devices'))
+  const [editing, setEditing] = useState<AttendanceDevice | 'new' | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
+  const rows = (devicesQ.data ?? []).filter((d) => d.kind === kind)
+
+  async function remove(device: AttendanceDevice) {
+    if (!window.confirm(`Remove “${device.name}”?`)) return
+    setFailure(null)
+    try {
+      await api.del(`/attendance/devices/${device.id}`)
+      devicesQ.reload()
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : 'That device could not be removed')
+    }
+  }
+
+  const checks = (d: AttendanceDevice) => [d.location_required && 'Location', d.ip_required && 'IP address'].filter(Boolean).join(' + ') || 'None'
+
+  return (
+    <div>
+      <p className="hs-method-note">
+        {kind === 'face' ? (
+          <>
+            A face device is a tablet at the entrance with <i>Recognise faces</i> switched on — employees walk up and are recognised
+            with no code typed. There is no separate employee sync: matching happens live against whoever is enrolled, so a person
+            enrolled this morning works at every device this afternoon.
+          </>
+        ) : (
+          <>
+            A biometric device is a fingerprint terminal at the entrance — employees touch it and are recognised with no code typed.
+          </>
+        )}{' '}
+        Punches from devices are <b>not received yet</b>: registering one here records what it is allowed to do, ready for when
+        syncing is connected.
+      </p>
+      {failure && <ErrorNote>{failure}</ErrorNote>}
+      <div className="hs-device-head">
+        <span className="muted-sm">
+          {rows.length === 0 ? 'None set up yet.' : `${rows.length} set up.`}
+        </span>
+        <button className="btn btn-primary" onClick={() => setEditing('new')}><IconPlus size={14} /> Add</button>
+      </div>
+      {devicesQ.loading && !devicesQ.data ? <Loading /> : rows.length === 0 ? (
+        <div className="hs-device-empty">
+          <b>Nothing set up for this method yet</b>
+          <span className="muted-sm">Add one to record the device, who it is for and what it checks.</span>
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Branch</th><th>Checks</th><th>State</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((d) => (
+                <tr key={d.id}>
+                  <td><b>{d.name}</b></td>
+                  <td className="muted-sm">{d.branch_name ?? 'All branches'}</td>
+                  <td className="muted-sm">{checks(d)}</td>
+                  <td>{d.is_active ? 'Active' : 'Inactive'}</td>
+                  <td>
+                    <div className="crm-row-actions" style={{ justifyContent: 'flex-end' }}>
+                      <button className="crm-icon-btn" onClick={() => setEditing(d)} aria-label={`Edit ${d.name}`} title="Edit"><IconEdit size={16} /></button>
+                      <button className="crm-icon-btn dm-delete" onClick={() => remove(d)} aria-label={`Remove ${d.name}`} title="Remove"><IconTrash size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editing && (
+        <DeviceDialog
+          kind={kind}
+          device={editing === 'new' ? null : editing}
+          locations={locations}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); devicesQ.reload() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** A switch with an ON / OFF chip beside its label, and what it means under it. */
+function VerifySwitch({
+  label, hint, on, onChange, children,
+}: {
+  label: string
+  hint: string
+  on: boolean
+  onChange: (on: boolean) => void
+  children?: ReactNode
+}) {
+  return (
+    <div className="hs-verify-row">
+      <div className="hs-verify-head">
+        <button type="button" role="switch" aria-checked={on} aria-label={label} className={`hs-switch${on ? ' is-on' : ''}`} onClick={() => onChange(!on)}>
+          <span />
+        </button>
+        <b>{label}</b>
+        <span className={`hs-onoff${on ? ' is-on' : ''}`}>{on ? 'ON' : 'OFF'}</span>
+      </div>
+      <p className="muted-sm hs-verify-hint">{hint}</p>
+      {on && children}
+    </div>
+  )
+}
+
+function DeviceDialog({
+  kind, device, onClose, onSaved,
+}: {
+  kind: 'face' | 'biometric'
+  device: AttendanceDevice | null
+  locations: OfficeLocation[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const branchesQ = useQuery<Array<{ id: string; name: string; is_active: boolean }>>('branches', () => api.get('/org/branches'))
+  const [form, setForm] = useState({
+    name: device?.name ?? '',
+    branch_id: device?.branch_id ?? '',
+    location_required: device?.location_required ?? false,
+    lat: device?.lat === null || device?.lat === undefined ? '' : String(device.lat),
+    lng: device?.lng === null || device?.lng === undefined ? '' : String(device.lng),
+    radius_m: device?.radius_m === null || device?.radius_m === undefined ? '' : String(device.radius_m),
+    ip_required: device?.ip_required ?? false,
+    allowed_ips: device?.allowed_ips ?? '',
+    cooldown_s: String(device?.cooldown_s ?? 120),
+    allowed_from_min: String(device?.allowed_from_min ?? 120),
+    allowed_until_min: String(device?.allowed_until_min ?? 240),
+    is_active: device?.is_active ?? true,
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pinning, setPinning] = useState(false)
+  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
+
+  function pin() {
+    if (!navigator.geolocation) return setError('This browser cannot tell where you are.')
+    setPinning(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        set({ lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), radius_m: form.radius_m || '150' })
+        setPinning(false)
+      },
+      () => { setError('Could not read your location. Allow it in the browser, or type the coordinates.'); setPinning(false) },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
+  const whole = (value: string) => value.trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 0
+
+  async function save() {
+    if (!form.name.trim()) return setError('Give it a name.')
+    const lat = Number(form.lat)
+    const lng = Number(form.lng)
+    const radius = Number(form.radius_m)
+    if (form.location_required) {
+      if (form.lat.trim() === '' || form.lng.trim() === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return setError('Location required needs a latitude and a longitude.')
+      }
+      if (!Number.isInteger(radius) || radius < 25 || radius > 20000) return setError('Radius is between 25 and 20,000 metres.')
+    }
+    if (form.ip_required && form.allowed_ips.trim() === '') return setError('IP address required needs at least one allowed address.')
+    if (![form.cooldown_s, form.allowed_from_min, form.allowed_until_min].every(whole)) return setError('Timing values are whole numbers, 0 or more.')
+    setBusy(true)
+    setError(null)
+    const body = {
+      kind,
+      name: form.name.trim(),
+      branch_id: form.branch_id || null,
+      location_required: form.location_required,
+      lat: form.location_required ? lat : null,
+      lng: form.location_required ? lng : null,
+      radius_m: form.location_required ? radius : null,
+      ip_required: form.ip_required,
+      allowed_ips: form.ip_required ? form.allowed_ips : null,
+      cooldown_s: Number(form.cooldown_s),
+      allowed_from_min: Number(form.allowed_from_min),
+      allowed_until_min: Number(form.allowed_until_min),
+      is_active: form.is_active,
+      device_code: device?.device_code ?? null,
+      location_id: device?.location_id ?? null,
+    }
+    try {
+      if (device) await api.patch(`/attendance/devices/${device.id}`, body)
+      else await api.post('/attendance/devices', body)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be saved')
+      setBusy(false)
+    }
+  }
+
+  const note = form.location_required && form.ip_required
+    ? 'A punch here must be inside the radius AND on an allowed network. Both are checked; either one refuses it.'
+    : form.location_required
+      ? 'A punch here must be inside the radius. The network is not checked.'
+      : form.ip_required
+        ? 'A punch here must come from an allowed network. The location is not checked.'
+        : 'No location or network restriction — a punch here is accepted from anywhere.'
+
+  return (
+    <Dialog
+      title={device ? `Edit ${device.name}` : 'New attendance link or device'}
+      medium
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary hs-create" onClick={save} disabled={busy || !form.name.trim()}>
+            {busy ? 'Saving…' : device ? 'Save' : 'Create'}
+          </button>
+        </>
+      }
+    >
+      <div className="crm-form">
+        {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
+        <Field label="Name" required>
+          <input value={form.name} placeholder="Shop entrance" autoFocus onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        <Field label="Branch" hint="Blank means the whole account">
+          <select value={form.branch_id} onChange={(e) => set({ branch_id: e.target.value })}>
+            <option value="">All branches</option>
+            {(branchesQ.data ?? []).filter((b) => b.is_active || b.id === form.branch_id).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </Field>
+
+        <div className="crm-form-wide hs-verify">
+          <span className="hs-verify-title">Verification</span>
+          <VerifySwitch label="Location Required" hint="The punch must be inside the radius below." on={form.location_required} onChange={(on) => set({ location_required: on })}>
+            <div className="hs-verify-fields">
+              <Field label="Latitude"><input value={form.lat} inputMode="decimal" placeholder="18.520430" onChange={(e) => set({ lat: e.target.value })} /></Field>
+              <Field label="Longitude"><input value={form.lng} inputMode="decimal" placeholder="73.856744" onChange={(e) => set({ lng: e.target.value })} /></Field>
+              <Field label="Radius (m)" hint="100-200 suits most doors"><input value={form.radius_m} inputMode="numeric" onChange={(e) => set({ radius_m: e.target.value })} /></Field>
+            </div>
+            <button type="button" className="btn hs-pin" onClick={pin} disabled={pinning}>
+              <IconPin size={14} /> {pinning ? 'Finding you…' : 'Pin to where I am now'}
+            </button>
+          </VerifySwitch>
+          <VerifySwitch label="IP Address Required" hint="The punch must come from one of the networks below." on={form.ip_required} onChange={(on) => set({ ip_required: on })}>
+            <Field label="Allowed IP" hint="One per line — 203.0.113.7, 10.0.0.0/8 or 192.168.1.*">
+              <textarea rows={3} value={form.allowed_ips} placeholder="203.0.113.7" onChange={(e) => set({ allowed_ips: e.target.value })} />
+            </Field>
+          </VerifySwitch>
+          <p className={`hs-verify-note${form.location_required || form.ip_required ? ' is-on' : ''}`}>{note}</p>
+        </div>
+
+        <details className="crm-form-wide hs-timing">
+          <summary>Timing</summary>
+          <div className="hs-verify-fields">
+            <Field label="Cooldown (s)" hint="A second scan inside this is a duplicate">
+              <input value={form.cooldown_s} inputMode="numeric" onChange={(e) => set({ cooldown_s: e.target.value })} />
+            </Field>
+            <Field label="Allowed from (min before shift)">
+              <input value={form.allowed_from_min} inputMode="numeric" onChange={(e) => set({ allowed_from_min: e.target.value })} />
+            </Field>
+            <Field label="Allowed until (min after shift)">
+              <input value={form.allowed_until_min} inputMode="numeric" onChange={(e) => set({ allowed_until_min: e.target.value })} />
+            </Field>
+          </div>
+        </details>
+
+        {device && (
+          <div className="crm-field crm-form-wide om-checks">
+            <label className="crm-check">
+              <input type="checkbox" checked={form.is_active} onChange={(e) => set({ is_active: e.target.checked })} />
+              Active
+            </label>
+          </div>
+        )}
+      </div>
+    </Dialog>
+  )
+}
+
+/* --------------------------------------------------------------- overtime -- */
+
+/** What counts as overtime on a timesheet. The defaults are what timesheets did before
+ *  there was a policy, so nothing changes for a company until somebody edits it. */
+function OvertimePolicy({
+  settings, loading, error, onSaved,
+}: {
+  settings: AttendanceSettingsPayload | undefined
+  loading: boolean
+  error: string | null
+  onSaved: () => void
+}) {
+  const action = useAction(onSaved)
+  const [draft, setDraft] = useState<{ enabled: boolean; min: string; off: boolean } | null>(null)
+  if (loading && !settings) return <Loading />
+  if (error) return <ErrorNote>{error}</ErrorNote>
+  if (!settings) return null
+
+  const saved = { enabled: settings.overtime_enabled ?? true, min: String(settings.overtime_min_minutes ?? 0), off: settings.overtime_on_off_days ?? true }
+  const form = draft ?? saved
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
+  const minutes = Number(form.min)
+  const minBad = form.min.trim() === '' || !Number.isInteger(minutes) || minutes < 0 || minutes > 480
+  const set = (patch: Partial<typeof form>) => setDraft({ ...form, ...patch })
+
+  return (
+    <Section title="Overtime" note="Read by timesheets, reports and the HR dashboard">
+      <Feedback failure={action.failure} notice={action.notice} />
+      <div className="card-body" style={{ display: 'grid', gap: 18, maxWidth: 560 }}>
+        <label className="setting" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={form.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+          <span>
+            <b>Count overtime</b>
+            <span className="muted-sm" style={{ display: 'block' }}>
+              Time worked beyond the expected day is reported as overtime. Switched off, timesheets report none.
+            </span>
+          </span>
+        </label>
+
+        <label className="setting">
+          Minimum overtime that counts (minutes)
+          <input
+            type="number" min={0} max={480} inputMode="numeric" value={form.min}
+            disabled={!form.enabled}
+            className={minBad ? 'is-bad' : ''}
+            onChange={(e) => set({ min: e.target.value })}
+          />
+          <span className="muted-sm">
+            Anything under this many minutes past the expected day is ignored. 0 counts every minute.
+          </span>
+        </label>
+
+        <label className="setting" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={form.off} disabled={!form.enabled} onChange={(e) => set({ off: e.target.checked })} />
+          <span>
+            <b>Work on a day off counts</b>
+            <span className="muted-sm" style={{ display: 'block' }}>
+              Hours worked on a weekly off or a holiday are counted whole as overtime.
+            </span>
+          </span>
+        </label>
+      </div>
+      <div className="att-form-actions">
+        <button
+          className="btn btn-primary"
+          disabled={!dirty || minBad || action.busy}
+          onClick={() =>
+            void action
+              .run(
+                () => api.put('/attendance/settings', {
+                  overtime_enabled: form.enabled,
+                  overtime_min_minutes: minutes,
+                  overtime_on_off_days: form.off,
+                }),
+                'Overtime policy saved.',
+              )
+              .then((ok) => { if (ok) setDraft(null) })
+          }
+        >
+          {action.busy ? 'Saving…' : 'Save'}
+        </button>
+        {dirty && <button className="btn btn-sm" onClick={() => { setDraft(null); action.clear() }}>Cancel</button>}
+      </div>
+    </Section>
   )
 }
 
@@ -265,7 +948,8 @@ function Section({
 
 /* ----------------------------------------------------------------- policy -- */
 
-function GeofencePolicy({
+/** Not on any screen now; kept so the policy card can be put back where it is wanted. */
+export function GeofencePolicy({
   settings,
   loading,
   error,
@@ -460,7 +1144,8 @@ const BLANK_LOCATION: LocationForm = {
   is_active: true,
 }
 
-function Locations({
+/** Not on any screen now (offices are kept in Master → Location); kept for the same reason. */
+export function Locations({
   locations,
   loading,
   error,
@@ -478,6 +1163,10 @@ function Locations({
   const action = useAction(onChanged)
   const [locating, setLocating] = useState(false)
   const [geoNote, setGeoNote] = useState<string | null>(null)
+  const columns = useColumns('attendance-locations', LOCATION_COLUMNS)
+  const fields = useFieldModes('attendance-location-form', LOCATION_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   function open(row?: OfficeLocation) {
     action.clear()
@@ -488,8 +1177,8 @@ function Locations({
         ? {
             name: row.name,
             address: row.address ?? '',
-            lat: String(row.lat),
-            lng: String(row.lng),
+            lat: row.lat === null ? '' : String(row.lat),
+            lng: row.lng === null ? '' : String(row.lng),
             radius_m: row.radius_m,
             is_active: row.is_active,
           }
@@ -531,9 +1220,15 @@ function Locations({
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!form) return
+    // Organisation → Location owns the branch and address; keep them as they are.
+    const existing = locations.find((l) => l.id === editing)
     const payload = {
       name: form.name.trim(),
       address: form.address.trim() || null,
+      branch_id: existing?.branch_id ?? null,
+      state: existing?.state ?? null,
+      district: existing?.district ?? null,
+      city: existing?.city ?? null,
       lat: Number(form.lat),
       lng: Number(form.lng),
       radius_m: form.radius_m,
@@ -552,84 +1247,111 @@ function Locations({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = form ? {
+    name: (
+      <label className="setting">
+        Name
+        <input
+          value={form.name}
+          maxLength={120}
+          required
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Whitefield"
+        />
+      </label>
+    ),
+    address: fm('address') !== 'hide' && (
+      <label className="setting">
+        {rq('address') ? 'Address' : 'Address (optional)'}{star(rq('address'))}
+        <input placeholder="e.g. Tower B, Whitefield, Bengaluru"
+          value={form.address}
+          maxLength={500}
+          required={rq('address')}
+          onChange={(e) => setForm({ ...form, address: e.target.value })}
+        />
+      </label>
+    ),
+    lat: (
+      <label className="setting">
+        Latitude
+        <input placeholder="12.971599"
+          type="number"
+          step="0.000001"
+          min={-90}
+          max={90}
+          required
+          value={form.lat}
+          onChange={(e) => setForm({ ...form, lat: e.target.value })}
+        />
+      </label>
+    ),
+    lng: (
+      <label className="setting">
+        Longitude
+        <input placeholder="77.594566"
+          type="number"
+          step="0.000001"
+          min={-180}
+          max={180}
+          required
+          value={form.lng}
+          onChange={(e) => setForm({ ...form, lng: e.target.value })}
+        />
+      </label>
+    ),
+    radius_m: fm('radius_m') !== 'hide' && (
+      <label className="setting">
+        Radius (metres){star(rq('radius_m'))}
+        <input placeholder="100"
+          type="number"
+          min={25}
+          max={20000}
+          step={5}
+          required={rq('radius_m')}
+          value={form.radius_m}
+          onChange={(e) => setForm({ ...form, radius_m: Number(e.target.value) })}
+        />
+      </label>
+    ),
+    is_active: fm('is_active') !== 'hide' && (
+      <div className="setting">
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+          />
+          <span>Active</span>
+        </label>
+      </div>
+    ),
+  } : {}
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <Section
       title="Office locations"
       tools={
-        <button className="btn btn-sm" onClick={() => (form ? setForm(null) : open())}>
-          {form ? 'Cancel' : 'Add location'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ColumnSettings defs={LOCATION_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+          <button className="btn btn-sm" onClick={() => (form ? setForm(null) : open())}>
+            {form ? 'Cancel' : 'Add location'}
+          </button>
+        </div>
       }
     >
       <Feedback failure={action.failure} notice={action.notice} />
 
       {form && (
         <form className="att-admin-form" onSubmit={submit}>
+          <div className="lf-settings">
+            <FieldSettings defs={LOCATION_FIELDS} sections={LOCATION_SECTIONS} modes={fields.modes} order={fields.order}
+                           onSave={fields.save} onReset={fields.reset} title="Location fields" />
+          </div>
           <div className="settings-grid">
-            <label className="setting">
-              Name
-              <input
-                value={form.name}
-                maxLength={120}
-                required
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Whitefield"
-              />
-            </label>
-            <label className="setting">
-              Address (optional)
-              <input placeholder="e.g. Tower B, Whitefield, Bengaluru"
-                value={form.address}
-                maxLength={500}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Latitude
-              <input placeholder="12.971599"
-                type="number"
-                step="0.000001"
-                min={-90}
-                max={90}
-                required
-                value={form.lat}
-                onChange={(e) => setForm({ ...form, lat: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Longitude
-              <input placeholder="77.594566"
-                type="number"
-                step="0.000001"
-                min={-180}
-                max={180}
-                required
-                value={form.lng}
-                onChange={(e) => setForm({ ...form, lng: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Radius (metres)
-              <input placeholder="100"
-                type="number"
-                min={25}
-                max={20000}
-                step={5}
-                required
-                value={form.radius_m}
-                onChange={(e) => setForm({ ...form, radius_m: Number(e.target.value) })}
-              />
-            </label>
-            <div className="setting">
-              <label className="switch-row">
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                />
-                <span>Active</span>
-              </label>
-            </div>
+            {fieldsOf('location')}
           </div>
 
           <p className="setting-hint" style={{ marginTop: 10 }}>
@@ -682,29 +1404,18 @@ function Locations({
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Coordinates</th>
-                  <th className="num">Radius</th>
-                  <th>State</th>
+                  {columns.visible.map((col) => (
+                    <th key={col.key} className={(col as LocationColumn).thClass}>{col.label}</th>
+                  ))}
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {locations.map((row) => (
                   <tr key={row.id} className={row.is_active ? undefined : 'att-closed'}>
-                    <td>
-                      <b>{row.name}</b>
-                      {row.address && <div className="muted-sm">{row.address}</div>}
-                    </td>
-                    <td className="muted-sm">
-                      {row.lat.toFixed(5)}, {row.lng.toFixed(5)}
-                    </td>
-                    <td className="num">{row.radius_m} m</td>
-                    <td>
-                      <span className={`badge ${row.is_active ? 'badge-ok' : ''}`}>
-                        {row.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
+                    {columns.visible.map((col) => (
+                      <td key={col.key} className={(col as LocationColumn).className}>{(col as LocationColumn).td(row)}</td>
+                    ))}
                     <td>
                       <div className="att-rowactions">
                         <button className="btn btn-sm" onClick={() => open(row)}>
@@ -719,6 +1430,10 @@ function Locations({
                                 api.patch(`/attendance/locations/${row.id}`, {
                                   name: row.name,
                                   address: row.address,
+                                  branch_id: row.branch_id ?? null,
+                                  state: row.state ?? null,
+                                  district: row.district ?? null,
+                                  city: row.city ?? null,
                                   lat: row.lat,
                                   lng: row.lng,
                                   radius_m: row.radius_m,
@@ -799,6 +1514,10 @@ function Shifts({
   const [form, setForm] = useState<ShiftForm | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const action = useAction(onChanged)
+  const columns = useColumns('attendance-shifts', SHIFT_COLUMNS)
+  const fields = useFieldModes('attendance-shift-form', SHIFT_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   function open(row?: Shift) {
     action.clear()
@@ -847,91 +1566,121 @@ function Shifts({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = form ? {
+    name: (
+      <label className="setting">
+        Name
+        <input
+          value={form.name}
+          maxLength={120}
+          required
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="General"
+        />
+      </label>
+    ),
+    start_time: fm('start_time') !== 'hide' && (
+      <label className="setting">
+        Starts{star(rq('start_time'))}
+        <input
+          type="time"
+          required={rq('start_time')}
+          value={form.start_time}
+          onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+        />
+      </label>
+    ),
+    end_time: fm('end_time') !== 'hide' && (
+      <label className="setting">
+        Ends{star(rq('end_time'))}
+        <input
+          type="time"
+          required={rq('end_time')}
+          value={form.end_time}
+          onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+        />
+      </label>
+    ),
+    grace_minutes: fm('grace_minutes') !== 'hide' && (
+      <label className="setting">
+        Grace (minutes){star(rq('grace_minutes'))}
+        <input placeholder="10"
+          type="number"
+          min={0}
+          max={240}
+          required={rq('grace_minutes')}
+          value={form.grace_minutes}
+          onChange={(e) => setForm({ ...form, grace_minutes: Number(e.target.value) })}
+        />
+      </label>
+    ),
+    half_day_threshold_hours: fm('half_day_threshold_hours') !== 'hide' && (
+      <label className="setting">
+        Half-day threshold (hours){star(rq('half_day_threshold_hours'))}
+        <input placeholder="4"
+          type="number"
+          min={0.5}
+          max={12}
+          step={0.25}
+          required={rq('half_day_threshold_hours')}
+          value={form.half_day_threshold_hours}
+          onChange={(e) =>
+            setForm({ ...form, half_day_threshold_hours: Number(e.target.value) })
+          }
+        />
+      </label>
+    ),
+    is_night_shift: fm('is_night_shift') !== 'hide' && (
+      <div className="setting">
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={form.is_night_shift}
+            onChange={(e) => setForm({ ...form, is_night_shift: e.target.checked })}
+          />
+          <span>Night shift (ends the next day)</span>
+        </label>
+      </div>
+    ),
+    is_active: fm('is_active') !== 'hide' && (
+      <div className="setting">
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+          />
+          <span>Active</span>
+        </label>
+      </div>
+    ),
+  } : {}
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <Section
       title="Shifts"
       tools={
-        <button className="btn btn-sm" onClick={() => (form ? setForm(null) : open())}>
-          {form ? 'Cancel' : 'Add shift'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ColumnSettings defs={SHIFT_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+          <button className="btn btn-sm" onClick={() => (form ? setForm(null) : open())}>
+            {form ? 'Cancel' : 'Add shift'}
+          </button>
+        </div>
       }
     >
       <Feedback failure={action.failure} notice={action.notice} />
 
       {form && (
         <form className="att-admin-form" onSubmit={submit}>
+          <div className="lf-settings">
+            <FieldSettings defs={SHIFT_FIELDS} sections={SHIFT_SECTIONS} modes={fields.modes} order={fields.order}
+                           onSave={fields.save} onReset={fields.reset} title="Shift fields" />
+          </div>
           <div className="settings-grid">
-            <label className="setting">
-              Name
-              <input
-                value={form.name}
-                maxLength={120}
-                required
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="General"
-              />
-            </label>
-            <label className="setting">
-              Starts
-              <input
-                type="time"
-                required
-                value={form.start_time}
-                onChange={(e) => setForm({ ...form, start_time: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Ends
-              <input
-                type="time"
-                required
-                value={form.end_time}
-                onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Grace (minutes)
-              <input placeholder="10"
-                type="number"
-                min={0}
-                max={240}
-                required
-                value={form.grace_minutes}
-                onChange={(e) => setForm({ ...form, grace_minutes: Number(e.target.value) })}
-              />
-            </label>
-            <label className="setting">
-              Half-day threshold (hours)
-              <input placeholder="4"
-                type="number"
-                min={0.5}
-                max={12}
-                step={0.25}
-                required
-                value={form.half_day_threshold_hours}
-                onChange={(e) =>
-                  setForm({ ...form, half_day_threshold_hours: Number(e.target.value) })
-                }
-              />
-            </label>
-            <div className="setting">
-              <label className="switch-row">
-                <input
-                  type="checkbox"
-                  checked={form.is_night_shift}
-                  onChange={(e) => setForm({ ...form, is_night_shift: e.target.checked })}
-                />
-                <span>Night shift (ends the next day)</span>
-              </label>
-              <label className="switch-row" style={{ marginTop: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                />
-                <span>Active</span>
-              </label>
-            </div>
+            {fieldsOf('shift')}
           </div>
 
           <p className="setting-hint" style={{ marginTop: 10 }}>
@@ -973,39 +1722,18 @@ function Shifts({
             <table>
               <thead>
                 <tr>
-                  <th>Shift</th>
-                  <th>Hours</th>
-                  <th className="num">Expected</th>
-                  <th className="num">Grace</th>
-                  <th className="num">Half day under</th>
-                  <th className="num">On it now</th>
-                  <th>State</th>
+                  {columns.visible.map((col) => (
+                    <th key={col.key} className={(col as ShiftColumn).thClass}>{col.label}</th>
+                  ))}
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {shifts.map((row) => (
                   <tr key={row.id} className={row.is_active ? undefined : 'att-closed'}>
-                    <td>
-                      <b>{row.name}</b>
-                      {row.is_night_shift && (
-                        <span className="badge" style={{ marginLeft: 8 }}>
-                          night
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {row.start_time} – {row.end_time}
-                    </td>
-                    <td className="num">{hm(row.expected_minutes)}</td>
-                    <td className="num">{row.grace_minutes}m</td>
-                    <td className="num">{hm(row.half_day_threshold_minutes)}</td>
-                    <td className="num">{row.assigned_count}</td>
-                    <td>
-                      <span className={`badge ${row.is_active ? 'badge-ok' : ''}`}>
-                        {row.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
+                    {columns.visible.map((col) => (
+                      <td key={col.key} className={(col as ShiftColumn).className}>{(col as ShiftColumn).td(row)}</td>
+                    ))}
                     <td>
                       <div className="att-rowactions">
                         <button className="btn btn-sm" onClick={() => open(row)}>
@@ -1064,6 +1792,10 @@ function Rota({
     effective_to: '',
   })
   const [showClosed, setShowClosed] = useState(false)
+  const columns = useColumns('attendance-rota', ROTA_COLUMNS)
+  const fields = useFieldModes('attendance-rota-form', ROTA_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   const activeShifts = shifts.filter((s) => s.is_active)
   const people = employees.filter((e) => e.is_active)
@@ -1087,18 +1819,84 @@ function Rota({
     if (ok) setForm({ user_id: '', shift_id: '', effective_from: today, effective_to: '' })
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    user_id: (
+      <label className="setting">
+        Employee
+        <select
+          required
+          value={form.user_id}
+          onChange={(e) => setForm({ ...form, user_id: e.target.value })}
+        >
+          <option value="">Choose someone…</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.full_name}
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    shift_id: (
+      <label className="setting">
+        Shift
+        <select
+          required
+          value={form.shift_id}
+          onChange={(e) => setForm({ ...form, shift_id: e.target.value })}
+        >
+          <option value="">Choose a shift…</option>
+          {activeShifts.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} ({s.start_time}–{s.end_time})
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    effective_from: (
+      <label className="setting">
+        Effective from
+        <input
+          type="date"
+          required
+          value={form.effective_from}
+          onChange={(e) => setForm({ ...form, effective_from: e.target.value })}
+        />
+      </label>
+    ),
+    effective_to: fm('effective_to') !== 'hide' && (
+      <label className="setting">
+        {rq('effective_to') ? 'Effective to' : 'Effective to (optional)'}{star(rq('effective_to'))}
+        <input
+          type="date"
+          required={rq('effective_to')}
+          value={form.effective_to}
+          min={form.effective_from}
+          onChange={(e) => setForm({ ...form, effective_to: e.target.value })}
+        />
+      </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <Section
       title="Who is on which shift"
       tools={
-        <label className="switch-row">
-          <input
-            type="checkbox"
-            checked={showClosed}
-            onChange={(e) => setShowClosed(e.target.checked)}
-          />
-          <span>Show closed rows</span>
-        </label>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <ColumnSettings defs={ROTA_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+          <label className="switch-row">
+            <input
+              type="checkbox"
+              checked={showClosed}
+              onChange={(e) => setShowClosed(e.target.checked)}
+            />
+            <span>Show closed rows</span>
+          </label>
+        </div>
       }
     >
       <Feedback failure={action.failure} notice={action.notice} />
@@ -1122,55 +1920,12 @@ function Rota({
         />
       ) : (
         <form className="att-admin-form" onSubmit={submit}>
+          <div className="lf-settings">
+            <FieldSettings defs={ROTA_FIELDS} sections={ROTA_SECTIONS} modes={fields.modes} order={fields.order}
+                           onSave={fields.save} onReset={fields.reset} title="Assignment fields" />
+          </div>
           <div className="settings-grid">
-            <label className="setting">
-              Employee
-              <select
-                required
-                value={form.user_id}
-                onChange={(e) => setForm({ ...form, user_id: e.target.value })}
-              >
-                <option value="">Choose someone…</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="setting">
-              Shift
-              <select
-                required
-                value={form.shift_id}
-                onChange={(e) => setForm({ ...form, shift_id: e.target.value })}
-              >
-                <option value="">Choose a shift…</option>
-                {activeShifts.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.start_time}–{s.end_time})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="setting">
-              Effective from
-              <input
-                type="date"
-                required
-                value={form.effective_from}
-                onChange={(e) => setForm({ ...form, effective_from: e.target.value })}
-              />
-            </label>
-            <label className="setting">
-              Effective to (optional)
-              <input
-                type="date"
-                value={form.effective_to}
-                min={form.effective_from}
-                onChange={(e) => setForm({ ...form, effective_to: e.target.value })}
-              />
-            </label>
+            {fieldsOf('assignment')}
           </div>
 
           <p className="setting-hint" style={{ marginTop: 10 }}>
@@ -1204,32 +1959,17 @@ function Rota({
             <table>
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Shift</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>State</th>
+                  {columns.visible.map((col) => (
+                    <th key={col.key} className={(col as RotaColumn).thClass}>{col.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id} className={row.is_current ? undefined : 'att-closed'}>
-                    <td>{row.user_name ?? '—'}</td>
-                    <td>
-                      {row.shift_name ?? '—'}
-                      {row.shift_start_time && (
-                        <div className="muted-sm">
-                          {row.shift_start_time} – {row.shift_end_time}
-                        </div>
-                      )}
-                    </td>
-                    <td>{row.effective_from}</td>
-                    <td>{row.effective_to ?? <span className="muted-sm">open-ended</span>}</td>
-                    <td>
-                      <span className={`badge ${row.is_current ? 'badge-ok' : ''}`}>
-                        {row.is_current ? 'Current' : 'Closed'}
-                      </span>
-                    </td>
+                    {columns.visible.map((col) => (
+                      <td key={col.key} className={(col as RotaColumn).className}>{(col as RotaColumn).td(row)}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/helpdesk.css'
 import { api, ApiError } from '../../../lib/api'
@@ -7,6 +7,10 @@ import type { User } from '../../../lib/types'
 import { dateTime, relativeTime } from '../../../lib/format'
 import { Empty, EmptyState, ErrorNote, Loading } from '../../../components/ui'
 import { IconInfo } from '../../../components/Icons'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 
 /* ---------------------------------------------------------------- types ---
    Page-local, mirroring app/schemas/helpdesk.py. The audience split in that
@@ -164,6 +168,40 @@ export function SourceBackLink({ path }: { path: string }) {
 
 /* ----------------------------------------------------------------- page --- */
 
+type TicketColumn = ColumnDef & {
+  td: (ticket: Ticket, ctx: { select: (id: string | null) => void }) => ReactNode
+  className?: string
+}
+
+const TICKET_COLUMNS: TicketColumn[] = [
+  { key: 'subject', label: 'Subject', locked: true, td: (ticket, ctx) => (
+    <button className="hd-rowbtn" onClick={() => ctx.select(ticket.id)}>
+      <div className="hd-subject">{ticket.subject}</div>
+      <div className="hd-sub">
+        {ticket.category_name ?? 'Uncategorised'}
+        {' · '}
+        {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
+      </div>
+    </button>
+  ) },
+  { key: 'status', label: 'Status', td: (ticket) => <TicketStatusPill value={ticket.status} /> },
+  { key: 'raised', label: 'Raised', className: 'hd-when', td: (ticket) => relativeTime(ticket.created_at) },
+  { key: 'priority', label: 'Priority', initial: false, td: (ticket) => PRIORITY_LABEL[ticket.priority] ?? ticket.priority },
+  { key: 'category', label: 'Category', initial: false, td: (ticket) => ticket.category_name ?? 'Uncategorised' },
+  { key: 'assignee', label: 'Handled by', initial: false, td: (ticket) => ticket.assigned_to_name ?? '—' },
+  { key: 'resolved', label: 'Resolved', initial: false, className: 'hd-when',
+    td: (ticket) => (ticket.resolved_at ? relativeTime(ticket.resolved_at) : '—') },
+]
+
+// The server needs the subject and the description; category and priority are optional.
+const RAISE_FIELDS: FieldDef[] = [
+  { key: 'subject', label: 'Subject', section: 'ticket', fixed: true },
+  { key: 'category', label: 'Category', section: 'ticket' },
+  { key: 'priority', label: 'Priority', section: 'ticket' },
+  { key: 'description', label: 'What happened', section: 'ticket', fixed: true },
+]
+const RAISE_SECTIONS: FieldSection[] = [{ id: 'ticket', label: 'Ticket' }]
+
 export default function Helpdesk() {
   const [params, setParams] = useSearchParams()
   const selected = params.get('t')
@@ -176,6 +214,7 @@ export default function Helpdesk() {
   const [raising, setRaising] = useState(sourceModule !== null && sourceRef !== null)
   const [openOnly, setOpenOnly] = useState(false)
   const [status, setStatus] = useState('')
+  const columns = useColumns('my-tickets', TICKET_COLUMNS)
 
   const key = `my-tickets:${status}:${openOnly}`
   const tickets = useQuery<Ticket[]>(key, () => {
@@ -260,6 +299,8 @@ export default function Helpdesk() {
         <span className="filter-count">
           {counts.open} open of {counts.total}
         </span>
+        <ColumnSettings defs={TICKET_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
       </div>
 
       <div className="hd-split">
@@ -291,28 +332,17 @@ export default function Helpdesk() {
               <table>
                 <thead>
                   <tr>
-                    <th>Subject</th>
-                    <th>Status</th>
-                    <th>Raised</th>
+                    {(columns.visible as TicketColumn[]).map((col) => (
+                      <th key={col.key}>{col.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {(tickets.data ?? []).map((ticket) => (
                     <tr key={ticket.id} className={ticket.id === selected ? 'hd-row-selected' : undefined}>
-                      <td>
-                        <button className="hd-rowbtn" onClick={() => select(ticket.id)}>
-                          <div className="hd-subject">{ticket.subject}</div>
-                          <div className="hd-sub">
-                            {ticket.category_name ?? 'Uncategorised'}
-                            {' · '}
-                            {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
-                          </div>
-                        </button>
-                      </td>
-                      <td>
-                        <TicketStatusPill value={ticket.status} />
-                      </td>
-                      <td className="hd-when">{relativeTime(ticket.created_at)}</td>
+                      {(columns.visible as TicketColumn[]).map((col) => (
+                        <td key={col.key} className={col.className}>{col.td(ticket, { select })}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -362,6 +392,10 @@ function RaiseTicket({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const linked = sourceModule !== null && sourceRef !== null
+  const fields = useFieldModes('helpdesk-raise-form', RAISE_FIELDS)
+  const fm = fields.mode
+  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const missing = (fm('category') === 'mandatory' && !form.category_id)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -387,10 +421,80 @@ function RaiseTicket({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    subject: (
+      <label className="setting" style={{ gridColumn: '1 / -1' }}>
+        Subject *
+        <input
+          value={form.subject}
+          onChange={(e) => setForm({ ...form, subject: e.target.value })}
+          maxLength={300}
+          placeholder="Laptop will not boot after the update"
+          required
+          autoFocus
+        />
+      </label>
+    ),
+    category: fm('category') !== 'hide' && (
+      <label className="setting">
+        Category{star('category')}
+        <select
+          value={form.category_id}
+          onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+        >
+          <option value="">Not sure — let triage decide</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <span className="setting-hint">
+          {categories.length === 0
+            ? 'No categories set up yet. Leave it blank and somebody will route it.'
+            : 'Picking the right one routes it to the people who handle it.'}
+        </span>
+      </label>
+    ),
+    priority: fm('priority') !== 'hide' && (
+      <label className="setting">
+        Priority{star('priority')}
+        <select
+          value={form.priority}
+          onChange={(e) => setForm({ ...form, priority: e.target.value })}
+        >
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {PRIORITY_LABEL[p]}
+            </option>
+          ))}
+        </select>
+        <span className="setting-hint">Staff may change this when they triage it.</span>
+      </label>
+    ),
+    description: (
+      <label className="setting" style={{ gridColumn: '1 / -1' }}>
+        What happened *
+        <textarea
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          rows={5}
+          maxLength={20000}
+          placeholder="What you expected, what happened instead, and anything you already tried."
+          required
+        />
+      </label>
+    ),
+  }
+
   return (
     <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
       <div className="card-head">
         <h2 className="card-title">Raise a ticket</h2>
+        <div className="lf-settings">
+          <FieldSettings defs={RAISE_FIELDS} sections={RAISE_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
       </div>
       {error && (
         <div style={{ marginBottom: 12 }}>
@@ -406,70 +510,17 @@ function RaiseTicket({
       )}
 
       <div className="settings-grid">
-        <label className="setting" style={{ gridColumn: '1 / -1' }}>
-          Subject
-          <input
-            value={form.subject}
-            onChange={(e) => setForm({ ...form, subject: e.target.value })}
-            maxLength={300}
-            placeholder="Laptop will not boot after the update"
-            required
-            autoFocus
-          />
-        </label>
-        <label className="setting">
-          Category
-          <select
-            value={form.category_id}
-            onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-          >
-            <option value="">Not sure — let triage decide</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <span className="setting-hint">
-            {categories.length === 0
-              ? 'No categories set up yet. Leave it blank and somebody will route it.'
-              : 'Picking the right one routes it to the people who handle it.'}
-          </span>
-        </label>
-        <label className="setting">
-          Priority
-          <select
-            value={form.priority}
-            onChange={(e) => setForm({ ...form, priority: e.target.value })}
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </option>
-            ))}
-          </select>
-          <span className="setting-hint">Staff may change this when they triage it.</span>
-        </label>
-        <label className="setting" style={{ gridColumn: '1 / -1' }}>
-          What happened
-          <textarea
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            rows={5}
-            maxLength={20000}
-            placeholder="What you expected, what happened instead, and anything you already tried."
-            required
-          />
-        </label>
+        {fields.orderOf('ticket').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
 
       <div className="btn-group" style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy}>
+        <button className="btn btn-primary" disabled={busy || missing}>
           {busy ? 'Raising…' : 'Raise ticket'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
+        {missing && <span className="hd-when">Fill in the fields marked *.</span>}
       </div>
     </form>
   )

@@ -13,15 +13,50 @@
    arrives on the row so this screen can say so before the attempt fails on a
    foreign key. */
 
-import { useState } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type { ExpenseCategory } from '../../../lib/types'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 import '../../../styles/expenses.css'
 
+type CategoryColumn = ColumnDef & { td: (row: ExpenseCategory) => ReactNode; className?: string; thClass?: string }
+
+const CATEGORY_COLUMNS: CategoryColumn[] = [
+  { key: 'name', label: 'Category', locked: true, td: (category) => (
+    <>
+      <div className="ex-title">{category.name}</div>
+      {category.description && <div className="muted">{category.description}</div>}
+    </>
+  ) },
+  { key: 'receipt', label: 'Receipt', td: (category) => (
+    category.requires_receipt ? 'Required' : <span className="muted">Optional</span>
+  ) },
+  { key: 'cap', label: 'Cap per item', className: 'num', thClass: 'num', td: (category) => (
+    category.max_amount === null ? <span className="muted">No cap</span> : money(category.max_amount)
+  ) },
+  { key: 'claimed', label: 'Claimed on', className: 'num', thClass: 'num', td: (category) => category.line_count },
+  { key: 'active', label: 'Active', td: (category) => (
+    category.is_active ? <span className="ex-ok">Yes</span> : <span className="muted">No</span>
+  ) },
+  { key: 'description', label: 'Description', initial: false, td: (category) => category.description || <span className="muted">—</span> },
+]
+
+const CATEGORY_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'category', fixed: true },
+  { key: 'description', label: 'Description', section: 'category' },
+  { key: 'cap', label: 'Cap per item', section: 'category' },
+  { key: 'receipt', label: 'Receipt required', section: 'category', optionalOnly: true },
+]
+const CATEGORY_SECTIONS: FieldSection[] = [{ id: 'category', label: 'Category' }]
+
 export default function ExpenseSettings() {
+  const columns = useColumns('expense-categories', CATEGORY_COLUMNS)
   const listQ = useQuery<ExpenseCategory[]>('expense-categories-all', () =>
     api.get<ExpenseCategory[]>('/expenses/categories'),
   )
@@ -50,6 +85,8 @@ export default function ExpenseSettings() {
             Categories employees can claim against, and the rules for each.
           </p>
         </div>
+        <ColumnSettings defs={CATEGORY_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
       </header>
 
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -69,35 +106,20 @@ export default function ExpenseSettings() {
           <table className="table">
             <thead>
               <tr>
-                <th>Category</th><th>Receipt</th><th className="num">Cap per item</th>
-                <th className="num">Claimed on</th><th>Active</th><th />
+                {columns.visible.map((col) => (
+                  <th key={col.key} className={(col as CategoryColumn).thClass}>{col.label}</th>
+                ))}
+                <th />
               </tr>
             </thead>
             <tbody>
               {listQ.data.map((category) => (
                 <tr key={category.id}>
-                  <td>
-                    <div className="ex-title">{category.name}</div>
-                    {category.description && (
-                      <div className="muted">{category.description}</div>
-                    )}
-                  </td>
-                  <td>
-                    {category.requires_receipt
-                      ? 'Required'
-                      : <span className="muted">Optional</span>}
-                  </td>
-                  <td className="num">
-                    {category.max_amount === null
-                      ? <span className="muted">No cap</span>
-                      : money(category.max_amount)}
-                  </td>
-                  <td className="num">{category.line_count}</td>
-                  <td>
-                    {category.is_active
-                      ? <span className="ex-ok">Yes</span>
-                      : <span className="muted">No</span>}
-                  </td>
+                  {columns.visible.map((col) => (
+                    <td key={col.key} className={(col as CategoryColumn).className}>
+                      {(col as CategoryColumn).td(category)}
+                    </td>
+                  ))}
                   <td className="row-actions">
                     <button className="btn small" disabled={busy}
                             onClick={() => run(() =>
@@ -141,9 +163,15 @@ function NewCategory({
   const [description, setDescription] = useState('')
   const [requiresReceipt, setRequiresReceipt] = useState(true)
   const [cap, setCap] = useState('')
+  const fields = useFieldModes('expense-category-form', CATEGORY_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   const capPaise = cap.trim() ? toPaise(cap) : null
   const capInvalid = Boolean(cap.trim()) && (capPaise === null || capPaise <= 0)
+
+  const missing =
+    (rq('description') && !description.trim()) || (rq('cap') && !cap.trim())
 
   function submit() {
     onCreate({
@@ -157,23 +185,39 @@ function NewCategory({
     setCap('')
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+      <input placeholder="Name — e.g. Travel" value={name}
+             onChange={(e) => setName(e.target.value)} />
+    ),
+    description: fm('description') !== 'hide' && (
+      <input placeholder={rq('description') ? 'Description *' : 'Description (optional)'} value={description}
+             onChange={(e) => setDescription(e.target.value)} />
+    ),
+    cap: fm('cap') !== 'hide' && (
+      <input placeholder={rq('cap') ? 'Cap per item *' : 'Cap per item — blank for none'} value={cap}
+             inputMode="decimal" className={capInvalid ? 'is-bad' : ''}
+             onChange={(e) => setCap(e.target.value)} />
+    ),
+    receipt: fm('receipt') !== 'hide' && (
+      <label className="ex-check">
+        <input type="checkbox" checked={requiresReceipt}
+               onChange={(e) => setRequiresReceipt(e.target.checked)} />
+        <span>Receipt required</span>
+      </label>
+    ),
+  }
+
   return (
     <section className="card ex-newclaim">
-      <h2 className="card-title" style={{ marginBottom: 14 }}>Add a category</h2>
+      <h2 className="card-title" style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        Add a category
+        <FieldSettings defs={CATEGORY_FIELDS} sections={CATEGORY_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Category fields" />
+      </h2>
       <div className="ex-row">
-        <input placeholder="Name — e.g. Travel" value={name}
-               onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Description (optional)" value={description}
-               onChange={(e) => setDescription(e.target.value)} />
-        <input placeholder="Cap per item — blank for none" value={cap}
-               inputMode="decimal" className={capInvalid ? 'is-bad' : ''}
-               onChange={(e) => setCap(e.target.value)} />
-        <label className="ex-check">
-          <input type="checkbox" checked={requiresReceipt}
-                 onChange={(e) => setRequiresReceipt(e.target.checked)} />
-          <span>Receipt required</span>
-        </label>
-        <button className="btn primary" disabled={busy || !name.trim() || capInvalid}
+        {fields.orderOf('category').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
+        <button className="btn primary" disabled={busy || !name.trim() || capInvalid || missing}
                 onClick={submit}>
           Add
         </button>
@@ -181,6 +225,7 @@ function NewCategory({
       <p className="muted">
         Leave the cap blank for no ceiling. Zero is refused — a category capped at
         zero would refuse every claim in it.
+        {missing && ' Fill in the fields marked *.'}
       </p>
     </section>
   )

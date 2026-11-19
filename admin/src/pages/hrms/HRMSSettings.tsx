@@ -16,7 +16,11 @@ import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconBell, IconCard, IconCheck, IconClock, IconGear, IconReturn, IconSheet } from '../../components/Icons'
+import { IconBell, IconBriefcase, IconBuilding, IconCard, IconCheck, IconClock, IconGear, IconPin, IconReturn, IconSheet } from '../../components/Icons'
+import DepartmentMaster from '../masters/DepartmentMaster'
+import DesignationMaster from '../masters/DesignationMaster'
+import BranchMaster from '../masters/BranchMaster'
+import LocationMaster from '../masters/LocationMaster'
 import AttendanceSettings from './attendance/AttendanceSettings'
 import LeaveSettings from './leave/LeaveSettings'
 import WorkflowSetup from './workflow/WorkflowSetup'
@@ -33,13 +37,15 @@ export interface HrSettings {
   default_notice_days: number
   probation_warn_days: number
   document_warn_days: number
+  birthday_lookahead_days: number
   next_code: string
 }
 
-type TabKey = 'general' | 'attendance' | 'leave' | 'approvals' | 'payroll' | 'expenses' | 'notifications'
+type TabKey = 'general' | 'organisation' | 'attendance' | 'leave' | 'approvals' | 'payroll' | 'expenses' | 'notifications'
 
 const TABS: Array<{ key: TabKey; label: string; icon: ReactNode; admin: boolean }> = [
   { key: 'general', label: 'General', icon: <IconGear size={15} />, admin: false },
+  { key: 'organisation', label: 'Organisation', icon: <IconBuilding size={15} />, admin: true },
   { key: 'attendance', label: 'Attendance', icon: <IconClock size={15} />, admin: true },
   { key: 'leave', label: 'Leave', icon: <IconReturn size={15} />, admin: true },
   { key: 'approvals', label: 'Approvals', icon: <IconCheck size={15} />, admin: true },
@@ -76,13 +82,56 @@ export default function HRMSSettings() {
 
       <div className="hs-panel" role="tabpanel">
         {tab === 'general' && <GeneralTab editable={admin} />}
-        {tab === 'attendance' && <AttendanceSettings />}
+        {tab === 'organisation' && <OrganisationTab />}
+        {tab === 'attendance' && <AttendanceSettings embedded />}
         {tab === 'leave' && <LeaveSettings />}
         {tab === 'approvals' && <WorkflowSetup />}
         {tab === 'payroll' && <StatutorySettings />}
         {tab === 'expenses' && <ExpenseSettings />}
         {tab === 'notifications' && <NotificationSettings />}
       </div>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------- organisation --- */
+
+type OrgSub = 'department' | 'designation' | 'branch' | 'location'
+
+/** The four organisation masters, listed here so the people who set HR up find them
+ *  beside the rest of its settings. They are created and edited only in Master (each
+ *  list has a Manage in Master button), and every picker elsewhere
+ *  (Add employee, hierarchy, reports) offers what is listed. A location is the
+ *  same record as Attendance → Locations, with a branch and an address added. */
+function OrganisationTab() {
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('sub')
+  const sub: OrgSub = asked === 'designation' || asked === 'branch' || asked === 'location' ? asked : 'department'
+  const go = (next: OrgSub) => setParams({ tab: 'organisation', sub: next }, { replace: true })
+  const items: Array<{ key: OrgSub; label: string; icon: ReactNode }> = [
+    { key: 'department', label: 'Department', icon: <IconBuilding size={15} /> },
+    { key: 'designation', label: 'Designation', icon: <IconBriefcase size={15} /> },
+    { key: 'branch', label: 'Branch', icon: <IconBuilding size={15} /> },
+    { key: 'location', label: 'Location', icon: <IconPin size={15} /> },
+  ]
+  return (
+    <div className="hs-org">
+      <nav className="hs-tabs hs-subtabs" role="tablist" aria-label="Organisation">
+        {items.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            type="button"
+            aria-selected={sub === t.key}
+            className={`hs-tab${sub === t.key ? ' is-on' : ''}`}
+            onClick={() => go(t.key)}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      {sub === 'department' ? <DepartmentMaster readOnly /> : sub === 'designation' ? <DesignationMaster readOnly /> : sub === 'branch' ? <BranchMaster readOnly /> : <LocationMaster readOnly />}
     </div>
   )
 }
@@ -95,7 +144,25 @@ function format(d: Pick<HrSettings, 'emp_code_prefix' | 'emp_code_separator' | '
   return prefix ? `${prefix}${d.emp_code_separator}${digits}` : digits
 }
 
+/** Every time zone the browser knows, with the office's own always present. */
+function zoneList(current: string): string[] {
+  const known = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : []
+  return known.includes(current) ? known : [current, ...known]
+}
+
+/** The date, as yyyy-mm-dd, in a given zone right now. */
+function dateIn(zone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(new Date())
+  } catch {
+    return '—'
+  }
+}
+
 function GeneralTab({ editable }: { editable: boolean }) {
+  const { organization } = useAuth()
+  const stored = organization?.timezone ?? 'UTC'
+  const [zone, setZone] = useState(stored)
   const q = useQuery<HrSettings>('hr-settings', () => api.get<HrSettings>('/hr/settings'))
   const [draft, setDraft] = useState<HrSettings | null>(null)
   const [busy, setBusy] = useState(false)
@@ -107,7 +174,8 @@ function GeneralTab({ editable }: { editable: boolean }) {
   if (q.error) return <ErrorNote>{q.error}</ErrorNote>
   if (!draft) return <Loading />
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(q.data)
+  const zoneChanged = zone !== stored
+  const dirty = JSON.stringify(draft) !== JSON.stringify(q.data) || zoneChanged
   const set = <K extends keyof HrSettings>(k: K, v: HrSettings[K]) => {
     setDraft({ ...draft, [k]: v })
     setSaved(false)
@@ -128,6 +196,13 @@ function GeneralTab({ editable }: { editable: boolean }) {
       const { next_code: _ignored, ...body } = draft
       void _ignored
       const out = await api.put<HrSettings>('/hr/settings', body)
+      if (zoneChanged) {
+        await api.put('/org/company', { timezone: zone })
+        // The workspace's zone is part of the signed-in session's tenant info, so reload to
+        // let every screen that tells the date read the new one.
+        window.location.reload()
+        return
+      }
       setDraft(out)
       q.reload()
       setSaved(true)
@@ -156,7 +231,7 @@ function GeneralTab({ editable }: { editable: boolean }) {
               <input value={draft.emp_code_prefix} maxLength={12} placeholder="EMP" disabled={!editable}
                      onChange={(e) => set('emp_code_prefix', e.target.value.toUpperCase())} />
             </Field>
-            <Field label="Separator" hint="Between prefix and number">
+            <Field label="Separator">
               <input value={draft.emp_code_separator} maxLength={3} placeholder="-" disabled={!editable}
                      onChange={(e) => set('emp_code_separator', e.target.value)} />
             </Field>
@@ -164,7 +239,7 @@ function GeneralTab({ editable }: { editable: boolean }) {
               <input placeholder="4" type="number" min={0} max={10} value={draft.emp_code_digits} disabled={!editable}
                      onChange={num('emp_code_digits')} />
             </Field>
-            <Field label="Next number" hint="Set it when migrating from another system">
+            <Field label="Next number" hint="Set it when migrating">
               <input placeholder="101" type="number" min={1} value={draft.emp_code_next} disabled={!editable}
                      onChange={num('emp_code_next')} />
             </Field>
@@ -181,27 +256,45 @@ function GeneralTab({ editable }: { editable: boolean }) {
       <section className="hs-card">
         <header className="hs-card-head">
           <h2>Defaults and reminders</h2>
-          <p>Pre-filled on the Add employee form, and the warning windows on the HR dashboard.</p>
         </header>
         <div className="hs-card-body">
-          <div className="hs-grid-4">
-            <Field label="Default probation (months)" hint="0 for no probation">
+          <div className="hs-grid-3">
+            <Field label="Default probation (months)">
               <input placeholder="6" type="number" min={0} max={36} value={draft.default_probation_months} disabled={!editable}
                      onChange={num('default_probation_months')} />
             </Field>
-            <Field label="Default notice period (days)">
-              <input placeholder="60" type="number" min={0} max={365} value={draft.default_notice_days} disabled={!editable}
-                     onChange={num('default_notice_days')} />
-            </Field>
-            <Field label="Warn before probation ends (days)">
-              <input placeholder="30" type="number" min={1} max={365} value={draft.probation_warn_days} disabled={!editable}
+            <Field label="Warn before probation ends (days)" hint="0 = never">
+              <input placeholder="30" type="number" min={0} max={365} value={draft.probation_warn_days} disabled={!editable}
                      onChange={num('probation_warn_days')} />
             </Field>
-            <Field label="Document expiry lookahead (days)">
-              <input placeholder="30" type="number" min={1} max={365} value={draft.document_warn_days} disabled={!editable}
-                     onChange={num('document_warn_days')} />
+            <Field label="Birthday lookahead (days)">
+              <input placeholder="30" type="number" min={0} max={365} value={draft.birthday_lookahead_days} disabled={!editable}
+                     onChange={num('birthday_lookahead_days')} />
             </Field>
           </div>
+        </div>
+      </section>
+
+      <section className="hs-card">
+        <header className="hs-card-head">
+          <h2>Time zone</h2>
+        </header>
+        <div className="hs-card-body">
+          <div className="hs-zone">
+            <label className="hs-field">
+              <span className="hs-label">The office clock</span>
+              <select value={zone} disabled={!editable} onChange={(e) => { setZone(e.target.value); setSaved(false) }}>
+                {zoneList(stored).map((z) => <option key={z} value={z}>{z}</option>)}
+              </select>
+            </label>
+            <div className="hs-preview hs-zone-now">
+              It is <code className="hs-code">{dateIn(zone)}</code> there now.
+            </div>
+          </div>
+          <p className="hs-foot-note">
+            Attendance uses this to decide whether a working day has finished — which is what turns an unmarked day
+            into an absence. Getting it wrong leaves the register a day out of step with the office.
+          </p>
         </div>
       </section>
 

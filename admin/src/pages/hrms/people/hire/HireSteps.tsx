@@ -6,11 +6,12 @@
  * the server — the shell loads the lookups once and submits once — so a step
  * can be revisited from the review page without refetching anything.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { PAGES, PERMISSIONS } from '../../../../lib/employeeFields'
 import { money, toPaise } from '../../../../lib/format'
 import { useQuery } from '../../../../lib/useQuery'
 import { crm, type CityRow, type Country, type StateRow } from '../../../crm/api'
+import type { FieldMode } from '../../../../components/ViewSettings'
 import type { Department, Designation, PayComponent, Team, User, WorkSchedule } from '../../../../lib/types'
 import type { OrgRole } from '../../roles/Roles'
 import type { Asset } from '../../assets/assetLib'
@@ -68,6 +69,10 @@ export interface StepProps {
   editing?: boolean
   /** Masked statutory values already held, when editing. */
   onFile?: OnFile
+  /** How this person has set each field: shown, mandatory or hidden (Settings). */
+  fm: (key: string) => FieldMode
+  /** The fields of one part of a step, in the order they were arranged. */
+  orderOf: (section: string) => string[]
 }
 
 /* ---------------------------------------------------------------- fields --- */
@@ -129,8 +134,10 @@ function Text({
   inputMode?: 'numeric' | 'decimal' | 'email' | 'tel'
   disabled?: boolean
 }) {
+  const mode = p.fm(k as string)
+  if (mode === 'hide') return null
   return (
-    <Field label={label} required={required} hint={hint} error={shown(p, k)} wide={wide}>
+    <Field label={label} required={required || mode === 'mandatory'} hint={hint} error={shown(p, k)} wide={wide}>
       <input
         type={type}
         disabled={disabled}
@@ -156,8 +163,10 @@ function Choice({
   hint?: ReactNode
   required?: boolean
 }) {
+  const mode = p.fm(k as string)
+  if (mode === 'hide') return null
   return (
-    <Field label={label} hint={hint} error={shown(p, k)} required={required}>
+    <Field label={label} hint={hint} error={shown(p, k)} required={required || mode === 'mandatory'}>
       <select
         value={p.d[k] as string}
         onChange={(e) => p.set({ [k]: e.target.value } as Partial<HireDraft>)}
@@ -189,6 +198,24 @@ function Toggle({
   )
 }
 
+/** A part of a step: its heading and its fields in the arranged order. Nothing
+ *  at all when every field in it has been hidden. */
+function Part({ p, id, title, desc, nodes }: {
+  p: StepProps
+  id: string
+  title: string
+  desc?: string
+  nodes: Record<string, ReactNode>
+}) {
+  const keys = p.orderOf(id)
+  if (keys.every((k) => p.fm(k) === 'hide')) return null
+  return (
+    <Section title={title} desc={desc}>
+      {keys.map((k) => <Fragment key={k}>{nodes[k]}</Fragment>)}
+    </Section>
+  )
+}
+
 function Locked({ children }: { children: ReactNode }) {
   return <div className="hire-locked">{children}</div>
 }
@@ -198,31 +225,39 @@ function Locked({ children }: { children: ReactNode }) {
 export function BasicStep(p: StepProps) {
   return (
     <>
-      <Section title="Name" desc="As it appears on their government ID — letters and payslips print it.">
-        <Text p={p} k="first_name" label="First name" required />
-        <Text p={p} k="middle_name" label="Middle name" />
-        <Text p={p} k="last_name" label="Last name" />
-      </Section>
-      <Section title="Work contact">
-        <Text p={p} k="email" label="Work email" required type="email" inputMode="email"
-              placeholder="name@company.com" disabled={p.editing}
-              hint={p.editing ? 'Their sign-in — it cannot be changed here.' : 'Their sign-in, and where notifications go.'} />
-        <Text p={p} k="phone" label="Mobile number" inputMode="tel" placeholder="+91 98765 43210" />
-      </Section>
-      <Section title="Joining">
-        <Text p={p} k="employee_code" label="Employee ID"
-              hint={p.editing ? undefined : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
-        <Text p={p} k="joined_on" label="Date of joining" type="date" required />
-        <Choice p={p} k="status" label="Status" options={[
-          { value: 'active', label: 'Active — already working' },
-          { value: 'pending_setup', label: 'Pre-joining — starts later' },
-          ...(p.editing ? [{ value: 'inactive', label: 'Inactive — has left' }] : []),
-        ]} hint={p.d.status === 'pending_setup'
-          ? 'They appear in onboarding, not in attendance, until they join.'
-          : undefined} />
-        <Text p={p} k="timezone" label="Time zone" placeholder="Asia/Kolkata"
-              hint="Attendance days and reports are cut in this zone." />
-      </Section>
+      <Part p={p} id="basic-name" title="Name" desc="As it appears on their government ID — letters and payslips print it." nodes={{
+        first_name: <Text p={p} k="first_name" label="First name" required />,
+        middle_name: <Text p={p} k="middle_name" label="Middle name" />,
+        last_name: <Text p={p} k="last_name" label="Last name" />,
+      }} />
+      <Part p={p} id="basic-contact" title="Work contact" nodes={{
+        email: (
+          <Text p={p} k="email" label="Work email" required type="email" inputMode="email"
+                placeholder="name@company.com" disabled={p.editing}
+                hint={p.editing ? 'Their sign-in — it cannot be changed here.' : 'Their sign-in, and where notifications go.'} />
+        ),
+        phone: <Text p={p} k="phone" label="Mobile number" inputMode="tel" placeholder="+91 98765 43210" />,
+      }} />
+      <Part p={p} id="basic-joining" title="Joining" nodes={{
+        employee_code: (
+          <Text p={p} k="employee_code" label="Employee ID"
+                hint={p.editing ? undefined : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
+        ),
+        joined_on: <Text p={p} k="joined_on" label="Date of joining" type="date" />,
+        status: (
+          <Choice p={p} k="status" label="Status" options={[
+            { value: 'active', label: 'Active — already working' },
+            { value: 'pending_setup', label: 'Pre-joining — starts later' },
+            ...(p.editing ? [{ value: 'inactive', label: 'Inactive — has left' }] : []),
+          ]} hint={p.d.status === 'pending_setup'
+            ? 'They appear in onboarding, not in attendance, until they join.'
+            : undefined} />
+        ),
+        timezone: (
+          <Text p={p} k="timezone" label="Time zone" placeholder="Asia/Kolkata"
+                hint="Attendance days and reports are cut in this zone." />
+        ),
+      }} />
     </>
   )
 }
@@ -233,32 +268,42 @@ export function PersonalStep(p: StepProps) {
   }
   return (
     <>
-      <Section title="Personal information">
-        <Text p={p} k="date_of_birth" label="Date of birth" type="date" />
-        <Choice p={p} k="gender" label="Gender" empty="Select" options={[
-          { value: 'female', label: 'Female' }, { value: 'male', label: 'Male' },
-          { value: 'other', label: 'Other' }, { value: 'undisclosed', label: 'Prefer not to say' },
-        ]} />
-        <Choice p={p} k="marital_status" label="Marital status" empty="Select" options={[
-          { value: 'single', label: 'Single' }, { value: 'married', label: 'Married' },
-          { value: 'divorced', label: 'Divorced' }, { value: 'widowed', label: 'Widowed' },
-        ]} />
-        <Choice p={p} k="blood_group" label="Blood group" empty="Select"
-                options={BLOOD_GROUPS.map((b) => ({ value: b, label: b }))} />
-        <Text p={p} k="nationality" label="Nationality" />
-        <Text p={p} k="father_name" label="Father’s / spouse’s name"
-              hint="PF nomination and Form 11 ask for it." />
-      </Section>
-      <Section title="Personal contact" desc="Kept apart from work email — it still works after they leave, when payroll needs to send their Form 16.">
-        <Text p={p} k="personal_email" label="Personal email" type="email" inputMode="email" />
-        <Text p={p} k="alternate_phone" label="Alternate phone" inputMode="tel" />
-      </Section>
-      <Section title="Emergency contact">
-        <Text p={p} k="emergency_name" label="Contact name" />
-        <Choice p={p} k="emergency_relationship" label="Relationship" empty="Select"
-                options={RELATIONSHIPS.map((r) => ({ value: r, label: r }))} />
-        <Text p={p} k="emergency_phone" label="Contact phone" inputMode="tel" />
-      </Section>
+      <Part p={p} id="personal-info" title="Personal information" nodes={{
+        date_of_birth: <Text p={p} k="date_of_birth" label="Date of birth" type="date" />,
+        gender: (
+          <Choice p={p} k="gender" label="Gender" empty="Select" options={[
+            { value: 'female', label: 'Female' }, { value: 'male', label: 'Male' },
+            { value: 'other', label: 'Other' }, { value: 'undisclosed', label: 'Prefer not to say' },
+          ]} />
+        ),
+        marital_status: (
+          <Choice p={p} k="marital_status" label="Marital status" empty="Select" options={[
+            { value: 'single', label: 'Single' }, { value: 'married', label: 'Married' },
+            { value: 'divorced', label: 'Divorced' }, { value: 'widowed', label: 'Widowed' },
+          ]} />
+        ),
+        blood_group: (
+          <Choice p={p} k="blood_group" label="Blood group" empty="Select"
+                  options={BLOOD_GROUPS.map((b) => ({ value: b, label: b }))} />
+        ),
+        nationality: <Text p={p} k="nationality" label="Nationality" />,
+        father_name: (
+          <Text p={p} k="father_name" label="Father’s / spouse’s name"
+                hint="PF nomination and Form 11 ask for it." />
+        ),
+      }} />
+      <Part p={p} id="personal-contact" title="Personal contact" desc="Kept apart from work email — it still works after they leave, when payroll needs to send their Form 16." nodes={{
+        personal_email: <Text p={p} k="personal_email" label="Personal email" type="email" inputMode="email" />,
+        alternate_phone: <Text p={p} k="alternate_phone" label="Alternate phone" inputMode="tel" />,
+      }} />
+      <Part p={p} id="personal-emergency" title="Emergency contact" nodes={{
+        emergency_name: <Text p={p} k="emergency_name" label="Contact name" />,
+        emergency_relationship: (
+          <Choice p={p} k="emergency_relationship" label="Relationship" empty="Select"
+                  options={RELATIONSHIPS.map((r) => ({ value: r, label: r }))} />
+        ),
+        emergency_phone: <Text p={p} k="emergency_phone" label="Contact phone" inputMode="tel" />,
+      }} />
     </>
   )
 }
@@ -278,8 +323,10 @@ function useGeography() {
 
 /** Keeps a value typed before the master existed, so an old record never blanks. */
 function GeoSelect({
-  label, value, options, disabled, onChange, placeholder,
+  label, value, options, disabled, onChange, placeholder, hidden, required,
 }: {
+  hidden?: boolean
+  required?: boolean
   label: string
   value: string
   options: Array<{ value: string; label: string }>
@@ -288,8 +335,9 @@ function GeoSelect({
   placeholder?: string
 }) {
   const known = options.some((o) => o.value === value)
+  if (hidden) return null
   return (
-    <Field label={label}>
+    <Field label={label} required={required}>
       <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         <option value="">{placeholder ?? 'Select'}</option>
         {value && !known && <option value={value}>{value}</option>}
@@ -313,25 +361,39 @@ function AddressBlock({ p, prefix }: { p: StepProps; prefix: 'current' | 'perman
   const state = geo.states.find((x) => x.name === val('state') && (!country || x.country_id === country.id))
   const cities = state ? geo.cities.filter((c) => c.state_id === state.id) : []
   const names = (rows: Array<{ name: string }>) => rows.map((r) => ({ value: r.name, label: r.name }))
-  return (
-    <>
-      <Field label="Address" wide error={shown(p, k('address'))}>
+  const hid = (s: string) => p.fm(k(s) as string) === 'hide'
+  const req = (s: string) => p.fm(k(s) as string) === 'mandatory'
+  const nodes: Record<string, ReactNode> = {
+    [k('address')]: !hid('address') && (
+      <Field label="Address" wide required={req('address')} error={shown(p, k('address'))}>
         <textarea rows={2} value={val('address')}
                   placeholder="House / flat, street, locality"
                   onChange={(e) => put({ address: e.target.value })} />
       </Field>
+    ),
+    [k('country')]: (
       <GeoSelect label="Country" value={val('country')} placeholder="Select country"
+                 hidden={hid('country')} required={req('country')}
                  options={geo.countries.map((c) => ({ value: c.iso2 ?? '', label: c.name }))}
                  onChange={(v) => put({ country: v, state: '', city: '' })} />
+    ),
+    [k('state')]: (
       <GeoSelect label="State" value={val('state')} placeholder="Select state" options={names(states)}
+                 hidden={hid('state')} required={req('state')}
                  onChange={(v) => put({ state: v, city: '' })} />
+    ),
+    [k('city')]: (
       <GeoSelect label="City" value={val('city')} disabled={!state}
+                 hidden={hid('city')} required={req('city')}
                  placeholder={state ? 'Select city' : 'Pick a state first'} options={names(cities)}
                  onChange={(v) => put({ city: v })} />
-      <Text p={p} k={k('postal_code')} label="PIN / postal code" />
-    </>
-  )
+    ),
+    [k('postal_code')]: <Text p={p} k={k('postal_code')} label="PIN / postal code" />,
+  }
+  return <>{p.orderOf(`address-${prefix}`).map((key) => <Fragment key={key}>{nodes[key]}</Fragment>)}</>
 }
+
+const allHidden = (p: StepProps, id: string) => p.orderOf(id).every((k) => p.fm(k) === 'hide')
 
 export function AddressStep(p: StepProps) {
   if (!p.can.people) {
@@ -339,7 +401,7 @@ export function AddressStep(p: StepProps) {
   }
   return (
     <>
-      <Section title="Current address"><AddressBlock p={p} prefix="current" /></Section>
+      {!allHidden(p, 'address-current') && <Section title="Current address"><AddressBlock p={p} prefix="current" /></Section>}
       <section className="hire-section">
         <Toggle
           checked={p.d.permanent_same}
@@ -347,7 +409,7 @@ export function AddressStep(p: StepProps) {
           label="Permanent address is the same as current"
         />
       </section>
-      {!p.d.permanent_same && (
+      {!p.d.permanent_same && !allHidden(p, 'address-permanent') && (
         <Section title="Permanent address"><AddressBlock p={p} prefix="permanent" /></Section>
       )}
     </>
@@ -364,32 +426,44 @@ export function JobStep(p: StepProps) {
     : lk.teams
   return (
     <>
-      <Section title="Position in the organisation">
-        <Choice p={p} k="department_id" label="Department" empty="Unassigned"
-                options={lk.departments.filter((x) => x.is_active).map((x) => ({ value: x.id, label: x.name }))}
-                hint={lk.departments.length ? undefined : 'No departments yet — add them under Department & Designation.'} />
-        <Choice p={p} k="designation_id" label="Designation" empty="Unassigned"
-                options={lk.designations.filter((x) => x.is_active).map((x) => ({ value: x.id, label: x.name }))} />
-        <Choice p={p} k="team_id" label="Team" empty="Unassigned"
-                options={teams.filter((t) => t.is_active).map((t) => ({ value: t.id, label: t.name }))} />
-        <Choice p={p} k="manager_id" label="Reporting manager" empty="Nobody — top level"
-                options={lk.people.filter((x) => x.is_active).map((x) => ({
-                  value: x.id,
-                  label: x.designation_name ? `${x.full_name} · ${x.designation_name}` : x.full_name,
-                }))}
-                hint="Approvals route to them, and they see this person’s attendance and leave." />
-      </Section>
+      <Part p={p} id="job-position" title="Position in the organisation" nodes={{
+        department_id: (
+          <Choice p={p} k="department_id" label="Department" empty="Unassigned"
+                  options={lk.departments.filter((x) => x.is_active).map((x) => ({ value: x.id, label: x.name }))}
+                  hint={lk.departments.length ? undefined : 'No departments yet — add them under Department & Designation.'} />
+        ),
+        designation_id: (
+          <Choice p={p} k="designation_id" label="Designation" empty="Unassigned"
+                  options={lk.designations.filter((x) => x.is_active).map((x) => ({ value: x.id, label: x.name }))} />
+        ),
+        team_id: (
+          <Choice p={p} k="team_id" label="Team" empty="Unassigned"
+                  options={teams.filter((t) => t.is_active).map((t) => ({ value: t.id, label: t.name }))} />
+        ),
+        manager_id: (
+          <Choice p={p} k="manager_id" label="Reporting manager" empty="Nobody — top level"
+                  options={lk.people.filter((x) => x.is_active).map((x) => ({
+                    value: x.id,
+                    label: x.designation_name ? `${x.full_name} · ${x.designation_name}` : x.full_name,
+                  }))}
+                  hint="Approvals route to them, and they see this person’s attendance and leave." />
+        ),
+      }} />
       {p.can.people ? (
-        <Section title="Employment terms">
-          <Choice p={p} k="employment_type" label="Employment type" options={EMPLOYMENT_TYPES} />
-          <Text p={p} k="work_location" label="Work location" placeholder="Mumbai HQ" />
-          <Text p={p} k="grade" label="Grade / band" placeholder="L3" />
-          <Text p={p} k="probation_months" label="Probation (months)" inputMode="numeric"
-                hint={probationEnd ? `Probation ends ${new Date(probationEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.` : '0 if they join confirmed.'} />
-          <Text p={p} k="notice_period_days" label="Notice period (days)" inputMode="numeric"
-                hint="Used by full & final settlement to recover short notice." />
-          <Choice p={p} k="bgv_status" label="Background verification" empty="Not started" options={BGV_STATUSES} />
-        </Section>
+        <Part p={p} id="job-terms" title="Employment terms" nodes={{
+          employment_type: <Choice p={p} k="employment_type" label="Employment type" options={EMPLOYMENT_TYPES} />,
+          work_location: <Text p={p} k="work_location" label="Work location" placeholder="Mumbai HQ" />,
+          grade: <Text p={p} k="grade" label="Grade / band" placeholder="L3" />,
+          probation_months: (
+            <Text p={p} k="probation_months" label="Probation (months)" inputMode="numeric"
+                  hint={probationEnd ? `Probation ends ${new Date(probationEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.` : '0 if they join confirmed.'} />
+          ),
+          notice_period_days: (
+            <Text p={p} k="notice_period_days" label="Notice period (days)" inputMode="numeric"
+                  hint="Used by full & final settlement to recover short notice." />
+          ),
+          bgv_status: <Choice p={p} k="bgv_status" label="Background verification" empty="Not started" options={BGV_STATUSES} />,
+        }} />
       ) : (
         <Locked>Employment terms (type, probation, notice) need the “See and edit HR records” permission.</Locked>
       )}
@@ -430,19 +504,23 @@ export function AttendanceStep(p: StepProps) {
           ))}
         </div>
       </section>
-      <Section title="Shift and schedule">
-        <Choice p={p} k="shift_id" label="Shift" empty="No shift — use the work schedule"
-                options={lk.shifts.filter((s) => s.is_active).map((s) => ({
-                  value: s.id,
-                  label: `${s.name} (${s.start_time}–${s.end_time}${s.is_night_shift ? ', night' : ''})`,
-                }))}
-                hint={shift
-                  ? `Effective from the joining date. Late marks count from ${shift.start_time}.`
-                  : lk.shifts.length ? undefined : 'No shifts defined yet — add them in Attendance settings.'} />
-        <Choice p={p} k="schedule_id" label="Work schedule" empty="Company default"
-                options={lk.schedules.map((s) => ({ value: s.id, label: `${s.name} (${s.start_time}–${s.end_time})` }))}
-                hint="Working days and break time, used for expected hours." />
-      </Section>
+      <Part p={p} id="attendance-shift" title="Shift and schedule" nodes={{
+        shift_id: (
+          <Choice p={p} k="shift_id" label="Shift" empty="No shift — use the work schedule"
+                  options={lk.shifts.filter((s) => s.is_active).map((s) => ({
+                    value: s.id,
+                    label: `${s.name} (${s.start_time}–${s.end_time}${s.is_night_shift ? ', night' : ''})`,
+                  }))}
+                  hint={shift
+                    ? `Effective from the joining date. Late marks count from ${shift.start_time}.`
+                    : lk.shifts.length ? undefined : 'No shifts defined yet — add them in Attendance settings.'} />
+        ),
+        schedule_id: (
+          <Choice p={p} k="schedule_id" label="Work schedule" empty="Company default"
+                  options={lk.schedules.map((s) => ({ value: s.id, label: `${s.name} (${s.start_time}–${s.end_time})` }))}
+                  hint="Working days and break time, used for expected hours." />
+        ),
+      }} />
       <section className="hire-section">
         <Toggle
           checked={d.can_punch_anywhere}
@@ -459,6 +537,27 @@ export function PayStep(p: StepProps) {
   const { d, lk, can } = p
   const earnings = useMemo(() => lk.components.filter((c) => c.kind === 'earning' && c.is_active), [lk.components])
   const gross = toPaise(d.gross_monthly)
+  const salaryNodes: Record<string, ReactNode> = {
+    gross_monthly: p.fm('gross_monthly') !== 'hide' && (
+      <Field label="Monthly gross (₹)" error={shown(p, 'gross_monthly')} required={p.fm('gross_monthly') === 'mandatory'}
+             hint={gross ? `${money(gross * 12)} a year.` : undefined}>
+        <input value={d.gross_monthly} inputMode="decimal" placeholder="50,000"
+               onChange={(e) => p.set({
+                 gross_monthly: e.target.value,
+                 // Pick every earning the first time a figure is typed —
+                 // the common case is "the standard structure".
+                 salary_components: d.salary_components.length || !e.target.value
+                   ? d.salary_components : earnings.map((c) => c.id),
+               })} />
+      </Field>
+    ),
+    salary_from: p.fm('salary_from') !== 'hide' && (
+      <Field label="Effective from" hint="Defaults to the joining date.">
+        <input type="date" value={d.salary_from || d.joined_on}
+               onChange={(e) => p.set({ salary_from: e.target.value })} />
+      </Field>
+    ),
+  }
   return (
     <>
       {can.payroll && earnings.length === 0 ? (
@@ -475,23 +574,9 @@ export function PayStep(p: StepProps) {
               : 'The joining salary structure. Leave blank to set it later in Payroll → Salary structures.'}</p>
           </header>
           <div className="hire-grid">
-            <Field label="Monthly gross (₹)" error={shown(p, 'gross_monthly')}
-                   hint={gross ? `${money(gross * 12)} a year.` : undefined}>
-              <input value={d.gross_monthly} inputMode="decimal" placeholder="50,000"
-                     onChange={(e) => p.set({
-                       gross_monthly: e.target.value,
-                       // Pick every earning the first time a figure is typed —
-                       // the common case is "the standard structure".
-                       salary_components: d.salary_components.length || !e.target.value
-                         ? d.salary_components : earnings.map((c) => c.id),
-                     })} />
-            </Field>
-            <Field label="Effective from" hint="Defaults to the joining date.">
-              <input type="date" value={d.salary_from || d.joined_on}
-                     onChange={(e) => p.set({ salary_from: e.target.value })} />
-            </Field>
+            {p.orderOf('pay-salary').map((key) => <Fragment key={key}>{salaryNodes[key]}</Fragment>)}
           </div>
-          {d.gross_monthly && (
+          {d.gross_monthly && p.fm('gross_monthly') !== 'hide' && (
             earnings.length ? (
               <div className="hire-components">
                 {earnings.map((c) => {
@@ -533,25 +618,33 @@ export function PayStep(p: StepProps) {
 
       {can.people && (
         <>
-          <Section title="Statutory" desc="Encrypted at rest and masked everywhere. Revealing one later is a separate, audited action.">
-            <Text p={p} k="pan" label="PAN" upper maxLength={10} placeholder="ABCDE1234F"
-                  hint={p.onFile?.pan ? `On file: ${p.onFile.pan}. Type a new one to replace it.` : undefined} />
-            <Text p={p} k="aadhaar" label="Aadhaar" inputMode="numeric" maxLength={14} placeholder="12 digits"
-                  hint={p.onFile?.aadhaar ? `On file: ${p.onFile.aadhaar}. Type a new one to replace it.` : undefined} />
-            <Text p={p} k="uan" label="UAN" inputMode="numeric" maxLength={12} hint="If they had PF at a previous employer." />
-            <Text p={p} k="pf_number" label="PF number" />
-            <Text p={p} k="esi_number" label="ESI number" />
-          </Section>
-          <Section title="Bank account" desc="Where salary is paid.">
-            <Text p={p} k="bank_account_name" label="Account holder name"
-                  placeholder={fullName(d) || undefined} />
-            <Text p={p} k="bank_account" label="Account number" inputMode="numeric" type="password"
-                  hint={p.onFile?.bank_account ? `On file: ${p.onFile.bank_account}. Leave blank to keep it.` : undefined} />
-            <Text p={p} k="bank_account_confirm" label="Confirm account number" inputMode="numeric" />
-            <Text p={p} k="bank_ifsc" label="IFSC" upper maxLength={11} placeholder="HDFC0001234" />
-            <Text p={p} k="bank_name" label="Bank name" />
-            <Text p={p} k="bank_branch" label="Branch" />
-          </Section>
+          <Part p={p} id="pay-statutory" title="Statutory" desc="Encrypted at rest and masked everywhere. Revealing one later is a separate, audited action." nodes={{
+            pan: (
+              <Text p={p} k="pan" label="PAN" upper maxLength={10} placeholder="ABCDE1234F"
+                    hint={p.onFile?.pan ? `On file: ${p.onFile.pan}. Type a new one to replace it.` : undefined} />
+            ),
+            aadhaar: (
+              <Text p={p} k="aadhaar" label="Aadhaar" inputMode="numeric" maxLength={14} placeholder="12 digits"
+                    hint={p.onFile?.aadhaar ? `On file: ${p.onFile.aadhaar}. Type a new one to replace it.` : undefined} />
+            ),
+            uan: <Text p={p} k="uan" label="UAN" inputMode="numeric" maxLength={12} hint="If they had PF at a previous employer." />,
+            pf_number: <Text p={p} k="pf_number" label="PF number" />,
+            esi_number: <Text p={p} k="esi_number" label="ESI number" />,
+          }} />
+          <Part p={p} id="pay-bank" title="Bank account" desc="Where salary is paid." nodes={{
+            bank_account_name: (
+              <Text p={p} k="bank_account_name" label="Account holder name"
+                    placeholder={fullName(d) || undefined} />
+            ),
+            bank_account: (
+              <Text p={p} k="bank_account" label="Account number" inputMode="numeric" type="password"
+                    hint={p.onFile?.bank_account ? `On file: ${p.onFile.bank_account}. Leave blank to keep it.` : undefined} />
+            ),
+            bank_account_confirm: <Text p={p} k="bank_account_confirm" label="Confirm account number" inputMode="numeric" />,
+            bank_ifsc: <Text p={p} k="bank_ifsc" label="IFSC" upper maxLength={11} placeholder="HDFC0001234" />,
+            bank_name: <Text p={p} k="bank_name" label="Bank name" />,
+            bank_branch: <Text p={p} k="bank_branch" label="Branch" />,
+          }} />
         </>
       )}
     </>
@@ -706,9 +799,9 @@ export function AccessStep(p: StepProps) {
   const isEmployee = d.role === 'employee'
   return (
     <>
-      <section className="hire-section">
+      {p.fm('role_id') !== 'hide' && <section className="hire-section">
         <header className="hire-section-head">
-          <h3>Role</h3>
+          <h3>Role{p.fm('role_id') === 'mandatory' && <span className="hire-req" aria-hidden>*</span>}</h3>
           <p>Decides what they see and what they can approve. Roles are defined under Employee → Role & Permission.</p>
         </header>
         <div className="hire-cards hire-cards-roles" role="radiogroup" aria-label="Role">
@@ -731,7 +824,7 @@ export function AccessStep(p: StepProps) {
           })}
         </div>
         {p.touched && p.errors.role_id && <span className="hire-error">{p.errors.role_id}</span>}
-      </section>
+      </section>}
 
       <section className="hire-section">
         <header className="hire-section-head"><h3>Sign-in</h3></header>

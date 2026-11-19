@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ActivitySegment,
+    AttendanceSettings,
     ApprovalStatus,
     Organization,
     TimeEntry,
@@ -82,6 +83,11 @@ class DayRow:
     idle_minutes: int = 0
     billable_minutes: int = 0
     expected_minutes: int = 0
+    # The company's overtime policy (Settings → Attendance → Overtime). The defaults are the
+    # behaviour from before there was one.
+    ot_enabled: bool = True
+    ot_min_minutes: int = 0
+    ot_on_off_days: bool = True
     is_working_day: bool = True
     first_activity: datetime | None = None
     last_activity: datetime | None = None
@@ -94,9 +100,12 @@ class DayRow:
     def overtime_minutes(self) -> int:
         # Only on a day the employee was expected to work; a Saturday shift is
         # counted whole rather than measured against a zero expectation.
+        if not self.ot_enabled:
+            return 0
         if not self.is_working_day:
-            return self.worked_minutes
-        return max(0, self.worked_minutes - self.expected_minutes)
+            return self.worked_minutes if self.ot_on_off_days else 0
+        extra = max(0, self.worked_minutes - self.expected_minutes)
+        return extra if extra >= self.ot_min_minutes else 0
 
     @property
     def shortfall_minutes(self) -> int:
@@ -213,12 +222,16 @@ def build(
         timezone=tz_name,
     )
 
+    policy = db.get(AttendanceSettings, user.org_id)
     rows: dict[date, DayRow] = {}
     for day in iter_days(period_start, period_end):
         is_working = schedule.works_on(day.weekday()) if schedule else day.weekday() < 5
         rows[day] = DayRow(
             day=day,
             is_working_day=is_working,
+            ot_enabled=policy.overtime_enabled if policy else True,
+            ot_min_minutes=policy.overtime_min_minutes if policy else 0,
+            ot_on_off_days=policy.overtime_on_off_days if policy else True,
             expected_minutes=(schedule.expected_minutes if schedule and is_working else 0)
             or (480 if is_working and schedule is None else 0),
         )

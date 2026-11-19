@@ -12,7 +12,7 @@
  * labelled "Send OTP" that sends nothing.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
 import '../../styles/hrdash.css'
@@ -56,8 +56,7 @@ import {
   onlyDigits,
   withDialCode,
 } from './parts'
-
-const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 
 const todayISO = () => {
   const d = new Date()
@@ -131,14 +130,67 @@ function VisitStrip(p: {
   )
 }
 
+/** What the visits table can show. A person picks and orders these from
+ *  Settings; the first seven are what it shows until they do. */
+type VisitColumn = ColumnDef & { td: (visit: Visit) => ReactNode; className?: string; thClass?: string }
+const dash = <span className="crm-muted">—</span>
+const VISIT_COLUMNS: VisitColumn[] = [
+  { key: 'visit', label: 'Visit', locked: true, td: (v) => (
+    <>
+      <div className="crm-code">{v.visit_no}</div>
+      <div className="crm-sub">{v.visit_type_name ?? 'No type'}</div>
+    </>
+  ) },
+  { key: 'customer', label: 'Customer', td: (v) => (
+    <div className="vs-who">
+      <span className="vs-avatar" aria-hidden>{initials(v.customer_name)}</span>
+      <span className="vs-who-text">
+        <span className="crm-strong">
+          {v.customer_name}
+          {v.subject_kind === 'lead' && <span className="vs-kind">Lead</span>}
+        </span>
+        <span className="crm-sub">{v.mobile ?? v.customer_mobile}</span>
+      </span>
+    </div>
+  ) },
+  { key: 'assigned', label: 'Assigned to', td: (v) => v.employee_name ?? <span className="crm-muted">Unassigned</span> },
+  { key: 'scheduled', label: 'Scheduled', className: 'crm-nowrap', td: (v) => <When iso={v.scheduled_at} /> },
+  { key: 'status', label: 'Status', td: (v) => (
+    <>
+      <StateText value={v.status} />
+      {v.otp_required && <div className="crm-sub">{v.otp_verified ? 'Arrival verified' : 'Needs arrival code'}</div>}
+    </>
+  ) },
+  { key: 'duration', label: 'Duration', className: 'crm-num', thClass: 'crm-num', td: (v) => (v.duration_minutes !== null ? `${v.duration_minutes} min` : '—') },
+  { key: 'purpose', label: 'Purpose', initial: false, td: (v) => v.purpose ?? dash },
+  { key: 'contact', label: 'Contact person', initial: false, td: (v) => v.contact_person ?? dash },
+  { key: 'address', label: 'Address', initial: false, td: (v) => v.address ?? dash },
+  { key: 'notes', label: 'Notes', initial: false, td: (v) => v.notes ?? dash },
+  { key: 'completed', label: 'Completed on', initial: false, className: 'crm-nowrap', td: (v) => (v.completed_at ? new Date(v.completed_at).toLocaleDateString('en-IN') : dash) },
+]
+
+/** What the visit form can show, make mandatory or hide. Who the visit is for
+ *  and when it is are always there. */
+const VISIT_SECTIONS: FieldSection[] = [{ id: 'visit', label: 'Visit details' }]
+const VISIT_FIELDS: FieldDef[] = [
+  { key: 'contact', label: 'Contact person', section: 'visit' },
+  { key: 'mobile', label: 'Mobile number', section: 'visit' },
+  { key: 'address', label: 'Address', section: 'visit' },
+  { key: 'type', label: 'Visit type', section: 'visit', initial: 'mandatory' },
+  { key: 'purpose', label: 'Visit purpose / reason', section: 'visit', initial: 'mandatory' },
+  { key: 'assignee', label: 'Assigned employee', section: 'visit', initial: 'mandatory' },
+  { key: 'when', label: 'Scheduled', section: 'visit', fixed: true },
+  { key: 'notes', label: 'Notes', section: 'visit' },
+]
+
 export default function MyVisits() {
+  const columns = useColumns('visits', VISIT_COLUMNS)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [typeId, setTypeId] = useState('')
   const [employeeId, setEmployeeId] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
   const [booking, setBooking] = useState(false)
@@ -154,11 +206,10 @@ export default function MyVisits() {
     status: status || undefined,
     visit_type_id: typeId || undefined,
     employee_id: employeeId || undefined,
-    priority: priorityFilter || undefined,
     date_from: from || undefined,
     date_to: to || undefined,
   }
-  const key = `crm-visits-${q}-${status}-${typeId}-${employeeId}-${priorityFilter}-${from}-${to}`
+  const key = `crm-visits-${q}-${status}-${typeId}-${employeeId}-${from}-${to}`
   const visits = useQuery<Visit[]>(key, () => crm.visits(query))
   const summary = useQuery('crm-visit-summary', () => crm.visitSummary())
 
@@ -179,10 +230,11 @@ export default function MyVisits() {
     }
   }, [showFilters])
 
-  const moreCount = [employeeId, priorityFilter, from, to].filter(Boolean).length
+  const moreCount = [status, typeId, employeeId, from, to].filter(Boolean).length
   function clearMore() {
+    setStatus('')
+    setTypeId('')
     setEmployeeId('')
-    setPriorityFilter('')
     setFrom('')
     setTo('')
   }
@@ -234,7 +286,7 @@ export default function MyVisits() {
   }
 
   const s = summary.data
-  const filtered = Boolean(q || status || typeId || employeeId || priorityFilter || from || to)
+  const filtered = Boolean(q || status || typeId || employeeId || from || to)
 
   return (
     /* No page heading: "My Visit" is the tab above. New Visit sits in the
@@ -288,14 +340,6 @@ export default function MyVisits() {
               aria-label="Search visits"
             />
           </div>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
-            <option value="">All statuses</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="in_progress">In progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} placeholder="All visit types" />
           <div className="vs-more" ref={moreRef}>
             <button
               className={`btn vs-filter-btn${showFilters || moreCount ? ' is-on' : ''}`}
@@ -303,25 +347,28 @@ export default function MyVisits() {
               aria-expanded={showFilters}
               aria-haspopup="dialog"
             >
-              <IconFilter size={14} /> More filters
+              <IconFilter size={14} /> Filters
               {moreCount > 0 && <span className="vs-more-count">{moreCount}</span>}
             </button>
             {showFilters && (
-              <div className="vs-pop" role="dialog" aria-label="More filters">
+              <div className="vs-pop" role="dialog" aria-label="Filter visits">
+                <label className="vs-pop-field">
+                  <span>Status</span>
+                  <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                    <option value="">All statuses</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </label>
+                <label className="vs-pop-field">
+                  <span>Visit type</span>
+                  <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} placeholder="All visit types" />
+                </label>
                 <label className="vs-pop-field">
                   <span>Employee</span>
                   <OwnerSelect value={employeeId} onChange={setEmployeeId} placeholder="Everyone" />
-                </label>
-                <label className="vs-pop-field">
-                  <span>Priority</span>
-                  <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
-                    <option value="">Any priority</option>
-                    {PRIORITIES.map((level) => (
-                      <option key={level} value={level}>
-                        {level.charAt(0).toUpperCase() + level.slice(1)}
-                      </option>
-                    ))}
-                  </select>
                 </label>
                 <div className="vs-pop-dates">
                   <label className="vs-pop-field">
@@ -349,7 +396,6 @@ export default function MyVisits() {
                 setStatus('')
                 setTypeId('')
                 setEmployeeId('')
-                setPriorityFilter('')
                 setFrom('')
                 setTo('')
               }}
@@ -357,6 +403,8 @@ export default function MyVisits() {
               Clear all
             </button>
           )}
+          <ColumnSettings defs={VISIT_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           <ExportButton
             className="btn vs-export"
             label="Export"
@@ -397,55 +445,18 @@ export default function MyVisits() {
                 <table className="vs-table">
                   <thead>
                     <tr>
-                      <th>Visit</th>
-                      <th>Customer</th>
-                      <th>Assigned to</th>
-                      <th>Scheduled</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Duration</th>
+                      {(columns.visible as VisitColumn[]).map((col) => (
+                        <th key={col.key} className={col.thClass}>{col.label}</th>
+                      ))}
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((visit) => (
                       <tr key={visit.id}>
-                        <td>
-                          <div className="crm-code">{visit.visit_no}</div>
-                          <div className="crm-sub">{visit.visit_type_name ?? 'No type'}</div>
-                        </td>
-                        <td>
-                          <div className="vs-who">
-                            <span className="vs-avatar" aria-hidden>{initials(visit.customer_name)}</span>
-                            <span className="vs-who-text">
-                              <span className="crm-strong">
-                                {visit.customer_name}
-                                {visit.subject_kind === 'lead' && <span className="vs-kind">Lead</span>}
-                              </span>
-                              <span className="crm-sub">{visit.mobile ?? visit.customer_mobile}</span>
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          {visit.employee_name ?? <span className="crm-muted">Unassigned</span>}
-                        </td>
-                        <td className="crm-nowrap">
-                          <When iso={visit.scheduled_at} />
-                        </td>
-                        <td>
-                          <span className={`vs-priority is-${visit.priority}`}>{visit.priority}</span>
-                        </td>
-                        <td>
-                          <StateText value={visit.status} />
-                          {visit.otp_required && (
-                            <div className="crm-sub">
-                              {visit.otp_verified ? 'Arrival verified' : 'Needs arrival code'}
-                            </div>
-                          )}
-                        </td>
-                        <td className="crm-num">
-                          {visit.duration_minutes !== null ? `${visit.duration_minutes} min` : '—'}
-                        </td>
+                        {(columns.visible as VisitColumn[]).map((col) => (
+                          <td key={col.key} className={col.className}>{col.td(visit)}</td>
+                        ))}
                         <td>
                           <div className="crm-row-actions">
                             <WhatsAppButton mobile={visit.mobile ?? visit.customer_mobile} />
@@ -573,7 +584,8 @@ function VisitForm({
   const [mobile, setMobile] = useState(nationalDigits(visit?.mobile, '+91', 10))
   const [address, setAddress] = useState(visit?.address ?? '')
   const [typeId, setTypeId] = useState(visit?.visit_type_id ?? '')
-  const [priority, setPriority] = useState(visit?.priority ?? 'medium')
+  // Not shown or edited any more; carried through so an existing value is kept on save.
+  const [priority] = useState(visit?.priority ?? 'medium')
   const [purpose, setPurpose] = useState(visit?.purpose ?? '')
   const [assignee, setAssignee] = useState(visit?.assigned_to ?? '')
   const [when, setWhen] = useState(
@@ -582,6 +594,10 @@ function VisitForm({
   const [notes, setNotes] = useState(visit?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const fields = useFieldModes('visit-form', VISIT_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   // The country sets the dial code and how many digits a mobile has — the first
   // one, as on the lead form, since a visit has no country of its own.
@@ -633,10 +649,94 @@ function VisitForm({
     }
   }
 
-  const ready = Boolean(
-    (picked || visit) && when && typeId && purpose.trim() && assignee && !mobileBad,
-  )
+  // Only what this person has chosen to require: a hidden field is not asked for.
+  const emptyField: Record<string, boolean> = {
+    contact: contact.trim() === '', mobile: mobile === '', address: address.trim() === '', type: !typeId,
+    purpose: purpose.trim() === '', assignee: !assignee, notes: notes.trim() === '',
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const ready = Boolean((picked || visit) && when && !missing && !mobileBad)
   const subjectWord = visit ? (visit.subject_kind === 'lead' ? 'lead' : 'customer') : kind
+
+  /* Every field of the form as an element, so the order a person arranged in
+     Settings can place them. A hidden field is nothing at all. */
+  const fieldNodes: Record<string, ReactNode> = {
+    contact: fm('contact') !== 'hide' && (
+          <Field label="Contact Person" required={rq('contact')}>
+          <input
+            value={contact}
+            onChange={(event) => setContact(event.target.value)}
+            placeholder="Who will meet the employee"
+          />
+        </Field>
+        ),
+    mobile: fm('mobile') !== 'hide' && (
+          <Field
+          label="Mobile Number"
+          required={rq('mobile')}
+          hint={
+            mobileBad
+              ? <span className="lf-req">{`Enter a ${length}-digit mobile number.`}</span>
+              : `The number the arrival code goes to. ${dial} is added for you.`
+          }
+        >
+          <input
+            value={mobile}
+            onChange={(event) => setMobile(onlyDigits(event.target.value, length))}
+            placeholder={`${dial} ${'9876543210'.slice(0, length)}`}
+            inputMode="numeric"
+            maxLength={length}
+            aria-invalid={mobileBad}
+          />
+        </Field>
+        ),
+    address: fm('address') !== 'hide' && (
+          <Field label="Address" wide required={rq('address')} hint={`Leave blank to use the address on the ${subjectWord} record.`}>
+          <textarea placeholder="e.g. 12, MG Road, Bengaluru 560001" value={address} onChange={(event) => setAddress(event.target.value)} rows={2} />
+        </Field>
+        ),
+    type: fm('type') !== 'hide' && (
+          <Field label="Visit Type" required={rq('type')}>
+          <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} />
+        </Field>
+        ),
+    purpose: fm('purpose') !== 'hide' && (
+          <Field label="Visit Purpose / Reason" wide required={rq('purpose')}>
+          <textarea
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            rows={2}
+            placeholder="What the employee is going there to do"
+          />
+        </Field>
+        ),
+    assignee: fm('assignee') !== 'hide' && (
+          <Field label="Assigned Employee" required={rq('assignee')}>
+          <OwnerSelect value={assignee} onChange={setAssignee} placeholder="Select employee" />
+        </Field>
+        ),
+    when: (
+          <Field label="Scheduled" required>
+          <input
+            type="datetime-local"
+            value={when}
+            onChange={(event) => setWhen(event.target.value)}
+          />
+        </Field>
+        ),
+    notes: fm('notes') !== 'hide' && (
+          <Field label="Notes" wide required={rq('notes')}>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={2}
+            placeholder="Anything the employee should know before going"
+          />
+        </Field>
+        ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
 
   return (
     <Dialog
@@ -645,6 +745,7 @@ function VisitForm({
       onClose={onClose}
       footer={
         <>
+          {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>}
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
@@ -655,6 +756,10 @@ function VisitForm({
       }
     >
       <div className="crm-form">
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={VISIT_FIELDS} sections={VISIT_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} title="Visit fields" />
+        </div>
         {error && (
           <div className="crm-form-wide">
             <ErrorNote>{error}</ErrorNote>
@@ -699,76 +804,7 @@ function VisitForm({
           )}
         </div>
 
-        <Field label="Contact Person">
-          <input
-            value={contact}
-            onChange={(event) => setContact(event.target.value)}
-            placeholder="Who will meet the employee"
-          />
-        </Field>
-        <Field
-          label="Mobile Number"
-          hint={
-            mobileBad
-              ? <span className="lf-req">{`Enter a ${length}-digit mobile number.`}</span>
-              : `The number the arrival code goes to. ${dial} is added for you.`
-          }
-        >
-          <input
-            value={mobile}
-            onChange={(event) => setMobile(onlyDigits(event.target.value, length))}
-            placeholder={`${dial} ${'9876543210'.slice(0, length)}`}
-            inputMode="numeric"
-            maxLength={length}
-            aria-invalid={mobileBad}
-          />
-        </Field>
-
-        <Field label="Address" wide hint={`Leave blank to use the address on the ${subjectWord} record.`}>
-          <textarea placeholder="e.g. 12, MG Road, Bengaluru 560001" value={address} onChange={(event) => setAddress(event.target.value)} rows={2} />
-        </Field>
-
-        <Field label="Visit Type *">
-          <MasterSelect kind="visit-types" value={typeId} onChange={setTypeId} />
-        </Field>
-        <Field label="Priority">
-          <select value={priority} onChange={(event) => setPriority(event.target.value as typeof priority)}>
-            {PRIORITIES.map((level) => (
-              <option key={level} value={level}>
-                {level.charAt(0).toUpperCase() + level.slice(1)}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Visit Purpose / Reason" wide required>
-          <textarea
-            value={purpose}
-            onChange={(event) => setPurpose(event.target.value)}
-            rows={2}
-            placeholder="What the employee is going there to do"
-          />
-        </Field>
-
-        <Field label="Assigned Employee" required>
-          <OwnerSelect value={assignee} onChange={setAssignee} placeholder="Select employee" />
-        </Field>
-        <Field label="Scheduled *">
-          <input
-            type="datetime-local"
-            value={when}
-            onChange={(event) => setWhen(event.target.value)}
-          />
-        </Field>
-
-        <Field label="Notes" wide>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={2}
-            placeholder="Anything the employee should know before going"
-          />
-        </Field>
+        {fieldsOf('visit')}
       </div>
     </Dialog>
   )

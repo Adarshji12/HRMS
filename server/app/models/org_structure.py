@@ -110,6 +110,8 @@ class Designation(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: A few letters for the title, e.g. "SE". Optional.
+    code: Mapped[str | None] = mapped_column(String(12), nullable=True)
     level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Null means the title is used in any department. SET NULL so deleting a
     # department widens its titles rather than deleting them.
@@ -155,3 +157,32 @@ class WorkSchedule(UUIDMixin, TimestampMixin, Base):
         if span < 0:  # overnight shift
             span += 24 * 60
         return max(0, span - self.break_minutes)
+
+
+class Branch(UUIDMixin, TimestampMixin, Base):
+    """A company site: a head office, a regional office, a plant.
+
+    Address fields are plain text picked from the Geography master rather than
+    foreign keys, so a branch keeps reading correctly if a master row is renamed
+    or retired. At most one branch is the head office.
+    """
+
+    __tablename__ = "branches"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_branches_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pincode: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    is_head_office: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Offered when adding an employee. Off hides it from pickers; nothing is deleted.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

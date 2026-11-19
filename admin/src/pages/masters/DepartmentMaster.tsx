@@ -8,7 +8,7 @@
  * department is saved.
  */
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/org.css'
@@ -20,6 +20,48 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { Dialog, Field } from '../crm/parts'
 import { MasterTrail } from './MasterBack'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../components/ViewSettings'
+
+/** What the department list can show; the first five are the default. */
+type DepartmentColumn = ColumnDef & {
+  td: (row: Department, ctx: { parentName: (id: string | null) => string | null }) => ReactNode
+  className?: string
+  thClass?: string
+}
+const dash = <span className="crm-muted">—</span>
+const DEPARTMENT_COLUMNS: DepartmentColumn[] = [
+  { key: 'department', label: 'Department', locked: true, td: (d) => (
+    <>
+      <span className="crm-strong">{d.name}</span>
+      {d.description && <div className="crm-sub">{d.description}</div>}
+    </>
+  ) },
+  { key: 'code', label: 'Code', className: 'crm-muted', td: (d) => d.code ?? '—' },
+  { key: 'head', label: 'Head', td: (d) => d.head_name ?? dash },
+  { key: 'employees', label: 'Employees', className: 'crm-num dm-count', thClass: 'crm-num', td: (d) => d.member_count },
+  { key: 'status', label: 'Status', td: (d) => (
+    <span className={`crm-state ${d.is_active ? 'crm-state-good' : 'crm-state-idle'}`}>
+      {d.is_active ? 'Active' : 'Inactive'}
+    </span>
+  ) },
+  { key: 'parent', label: 'Parent department', initial: false, td: (d, ctx) => ctx.parentName(d.parent_id) ?? dash },
+  { key: 'teams', label: 'Teams', initial: false, className: 'crm-num', thClass: 'crm-num', td: (d) => d.team_count },
+]
+
+/** What the department form can show, make mandatory or hide. The name is what
+ *  the server needs. The employees list below the fields is left as it is. */
+const DEPARTMENT_SECTIONS: FieldSection[] = [{ id: 'department', label: 'Department' }]
+const DEPARTMENT_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'department', fixed: true },
+  { key: 'code', label: 'Short code', section: 'department' },
+  { key: 'parent', label: 'Reports under', section: 'department' },
+  { key: 'head', label: 'Head of department', section: 'department', initial: 'hide' },
+  { key: 'description', label: 'Description', section: 'department' },
+  { key: 'active', label: 'Offered when adding an employee', section: 'department', optionalOnly: true },
+]
 
 const ORG_TRAIL_DEPARTMENT = [
   { label: 'Master', to: '/masters' },
@@ -27,9 +69,12 @@ const ORG_TRAIL_DEPARTMENT = [
   { label: 'Department' },
 ]
 
-export default function DepartmentMaster() {
+/** `readOnly` lists without add, edit or delete — as on HR Settings, where the masters
+ *  are only listed; the Master menu is where they are kept. */
+export default function DepartmentMaster({ readOnly = false }: { readOnly?: boolean }) {
+  const columns = useColumns('departments', DEPARTMENT_COLUMNS)
   const { user } = useAuth()
-  const isAdmin = canAdminister(user)
+  const isAdmin = canAdminister(user) && !readOnly
   const departments = useQuery<Department[]>('departments', () =>
     api.get<Department[]>('/org/departments'),
   )
@@ -67,6 +112,7 @@ export default function DepartmentMaster() {
   }
 
   const total = departments.data?.length ?? 0
+  const parentName = (id: string | null) => (id ? departments.data?.find((x) => x.id === id)?.name ?? null : null)
 
   return (
     <div className="crm">
@@ -92,6 +138,8 @@ export default function DepartmentMaster() {
             <span className="crm-sub crm-nowrap">
               {total} department{total === 1 ? '' : 's'}
             </span>
+            <ColumnSettings defs={DEPARTMENT_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                            onSave={columns.save} onReset={columns.reset} />
             {isAdmin && (
               <button className="btn btn-primary" onClick={() => setEditing('new')}>
                 <IconPlus size={15} /> Add Department
@@ -123,29 +171,18 @@ export default function DepartmentMaster() {
             <table>
               <thead>
                 <tr>
-                  <th>Department</th>
-                  <th>Code</th>
-                  <th>Head</th>
-                  <th className="crm-num">Employees</th>
-                  <th>Status</th>
+                  {(columns.visible as DepartmentColumn[]).map((col) => (
+                    <th key={col.key} className={col.thClass}>{col.label}</th>
+                  ))}
                   {isAdmin && <th style={{ textAlign: 'right' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((d) => (
                   <tr key={d.id}>
-                    <td>
-                      <span className="crm-strong">{d.name}</span>
-                      {d.description && <div className="crm-sub">{d.description}</div>}
-                    </td>
-                    <td className="crm-muted">{d.code ?? '—'}</td>
-                    <td>{d.head_name ?? <span className="crm-muted">—</span>}</td>
-                    <td className="crm-num dm-count">{d.member_count}</td>
-                    <td>
-                      <span className={`crm-state ${d.is_active ? 'crm-state-good' : 'crm-state-idle'}`}>
-                        {d.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
+                    {(columns.visible as DepartmentColumn[]).map((col) => (
+                      <td key={col.key} className={col.className}>{col.td(d, { parentName })}</td>
+                    ))}
                     {isAdmin && (
                       <td>
                         <div className="crm-row-actions">
@@ -225,11 +262,24 @@ function DepartmentDialog({
   const [error, setError] = useState<string | null>(null)
 
   const members = people.filter((p) => memberIds.includes(p.id))
+  /* What this person has chosen to show, require or hide on the form. */
+  const fields = useFieldModes('department-form', DEPARTMENT_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = {
+    code: form.code.trim() === '', head: !form.head_user_id, parent: !form.parent_id,
+    description: form.description.trim() === '',
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
   const set = (key: keyof typeof form, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }))
 
   async function save() {
     if (!form.name.trim()) {
       setError('Give it a name.')
+      return
+    }
+    if (missing) {
+      setError('Fill in the fields marked *.')
       return
     }
     setBusy(true)
@@ -269,6 +319,50 @@ function DepartmentDialog({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+      <Field label="Name" wide required>
+        <input placeholder="Operations" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
+      </Field>
+    ),
+    code: fm('code') !== 'hide' && (
+      <Field label="Short code" required={rq('code')} hint="Shown on reports">
+        <input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} placeholder="OPS" />
+      </Field>
+    ),
+    head: fm('head') !== 'hide' && (
+      <Field label="Head of department" required={rq('head')} hint="Heads can see everyone in the department.">
+        <select value={form.head_user_id} onChange={(e) => set('head_user_id', e.target.value)}>
+          <option value="">Unassigned</option>
+          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </select>
+      </Field>
+    ),
+    parent: fm('parent') !== 'hide' && (
+      <Field label="Reports under" required={rq('parent')}>
+        <select value={form.parent_id} onChange={(e) => set('parent_id', e.target.value)}>
+          <option value="">— None —</option>
+          {departments
+            .filter((d) => d.id !== department?.id)
+            .map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </Field>
+    ),
+    description: fm('description') !== 'hide' && (
+      <Field label="Description" wide required={rq('description')}>
+        <input placeholder="Optional" value={form.description} onChange={(e) => set('description', e.target.value)} />
+      </Field>
+    ),
+    active: fm('active') !== 'hide' && (
+      <div className="crm-field crm-form-wide">
+        <label className="crm-check">
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
+          Offered when adding an employee
+        </label>
+      </div>
+    ),
+  }
+
   // One dialog at a time: the picker replaces this one rather than stacking on
   // it, so Escape closes the picker and not both.
   if (picking) {
@@ -288,41 +382,24 @@ function DepartmentDialog({
   return (
     <Dialog
       title={department ? `Edit ${department.name}` : 'Add Department'}
+      narrow
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : department ? 'Save' : 'Create department'}
+            {busy ? 'Saving…' : department ? 'Save' : 'Add'}
           </button>
         </>
       }
     >
       <div className="crm-form">
         {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
-        <Field label="Name">
-          <input placeholder="e.g. Engineering" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
-        </Field>
-        <Field label="Code">
-          <input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} placeholder="ENG" />
-        </Field>
-        <Field label="Head of department" hint="Heads can see everyone in the department.">
-          <select value={form.head_user_id} onChange={(e) => set('head_user_id', e.target.value)}>
-            <option value="">Unassigned</option>
-            {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
-        </Field>
-        <Field label="Parent department">
-          <select value={form.parent_id} onChange={(e) => set('parent_id', e.target.value)}>
-            <option value="">None — top level</option>
-            {departments
-              .filter((d) => d.id !== department?.id)
-              .map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Description" wide>
-          <input placeholder="e.g. Builds and maintains the product" value={form.description} onChange={(e) => set('description', e.target.value)} />
-        </Field>
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={DEPARTMENT_FIELDS} sections={DEPARTMENT_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
+        {fields.orderOf('department').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
         {/* A div, not Field: Field is a <label>, which would forward a click
             anywhere on the names to the button inside it. */}
         <div className="crm-field crm-form-wide">
@@ -335,12 +412,6 @@ function DepartmentDialog({
               <IconPlus size={14} /> Add employees
             </button>
           </div>
-        </div>
-        <div className="crm-field crm-form-wide">
-          <label className="crm-check">
-            <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
-            Active
-          </label>
         </div>
       </div>
     </Dialog>

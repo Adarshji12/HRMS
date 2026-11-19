@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 
@@ -15,10 +17,14 @@ def globex(tenants):
     return tenants[1]
 
 
+_mobiles = itertools.count(919000000001)
+
+
 def _lead(client, tenant) -> dict:
+    # A mobile number can only be a lead once, so each call gets a new one.
     response = client.post(
         "/api/v1/crm/leads",
-        json={"name": "Rohit Sharma", "mobile": "+919000000001"},
+        json={"name": "Rohit Sharma", "mobile": f"+{next(_mobiles)}"},
         headers=tenant.headers(),
     )
     assert response.status_code == 201, response.text
@@ -364,3 +370,46 @@ def test_another_company_cannot_move_the_stage(client, acme, globex):
         f"/api/v1/crm/opportunities/{row['id']}/stage", json={"stage": "won"}, headers=globex.headers()
     )
     assert response.status_code == 404
+
+
+def _person_with_menu_rights(tenant, base_role: str, menu_rights):
+    import uuid
+
+    from app.core.security import create_access_token
+    from app.db.session import SessionLocal
+    from app.models import Organization, OrgRole
+    from tests.conftest import _make_user
+
+    with SessionLocal() as db:
+        role = OrgRole(
+            id=uuid.uuid4(), org_id=tenant.id, name=f"Role {uuid.uuid4().hex[:6]}", base_role=base_role,
+            data_scope="self" if base_role == "employee" else "company", permissions={},
+            menu_rights=menu_rights, is_builtin=False,
+        )
+        db.add(role)
+        db.flush()
+        user = _make_user(db, db.get(Organization, tenant.id),
+                          f"p-{uuid.uuid4().hex[:6]}@{tenant.slug}.test", base_role, "Costsheet Person")
+        user.role_id = role.id
+        db.commit()
+        token = create_access_token(str(user.id), {"typ": "user", "org": str(tenant.id), "role": base_role})
+    return {"Authorization": f"Bearer {token}", "X-Org-Slug": tenant.slug}
+
+
+def test_a_role_given_costsheet_approval_decides_costsheets_even_as_an_employee(client, acme):
+    opp = _with_costsheet(client, acme, send_costsheet_for_approval=True)
+    queue = "/api/v1/crm/opportunities?costsheet_status=requested"
+    plain = acme.headers(acme.employee_token)
+    # An ordinary employee cannot decide, whatever they can see.
+    assert _decide(client, plain, opp["id"], "approved").status_code == 403
+
+    approver = _person_with_menu_rights(acme, "employee", {"/approvals": {"access": True, "add": False, "edit": False, "delete": False, "tab_costsheet": True}})
+    assert opp["id"] in {r["id"] for r in client.get(queue, headers=approver).json()}
+    assert _decide(client, approver, opp["id"], "approved").json()["costsheet_status"] == "approved"
+
+
+def test_a_role_without_costsheet_approval_is_refused_even_as_an_admin(client, acme):
+    opp = _with_costsheet(client, acme, send_costsheet_for_approval=True)
+    blocked = _person_with_menu_rights(acme, "admin", {"/approvals": {"access": True, "tab_costsheet": False}})
+    assert client.get("/api/v1/crm/opportunities?costsheet_status=requested", headers=blocked).status_code == 403
+    assert _decide(client, blocked, opp["id"], "approved").status_code == 403

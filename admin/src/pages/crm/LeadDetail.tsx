@@ -32,7 +32,7 @@ import {
   IconTrash,
 } from '../../components/Icons'
 import { crm, crmError, localToISO, type FollowUp, type LeadDetail as Detail, type Opportunity } from './api'
-import { Assignee, MasterSelect, OwnerSelect, StagePill, WhatsAppButton } from './parts'
+import { Assignee, MasterSelect, OwnerSelect, StagePill } from './parts'
 import { ConvertDialog, LeadForm } from './MyLeads'
 
 export default function LeadDetail() {
@@ -73,7 +73,6 @@ export default function LeadDetail() {
           </div>
         </div>
         <div className="ldp-head-actions">
-          <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
           <Link className="btn" to={`/crm/quotations/new?lead=${lead.id}`}>
             <IconSheet size={14} /> Add quotation
           </Link>
@@ -124,7 +123,7 @@ export default function LeadDetail() {
               <Fact label="Lead Source" value={lead.source_name} />
               <Fact label="Lead Owner" value={lead.owner_name && <Assignee name={lead.owner_name} />} />
               <Fact label="Industry" value={lead.industry_name} />
-              <Fact label="Product / Service" value={lead.product_name} />
+              <Fact label="Item" value={lead.product_name} />
               <Fact label="Expected revenue" value={lead.value && `₹${Number(lead.value).toLocaleString('en-IN')}`} />
               <Fact label="State" value={lead.state_name} />
               <Fact label="City" value={lead.city_name} />
@@ -272,11 +271,6 @@ function DealFacts({ deals }: { deals: Opportunity[] }) {
             <Fact label="Expected closing" value={deal?.expected_closing && closingDate(deal.expected_closing)} />
             <Fact label="Existing customer" value={deal?.customer_name} />
             <Fact label="Currency" value={deal && 'INR (₹)'} />
-            <Fact label="Priority" value={deal && deal.priority > 0 && (
-              <span className="ldp-stars" role="img" aria-label={`${deal.priority} of 3 stars`}>
-                {[1, 2, 3].map((n) => <IconStar key={n} size={15} className={n <= deal.priority ? 'is-on' : undefined} />)}
-              </span>
-            )} />
             <Fact label="Tags" value={deal && deal.tags.length > 0 && (
               <span className="ldp-tags">{deal.tags.map((tag) => <span className="ldp-tag" key={tag}>{tag}</span>)}</span>
             )} />

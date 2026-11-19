@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { canAdminister, useAuth } from '../../../lib/auth'
@@ -14,6 +14,10 @@ import {
   type LeaveSettingsOut,
   type LeaveType,
 } from './MyLeave'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 import '../../../styles/leave.css'
 
 /**
@@ -336,6 +340,119 @@ function carryForwardText(leaveType: LeaveType): string {
   return `Up to ${days(leaveType.carry_forward_limit_milli_days)} days`
 }
 
+type TypeColumn = ColumnDef & { td: (row: LeaveType) => ReactNode; className?: string; thClass?: string }
+
+const TYPE_COLUMNS: TypeColumn[] = [
+  { key: 'name', label: 'Type', locked: true, td: (leaveType) => (
+    <>
+      <b>{leaveType.name}</b>
+      {leaveType.code && <span className="badge" style={{ marginLeft: 8 }}>{leaveType.code}</span>}
+      <div className="lv-sub">
+        {leaveType.is_paid ? 'Paid' : 'Unpaid'}
+        {leaveType.is_comp_off && ' · comp-off'}
+        {leaveType.is_encashable && ' · encashable'}
+        {!leaveType.requires_approval && ' · no approval needed'}
+        {!leaveType.is_active && ' · inactive'}
+      </div>
+    </>
+  ) },
+  { key: 'accrual', label: 'Accrual', td: (leaveType) => (
+    leaveType.is_comp_off ? (
+      <span className="lv-sub">From comp-off credits only</span>
+    ) : leaveType.accrual_type === 'none' ? (
+      <span className="lv-sub">Granted by hand</span>
+    ) : (
+      <>
+        {days(leaveType.accrual_rate_milli_days)} / {leaveType.accrual_type === 'monthly' ? 'month' : 'year'}
+      </>
+    )
+  ) },
+  { key: 'max_balance', label: 'Max balance', td: (leaveType) => (
+    leaveType.max_balance_milli_days === 0 ? (
+      <span className="lv-sub">Uncapped (0)</span>
+    ) : (
+      `${days(leaveType.max_balance_milli_days)} days`
+    )
+  ) },
+  { key: 'carry', label: 'Carry-forward', td: (leaveType) => carryForwardText(leaveType) },
+  { key: 'notice', label: 'Notice', className: 'num lv-mono', td: (leaveType) => leaveType.min_notice_days || '—' },
+  { key: 'half', label: 'Half day', td: (leaveType) => (leaveType.allow_half_day ? 'Allowed' : 'No') },
+  { key: 'paid', label: 'Paid', initial: false, td: (leaveType) => (leaveType.is_paid ? 'Paid' : 'Unpaid') },
+  { key: 'approval', label: 'Needs approval', initial: false, td: (leaveType) => (leaveType.requires_approval ? 'Yes' : 'No') },
+  { key: 'encash', label: 'Encashable', initial: false, td: (leaveType) => (leaveType.is_encashable ? 'Yes' : 'No') },
+  { key: 'active', label: 'Active', initial: false, td: (leaveType) => (leaveType.is_active ? 'Yes' : 'No') },
+  { key: 'description', label: 'Description', initial: false, td: (leaveType) => leaveType.description || '—' },
+]
+
+/* Name, accrual type and rate are fixed: the server needs a name, and refuses a
+   monthly or yearly type without a positive rate, so those cannot be hidden. */
+const TYPE_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'basics', fixed: true },
+  { key: 'code', label: 'Short code', section: 'basics' },
+  { key: 'accrual_type', label: 'Accrues', section: 'basics', fixed: true },
+  { key: 'accrual_rate_days', label: 'Accrual rate', section: 'basics', fixed: true },
+  { key: 'max_balance_days', label: 'Maximum balance', section: 'basics', optionalOnly: true },
+  { key: 'carry_forward', label: 'Carry-forward', section: 'basics', optionalOnly: true },
+  { key: 'min_notice_days', label: 'Notice required', section: 'basics', optionalOnly: true },
+  { key: 'is_paid', label: 'Paid', section: 'options', optionalOnly: true },
+  { key: 'requires_approval', label: 'Needs approval', section: 'options', optionalOnly: true },
+  { key: 'allow_half_day', label: 'Half days allowed', section: 'options', optionalOnly: true },
+  { key: 'is_comp_off', label: 'This is the comp-off type', section: 'options', optionalOnly: true },
+  { key: 'is_encashable', label: 'Encashable on exit', section: 'options', optionalOnly: true },
+  { key: 'is_active', label: 'Active', section: 'options', optionalOnly: true },
+  { key: 'description', label: 'Description', section: 'description' },
+]
+const TYPE_SECTIONS: FieldSection[] = [
+  { id: 'basics', label: 'Leave type' },
+  { id: 'options', label: 'Options' },
+  { id: 'description', label: 'Description' },
+]
+
+type HolidayColumn = ColumnDef & { td: (row: Holiday) => ReactNode; className?: string; thClass?: string }
+
+const HOLIDAY_COLUMNS: HolidayColumn[] = [
+  { key: 'date', label: 'Date', locked: true, className: 'lv-mono', td: (holiday) => (
+    <>
+      <b>{shortDate(holiday.holiday_date)}</b>
+      <div className="lv-sub">{holiday.holiday_date}</div>
+    </>
+  ) },
+  { key: 'name', label: 'Holiday', td: (holiday) => (
+    <>
+      {holiday.name}
+      {holiday.description && <div className="lv-sub">{holiday.description}</div>}
+    </>
+  ) },
+  { key: 'kind', label: 'Kind', td: (holiday) => (
+    <>
+      {holiday.is_optional ? (
+        <span className="badge badge-warn">Optional</span>
+      ) : (
+        <span className="badge">Everyone</span>
+      )}
+      {!holiday.is_active && <span className="badge" style={{ marginLeft: 6 }}>Inactive</span>}
+    </>
+  ) },
+  { key: 'opted', label: 'Opted in', className: 'num lv-mono', thClass: 'num', td: (holiday) => (
+    holiday.is_optional ? (holiday.opt_in_count ?? 0) : '—'
+  ) },
+  { key: 'weekday', label: 'Weekday', initial: false, td: (holiday) => new Date(`${holiday.holiday_date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' }) },
+]
+
+const HOLIDAY_FIELDS: FieldDef[] = [
+  { key: 'holiday_date', label: 'Date', section: 'holiday', fixed: true },
+  { key: 'name', label: 'Name', section: 'holiday', fixed: true },
+  { key: 'description', label: 'Description', section: 'holiday' },
+  { key: 'is_optional', label: 'Optional — employees opt in', section: 'options', optionalOnly: true },
+  { key: 'is_active', label: 'Active', section: 'options', optionalOnly: true },
+]
+const HOLIDAY_SECTIONS: FieldSection[] = [
+  { id: 'holiday', label: 'Holiday' },
+  { id: 'options', label: 'Options' },
+]
+
+const star = (on: boolean) => (on ? <span className="lf-req"> *</span> : null)
+
 function TypesPanel({
   types,
   onDone,
@@ -345,14 +462,19 @@ function TypesPanel({
 }) {
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const hasCompOff = types.some((t) => t.is_comp_off)
+  const columns = useColumns('leave-types', TYPE_COLUMNS)
 
   return (
     <section className="card">
       <div className="card-head">
         <h2 className="card-title">Leave types</h2>
-        <button className="btn btn-sm" onClick={() => setEditing(editing === 'new' ? null : 'new')}>
-          {editing === 'new' ? 'Cancel' : 'New leave type'}
-        </button>
+        <div className="card-tools">
+          <ColumnSettings defs={TYPE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+          <button className="btn btn-sm" onClick={() => setEditing(editing === 'new' ? null : 'new')}>
+            {editing === 'new' ? 'Cancel' : 'New leave type'}
+          </button>
+        </div>
       </div>
 
       {editing === 'new' && (
@@ -385,50 +507,18 @@ function TypesPanel({
           <table>
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Accrual</th>
-                <th>Max balance</th>
-                <th>Carry-forward</th>
-                <th>Notice</th>
-                <th>Half day</th>
+                {columns.visible.map((col) => (
+                  <th key={col.key} className={(col as TypeColumn).thClass}>{col.label}</th>
+                ))}
                 <th />
               </tr>
             </thead>
             <tbody>
               {types.map((leaveType) => [
                 <tr key={leaveType.id} className={leaveType.is_active ? undefined : 'lv-past'}>
-                  <td>
-                    <b>{leaveType.name}</b>
-                    {leaveType.code && <span className="badge" style={{ marginLeft: 8 }}>{leaveType.code}</span>}
-                    <div className="lv-sub">
-                      {leaveType.is_paid ? 'Paid' : 'Unpaid'}
-                      {leaveType.is_comp_off && ' · comp-off'}
-                      {leaveType.is_encashable && ' · encashable'}
-                      {!leaveType.requires_approval && ' · no approval needed'}
-                      {!leaveType.is_active && ' · inactive'}
-                    </div>
-                  </td>
-                  <td>
-                    {leaveType.is_comp_off ? (
-                      <span className="lv-sub">From comp-off credits only</span>
-                    ) : leaveType.accrual_type === 'none' ? (
-                      <span className="lv-sub">Granted by hand</span>
-                    ) : (
-                      <>
-                        {days(leaveType.accrual_rate_milli_days)} / {leaveType.accrual_type === 'monthly' ? 'month' : 'year'}
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    {leaveType.max_balance_milli_days === 0 ? (
-                      <span className="lv-sub">Uncapped (0)</span>
-                    ) : (
-                      `${days(leaveType.max_balance_milli_days)} days`
-                    )}
-                  </td>
-                  <td>{carryForwardText(leaveType)}</td>
-                  <td className="num lv-mono">{leaveType.min_notice_days || '—'}</td>
-                  <td>{leaveType.allow_half_day ? 'Allowed' : 'No'}</td>
+                  {columns.visible.map((col) => (
+                    <td key={col.key} className={(col as TypeColumn).className}>{(col as TypeColumn).td(leaveType)}</td>
+                  ))}
                   <td className="num">
                     <button
                       className="btn btn-sm btn-ghost"
@@ -440,7 +530,7 @@ function TypesPanel({
                 </tr>,
                 editing === leaveType.id ? (
                   <tr key={`${leaveType.id}-edit`}>
-                    <td colSpan={7}>
+                    <td colSpan={columns.visible.length + 1}>
                       <TypeForm
                         initial={formFor(leaveType)}
                         id={leaveType.id}
@@ -484,6 +574,9 @@ function TypeForm({
   const [form, setForm] = useState<TypeDraft>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fields = useFieldModes('leave-type-form', TYPE_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   function patch(next: Partial<TypeDraft>) {
     setForm((prev) => {
@@ -508,6 +601,10 @@ function TypeForm({
           'if it is topped up manually — a scheduled type with a zero rate looks to the employee ' +
           'exactly like a broken accrual job.',
       )
+      return
+    }
+    if ((rq('code') && !form.code.trim()) || (rq('description') && !form.description.trim())) {
+      setError('Fill in the fields marked *.')
       return
     }
     setBusy(true)
@@ -540,176 +637,217 @@ function TypeForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+      <label className="setting">
+        Name
+        <input
+          value={form.name}
+          maxLength={120}
+          required
+          onChange={(e) => patch({ name: e.target.value })}
+          placeholder="Casual Leave"
+        />
+      </label>
+    ),
+    code: fm('code') !== 'hide' && (
+      <label className="setting">
+        Short code{star(rq('code'))} <span className="setting-hint">{rq('code') ? 'Shows next to the balance.' : 'Optional. Shows next to the balance.'}</span>
+        <input
+          value={form.code}
+          maxLength={16}
+          onChange={(e) => patch({ code: e.target.value })}
+          placeholder="CL"
+        />
+      </label>
+    ),
+    accrual_type: (
+      <label className="setting">
+        Accrues
+        <select
+          value={form.accrual_type}
+          disabled={form.is_comp_off}
+          onChange={(e) => patch({ accrual_type: e.target.value as TypeDraft['accrual_type'] })}
+        >
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+          <option value="none">Not on a schedule — granted by hand</option>
+        </select>
+        {form.is_comp_off && (
+          <span className="setting-hint">
+            Fixed for a comp-off type: its balance comes from comp-off credits, which are its
+            only writer.
+          </span>
+        )}
+      </label>
+    ),
+    accrual_rate_days: rateNeeded && (
+      <label className="setting">
+        Rate, in days per {form.accrual_type === 'monthly' ? 'month' : 'year'}
+        <input placeholder="1.5"
+          type="number"
+          min={0}
+          step={0.25}
+          value={form.accrual_rate_days}
+          onChange={(e) => patch({ accrual_rate_days: Number(e.target.value) })}
+        />
+        <span className="setting-hint">
+          Stored as {toMilli(form.accrual_rate_days)} milli-days — a thousandth of a day, so
+          half days are exact.
+        </span>
+      </label>
+    ),
+    max_balance_days: fm('max_balance_days') !== 'hide' && (
+      <label className="setting">
+        Maximum balance, in days
+        <input placeholder="30"
+          type="number"
+          min={0}
+          step={0.5}
+          value={form.max_balance_days}
+          onChange={(e) => patch({ max_balance_days: Number(e.target.value) })}
+        />
+        <div className={`lv-zero${form.max_balance_days === 0 ? ' lv-zero-strong' : ''}`}>
+          {form.max_balance_days === 0
+            ? '0 here means UNCAPPED — the balance keeps accruing with no ceiling.'
+            : `Accrual stops once the balance reaches ${form.max_balance_days} days.`}
+        </div>
+      </label>
+    ),
+    carry_forward: fm('carry_forward') !== 'hide' && (
+      <div className="setting">
+        Carry-forward at the end of the leave year
+        <label className="check-field" style={{ marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={form.carry_forward_all}
+            onChange={(e) => patch({ carry_forward_all: e.target.checked })}
+          />
+          <span>Carry everything over</span>
+        </label>
+        {!form.carry_forward_all && (
+          <>
+            <input placeholder="10"
+              type="number"
+              min={0}
+              step={0.5}
+              value={form.carry_forward_days}
+              onChange={(e) => patch({ carry_forward_days: Number(e.target.value) })}
+            />
+            <div className={`lv-zero${form.carry_forward_days === 0 ? ' lv-zero-strong' : ''}`}>
+              {form.carry_forward_days === 0 ? (
+                <>
+                  <b>0 here means NOTHING carries over</b> — use it or lose it. This is the
+                  opposite of the zero on “maximum balance”. To carry everything, tick the box
+                  above rather than typing a large number.
+                </>
+              ) : (
+                <>At most <b>{form.carry_forward_days}</b> days follow the employee into the next leave year; the rest lapses.</>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    ),
+    min_notice_days: fm('min_notice_days') !== 'hide' && (
+      <label className="setting">
+        Notice required, in days
+        <input placeholder="3"
+          type="number"
+          min={0}
+          max={365}
+          step={1}
+          value={form.min_notice_days}
+          onChange={(e) => patch({ min_notice_days: Number(e.target.value) })}
+        />
+        <span className="setting-hint">
+          Enforced on the employee, waived for anyone filing on their behalf — HR back-filling
+          last month from a spreadsheet has to be possible. 0 for no notice.
+        </span>
+      </label>
+    ),
+    is_paid: fm('is_paid') !== 'hide' && (
+      <label className="check-field">
+        <input type="checkbox" checked={form.is_paid} onChange={(e) => patch({ is_paid: e.target.checked })} />
+        <span>Paid</span>
+      </label>
+    ),
+    requires_approval: fm('requires_approval') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.requires_approval}
+          onChange={(e) => patch({ requires_approval: e.target.checked })}
+        />
+        <span>Needs approval</span>
+      </label>
+    ),
+    allow_half_day: fm('allow_half_day') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.allow_half_day}
+          onChange={(e) => patch({ allow_half_day: e.target.checked })}
+        />
+        <span>Half days allowed</span>
+      </label>
+    ),
+    is_comp_off: fm('is_comp_off') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.is_comp_off}
+          disabled={compOffTaken}
+          onChange={(e) => patch({ is_comp_off: e.target.checked })}
+        />
+        <span>This is the comp-off type</span>
+      </label>
+    ),
+    is_encashable: fm('is_encashable') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.is_encashable}
+          onChange={(e) => patch({ is_encashable: e.target.checked })}
+        />
+        <span>Encashable on exit</span>
+      </label>
+    ),
+    is_active: fm('is_active') !== 'hide' && (
+      <label className="check-field">
+        <input type="checkbox" checked={form.is_active} onChange={(e) => patch({ is_active: e.target.checked })} />
+        <span>Active</span>
+      </label>
+    ),
+    description: fm('description') !== 'hide' && (
+      <label className="setting" style={{ marginTop: 14 }}>
+        Description{star(rq('description'))} <span className="setting-hint">{rq('description') ? 'Shown to employees.' : 'Optional. Shown to employees.'}</span>
+        <textarea placeholder="e.g. Paid leave for personal or family needs"
+          className="set-textarea"
+          value={form.description}
+          maxLength={2000}
+          onChange={(e) => patch({ description: e.target.value })}
+        />
+      </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <form className="lv-form" onSubmit={submit}>
+      <div className="lf-settings">
+        <FieldSettings defs={TYPE_FIELDS} sections={TYPE_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Leave type fields" />
+      </div>
       {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
 
       <div className="settings-grid">
-        <label className="setting">
-          Name
-          <input
-            value={form.name}
-            maxLength={120}
-            required
-            onChange={(e) => patch({ name: e.target.value })}
-            placeholder="Casual Leave"
-          />
-        </label>
-        <label className="setting">
-          Short code <span className="setting-hint">Optional. Shows next to the balance.</span>
-          <input
-            value={form.code}
-            maxLength={16}
-            onChange={(e) => patch({ code: e.target.value })}
-            placeholder="CL"
-          />
-        </label>
-
-        <label className="setting">
-          Accrues
-          <select
-            value={form.accrual_type}
-            disabled={form.is_comp_off}
-            onChange={(e) => patch({ accrual_type: e.target.value as TypeDraft['accrual_type'] })}
-          >
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-            <option value="none">Not on a schedule — granted by hand</option>
-          </select>
-          {form.is_comp_off && (
-            <span className="setting-hint">
-              Fixed for a comp-off type: its balance comes from comp-off credits, which are its
-              only writer.
-            </span>
-          )}
-        </label>
-
-        {rateNeeded && (
-          <label className="setting">
-            Rate, in days per {form.accrual_type === 'monthly' ? 'month' : 'year'}
-            <input placeholder="1.5"
-              type="number"
-              min={0}
-              step={0.25}
-              value={form.accrual_rate_days}
-              onChange={(e) => patch({ accrual_rate_days: Number(e.target.value) })}
-            />
-            <span className="setting-hint">
-              Stored as {toMilli(form.accrual_rate_days)} milli-days — a thousandth of a day, so
-              half days are exact.
-            </span>
-          </label>
-        )}
-
-        <label className="setting">
-          Maximum balance, in days
-          <input placeholder="30"
-            type="number"
-            min={0}
-            step={0.5}
-            value={form.max_balance_days}
-            onChange={(e) => patch({ max_balance_days: Number(e.target.value) })}
-          />
-          <div className={`lv-zero${form.max_balance_days === 0 ? ' lv-zero-strong' : ''}`}>
-            {form.max_balance_days === 0
-              ? '0 here means UNCAPPED — the balance keeps accruing with no ceiling.'
-              : `Accrual stops once the balance reaches ${form.max_balance_days} days.`}
-          </div>
-        </label>
-
-        <div className="setting">
-          Carry-forward at the end of the leave year
-          <label className="check-field" style={{ marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={form.carry_forward_all}
-              onChange={(e) => patch({ carry_forward_all: e.target.checked })}
-            />
-            <span>Carry everything over</span>
-          </label>
-          {!form.carry_forward_all && (
-            <>
-              <input placeholder="10"
-                type="number"
-                min={0}
-                step={0.5}
-                value={form.carry_forward_days}
-                onChange={(e) => patch({ carry_forward_days: Number(e.target.value) })}
-              />
-              <div className={`lv-zero${form.carry_forward_days === 0 ? ' lv-zero-strong' : ''}`}>
-                {form.carry_forward_days === 0 ? (
-                  <>
-                    <b>0 here means NOTHING carries over</b> — use it or lose it. This is the
-                    opposite of the zero on “maximum balance”. To carry everything, tick the box
-                    above rather than typing a large number.
-                  </>
-                ) : (
-                  <>At most <b>{form.carry_forward_days}</b> days follow the employee into the next leave year; the rest lapses.</>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        <label className="setting">
-          Notice required, in days
-          <input placeholder="3"
-            type="number"
-            min={0}
-            max={365}
-            step={1}
-            value={form.min_notice_days}
-            onChange={(e) => patch({ min_notice_days: Number(e.target.value) })}
-          />
-          <span className="setting-hint">
-            Enforced on the employee, waived for anyone filing on their behalf — HR back-filling
-            last month from a spreadsheet has to be possible. 0 for no notice.
-          </span>
-        </label>
+        {fieldsOf('basics')}
       </div>
 
       <div className="filter-row" style={{ marginTop: 14, marginBottom: 0 }}>
-        <label className="check-field">
-          <input type="checkbox" checked={form.is_paid} onChange={(e) => patch({ is_paid: e.target.checked })} />
-          <span>Paid</span>
-        </label>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.requires_approval}
-            onChange={(e) => patch({ requires_approval: e.target.checked })}
-          />
-          <span>Needs approval</span>
-        </label>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.allow_half_day}
-            onChange={(e) => patch({ allow_half_day: e.target.checked })}
-          />
-          <span>Half days allowed</span>
-        </label>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.is_comp_off}
-            disabled={compOffTaken}
-            onChange={(e) => patch({ is_comp_off: e.target.checked })}
-          />
-          <span>This is the comp-off type</span>
-        </label>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.is_encashable}
-            onChange={(e) => patch({ is_encashable: e.target.checked })}
-          />
-          <span>Encashable on exit</span>
-        </label>
-        <label className="check-field">
-          <input type="checkbox" checked={form.is_active} onChange={(e) => patch({ is_active: e.target.checked })} />
-          <span>Active</span>
-        </label>
+        {fieldsOf('options')}
       </div>
 
       {compOffTaken && (
@@ -732,15 +870,7 @@ function TypeForm({
         </p>
       )}
 
-      <label className="setting" style={{ marginTop: 14 }}>
-        Description <span className="setting-hint">Optional. Shown to employees.</span>
-        <textarea placeholder="e.g. Paid leave for personal or family needs"
-          className="set-textarea"
-          value={form.description}
-          maxLength={2000}
-          onChange={(e) => patch({ description: e.target.value })}
-        />
-      </label>
+      {fieldsOf('description')}
 
       <div className="lv-actions" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy || !form.name.trim()}>
@@ -775,6 +905,7 @@ function HolidaysPanel({
   const [year, setYear] = useState(currentYear)
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const columns = useColumns('leave-holidays', HOLIDAY_COLUMNS)
 
   const holidays = useQuery<Holiday[]>(`leave-holidays:${year}:${reloadKey}`, () =>
     api.get<Holiday[]>(`/leave/holidays?year=${year}&include_inactive=true`),
@@ -802,6 +933,8 @@ function HolidaysPanel({
               ))}
             </select>
           </label>
+          <ColumnSettings defs={HOLIDAY_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           <button className="btn btn-sm" onClick={() => setEditing(editing === 'new' ? null : 'new')}>
             {editing === 'new' ? 'Cancel' : 'Add holiday'}
           </button>
@@ -860,10 +993,9 @@ function HolidaysPanel({
           <table>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Holiday</th>
-                <th>Kind</th>
-                <th className="num">Opted in</th>
+                {columns.visible.map((col) => (
+                  <th key={col.key} className={(col as HolidayColumn).thClass}>{col.label}</th>
+                ))}
                 <th />
               </tr>
             </thead>
@@ -879,25 +1011,9 @@ function HolidaysPanel({
                         : undefined
                   }
                 >
-                  <td className="lv-mono">
-                    <b>{shortDate(holiday.holiday_date)}</b>
-                    <div className="lv-sub">{holiday.holiday_date}</div>
-                  </td>
-                  <td>
-                    {holiday.name}
-                    {holiday.description && <div className="lv-sub">{holiday.description}</div>}
-                  </td>
-                  <td>
-                    {holiday.is_optional ? (
-                      <span className="badge badge-warn">Optional</span>
-                    ) : (
-                      <span className="badge">Everyone</span>
-                    )}
-                    {!holiday.is_active && <span className="badge" style={{ marginLeft: 6 }}>Inactive</span>}
-                  </td>
-                  <td className="num lv-mono">
-                    {holiday.is_optional ? (holiday.opt_in_count ?? 0) : '—'}
-                  </td>
+                  {columns.visible.map((col) => (
+                    <td key={col.key} className={(col as HolidayColumn).className}>{(col as HolidayColumn).td(holiday)}</td>
+                  ))}
                   <td className="num">
                     <button
                       className="btn btn-sm btn-ghost"
@@ -909,7 +1025,7 @@ function HolidaysPanel({
                 </tr>,
                 editing === holiday.id ? (
                   <tr key={`${holiday.id}-edit`}>
-                    <td colSpan={5}>
+                    <td colSpan={columns.visible.length + 1}>
                       <HolidayForm
                         id={holiday.id}
                         initial={{
@@ -962,9 +1078,16 @@ function HolidayForm({
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fields = useFieldModes('leave-holiday-form', HOLIDAY_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (rq('description') && !form.description.trim()) {
+      setError('Fill in the fields marked *.')
+      return
+    }
     setBusy(true)
     setError(null)
     const payload = {
@@ -999,56 +1122,77 @@ function HolidayForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    holiday_date: (
+      <label className="setting">
+        Date
+        <input
+          type="date"
+          value={form.holiday_date}
+          required
+          onChange={(e) => setForm({ ...form, holiday_date: e.target.value })}
+        />
+      </label>
+    ),
+    name: (
+      <label className="setting">
+        Name
+        <input
+          value={form.name}
+          maxLength={160}
+          required
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Republic Day"
+        />
+      </label>
+    ),
+    description: fm('description') !== 'hide' && (
+      <label className="setting">
+        Description{star(rq('description'))} {!rq('description') && <span className="setting-hint">Optional.</span>}
+        <input placeholder="e.g. Applies to the 1st and 3rd Saturday"
+          value={form.description}
+          maxLength={2000}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </label>
+    ),
+    is_optional: fm('is_optional') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.is_optional}
+          onChange={(e) => setForm({ ...form, is_optional: e.target.checked })}
+        />
+        <span>Optional — employees opt in</span>
+      </label>
+    ),
+    is_active: fm('is_active') !== 'hide' && (
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={form.is_active}
+          onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+        />
+        <span>Active</span>
+      </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   return (
     <form className="lv-form" onSubmit={submit}>
+      <div className="lf-settings">
+        <FieldSettings defs={HOLIDAY_FIELDS} sections={HOLIDAY_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Holiday fields" />
+      </div>
       {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
       <div className="settings-grid">
-        <label className="setting">
-          Date
-          <input
-            type="date"
-            value={form.holiday_date}
-            required
-            onChange={(e) => setForm({ ...form, holiday_date: e.target.value })}
-          />
-        </label>
-        <label className="setting">
-          Name
-          <input
-            value={form.name}
-            maxLength={160}
-            required
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Republic Day"
-          />
-        </label>
-        <label className="setting">
-          Description <span className="setting-hint">Optional.</span>
-          <input placeholder="e.g. Applies to the 1st and 3rd Saturday"
-            value={form.description}
-            maxLength={2000}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-        </label>
+        {fieldsOf('holiday')}
       </div>
 
       <div className="filter-row" style={{ marginTop: 14, marginBottom: 0 }}>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.is_optional}
-            onChange={(e) => setForm({ ...form, is_optional: e.target.checked })}
-          />
-          <span>Optional — employees opt in</span>
-        </label>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.is_active}
-            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-          />
-          <span>Active</span>
-        </label>
+        {fieldsOf('options')}
       </div>
 
       {form.is_optional && (

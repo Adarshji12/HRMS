@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import '../../../styles/offboarding.css'
 import { api, ApiError } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
@@ -14,6 +14,10 @@ import {
   StatTile,
 } from '../../../components/ui'
 import { IconAlert, IconCheck, IconReturn, IconUsers } from '../../../components/Icons'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 
 /* ---------------------------------------------------------------- types ---
    Page-local, mirroring app/schemas/offboarding.py. lib/types.ts is lead-owned
@@ -373,6 +377,67 @@ function TaskTick({ status }: { status: string }) {
 
 /* ----------------------------------------------------------------- page --- */
 
+type ExitColumn = ColumnDef & { td: (row: ExitRequest) => ReactNode; className?: string }
+
+const EXIT_COLUMNS: ExitColumn[] = [
+  { key: 'leaver', label: 'Leaver', locked: true, td: (row) => (
+    <Identity
+      name={row.user_name ?? 'Unknown'}
+      small
+      meta={
+        <>
+          {row.employee_code ? `${row.employee_code} · ` : ''}
+          {row.department_name ?? row.user_email}
+        </>
+      }
+    />
+  ) },
+  { key: 'reason', label: 'Reason', td: (row) => <ReasonTag value={row.reason} /> },
+  { key: 'status', label: 'Status', td: (row) => <StatusPill value={row.status} /> },
+  { key: 'last_day', label: 'Last day', className: 'offboard-when', td: (row) => (
+    row.last_working_day ? shortDate(row.last_working_day) : <span className="offboard-blocking">not set</span>
+  ) },
+  { key: 'clearance', label: 'Clearance', td: (row) => (
+    <>
+      <div className="offboard-progress">
+        <Meter value={row.task_settled} max={row.task_total} />
+        <span className="offboard-progress-pct">
+          {row.task_total ? Math.round((row.task_settled * 100) / row.task_total) : 0}
+          %
+        </span>
+      </div>
+      <div style={{ marginTop: 4 }}>
+        {row.blocking_task_count > 0 ? (
+          <span className="offboard-blocking">
+            <IconAlert size={11} /> {row.blocking_task_count} blocking
+          </span>
+        ) : (
+          <span className="offboard-clear">nothing blocking</span>
+        )}
+      </div>
+    </>
+  ) },
+  { key: 'settlement', label: 'Settlement', className: 'offboard-muted',
+    td: (row) => (row.fnf_status ? FNF_STATUS_LABEL[row.fnf_status] ?? row.fnf_status : '—') },
+  { key: 'notice', label: 'Notice received', initial: false, className: 'offboard-when', td: (row) => shortDate(row.notice_date) },
+  { key: 'department', label: 'Department', initial: false, td: (row) => row.department_name ?? '—' },
+  { key: 'designation', label: 'Designation', initial: false, td: (row) => row.designation_name ?? '—' },
+  { key: 'manager', label: 'Manager', initial: false, td: (row) => row.manager_name ?? '—' },
+  { key: 'initiated_by', label: 'Raised by', initial: false, td: (row) => row.initiated_by_name ?? '—' },
+  { key: 'completed', label: 'Completed', initial: false, className: 'offboard-when',
+    td: (row) => (row.completed_at ? shortDate(row.completed_at) : '—') },
+]
+
+// The server needs the leaver and the notice date; the rest is optional.
+const EXIT_FIELDS: FieldDef[] = [
+  { key: 'user', label: 'Leaver', section: 'exit', fixed: true },
+  { key: 'reason', label: 'Reason', section: 'exit' },
+  { key: 'notice_date', label: 'Notice received', section: 'exit', fixed: true },
+  { key: 'last_day', label: 'Last working day', section: 'exit' },
+  { key: 'note', label: 'Note', section: 'exit' },
+]
+const EXIT_SECTIONS: FieldSection[] = [{ id: 'exit', label: 'Exit' }]
+
 export default function Offboarding() {
   const { user } = useAuth()
   const allowed =
@@ -394,6 +459,7 @@ export default function Offboarding() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const columns = useColumns('offboarding', EXIT_COLUMNS)
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -527,6 +593,8 @@ export default function Offboarding() {
         <span className="filter-count">
           {rows.length} of {(exits.data ?? []).length}
         </span>
+        <ColumnSettings defs={EXIT_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         {filtered && (
           <button
             className="filter-reset"
@@ -573,12 +641,9 @@ export default function Offboarding() {
             <table>
               <thead>
                 <tr>
-                  <th>Leaver</th>
-                  <th>Reason</th>
-                  <th>Status</th>
-                  <th>Last day</th>
-                  <th>Clearance</th>
-                  <th>Settlement</th>
+                  {(columns.visible as ExitColumn[]).map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
                   <th style={{ textAlign: 'right' }}>Exit</th>
                 </tr>
               </thead>
@@ -589,54 +654,9 @@ export default function Offboarding() {
                     className={`offboard-row-click${openId === row.id ? ' offboard-row-open' : ''}`}
                     onClick={() => setOpenId(openId === row.id ? null : row.id)}
                   >
-                    <td>
-                      <Identity
-                        name={row.user_name ?? 'Unknown'}
-                        small
-                        meta={
-                          <>
-                            {row.employee_code ? `${row.employee_code} · ` : ''}
-                            {row.department_name ?? row.user_email}
-                          </>
-                        }
-                      />
-                    </td>
-                    <td>
-                      <ReasonTag value={row.reason} />
-                    </td>
-                    <td>
-                      <StatusPill value={row.status} />
-                    </td>
-                    <td className="offboard-when">
-                      {row.last_working_day ? (
-                        shortDate(row.last_working_day)
-                      ) : (
-                        <span className="offboard-blocking">not set</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="offboard-progress">
-                        <Meter value={row.task_settled} max={row.task_total} />
-                        <span className="offboard-progress-pct">
-                          {row.task_total
-                            ? Math.round((row.task_settled * 100) / row.task_total)
-                            : 0}
-                          %
-                        </span>
-                      </div>
-                      <div style={{ marginTop: 4 }}>
-                        {row.blocking_task_count > 0 ? (
-                          <span className="offboard-blocking">
-                            <IconAlert size={11} /> {row.blocking_task_count} blocking
-                          </span>
-                        ) : (
-                          <span className="offboard-clear">nothing blocking</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="offboard-muted">
-                      {row.fnf_status ? FNF_STATUS_LABEL[row.fnf_status] ?? row.fnf_status : '—'}
-                    </td>
+                    {(columns.visible as ExitColumn[]).map((col) => (
+                      <td key={col.key} className={col.className}>{col.td(row)}</td>
+                    ))}
                     <td onClick={(e) => e.stopPropagation()}>
                       <div className="offboard-actions">
                         <button
@@ -686,6 +706,15 @@ function InitiateForm({
   const [lastDay, setLastDay] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('offboarding-exit-form', EXIT_FIELDS)
+  const fm = fields.mode
+  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const emptyField: Record<string, boolean> = {
+    reason: !reason,
+    last_day: !lastDay,
+    note: !reasonNote.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -707,6 +736,69 @@ function InitiateForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    user: (
+      <label className="setting">
+        Leaver *
+        <select value={userId} onChange={(e) => setUserId(e.target.value)} required autoFocus>
+          <option value="">Choose an employee…</option>
+          {people
+            .filter((p) => p.status !== 'inactive')
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name}
+              </option>
+            ))}
+        </select>
+      </label>
+    ),
+    reason: fm('reason') !== 'hide' && (
+      <label className="setting">
+        Reason{star('reason')}
+        <select value={reason} onChange={(e) => setReason(e.target.value)}>
+          {Object.entries(REASON_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    notice_date: (
+      <label className="setting">
+        Notice received *
+        <input
+          type="date"
+          value={noticeDate}
+          onChange={(e) => setNoticeDate(e.target.value)}
+          required
+        />
+      </label>
+    ),
+    last_day: fm('last_day') !== 'hide' && (
+      <label className="setting">
+        Last working day{star('last_day')}
+        <input type="date" value={lastDay} onChange={(e) => setLastDay(e.target.value)} />
+        <span className="setting-hint">
+          Optional now: the last day is negotiated after a resignation is accepted far more
+          often than it is known on day one. Every clearance due date is derived from it, so
+          setting it later reschedules the checklist.
+        </span>
+      </label>
+    ),
+    note: fm('note') !== 'hide' && (
+      <label className="setting" style={{ gridColumn: '1 / -1' }}>
+        Note{star('note')}
+        <textarea
+          value={reasonNote}
+          onChange={(e) => setReasonNote(e.target.value)}
+          rows={2}
+          placeholder="Context for whoever reads this record later."
+        />
+      </label>
+    ),
+  }
+
   return (
     <form className="offboard-panel" onSubmit={submit}>
       <div className="offboard-panel-head">
@@ -726,66 +818,22 @@ function InitiateForm({
         </div>
       )}
 
+      <div className="lf-settings">
+        <FieldSettings defs={EXIT_FIELDS} sections={EXIT_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
       <div className="settings-grid">
-        <label className="setting">
-          Leaver
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} required autoFocus>
-            <option value="">Choose an employee…</option>
-            {people
-              .filter((p) => p.status !== 'inactive')
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="setting">
-          Reason
-          <select value={reason} onChange={(e) => setReason(e.target.value)}>
-            {Object.entries(REASON_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="setting">
-          Notice received
-          <input
-            type="date"
-            value={noticeDate}
-            onChange={(e) => setNoticeDate(e.target.value)}
-            required
-          />
-        </label>
-        <label className="setting">
-          Last working day
-          <input type="date" value={lastDay} onChange={(e) => setLastDay(e.target.value)} />
-          <span className="setting-hint">
-            Optional now: the last day is negotiated after a resignation is accepted far more
-            often than it is known on day one. Every clearance due date is derived from it, so
-            setting it later reschedules the checklist.
-          </span>
-        </label>
-        <label className="setting" style={{ gridColumn: '1 / -1' }}>
-          Note
-          <textarea
-            value={reasonNote}
-            onChange={(e) => setReasonNote(e.target.value)}
-            rows={2}
-            placeholder="Context for whoever reads this record later."
-          />
-        </label>
+        {fields.orderOf('exit').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
 
       <div className="btn-group" style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy || !userId || !noticeDate}>
+        <button className="btn btn-primary" disabled={busy || !userId || !noticeDate || missing}>
           {busy ? 'Raising…' : 'Raise the exit'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
+        {missing && <span className="offboard-muted">Fill in the fields marked *.</span>}
       </div>
     </form>
   )

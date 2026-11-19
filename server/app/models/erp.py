@@ -332,10 +332,9 @@ class ErpWarehouse(UUIDMixin, TimestampMixin, Base):
 class ErpItem(UUIDMixin, TimestampMixin, Base):
     """An item or a service — §7.1 "Item / Service".
 
-    ``crm_product_id`` links the CRM's catalogue entry, so a quotation priced
-    from a CRM product converts into an order line without anybody re-picking
-    the item. It is a link, not a merge: the CRM's product is what is sold,
-    this is what is stocked.
+    This is the one catalogue: the CRM's lead, quotation and customer-plan
+    "product" fields point straight at it, so a quotation line converts into an
+    order line with no re-picking.
     """
 
     __tablename__ = "erp_items"
@@ -368,9 +367,6 @@ class ErpItem(UUIDMixin, TimestampMixin, Base):
     reorder_level: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     min_level: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
     max_level: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
-    crm_product_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_products.id", ondelete="SET NULL"), nullable=True
-    )
     #: A small picture as a data URL, resized in the browser before upload.
     image: Mapped[str | None] = mapped_column(Text, nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)

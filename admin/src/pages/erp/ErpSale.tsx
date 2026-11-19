@@ -8,7 +8,7 @@
  * Keys: ↑ ↓ move · Enter open · F2 new · F3 filters · PgUp / PgDn page.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { Loading, ErrorNote } from '../../components/ui'
@@ -22,6 +22,7 @@ import { erp, erpError, rupees, type Invoice } from './api'
 import { DateText, useAccess } from './parts'
 import { Dialog } from '../crm/parts'
 import { InvoiceDrawer, ManualInvoice, PAY_LABEL, PrintById, payState, type PayState } from './ErpBilling'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../components/ViewSettings'
 import '../../styles/sale-list.css'
 
 const PAGE_SIZE = 14
@@ -40,6 +41,37 @@ const numberOf = (n: string | null) => {
 const KIND_LABEL: Record<string, string> = {
   product: 'Product invoice', service: 'Tax invoice', milestone: 'Milestone invoice', proforma: 'Proforma',
 }
+
+interface SaleCtx { index: number; mobiles: Map<string, string>; openBill: (id: string) => void; printBill: (id: string) => void }
+type SaleColumn = ColumnDef & { td: (i: Invoice, ctx: SaleCtx) => ReactNode; className?: string; thClass?: string }
+const dash = <span className="sl-dim">—</span>
+const SALE_COLUMNS: SaleColumn[] = [
+  { key: 'no', label: '#', thClass: 'sl-c', className: 'sl-c sl-dim', td: (_i, c) => <>{c.index}</> },
+  { key: 'number', label: 'Bill No.', locked: true,
+    td: (i, c) => <button type="button" className="sl-link" onClick={() => c.openBill(i.id)}>{i.number ?? 'Draft'}</button> },
+  { key: 'date', label: 'Date', td: (i) => <DateText iso={i.invoice_date} /> },
+  { key: 'party', label: 'Party', className: 'sl-party', td: (i) => <>{i.customer_name}</> },
+  { key: 'station', label: 'Station', td: (i) => <>{i.place_of_supply ?? dash}</> },
+  { key: 'mobile', label: 'Mobile', className: 'sl-mono', td: (i, c) => <>{c.mobiles.get(i.customer_id) ?? dash}</> },
+  { key: 'taxable', label: 'Taxable', thClass: 'sl-r', className: 'sl-r', td: (i) => <>{rupees(i.sub_total)}</> },
+  { key: 'gst', label: 'GST', thClass: 'sl-r', className: 'sl-r', td: (i) => <>{rupees(i.tax_total)}</> },
+  { key: 'net', label: 'Net Amount', thClass: 'sl-r', className: 'sl-r sl-strong', td: (i) => <>{rupees(i.grand_total)}</> },
+  { key: 'balance', label: 'Balance', thClass: 'sl-r', className: 'sl-r', td: (i) => <>{rupees(i.outstanding)}</> },
+  { key: 'due', label: 'Due Date', td: (i) => <DateText iso={i.due_date} /> },
+  { key: 'status', label: 'Status', td: (i) => <span className={`sl-pill sl-pill-${TONE[payState(i)]}`}>{PAY_LABEL[payState(i)]}</span> },
+  { key: 'print', label: 'Print', thClass: 'sl-c', className: 'sl-c', td: (i, c) => (
+    <button type="button" className="sl-icon" aria-label={`Print ${i.number ?? 'draft'}`} onClick={(e) => { e.stopPropagation(); c.printBill(i.id) }}>
+      <IconPrinter size={14} />
+    </button>
+  ) },
+  { key: 'user', label: 'User', td: (i) => <>{i.created_by_name ?? dash}</> },
+  { key: 'gstin', label: 'Party GSTIN', initial: false, className: 'sl-mono', td: (i) => <>{i.gstin ?? dash}</> },
+  { key: 'order', label: 'Sales order', initial: false, td: (i) => <>{i.order_number ?? dash}</> },
+  { key: 'po', label: 'Customer PO', initial: false, td: (i) => <>{i.customer_po_number ?? dash}</> },
+  { key: 'salesperson', label: 'Salesperson', initial: false, td: (i) => <>{i.salesperson_name ?? dash}</> },
+  { key: 'eway', label: 'E-Way Bill', initial: false, td: (i) => <>{i.eway_bill_number ?? dash}</> },
+  { key: 'kind', label: 'Type', initial: false, td: (i) => <>{KIND_LABEL[i.kind] ?? i.kind}</> },
+]
 
 interface SaleFilters {
   series: string
@@ -61,6 +93,7 @@ const NO_FILTERS: SaleFilters = {
 const firstOfMonth = () => `${todayISO().slice(0, 8)}01`
 
 export default function ErpSale() {
+  const columns = useColumns('sale-register', SALE_COLUMNS)
   const [params, setParams] = useSearchParams()
   const { can, loaded } = useAccess()
   const biller = can('can_manage_billing')
@@ -225,6 +258,7 @@ export default function ErpSale() {
                   <IconFilter size={14} /> Filters{activeFilters > 0 && <span className="sl-count">{activeFilters}</span>} <kbd>F3</kbd>
                 </button>
                 <button type="button" className="sl-btn" onClick={exportRows} disabled={rows.length === 0}><IconDownload size={14} /> Export</button>
+                <ColumnSettings defs={SALE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
                 <button type="button" className="sl-btn" onClick={() => current && setPrintId(current.id)} disabled={!current}><IconPrinter size={14} /> Print</button>
                 <button type="button" className="sl-btn" onClick={() => void share()}>Share</button>
                 {biller && (
@@ -252,14 +286,12 @@ export default function ErpSale() {
               <table className="sl-table">
                 <thead>
                   <tr>
-                    <th className="sl-c">#</th><th>Bill No.</th><th>Date</th><th>Party</th><th>Station</th><th>Mobile</th>
-                    <th className="sl-r">Taxable</th><th className="sl-r">GST</th><th className="sl-r">Net Amount</th><th className="sl-r">Balance</th>
-                    <th>Due Date</th><th>Status</th><th className="sl-c">Print</th><th>User</th>
+                    {columns.visible.map((c) => <th key={c.key} className={(c as SaleColumn).thClass}>{c.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {list.loading && !list.data ? (
-                    <tr><td colSpan={14} className="sl-empty"><Loading /></td></tr>
+                    <tr><td colSpan={columns.visible.length} className="sl-empty"><Loading /></td></tr>
                   ) : shown.map((i, index) => (
                     <tr
                       key={i.id}
@@ -268,24 +300,14 @@ export default function ErpSale() {
                       onDoubleClick={() => setOpenId(i.id)}
                       aria-selected={index === cursor}
                     >
-                      <td className="sl-c sl-dim">{safePage * PAGE_SIZE + index + 1}</td>
-                      <td><button type="button" className="sl-link" onClick={() => setOpenId(i.id)}>{i.number ?? 'Draft'}</button></td>
-                      <td><DateText iso={i.invoice_date} /></td>
-                      <td className="sl-party" title={i.customer_name}>{i.customer_name}</td>
-                      <td>{i.place_of_supply ?? <span className="sl-dim">—</span>}</td>
-                      <td className="sl-mono">{mobiles.get(i.customer_id) ?? <span className="sl-dim">—</span>}</td>
-                      <td className="sl-r">{rupees(i.sub_total)}</td>
-                      <td className="sl-r">{rupees(i.tax_total)}</td>
-                      <td className="sl-r sl-strong">{rupees(i.grand_total)}</td>
-                      <td className="sl-r">{rupees(i.outstanding)}</td>
-                      <td><DateText iso={i.due_date} /></td>
-                      <td><span className={`sl-pill sl-pill-${TONE[payState(i)]}`}>{PAY_LABEL[payState(i)]}</span></td>
-                      <td className="sl-c">
-                        <button type="button" className="sl-icon" aria-label={`Print ${i.number ?? 'draft'}`} onClick={(e) => { e.stopPropagation(); setPrintId(i.id) }}>
-                          <IconPrinter size={14} />
-                        </button>
-                      </td>
-                      <td>{i.created_by_name ?? <span className="sl-dim">—</span>}</td>
+                      {columns.visible.map((c) => {
+                        const col = c as SaleColumn
+                        return (
+                          <td key={col.key} className={col.className} title={col.key === 'party' ? i.customer_name : undefined}>
+                            {col.td(i, { index: safePage * PAGE_SIZE + index + 1, mobiles, openBill: setOpenId, printBill: setPrintId })}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </tbody>

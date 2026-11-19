@@ -14,7 +14,7 @@
  * lies about the pipeline.
  */
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/leads.css'
@@ -49,6 +49,7 @@ import {
   isoToLocalInput,
   localToISO,
   qs,
+  rupees,
   rupeesShort,
   todayISO,
   type Country,
@@ -68,6 +69,7 @@ import {
   LfInput,
   LfSection,
   Field,
+  ItemSelect,
   MasterSelect,
   OwnerSelect,
   StagePill,
@@ -78,21 +80,78 @@ import {
   onlyDigits,
   withDialCode,
 } from './parts'
+import { LeadEmailDialog } from './LeadEmail'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 
 const PAGE_SIZES = [25, 50, 100]
+
+/** What the leads table can show. A person picks and orders these from Settings;
+ *  the first five are what it shows until they do. */
+type LeadColumn = ColumnDef & { td: (lead: Lead) => ReactNode; className?: string }
+const dash = <span className="crm-muted">—</span>
+const LEAD_COLUMNS: LeadColumn[] = [
+  { key: 'lead', label: 'Lead', locked: true, td: (l) => (
+    /* Name first, the lead ID and email beneath it. */
+    <Link className="crm-lead-name" to={`/crm/leads/${l.id}`}>
+      <span className="crm-strong">{l.name}</span>
+      <span className="crm-lead-email">
+        <span className="crm-lead-code">#{l.code}</span>
+        {l.email && <> · {l.email}</>}
+      </span>
+    </Link>
+  ) },
+  { key: 'mobile', label: 'Mobile', className: 'crm-nowrap crm-num-plain', td: (l) => l.mobile },
+  { key: 'status', label: 'Status', td: (l) => <StagePill name={l.status_name} colour={l.status_colour} /> },
+  { key: 'owner', label: 'Assigned', td: (l) => <Assignee name={l.owner_name} /> },
+  { key: 'followup', label: 'Follow-up', className: 'crm-nowrap', td: (l) => <DuePill iso={l.next_follow_up_at} /> },
+  { key: 'company', label: 'Company', initial: false, td: (l) => l.company ?? dash },
+  { key: 'email', label: 'Email', initial: false, td: (l) => l.email ?? dash },
+  { key: 'source', label: 'Source', initial: false, td: (l) => l.source_name ?? dash },
+  { key: 'item', label: 'Item', initial: false, td: (l) => l.product_name ?? dash },
+  { key: 'industry', label: 'Industry', initial: false, td: (l) => l.industry_name ?? dash },
+  { key: 'state', label: 'State', initial: false, td: (l) => l.state_name ?? dash },
+  { key: 'city', label: 'City', initial: false, td: (l) => l.city_name ?? dash },
+  { key: 'pincode', label: 'Pincode', initial: false, td: (l) => l.pincode ?? dash },
+  { key: 'value', label: 'Expected revenue', initial: false, className: 'crm-nowrap', td: (l) => (l.value ? rupees(l.value) : dash) },
+  { key: 'created', label: 'Created', initial: false, className: 'crm-nowrap', td: (l) => new Date(l.created_at).toLocaleDateString('en-IN') },
+]
+
+/** What the Add lead form can show, make mandatory or hide. A lead's name and
+ *  mobile number are the two the server needs, so they cannot be changed. */
+const LEAD_SECTIONS: FieldSection[] = [
+  { id: 'customer', label: 'Customer info' },
+  { id: 'lead', label: 'Lead info' },
+  { id: 'address', label: 'Address' },
+]
+const LEAD_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Full name', section: 'customer', fixed: true },
+  { key: 'company', label: 'Company', section: 'customer' },
+  { key: 'mobile', label: 'Mobile number', section: 'customer', fixed: true },
+  { key: 'email', label: 'Email', section: 'customer' },
+  { key: 'whatsapp', label: 'WhatsApp', section: 'customer' },
+  { key: 'source', label: 'Lead source', section: 'lead' },
+  { key: 'owner', label: 'Lead owner', section: 'lead' },
+  { key: 'industry', label: 'Industry type', section: 'lead' },
+  { key: 'item', label: 'Item', section: 'lead' },
+  { key: 'state', label: 'State', section: 'address' },
+  { key: 'city', label: 'City', section: 'address' },
+  { key: 'pincode', label: 'Pincode', section: 'address' },
+  { key: 'address', label: 'Address', section: 'address' },
+]
 
 export default function MyLeads() {
   const [params, setParams] = useSearchParams()
 
   const [view, setView] = useState<'table' | 'kanban'>('table')
+  const columns = useColumns('leads', LEAD_COLUMNS)
   const [q, setQ] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
   const [statusId, setStatusId] = useState('')
   const [sourceId, setSourceId] = useState('')
   const [ownerId, setOwnerId] = useState('')
   const [followUp, setFollowUp] = useState(params.get('follow_up') ?? '')
-  const [from, setFrom] = useState(daysFromTodayISO(-90))
-  const [to, setTo] = useState(todayISO())
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
   const [showFilters, setShowFilters] = useState(false)
@@ -105,6 +164,7 @@ export default function MyLeads() {
 
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Lead | null>(null)
+  const [emailing, setEmailing] = useState<Lead | null>(null)
   const navigate = useNavigate()
   const [importing, setImporting] = useState(false)
   const [banner, setBanner] = useState<string | null>(null)
@@ -145,13 +205,14 @@ export default function MyLeads() {
   const rows = leads.data?.rows ?? []
   const selection = useSelection(rows)
 
-  /* The popover's own filters, counted for the badge on its button. */
-  const popoverCount = [sourceId, industryId, productId, stateId, districtId, cityId]
+  /* Every filter but search lives in the popover; they are counted for the badge
+     on its button. Search and the date range stay on the toolbar. */
+  const popoverCount = [statusId, followUp, ownerId, sourceId, industryId, productId, stateId, districtId, cityId]
     .filter(Boolean).length
-  const filtered =
-    debouncedQ !== '' || statusId !== '' || followUp !== '' || ownerId !== '' || popoverCount > 0
+  const filtered = debouncedQ !== '' || popoverCount > 0
 
   function resetPopover() {
+    setStatusId(''); setFollowUp(''); setOwnerId('')
     setSourceId(''); setIndustryId(''); setProductId('')
     setStateId(''); setDistrictId(''); setCityId('')
     setPage(1)
@@ -252,29 +313,6 @@ export default function MyLeads() {
             aria-label="Search leads"
           />
         </div>
-        <MasterSelect
-          kind="statuses"
-          value={statusId}
-          onChange={(value) => {
-            setStatusId(value)
-            setPage(1)
-          }}
-          placeholder="All statuses"
-        />
-        <select
-          value={followUp}
-          onChange={(event) => {
-            setFollowUp(event.target.value)
-            setPage(1)
-          }}
-          aria-label="Follow-up"
-        >
-          <option value="">Any follow-up</option>
-          <option value="today">Due today</option>
-          <option value="overdue">Overdue</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="none">No follow-up booked</option>
-        </select>
         <div className="ml-filter" ref={filterRef}>
           <button
             className={`crm-tab ml-filter-btn${popoverCount ? ' is-active' : ''}${showFilters ? ' is-open' : ''}`}
@@ -290,6 +328,27 @@ export default function MyLeads() {
                popover — so there is no Apply button to forget. */
             <div className="ml-pop" role="dialog" aria-label="Filter leads">
               <label className="ml-pop-field">
+                <span>Status</span>
+                <MasterSelect kind="statuses" value={statusId} placeholder="All statuses"
+                              onChange={(v) => { setStatusId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
+                <span>Follow-up</span>
+                <select value={followUp} aria-label="Follow-up"
+                        onChange={(event) => { setFollowUp(event.target.value); setPage(1) }}>
+                  <option value="">Any follow-up</option>
+                  <option value="today">Due today</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="none">No follow-up booked</option>
+                </select>
+              </label>
+              <label className="ml-pop-field">
+                <span>Owner</span>
+                <OwnerSelect value={ownerId} placeholder="All owners"
+                             onChange={(v) => { setOwnerId(v); setPage(1) }} />
+              </label>
+              <label className="ml-pop-field">
                 <span>Lead source</span>
                 <MasterSelect kind="sources" value={sourceId} placeholder="All sources"
                               onChange={(v) => { setSourceId(v); setPage(1) }} />
@@ -300,9 +359,9 @@ export default function MyLeads() {
                               onChange={(v) => { setIndustryId(v); setPage(1) }} />
               </label>
               <label className="ml-pop-field">
-                <span>Product / Service</span>
-                <MasterSelect kind="products" value={productId} placeholder="All products"
-                              onChange={(v) => { setProductId(v); setPage(1) }} />
+                <span>Item</span>
+                <ItemSelect value={productId} placeholder="All items"
+                            onChange={(v) => { setProductId(v); setPage(1) }} />
               </label>
               <label className="ml-pop-field">
                 <span>State</span>
@@ -321,17 +380,13 @@ export default function MyLeads() {
                 <MasterSelect kind="cities" parentId={stateId} value={cityId} placeholder="All cities"
                               onChange={(v) => { setCityId(v); setPage(1) }} />
               </label>
-              <button type="button" className="ml-pop-reset" onClick={resetPopover}
+              <button type="button" className="ml-pop-reset ml-pop-wide" onClick={resetPopover}
                       disabled={popoverCount === 0}>
                 Reset filters
               </button>
             </div>
           )}
         </div>
-        {/* Owner and the created-date range sit on the toolbar rather than in
-            the popover: they are the two filters people change most. */}
-        <OwnerSelect value={ownerId} placeholder="All owners"
-                     onChange={(v) => { setOwnerId(v); setPage(1) }} />
         <CreatedRange from={from} to={to}
                       onChange={(f, t) => { setFrom(f); setTo(t); setPage(1) }} />
         {filtered && (
@@ -353,6 +408,10 @@ export default function MyLeads() {
             <IconGrid size={14} /> Kanban
           </button>
         </div>
+        {view === 'table' && (
+          <ColumnSettings defs={LEAD_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+        )}
         <span className="ml-divider" aria-hidden />
         <button className="ml-icon-btn" onClick={() => setImporting(true)}
                 title="Import leads from a file" aria-label="Import leads from a file">
@@ -457,14 +516,11 @@ export default function MyLeads() {
                           aria-label="Select every lead on this page"
                         />
                       </th>
-                      {/* Only the columns a lead is worked from. Company,
-                          product, source, industry and created date are on the
-                          lead's own page, one click away on the edit button. */}
-                      <th>Lead <ThCaret /></th>
-                      <th>Mobile <ThCaret /></th>
-                      <th>Status <ThCaret /></th>
-                      <th>Assigned <ThCaret /></th>
-                      <th>Follow-up <ThCaret /></th>
+                      {/* The columns this person chose in Settings; a lead's work
+                          columns until they choose. */}
+                      {(columns.visible as LeadColumn[]).map((col) => (
+                        <th key={col.key}>{col.label} <ThCaret /></th>
+                      ))}
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
@@ -479,26 +535,9 @@ export default function MyLeads() {
                             aria-label={`Select ${lead.name}`}
                           />
                         </td>
-                        <td>
-                          {/* Name first, the lead ID and email beneath it. */}
-                          <Link className="crm-lead-name" to={`/crm/leads/${lead.id}`}>
-                            <span className="crm-strong">{lead.name}</span>
-                            <span className="crm-lead-email">
-                              <span className="crm-lead-code">#{lead.code}</span>
-                              {lead.email && <> · {lead.email}</>}
-                            </span>
-                          </Link>
-                        </td>
-                        <td className="crm-nowrap crm-num-plain">{lead.mobile}</td>
-                        <td>
-                          <StagePill name={lead.status_name} colour={lead.status_colour} />
-                        </td>
-                        <td>
-                          <Assignee name={lead.owner_name} />
-                        </td>
-                        <td className="crm-nowrap">
-                          <DuePill iso={lead.next_follow_up_at} />
-                        </td>
+                        {(columns.visible as LeadColumn[]).map((col) => (
+                          <td key={col.key} className={col.className}>{col.td(lead)}</td>
+                        ))}
                         <td>
                           <div className="crm-row-actions">
                             <Link
@@ -518,6 +557,14 @@ export default function MyLeads() {
                               <IconSheet size={15} />
                             </Link>
                             <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
+                            <button
+                              className="crm-icon-btn"
+                              onClick={() => setEmailing(lead)}
+                              title={lead.email ? `Email ${lead.email}` : 'Email'}
+                              aria-label={`Email ${lead.name}`}
+                            >
+                              <IconMail size={15} />
+                            </button>
                             <button
                               className="crm-icon-btn crm-icon-danger"
                               onClick={() => remove(lead)}
@@ -586,6 +633,18 @@ export default function MyLeads() {
             setEditing(null)
             leads.reload()
             if (created) setBanner(`${created.name} saved.`)
+          }}
+        />
+      )}
+
+      {emailing && (
+        <LeadEmailDialog
+          lead={emailing}
+          onClose={() => setEmailing(null)}
+          onSent={(message) => {
+            setEmailing(null)
+            setBanner(message)
+            leads.reload()
           }}
         />
       )}
@@ -881,6 +940,48 @@ export function LeadForm({
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const touch = (key: string) => () => setTouched((t) => ({ ...t, [key]: true }))
   const mobileBad = mobile !== '' && mobile.length !== length
+
+  /* A number can only be a lead once. Asked of the server once the number is
+     complete, and answered per number so a slow reply for an earlier number can
+     never clear the error on the one now in the box. A failed check does not
+     block: the server refuses a duplicate on save as well. */
+  const fullMobile = mobile.length === length ? withDialCode(dial, mobile) : ''
+  const [dupe, setDupe] = useState<{ number: string; text: string | null } | null>(null)
+  useEffect(() => {
+    if (!fullMobile) return
+    let live = true
+    const timer = window.setTimeout(() => {
+      crm.checkLeadMobile(fullMobile, lead?.id)
+        .then((found) => {
+          if (!live) return
+          const text = found.exists
+            ? `Already a lead: ${found.code}${found.name ? ` (${found.name})` : ''}${found.owner_name ? `, owned by ${found.owner_name}` : ''}. Use a different number.`
+            : null
+          setDupe({ number: fullMobile, text })
+        })
+        .catch(() => live && setDupe({ number: fullMobile, text: null }))
+    }, 350)
+    return () => { live = false; window.clearTimeout(timer) }
+  }, [fullMobile, lead?.id])
+  const mobileTaken = Boolean(fullMobile) && dupe?.number === fullMobile && dupe.text !== null
+  const mobileChecking = Boolean(fullMobile) && dupe?.number !== fullMobile
+  const mobileDupText = mobileTaken ? dupe?.text ?? null : null
+
+  /* What this person has chosen to show, require or hide on the form. A lead
+     being edited still needs every field it shows, as before. */
+  const fields = useFieldModes('lead-form', LEAD_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => Boolean(lead) || fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = {
+    company: company.trim() === '', email: email.trim() === '', whatsapp: !sameNumber && whatsapp === '',
+    source: !sourceId, owner: !ownerId, industry: !industryId, item: !productId,
+    state: !stateId, city: !cityId, pincode: pincode.trim() === '', address: address.trim() === '',
+  }
+  /* A mandatory field left empty, among the ones on this step. */
+  const missingIn = (keys: string[]) => keys.some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const missingCustomer = missingIn(['company', 'email', 'whatsapp'])
+  const missingLead = missingIn(['source', 'owner', 'industry', 'item'])
+  const missingAddress = missingIn(['state', 'city', 'pincode', 'address'])
   const whatsappBad = !sameNumber && whatsapp !== '' && whatsapp.length !== length
   const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
@@ -892,12 +993,13 @@ export function LeadForm({
   const dealRevenue = dealRecord && valueText === openingValue ? String(dealRecord.expected_revenue) : valueText
   const needsRevenue = showDeal && (Boolean(dealRecord) || dealStarted(deal)) && dealRevenue === ''
   // Editing a lead: every field must have a value.
+  // A field this person has hidden is not one they are asked to fill in.
   const editMissing = Boolean(lead) && (
-    company.trim() === '' || email.trim() === '' || (!sameNumber && whatsapp === '') || !sourceId || !ownerId
-    || !industryId || !productId || !statusId || !stateId || !cityId || pincode.trim() === '' || valueText === ''
-    || address.trim() === '' || (showDeal && dealIncomplete(deal, dealRecord))
+    ['company', 'email', 'whatsapp', 'source', 'owner', 'industry', 'item', 'state', 'city', 'pincode', 'address']
+      .some((k) => fm(k) !== 'hide' && emptyField[k])
+    || !statusId || valueText === '' || (showDeal && dealIncomplete(deal, dealRecord))
   )
-  const ready = !editMissing && name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !pincodeBad && !valueBad
+  const ready = !editMissing && !missingCustomer && !missingLead && !missingAddress && name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !mobileTaken && !mobileChecking && !whatsappBad && !emailBad && !pincodeBad && !valueBad
     && (!showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal)))
 
   const formRef = useRef<HTMLFormElement>(null)
@@ -906,15 +1008,17 @@ export function LeadForm({
   const stepped = !lead && !inline
   const [step, setStep] = useState(0)
   const dealOk = !showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal))
+  // Expected revenue is entered on the next step, so the deal step must not wait for it.
+  const dealStepOk = !showDeal || (!dealBlocked(deal, 'x', Boolean(dealRecord)) && !dealFilesTooBig(deal))
   const stepOk = [
-    name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad,
-    true,
-    !pincodeBad && !valueBad,
-    dealOk,
-    dealOk,
+    name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !mobileTaken && !mobileChecking && !whatsappBad && !emailBad && !missingCustomer,
+    !missingLead,
+    !pincodeBad && !missingAddress,
+    dealStepOk,
+    dealOk && !valueBad,
   ]
   const lastStep = showDeal ? 4 : 2
-  const stepNames = ['Customer info', 'Lead info', 'Address & revenue', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
+  const stepNames = ['Customer info', 'Lead info', 'Address', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
   const goNext = () => {
     if (!stepOk[step]) {
       setTouched((t) => ({ ...t, mobile: true, email: true, whatsapp: true, pincode: true, value: true }))
@@ -927,15 +1031,34 @@ export function LeadForm({
   const customerBad = mobileBad || whatsappBad || emailBad
   const blocker = ready ? null
     : name.trim() === '' || mobile === '' ? 'Add the full name and mobile number'
+      : mobileTaken ? 'This mobile number is already a lead'
+        : mobileChecking ? 'Checking the mobile number…'
       : customerBad ? 'Check the contact details'
-        : pincodeBad || valueBad ? 'Check the address and revenue'
+        : missingCustomer || missingLead || missingAddress ? 'Fill in the fields marked *'
+        : pincodeBad ? 'Check the address'
+          : valueBad ? 'Check the expected revenue'
           : needsRevenue ? 'Add the expected revenue for the deal'
             : editMissing ? 'Every field is required — fill in the empty ones'
               : 'Complete the deal details'
 
+  /* Expected revenue sits with the opportunity it describes. A lead edited
+     without an opportunity has no such section, so it stays with the address. */
+  const revenueField = (
+    <LfField label="Expected revenue"
+             required={needsRevenue || Boolean(lead)}
+             error={touched.value && valueBad ? 'Enter an amount like 150000 or 150000.50.' : needsRevenue ? 'Needed once deal details are filled in.' : undefined}
+             hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
+      <LfInput prefix="₹" bad={touched.value && valueBad}>
+        <input value={value ?? ''} onChange={(event) => setValue(event.target.value.replace(/,/g, ''))} onBlur={touch('value')}
+               inputMode="decimal" placeholder="e.g. 150000" aria-label="Expected revenue" />
+      </LfInput>
+    </LfField>
+  )
+
   const stepBlocker = !stepOk[step]
-    ? step === 0 ? (name.trim() === '' || mobile === '' ? 'Add the full name and mobile number' : 'Check the contact details')
-      : step === 2 ? 'Check the address and revenue' : step === 3 ? 'Complete the deal details' : 'Complete the opportunity details'
+    ? step === 0 ? (name.trim() === '' || mobile === '' ? 'Add the full name and mobile number' : mobileTaken ? 'This mobile number is already a lead' : mobileChecking ? 'Checking the mobile number…' : missingCustomer ? 'Fill in the fields marked *' : 'Check the contact details')
+      : step === 1 ? 'Fill in the fields marked *'
+      : step === 2 ? (missingAddress ? 'Fill in the fields marked *' : 'Check the address') : step === 3 ? 'Complete the deal details' : valueBad ? 'Check the expected revenue' : 'Complete the opportunity details'
     : null
   const footer = stepped ? (
     <>
@@ -974,9 +1097,127 @@ export function LeadForm({
     </>
   )
 
+  /* Every field of the form as an element, so the order a person arranged in
+     Settings can place them. A hidden field is nothing at all. */
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+<LfField label="Full name" required>
+            <LfInput icon={<IconUser size={15} />}>
+              <input value={name} onChange={(event) => setName(event.target.value)}
+                     placeholder="e.g. Rahul Sharma" autoFocus required />
+            </LfInput>
+          </LfField>
+          ),
+    company: fm('company') !== 'hide' && (
+          <LfField label="Company" required={rq('company')}>
+            <LfInput icon={<IconBriefcase size={15} />}>
+              <input value={company} onChange={(event) => setCompany(event.target.value)}
+                     placeholder="Company / firm name" />
+            </LfInput>
+          </LfField>
+          ),
+    mobile: (
+<LfField label="Mobile number" required
+                   error={touched.mobile && mobileBad ? `Enter a ${length}-digit mobile number.` : mobileDupText ?? undefined}>
+            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={(touched.mobile && mobileBad) || mobileTaken}>
+              <input value={mobile} onChange={(event) => setMobile(onlyDigits(event.target.value, length))} onBlur={touch('mobile')}
+                     placeholder={'9876543210'.slice(0, length)} inputMode="numeric" maxLength={length} required />
+            </LfInput>
+          </LfField>
+          ),
+    email: fm('email') !== 'hide' && (
+          <LfField label="Email" required={rq('email')} error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
+            <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
+                     placeholder="name@company.com" />
+            </LfInput>
+          </LfField>
+          ),
+    whatsapp: fm('whatsapp') !== 'hide' && (
+          <LfField label="WhatsApp" required={rq('whatsapp') && !sameNumber}
+                   error={touched.whatsapp && whatsappBad ? `Enter a ${length}-digit WhatsApp number.` : undefined}
+                   aside={
+                     <label className="lf-switch">
+                       <input type="checkbox" checked={sameNumber}
+                              onChange={(event) => setSameNumber(event.target.checked)} />
+                       <span className="lf-switch-track" aria-hidden><span /></span>
+                       Same as mobile
+                     </label>
+                   }>
+            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={touched.whatsapp && whatsappBad}>
+              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(onlyDigits(event.target.value, length))}
+                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="numeric" maxLength={length}
+                     placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
+            </LfInput>
+          </LfField>
+          ),
+    source: fm('source') !== 'hide' && (
+          <LfField label="Lead source" required={rq('source')}>
+            <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
+          </LfField>
+          ),
+    owner: fm('owner') !== 'hide' && (
+          <LfField label="Lead owner" required={rq('owner')}>
+            <OwnerSelect value={ownerId} onChange={setOwnerId} />
+          </LfField>
+          ),
+    industry: fm('industry') !== 'hide' && (
+          <LfField label="Industry type" required={rq('industry')}>
+            <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
+          </LfField>
+          ),
+    item: fm('item') !== 'hide' && (
+          <LfField label="Item" required={rq('item')}>
+            <ItemSelect value={productId} onChange={setProductId} placeholder="Select item" />
+          </LfField>
+          ),
+    state: fm('state') !== 'hide' && (
+          <LfField label="State" required={rq('state')}>
+            <MasterSelect
+              kind="states"
+              value={stateId}
+              onChange={(next) => {
+                setStateId(next)
+                // A city belongs to a state; keeping the old one would leave a
+                // lead in a city that is not in the state it claims.
+                setCityId('')
+              }}
+              parentId={countryId || undefined}
+              placeholder="Select state"
+            />
+          </LfField>
+          ),
+    city: fm('city') !== 'hide' && (
+          <LfField label="City" required={rq('city')} hint={stateId ? undefined : 'Pick a state first.'}>
+            <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId}
+                          placeholder="Select city" />
+          </LfField>
+          ),
+    pincode: fm('pincode') !== 'hide' && (
+          <LfField label="Pincode" required={rq('pincode')} error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
+            <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
+              <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
+                     placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
+            </LfInput>
+          </LfField>
+          ),
+    address: fm('address') !== 'hide' && (
+          <LfField label="Address" required={rq('address')}>
+            <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
+                      placeholder="Building, street, area, landmark" />
+          </LfField>
+          ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
   const form = (
       <form className="lf lf-single" id="crm-lead-form" ref={formRef} onSubmit={submit} noValidate>
         {error && <ErrorNote>{error}</ErrorNote>}
+        <div className="lf-settings">
+          <FieldSettings defs={LEAD_FIELDS} sections={LEAD_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
         {stepped && (
           <ol className="lf-steps" aria-label="Lead steps">
             {stepNames.map((label, i) => (
@@ -993,64 +1234,22 @@ export function LeadForm({
         )}
 
         {(!stepped || step === 0) && <LfSection icon={<IconUser size={16} />} title="Customer info" note="The person you will be speaking to.">
-          <LfField label="Full name" required>
-            <LfInput icon={<IconUser size={15} />}>
-              <input value={name} onChange={(event) => setName(event.target.value)}
-                     placeholder="e.g. Rahul Sharma" autoFocus required />
-            </LfInput>
-          </LfField>
-          <LfField label="Company" required={Boolean(lead)}>
-            <LfInput icon={<IconBriefcase size={15} />}>
-              <input value={company} onChange={(event) => setCompany(event.target.value)}
-                     placeholder="Company / firm name" />
-            </LfInput>
-          </LfField>
+          {fieldsOf('customer')}
+          
+          
 
-          <LfField label="Mobile number" required
-                   error={touched.mobile && mobileBad ? `Enter a ${length}-digit mobile number.` : undefined}>
-            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={touched.mobile && mobileBad}>
-              <input value={mobile} onChange={(event) => setMobile(onlyDigits(event.target.value, length))} onBlur={touch('mobile')}
-                     placeholder={'9876543210'.slice(0, length)} inputMode="numeric" maxLength={length} required />
-            </LfInput>
-          </LfField>
-          <LfField label="Email" required={Boolean(lead)} error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
-            <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
-                     placeholder="name@company.com" />
-            </LfInput>
-          </LfField>
+          
+          
 
-          <LfField label="WhatsApp" required={Boolean(lead) && !sameNumber}
-                   error={touched.whatsapp && whatsappBad ? `Enter a ${length}-digit WhatsApp number.` : undefined}
-                   aside={
-                     <label className="lf-switch">
-                       <input type="checkbox" checked={sameNumber}
-                              onChange={(event) => setSameNumber(event.target.checked)} />
-                       <span className="lf-switch-track" aria-hidden><span /></span>
-                       Same as mobile
-                     </label>
-                   }>
-            <LfInput icon={<IconPhone size={15} />} prefix={dial} bad={touched.whatsapp && whatsappBad}>
-              <input value={sameNumber ? mobile : whatsapp} onChange={(event) => setWhatsapp(onlyDigits(event.target.value, length))}
-                     onBlur={touch('whatsapp')} disabled={sameNumber} inputMode="numeric" maxLength={length}
-                     placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
-            </LfInput>
-          </LfField>
+          
         </LfSection>}
 
         {(!stepped || step === 1) && <LfSection icon={<IconStar size={16} />} title="Lead info" note="Where it came from, what they want, and who owns it.">
-          <LfField label="Lead source" required={Boolean(lead)}>
-            <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
-          </LfField>
-          <LfField label="Lead owner" required={Boolean(lead)}>
-            <OwnerSelect value={ownerId} onChange={setOwnerId} />
-          </LfField>
-          <LfField label="Industry type" required={Boolean(lead)}>
-            <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
-          </LfField>
-          <LfField label="Product / service" required={Boolean(lead)}>
-            <MasterSelect kind="products" value={productId} onChange={setProductId} placeholder="Select product" />
-          </LfField>
+          {fieldsOf('lead')}
+          
+          
+          
+          
           {lead && (
             <LfField label="Stage" required={Boolean(lead)}>
               <MasterSelect kind="statuses" value={statusId} onChange={setStatusId} placeholder="Select stage" />
@@ -1058,48 +1257,17 @@ export function LeadForm({
           )}
         </LfSection>}
 
-        {(!stepped || step === 2) && <LfSection icon={<IconPin size={16} />} title="Address & revenue" note="Where they are, and what the deal could be worth.">
-          <LfField label="State" required={Boolean(lead)}>
-            <MasterSelect
-              kind="states"
-              value={stateId}
-              onChange={(next) => {
-                setStateId(next)
-                // A city belongs to a state; keeping the old one would leave a
-                // lead in a city that is not in the state it claims.
-                setCityId('')
-              }}
-              parentId={countryId || undefined}
-              placeholder="Select state"
-            />
-          </LfField>
-          <LfField label="City" required={Boolean(lead)} hint={stateId ? undefined : 'Pick a state first.'}>
-            <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId}
-                          placeholder="Select city" />
-          </LfField>
-          <LfField label="Pincode" required={Boolean(lead)} error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
-            <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
-              <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
-                     placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
-            </LfInput>
-          </LfField>
-          <LfField label="Expected revenue"
-                   required={needsRevenue || Boolean(lead)}
-                   error={touched.value && valueBad ? 'Enter an amount like 150000 or 150000.50.' : needsRevenue ? 'Needed once deal details are filled in.' : undefined}
-                   hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
-            <LfInput prefix="₹" bad={touched.value && valueBad}>
-              <input value={value ?? ''} onChange={(event) => setValue(event.target.value.replace(/,/g, ''))} onBlur={touch('value')}
-                     inputMode="decimal" placeholder="e.g. 150000" aria-label="Expected revenue" />
-            </LfInput>
-          </LfField>
-          <LfField label="Address" required={Boolean(lead)} className="lf-span2">
-            <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
-                      placeholder="Building, street, area, landmark" />
-          </LfField>
+        {(!stepped || step === 2) && <LfSection icon={<IconPin size={16} />} title="Address" note="Where they are.">
+          {fieldsOf('address')}
+          {!showDeal && revenueField}
+          
+          
+          
+          
         </LfSection>}
 
         {showDeal && (!stepped || step >= 3) && (
-          <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord}
+          <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord} leading={revenueField}
                           part={stepped ? (step === 3 ? 'deal' : 'opportunity') : 'both'} all={Boolean(lead)} />
         )}
       </form>
@@ -1436,9 +1604,9 @@ export function ConvertDialog({
   const [gstin, setGstin] = useState('')
   const [withPlan, setWithPlan] = useState(true)
   const [productId, setProductId] = useState(lead.product_id ?? '')
-  const [planId, setPlanId] = useState('')
   const [startOn, setStartOn] = useState(todayISO())
   const [amount, setAmount] = useState('')
+  const [amountTyped, setAmountTyped] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1453,7 +1621,6 @@ export function ConvertDialog({
         plan: withPlan
           ? {
               product_id: productId || null,
-              plan_id: planId || null,
               start_on: startOn,
               amount: amount || '0',
             }
@@ -1511,18 +1678,14 @@ export function ConvertDialog({
 
         {withPlan && (
           <>
-            <Field label="Product / Service">
-              <MasterSelect
-                kind="products"
+            <Field label="Item">
+              <ItemSelect
                 value={productId}
-                onChange={(next) => {
-                  setProductId(next)
-                  setPlanId('')
+                onChange={setProductId}
+                onPick={(item) => {
+                  if (!amountTyped) setAmount(item ? item.sale_price : '')
                 }}
               />
-            </Field>
-            <Field label="Plan">
-              <MasterSelect kind="plans" value={planId} onChange={setPlanId} parentId={productId} />
             </Field>
             <Field label="Starts on">
               <input type="date" value={startOn} onChange={(event) => setStartOn(event.target.value)} />
@@ -1530,7 +1693,7 @@ export function ConvertDialog({
             <Field label="Amount">
               <input
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => { setAmount(event.target.value); setAmountTyped(event.target.value !== '') }}
                 inputMode="decimal"
                 placeholder="0.00"
               />
@@ -1564,6 +1727,7 @@ function rangeLabel(from: string, to: string): string {
   const f = new Date(from + 'T00:00:00')
   const t = new Date(to + 'T00:00:00')
   const day = (d: Date) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  if (from === to) return `${day(f)} ${f.getFullYear()}`
   return f.getFullYear() === t.getFullYear()
     ? `${day(f)} – ${day(t)} ${t.getFullYear()}`
     : `${day(f)} ${f.getFullYear()} – ${day(t)} ${t.getFullYear()}`
@@ -1608,7 +1772,7 @@ function CreatedRange({
              strokeLinecap="round" aria-hidden="true">
           <rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" />
         </svg>
-        <span>{from && to ? rangeLabel(from, to) : 'Any date'}</span>
+        <span>{from && to ? rangeLabel(from, to) : rangeLabel(todayISO(), todayISO())}</span>
         <svg className="ml-range-caret" width="14" height="14" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
@@ -1634,11 +1798,17 @@ function CreatedRange({
               <input type="date" value={draftTo} min={draftFrom || undefined} aria-label="Created to"
                      onChange={(e) => setDraftTo(e.target.value)} />
             </div>
-            <button type="button" className="btn btn-primary btn-sm"
-                    disabled={!draftFrom || !draftTo || draftFrom > draftTo}
-                    onClick={() => pick(draftFrom, draftTo)}>
-              Apply
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <button type="button" className="btn btn-sm" disabled={!from && !to}
+                      onClick={() => pick('', '')}>
+                Clear
+              </button>
+              <button type="button" className="btn btn-primary btn-sm"
+                      disabled={!draftFrom || !draftTo || draftFrom > draftTo}
+                      onClick={() => pick(draftFrom, draftTo)}>
+                Apply
+              </button>
+            </div>
           </div>
         </div>
       )}

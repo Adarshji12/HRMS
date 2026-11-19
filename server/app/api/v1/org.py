@@ -18,11 +18,13 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, select
 
 from app.api.deps import deny_page, AdminUser, CurrentUser, DbSession, TeamViewer, audit, visible_user_ids
-from app.models import Department, Designation, Organization, Team, User, WorkSchedule
+from app.models import Branch, Department, Designation, OfficeLocation, Organization, Team, User, WorkSchedule
 from app.schemas.common import CompanyProfileIn, CompanyProfileOut
 from app.services import branding
 from app.schemas.org_structure import (
     AssignRequest,
+    BranchIn,
+    BranchOut,
     DepartmentIn,
     DepartmentOut,
     DesignationIn,
@@ -339,7 +341,7 @@ def _department_names(db, org_id: uuid.UUID) -> dict[uuid.UUID, str]:
 
 def _designation_out(d: Designation, departments: dict, member_count: int) -> DesignationOut:
     return DesignationOut(
-        id=d.id, name=d.name, level=d.level, is_active=d.is_active,
+        id=d.id, name=d.name, code=d.code, level=d.level, is_active=d.is_active,
         department_id=d.department_id, department_name=departments.get(d.department_id),
         member_count=member_count,
     )
@@ -352,6 +354,77 @@ def delete_designation(designation_id: uuid.UUID, admin: AdminUser, db: DbSessio
     if designation is None or designation.org_id != admin.org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Designation not found")
     db.delete(designation)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Branches
+# --------------------------------------------------------------------------- #
+
+
+def _branch_out(db, b: Branch) -> BranchOut:
+    count = db.scalar(select(func.count()).select_from(OfficeLocation).where(OfficeLocation.branch_id == b.id)) or 0
+    out = BranchOut.model_validate(b)
+    out.location_count = count
+    return out
+
+
+def _one_head_office(db, org_id: uuid.UUID, keep: uuid.UUID) -> None:
+    """At most one branch is the head office: choosing one clears the others."""
+    for other in db.scalars(select(Branch).where(Branch.org_id == org_id, Branch.id != keep, Branch.is_head_office.is_(True))):
+        other.is_head_office = False
+
+
+@router.get("/branches", response_model=list[BranchOut])
+def list_branches(viewer: CurrentUser, db: DbSession) -> list[BranchOut]:
+    rows = db.scalars(select(Branch).where(Branch.org_id == viewer.org_id).order_by(Branch.name)).all()
+    return [_branch_out(db, b) for b in rows]
+
+
+@router.post("/branches", response_model=BranchOut, status_code=status.HTTP_201_CREATED)
+def create_branch(payload: BranchIn, admin: AdminUser, request: Request, db: DbSession) -> BranchOut:
+    name = payload.name.strip()
+    if db.scalar(select(Branch.id).where(Branch.org_id == admin.org_id, Branch.name == name)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A branch with that name already exists")
+    branch = Branch(org_id=admin.org_id, **payload.model_dump(exclude={"name"}), name=name)
+    db.add(branch)
+    db.flush()
+    if branch.is_head_office:
+        _one_head_office(db, admin.org_id, branch.id)
+    audit(db, org_id=admin.org_id, actor=admin, action="org.branch_created", request=request,
+          target_type="branch", target_id=str(branch.id), detail={"name": name})
+    db.commit()
+    return _branch_out(db, branch)
+
+
+@router.patch("/branches/{branch_id}", response_model=BranchOut)
+def update_branch(branch_id: uuid.UUID, payload: BranchIn, admin: AdminUser, request: Request, db: DbSession) -> BranchOut:
+    branch = db.get(Branch, branch_id)
+    if branch is None or branch.org_id != admin.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Branch not found")
+    name = payload.name.strip()
+    if db.scalar(select(Branch.id).where(Branch.org_id == admin.org_id, Branch.name == name, Branch.id != branch.id)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A branch with that name already exists")
+    for field, value in payload.model_dump(exclude={"name"}).items():
+        setattr(branch, field, value)
+    branch.name = name
+    if branch.is_head_office:
+        _one_head_office(db, admin.org_id, branch.id)
+    audit(db, org_id=admin.org_id, actor=admin, action="org.branch_updated", request=request,
+          target_type="branch", target_id=str(branch.id))
+    db.commit()
+    return _branch_out(db, branch)
+
+
+@router.delete("/branches/{branch_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_branch(branch_id: uuid.UUID, admin: AdminUser, request: Request, db: DbSession) -> None:
+    """Its locations are kept and simply stop belonging to a branch."""
+    branch = db.get(Branch, branch_id)
+    if branch is None or branch.org_id != admin.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Branch not found")
+    audit(db, org_id=admin.org_id, actor=admin, action="org.branch_deleted", request=request,
+          target_type="branch", target_id=str(branch.id), detail={"name": branch.name})
+    db.delete(branch)
     db.commit()
 
 

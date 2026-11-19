@@ -23,7 +23,7 @@ import { Avatar, Loading } from '../../../components/ui'
 import { Donut, type Slice } from '../../../components/charts'
 import {
   IconAlert, IconBuilding, IconCheck, IconChevronRight, IconClock, IconLifebuoy, IconMail,
-  IconPlus, IconReturn, IconSheet, IconUsers,
+  IconPlus, IconReturn, IconSheet, IconStar, IconUsers,
 } from '../../../components/Icons'
 
 /* ------------------------------------------------------------- shapes --- */
@@ -100,9 +100,10 @@ export default function HrDashboard() {
     admin ? api.get<ExitRequest[]>('/offboarding/requests?open_only=true') : Promise.resolve(null)))
   // The warning windows come from HR Settings → General.
   const hrs = useQuery('hrd-settings', soft(() =>
-    api.get<{ probation_warn_days: number; document_warn_days: number }>('/hr/settings')))
+    api.get<{ probation_warn_days: number; document_warn_days: number; birthday_lookahead_days: number }>('/hr/settings')))
   const probWin = hrs.data?.probation_warn_days ?? 30
   const docWin = hrs.data?.document_warn_days ?? 60
+  const bdayWin = hrs.data?.birthday_lookahead_days ?? 30
   const probation = useQuery(`hrd-probation-${hrs.loading ? "wait" : probWin}`, soft(() =>
     admin && !hrs.loading
       ? api.get<EmployeeProfile[]>(`/people/reports/probation-due?within_days=${probWin}`)
@@ -110,6 +111,10 @@ export default function HrDashboard() {
   const documents = useQuery(`hrd-documents-${hrs.loading ? "wait" : docWin}`, soft(() =>
     admin && !hrs.loading
       ? api.get<EmployeeDocument[]>(`/people/reports/documents-expiring?within_days=${docWin}`)
+      : Promise.resolve(null)))
+  const birthdays = useQuery(`hrd-birthdays-${hrs.loading ? 'wait' : bdayWin}`, soft(() =>
+    admin && !hrs.loading && bdayWin > 0
+      ? api.get<Array<{ user_id: string; full_name: string | null; on: string }>>(`/people/reports/birthdays?within_days=${bdayWin}`)
       : Promise.resolve(null)))
   const payruns = useQuery('hrd-payruns', soft(() =>
     admin ? api.get<PayRun[]>('/payruns') : Promise.resolve(null)))
@@ -303,7 +308,7 @@ export default function HrDashboard() {
           )}
         </Panel>
 
-        <Panel title="Reminders" note={`Probation in ${probWin} days · documents in ${docWin} days`}
+        <Panel title="Reminders" note={`Probation in ${probWin} days · documents in ${docWin} days${bdayWin > 0 ? ` · birthdays in ${bdayWin} days` : ''}`}
                link={admin ? { to: '/hrms/settings', label: 'Windows' } : undefined}>
           {!probation.data && !documents.data ? <NA what="Reminders are for administrators." /> : (
             <ul className="hrd-people">
@@ -333,8 +338,18 @@ export default function HrDashboard() {
                   </span>
                 </li>
               ))}
-              {(probation.data ?? []).length === 0 && (documents.data ?? []).length === 0 && (
-                <li className="hrd-empty">Nothing due — no probations ending or documents expiring soon.</li>
+              {(birthdays.data ?? []).slice(0, 4).map((b) => (
+                <li key={`b-${b.user_id}`}>
+                  <span className="hrd-dot-icon tone-good" aria-hidden><IconStar size={14} /></span>
+                  <span className="hrd-person">
+                    <Link to={`/people/${b.user_id}`} className="hrd-person-name">{b.full_name ?? 'Employee'}</Link>
+                    <span className="hrd-person-meta">Birthday {b.on === today ? 'today' : shortDate(b.on)}</span>
+                  </span>
+                  <span className="hrd-tag">Wish</span>
+                </li>
+              ))}
+              {(probation.data ?? []).length === 0 && (documents.data ?? []).length === 0 && (birthdays.data ?? []).length === 0 && (
+                <li className="hrd-empty">Nothing due — no probations ending, documents expiring or birthdays soon.</li>
               )}
             </ul>
           )}

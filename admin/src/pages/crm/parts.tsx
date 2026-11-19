@@ -18,6 +18,7 @@ import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { dateTime } from '../../lib/format'
 import { crm, whatsappLink, type Customer, type Lead, type Master } from './api'
+import { erp, type Item } from '../erp/api'
 
 /* ------------------------------------------------------------------- page --- */
 
@@ -238,6 +239,8 @@ export function Dialog({
   children,
   footer,
   wide,
+  narrow,
+  medium,
 }: {
   title: string
   subtitle?: ReactNode
@@ -245,6 +248,10 @@ export function Dialog({
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  /** A short form of a few fields: about 480px instead of 760. */
+  narrow?: boolean
+  /** A form of a dozen fields: about 600px. */
+  medium?: boolean
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -265,7 +272,7 @@ export function Dialog({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <div
-        className={`crm-dialog${wide ? ' crm-dialog-wide' : ''}`}
+        className={`crm-dialog${wide ? ' crm-dialog-wide' : ''}${narrow ? ' crm-dialog-narrow' : ''}${medium ? ' crm-dialog-medium' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -339,9 +346,12 @@ export function Field({
   hint,
   wide,
   required,
+  aside,
   children,
 }: {
   label: string
+  /** A note on the right of the label row, e.g. a live value or a count. */
+  aside?: ReactNode
   hint?: ReactNode
   wide?: boolean
   /** Marks the label with a red asterisk. Enforcing it is the form's job. */
@@ -353,6 +363,7 @@ export function Field({
       <span className="crm-field-label">
         {label}
         {required && <span className="lf-req"> *</span>}
+        {aside && <span className="crm-field-aside">{aside}</span>}
       </span>
       {children}
       {hint && <span className="crm-field-hint">{hint}</span>}
@@ -400,6 +411,44 @@ export function MasterSelect({
       {options.map((row) => (
         <option key={row.id} value={row.id}>
           {row.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** A dropdown over the ERP Items master — the one catalogue of what the company
+ *  sells. Holds the item's id. `onPick` hands the whole item back, so a form can
+ *  fill a rate or tax from it. */
+export function ItemSelect({
+  value,
+  onChange,
+  onPick,
+  placeholder = 'Select item',
+  disabled,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onPick?: (item: Item | null) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  const list = useQuery<Item[]>('crm-erp-items', () => erp.items({ active_only: true }))
+  const rows = list.data ?? []
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      aria-label="Item"
+      onChange={(event) => {
+        onChange(event.target.value)
+        onPick?.(rows.find((row) => row.id === event.target.value) ?? null)
+      }}
+    >
+      <option value="">{placeholder}</option>
+      {rows.map((row) => (
+        <option key={row.id} value={row.id}>
+          {row.name} · {row.code}
         </option>
       ))}
     </select>

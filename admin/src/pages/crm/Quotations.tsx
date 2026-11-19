@@ -11,15 +11,19 @@
  */
 
 import { useState, type ReactNode } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/hrdash.css'
+import '../../styles/leads.css'
 import { useQuery } from '../../lib/useQuery'
 import { shortDate } from '../../lib/format'
 import { Avatar, EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
   IconAlert,
   IconCheck,
+  IconClose,
+  IconFilter,
   IconClock,
   IconPlus,
   IconSearch,
@@ -33,6 +37,7 @@ import {
   type QuotationRow,
 } from './api'
 import { CrmPage, StateText } from './parts'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../components/ViewSettings'
 
 const FILTERS: Array<{ key: string; label: string }> = [
   { key: '', label: 'All' },
@@ -52,11 +57,59 @@ export default function Quotations() {
   return <QuotationList />
 }
 
+/** What the quotations table can show. A person picks and orders these from
+ *  Settings; the first seven are what it shows until they do. */
+type QuotationColumn = ColumnDef & {
+  td: (row: QuotationRow) => ReactNode
+  className?: string
+  /** Class for the heading too, where the column is right-aligned. */
+  thClass?: string
+}
+const dash = <span className="crm-muted">—</span>
+const QUOTATION_COLUMNS: QuotationColumn[] = [
+  { key: 'number', label: 'Quotation', locked: true, td: (r) => (
+    <Link className="crm-code" to={`/crm/quotations/${r.id}`}>{r.number}</Link>
+  ) },
+  { key: 'customer', label: 'Customer', td: (r) => (
+    r.customer_name ? (
+      <span className="cu-person">
+        <Avatar name={r.customer_name} small />
+        <span>
+          <span className="crm-strong">{r.customer_name}</span>
+          {r.company && <span className="crm-sub">{r.company}</span>}
+        </span>
+      </span>
+    ) : dash
+  ) },
+  { key: 'date', label: 'Date', className: 'crm-nowrap', td: (r) => shortDate(r.quote_date) },
+  { key: 'valid', label: 'Valid until', className: 'crm-nowrap', td: (r) => {
+    const stale = r.valid_until !== null && new Date(r.valid_until) < new Date() && (r.status === 'draft' || r.status === 'sent')
+    return r.valid_until ? <span className={stale ? 'crm-due-over' : ''}>{shortDate(r.valid_until)}</span> : dash
+  } },
+  { key: 'amount', label: 'Amount', className: 'crm-num crm-strong', thClass: 'crm-num', td: (r) => rupees(r.grand_total) },
+  { key: 'status', label: 'Status', td: (r) => <StateText value={r.status} /> },
+  { key: 'by', label: 'Created by', td: (r) => r.created_by_name ?? dash },
+  { key: 'company', label: 'Company', initial: false, td: (r) => r.company ?? dash },
+  { key: 'created', label: 'Created on', initial: false, className: 'crm-nowrap', td: (r) => shortDate(r.created_at) },
+]
+
 function QuotationList() {
+  const columns = useColumns('quotations', QUOTATION_COLUMNS)
   const navigate = useNavigate()
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [rowError, setRowError] = useState<string | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+  /* The Filters popover closes on a click outside it or on Escape. */
+  useEffect(() => {
+    if (!showFilters) return
+    const onDown = (e: MouseEvent) => { if (!filterRef.current?.contains(e.target as Node)) setShowFilters(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowFilters(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey) }
+  }, [showFilters])
 
   const all = useQuery<QuotationRow[]>(`crm-quotations-${q}`, () =>
     crm.quotations({ q: q.trim() || undefined }),
@@ -125,7 +178,7 @@ function QuotationList() {
         ))}
       </div>
 
-      <div className="crm-bar">
+      <div className="crm-bar ml-toolbar">
         <div className="crm-search">
           <IconSearch size={15} />
           <input
@@ -136,17 +189,42 @@ function QuotationList() {
             aria-label="Search quotations"
           />
         </div>
-        <div className="crm-seg">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.key || 'all'}
-              className={status === filter.key ? 'crm-seg-on' : ''}
-              onClick={() => setStatus(filter.key)}
-            >
-              {filter.label} <span className="crm-seg-count">{countOf(filter.key)}</span>
-            </button>
-          ))}
+        <div className="ml-filter" ref={filterRef}>
+          <button
+            className={`crm-tab ml-filter-btn${status ? ' is-active' : ''}${showFilters ? ' is-open' : ''}`}
+            onClick={() => setShowFilters((open) => !open)}
+            aria-expanded={showFilters}
+            aria-haspopup="dialog"
+          >
+            <IconFilter size={14} /> Filters
+            {status && <span className="ml-filter-count">1</span>}
+          </button>
+          {showFilters && (
+            <div className="ml-pop" role="dialog" aria-label="Filter quotations">
+              <label className="ml-pop-field">
+                <span>Status</span>
+                <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                  {FILTERS.map((filter) => (
+                    <option key={filter.key || 'all'} value={filter.key}>
+                      {filter.label} ({countOf(filter.key)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="ml-pop-reset" disabled={!status} onClick={() => setStatus('')}>
+                Reset filters
+              </button>
+            </div>
+          )}
         </div>
+        {(status || q) && (
+          <button className="filter-reset" onClick={() => { setStatus(''); setQ('') }}>
+            <IconClose size={13} /> Clear
+          </button>
+        )}
+        <span className="crm-push" />
+        <ColumnSettings defs={QUOTATION_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         {/* No page header: the one action sits beside the status filters. */}
         <Link className="btn btn-primary qt-new" to="/crm/quotations/new">
           <IconPlus size={15} /> New quotation
@@ -187,57 +265,19 @@ function QuotationList() {
               <table className="crm-table-wide">
                 <thead>
                   <tr>
-                    <th>Quotation</th>
-                    <th>Customer</th>
-                    <th>Date</th>
-                    <th>Valid until</th>
-                    <th className="crm-num">Amount</th>
-                    <th>Status</th>
-                    <th>Created by</th>
+                    {(columns.visible as QuotationColumn[]).map((col) => (
+                      <th key={col.key} className={col.thClass}>{col.label}</th>
+                    ))}
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {list.map((row) => {
-                    const stale =
-                      row.valid_until !== null &&
-                      new Date(row.valid_until) < new Date() &&
-                      (row.status === 'draft' || row.status === 'sent')
                     return (
                       <tr key={row.id}>
-                        <td>
-                          <Link className="crm-code" to={`/crm/quotations/${row.id}`}>
-                            {row.number}
-                          </Link>
-                        </td>
-                        <td>
-                          {row.customer_name ? (
-                            <span className="cu-person">
-                              <Avatar name={row.customer_name} small />
-                              <span>
-                                <span className="crm-strong">{row.customer_name}</span>
-                                {row.company && <span className="crm-sub">{row.company}</span>}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="crm-muted">—</span>
-                          )}
-                        </td>
-                        <td className="crm-nowrap">{shortDate(row.quote_date)}</td>
-                        <td className="crm-nowrap">
-                          {row.valid_until ? (
-                            <span className={stale ? 'crm-due-over' : ''}>
-                              {shortDate(row.valid_until)}
-                            </span>
-                          ) : (
-                            <span className="crm-muted">—</span>
-                          )}
-                        </td>
-                        <td className="crm-num crm-strong">{rupees(row.grand_total)}</td>
-                        <td>
-                          <StateText value={row.status} />
-                        </td>
-                        <td>{row.created_by_name ?? <span className="crm-muted">—</span>}</td>
+                        {(columns.visible as QuotationColumn[]).map((col) => (
+                          <td key={col.key} className={col.className}>{col.td(row)}</td>
+                        ))}
                         <td>
                           <div className="crm-row-actions">
                             <Link className="link-btn" to={`/crm/quotations/${row.id}`}>

@@ -1797,6 +1797,8 @@ a.crm-code, .link-btn.crm-code { color: var(--crm-accent-ink); }
 }
 
 .crm-dialog-wide { width: min(940px, 100%); }
+.crm-dialog.crm-dialog-narrow { width: min(480px, 100%); }
+.crm-dialog.crm-dialog-medium { width: min(600px, 100%); }
 
 .crm-dialog-head {
   position: relative;
@@ -4296,13 +4298,13 @@ table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .lf .opp-file { min-height: 34px; }
 .lf .opp-file-name { max-width: 100%; }
 
-/* Add new lead: every section together in one popup, three columns wide. */
-.crm-dialog:has(.lf-single) { width: min(1060px, 100%); max-height: 94vh; }
+/* Add new lead: every section together in one popup, two columns wide. */
+.crm-dialog:has(.lf-single) { width: min(780px, 100%); max-height: 94vh; }
 .lf.lf-single { gap: 10px; padding: 14px 20px 16px; }
 .lf-single .lf-section { padding: 12px 16px 14px; }
 .lf-single .lf-section-head { align-items: center; margin-bottom: 10px; }
 .lf-single .lf-section-icon { width: 30px; height: 30px; border-radius: 8px; }
-.lf-single .lf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; }
+.lf-single .lf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 .lf-single .lf-span2 { grid-column: span 2; }
 .lf-single .lf-field textarea { min-height: 40px; }
 @media (max-width: 860px) {
@@ -4444,3 +4446,204 @@ table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .pipe-col.is-lost .pipe-head h2 { color: var(--status-bad, #dc2626); }
 
 .pipe-lost { margin-top: 2px; font-size: 12px; color: var(--status-critical); }
+
+/* Settings > Access: the per-person visibility picker. */
+.crm .cs-subtabs { margin-top: 0; }
+.crm .cs-people th, .crm .cs-people td { vertical-align: middle; }
+.crm .cs-people td:first-child { white-space: normal; }
+.crm .cs-people .cs-role-meta { display: block; }
+.crm .cs-seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border, rgba(20,18,31,.12)); border-radius: 10px; }
+.crm .cs-seg button { border: 0; background: transparent; color: var(--text-secondary, #5b5870); font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 7px; white-space: nowrap; cursor: pointer; }
+.crm .cs-seg button:hover:not(.is-on):not(:disabled) { color: var(--text-primary); background: var(--crm-hover); }
+.crm .cs-seg button.is-on { color: var(--brand-ink); background: var(--brand-soft); box-shadow: 0 1px 2px rgba(20,18,31,.08); }
+.crm .cs-seg button:disabled { opacity: .6; cursor: default; }
+.crm .cs-foot { padding: 12px 16px; margin: 0; }
+
+/* CRM Settings polish: a tighter, more deliberate settings surface. Appended
+   last so it refines the cs-* rules above without touching the markup. */
+
+/* Tabs: a slim segmented bar, quiet when idle, clear when active. */
+.crm .cs-tabs {
+  gap: 2px; padding: 3px; margin-bottom: 14px;
+  border-radius: 10px; box-shadow: none;
+  background: var(--surface-2, var(--surface-1));
+}
+.crm .cs-tab {
+  height: 32px; padding: 0 13px; gap: 7px; border-radius: 7px;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  transition: color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.crm .cs-tab svg { width: 15px; height: 15px; opacity: .85; }
+.crm .cs-tab:hover:not(.is-on) { color: var(--text-primary); background: var(--crm-hover); }
+.crm .cs-tab.is-on {
+  color: var(--brand-ink); background: var(--surface-1);
+  box-shadow: 0 0 0 1px var(--crm-hair), 0 1px 2px rgba(20, 18, 31, .07);
+}
+.crm .cs-tab.is-on svg { opacity: 1; }
+.crm .cs-subtabs { margin-top: 0; }
+
+/* Sections: slim cards with a ruled header, instead of floating slabs. */
+.crm .cs-stack { gap: 12px; max-width: 920px; }
+.crm .cs-card {
+  border-radius: 10px; border: 1px solid var(--crm-hair);
+  box-shadow: 0 1px 2px rgba(20, 18, 31, .04); overflow: hidden;
+  animation: cs-in .18s ease both;
+}
+@keyframes cs-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .crm .cs-card { animation: none; } .crm .cs-tab { transition: none; } }
+.crm .cs-card-head { padding: 12px 16px; gap: 11px; background: var(--crm-sunken); }
+.crm .cs-card-icon { width: 28px; height: 28px; border-radius: 7px; }
+.crm .cs-card-icon svg { width: 15px; height: 15px; }
+.crm .cs-card-titles h2 { font-size: 14px; font-weight: 650; letter-spacing: -.005em; }
+.crm .cs-card-titles p { margin-top: 1px; font-size: 12.5px; line-height: 1.45; }
+.crm .cs-pad { padding: 14px 16px 16px; }
+
+/* Fields: compact, left-aligned at a sensible width, not stretched edge to edge. */
+.crm .cs-stack .cs-card .crm-grid-2 {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 320px));
+  gap: 14px 18px;
+}
+.crm .cs-stack .cs-card .crm-grid-2 > .crm-form-wide { grid-column: 1 / -1; }
+.crm .cs-card .crm-field-label {
+  font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.crm .cs-card .crm-field { gap: 6px; }
+.crm .cs-card select,
+.crm .cs-card input:not([type="checkbox"]):not([type="radio"]) {
+  height: 36px; padding: 0 11px; font-size: 13px; border-radius: 8px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.crm .cs-card textarea { font-size: 13px; border-radius: 8px; padding: 9px 11px; }
+.crm .cs-card select:hover,
+.crm .cs-card input:hover { border-color: var(--text-muted); }
+.crm .cs-card select:focus-visible,
+.crm .cs-card input:focus-visible,
+.crm .cs-card textarea:focus-visible {
+  outline: none; border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+.crm .cs-card .crm-field-hint { font-size: 11.5px; color: var(--text-muted); }
+
+/* Save area: a quiet footer; the button reads clearly active or inactive. */
+.crm .cs-foot { padding: 10px 16px; gap: 10px; background: var(--crm-sunken); }
+.crm .cs-foot .btn { height: 34px; padding: 0 16px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+.crm .cs-foot .btn-primary:not(:disabled):hover { filter: brightness(1.06); }
+.crm .cs-foot .btn-primary:not(:disabled):active { transform: translateY(1px); }
+.crm .cs-foot .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .crm .cs-tabs { display: flex; width: 100%; overflow-x: auto; }
+  .crm .cs-tab { flex: none; }
+  .crm .cs-stack .cs-card .crm-grid-2 { grid-template-columns: 1fr; }
+  .crm .cs-card-head { padding: 10px 12px; }
+  .crm .cs-pad { padding: 12px; }
+}
+
+/* CRM Settings, second pass: a centred settings surface with a top bar (tabs and
+   save status), roomy two-column sections, and small chips for live values. */
+.crm .cs-page {
+  max-width: 980px; margin: 0 auto; padding: 4px 0 24px;
+}
+.crm .cs-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 8px; margin-bottom: 16px;
+  border: 1px solid var(--crm-hair); border-radius: 12px;
+  background: var(--surface-1); box-shadow: 0 1px 3px rgba(20, 18, 31, .05);
+}
+.crm .cs-topbar .cs-tabs {
+  margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; gap: 4px;
+}
+.crm .cs-topbar .cs-tab { height: 34px; padding: 0 14px; border-radius: 8px; font-size: 13.5px; }
+.crm .cs-topbar .cs-tab.is-on {
+  color: var(--brand-ink); background: var(--brand-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+.crm .cs-status { display: inline-flex; align-items: center; gap: 7px; padding-right: 8px; font-size: 12.5px; color: var(--text-muted); }
+.crm .cs-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); opacity: .55; }
+.crm .cs-status.is-dirty { color: var(--status-warn); }
+.crm .cs-status.is-dirty .cs-status-dot { background: var(--status-warn); opacity: 1; }
+
+.crm .cs-stack { gap: 20px; max-width: none; }
+.crm .cs-card { border-radius: 14px; box-shadow: 0 1px 3px rgba(20, 18, 31, .05); }
+.crm .cs-card-head { padding: 20px 24px; gap: 16px; background: transparent; align-items: center; }
+.crm .cs-card-icon { width: 40px; height: 40px; border-radius: 10px; }
+.crm .cs-card-icon svg { width: 18px; height: 18px; }
+.crm .cs-card-titles h2 { font-size: 15.5px; font-weight: 700; }
+.crm .cs-card-titles p { margin-top: 3px; font-size: 13px; }
+
+/* Fields: two equal columns that fill the section. */
+.crm .cs-fields {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 24px;
+  padding: 22px 24px 24px; align-items: start;
+}
+.crm .cs-fields > .crm-form-wide { grid-column: 1 / -1; }
+.crm .cs-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.crm .cs-field-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 22px; }
+.crm .cs-label {
+  font-size: 11.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted);
+}
+.crm .cs-aside { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.crm .cs-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+.crm .cs-hint code, .crm .cs-chip { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.crm .cs-hint code { font-size: 12px; color: var(--text-secondary); }
+.crm .cs-hint strong { color: var(--text-primary); font-weight: 650; }
+.crm .cs-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+  color: var(--brand-ink); background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+}
+.crm .cs-field > select, .crm .cs-field > input,
+.crm .cs-field .cs-suffixed input,
+.crm .cs-field > .crm-field select {
+  width: 100%; height: 42px; padding: 0 14px; font-size: 14px; border-radius: 10px;
+}
+.crm .cs-suffixed { position: relative; display: block; }
+.crm .cs-suffixed input { padding-right: 64px; }
+.crm .cs-suffix {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  padding: 3px 9px; border-radius: 6px; font-size: 12px; color: var(--text-muted);
+  background: var(--crm-sunken); pointer-events: none;
+}
+
+/* The rotation: numbered member chips under a ruled sub-heading. */
+.crm .cs-rotation { padding: 18px 24px 22px; border-top: 1px solid var(--crm-hair-soft); }
+.crm .cs-rotation-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.crm .cs-pool { padding: 0; gap: 10px; }
+.crm .cs-member {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 8px 5px 6px;
+  border: 1px solid var(--crm-hair); border-radius: 999px; background: var(--surface-1); font-size: 13px;
+}
+.crm .cs-member-name { font-weight: 550; color: var(--text-primary); }
+.crm .cs-member-pos {
+  padding: 1px 7px; border-radius: 6px; font-size: 11px; color: var(--text-muted);
+  background: var(--crm-sunken); font-family: var(--font-mono, ui-monospace, monospace);
+}
+.crm .cs-member-x {
+  display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.crm .cs-member-x:hover { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 12%, transparent); }
+
+/* Footer: a note on the left, the actions on the right. */
+.crm .cs-foot { padding: 14px 24px; }
+.crm .cs-foot-note { font-size: 12.5px; color: var(--text-muted); }
+.crm .cs-push { flex: 1; }
+.crm .cs-foot .btn { height: 38px; padding: 0 20px; border-radius: 10px; }
+
+/* A dotted page background on the settings surface. */
+.crm:has(> .cs-page) {
+  background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@media (max-width: 720px) {
+  .crm .cs-topbar { flex-wrap: wrap; }
+  .crm .cs-fields { grid-template-columns: 1fr; padding: 16px; gap: 18px; }
+  .crm .cs-card-head { padding: 14px 16px; }
+  .crm .cs-rotation { padding: 14px 16px 18px; }
+  .crm .cs-foot { padding: 12px 16px; flex-wrap: wrap; }
+}
+
+.crm .cs-field select { width: 100%; height: 42px; padding: 0 14px; font-size: 14px; border-radius: 10px; }

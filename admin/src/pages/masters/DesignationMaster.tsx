@@ -6,7 +6,7 @@
  * any of them.
  */
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import '../../styles/org.css'
 import { api } from '../../lib/api'
@@ -17,6 +17,42 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBriefcase, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { Dialog, Field } from '../crm/parts'
 import { MasterTrail } from './MasterBack'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../components/ViewSettings'
+
+/** What the designation list can show; the first five are the default. */
+type DesignationColumn = ColumnDef & {
+  td: (row: Designation) => ReactNode
+  className?: string
+  thClass?: string
+  thStyle?: CSSProperties
+}
+const DESIGNATION_COLUMNS: DesignationColumn[] = [
+  { key: 'level', label: 'Level', thStyle: { width: 60 }, td: (d) => <span className="dm-level">{d.level}</span> },
+  { key: 'designation', label: 'Designation', locked: true, td: (d) => <span className="crm-strong">{d.name}</span> },
+  { key: 'department', label: 'Department', className: 'crm-muted', td: (d) => d.department_name ?? 'Any' },
+  { key: 'employees', label: 'Employees', className: 'crm-num dm-count', thClass: 'crm-num', td: (d) => d.member_count },
+  { key: 'code', label: 'Short code', initial: false, td: (d) => d.code ?? <span className="crm-muted">—</span> },
+  { key: 'status', label: 'Status', td: (d) => (
+    <span className={`crm-state ${d.is_active ? 'crm-state-good' : 'crm-state-idle'}`}>
+      {d.is_active ? 'Active' : 'Inactive'}
+    </span>
+  ) },
+]
+
+/** What the designation form can show, make mandatory or hide. The name is what
+ *  the server needs; the level starts mandatory because the form insists on it,
+ *  and keeps its default value when hidden. */
+const DESIGNATION_SECTIONS: FieldSection[] = [{ id: 'designation', label: 'Designation' }]
+const DESIGNATION_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'designation', fixed: true },
+  { key: 'level', label: 'Seniority level', section: 'designation', initial: 'mandatory' },
+  { key: 'code', label: 'Short code', section: 'designation' },
+  { key: 'department', label: 'Only in department', section: 'designation' },
+  { key: 'active', label: 'Offered when adding an employee', section: 'designation', optionalOnly: true },
+]
 
 const ORG_TRAIL_DESIGNATION = [
   { label: 'Master', to: '/masters' },
@@ -24,9 +60,12 @@ const ORG_TRAIL_DESIGNATION = [
   { label: 'Designation' },
 ]
 
-export default function DesignationMaster() {
+/** `readOnly` lists without add, edit or delete — as on HR Settings, where the masters
+ *  are only listed; the Master menu is where they are kept. */
+export default function DesignationMaster({ readOnly = false }: { readOnly?: boolean }) {
+  const columns = useColumns('designations', DESIGNATION_COLUMNS)
   const { user } = useAuth()
-  const isAdmin = canAdminister(user)
+  const isAdmin = canAdminister(user) && !readOnly
   const designations = useQuery<Designation[]>('designations', () =>
     api.get<Designation[]>('/org/designations'),
   )
@@ -86,6 +125,8 @@ export default function DesignationMaster() {
             <span className="crm-sub crm-nowrap">
               {total} designation{total === 1 ? '' : 's'}
             </span>
+            <ColumnSettings defs={DESIGNATION_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                            onSave={columns.save} onReset={columns.reset} />
             {isAdmin && (
               <button className="btn btn-primary" onClick={() => setEditing('new')}>
                 <IconPlus size={15} /> Add Designation
@@ -117,26 +158,18 @@ export default function DesignationMaster() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 60 }}>Level</th>
-                  <th>Designation</th>
-                  <th>Department</th>
-                  <th className="crm-num">Employees</th>
-                  <th>Status</th>
+                  {(columns.visible as DesignationColumn[]).map((col) => (
+                    <th key={col.key} className={col.thClass} style={col.thStyle}>{col.label}</th>
+                  ))}
                   {isAdmin && <th style={{ textAlign: 'right' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((d) => (
                   <tr key={d.id}>
-                    <td><span className="dm-level">{d.level}</span></td>
-                    <td><span className="crm-strong">{d.name}</span></td>
-                    <td className="crm-muted">{d.department_name ?? 'Any'}</td>
-                    <td className="crm-num dm-count">{d.member_count}</td>
-                    <td>
-                      <span className={`crm-state ${d.is_active ? 'crm-state-good' : 'crm-state-idle'}`}>
-                        {d.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
+                    {(columns.visible as DesignationColumn[]).map((col) => (
+                      <td key={col.key} className={col.className}>{col.td(d)}</td>
+                    ))}
                     {isAdmin && (
                       <td>
                         <div className="crm-row-actions">
@@ -198,6 +231,7 @@ function DesignationDialog({
 }) {
   const [form, setForm] = useState({
     name: designation?.name ?? '',
+    code: designation?.code ?? '',
     level: String(designation?.level ?? defaultLevel),
     department_id: designation?.department_id ?? '',
     is_active: designation?.is_active ?? true,
@@ -205,6 +239,58 @@ function DesignationDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const set = (key: keyof typeof form, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }))
+  /* What this person has chosen to show, require or hide on the form. */
+  const fields = useFieldModes('designation-form', DESIGNATION_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = { level: form.level.trim() === '', code: form.code.trim() === '', department: !form.department_id }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+      <Field label="Name" wide required>
+        <input
+          value={form.name}
+          onChange={(e) => set('name', e.target.value)}
+          placeholder="Senior Executive"
+          autoFocus
+        />
+      </Field>
+    ),
+    level: fm('level') !== 'hide' && (
+      <Field label="Seniority level" required={rq('level')} hint="1 = most senior">
+        <input placeholder="e.g. 3"
+          type="number"
+          min={1}
+          max={100}
+          value={form.level}
+          onChange={(e) => set('level', e.target.value)}
+        />
+      </Field>
+    ),
+    code: fm('code') !== 'hide' && (
+      <Field label="Short code" required={rq('code')}>
+        <input value={form.code} maxLength={12} placeholder="SE"
+               onChange={(e) => set('code', e.target.value.toUpperCase())} />
+      </Field>
+    ),
+    department: fm('department') !== 'hide' && (
+      <Field label="Only in department" wide required={rq('department')} hint="Leave blank when the title exists across the company">
+        <select value={form.department_id} onChange={(e) => set('department_id', e.target.value)}>
+          <option value=""></option>
+          {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </Field>
+    ),
+    active: fm('active') !== 'hide' && (
+      <div className="crm-field crm-form-wide">
+        <label className="crm-check">
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
+          Offered when adding an employee
+        </label>
+      </div>
+    ),
+  }
 
   async function save() {
     const level = Number(form.level)
@@ -212,7 +298,11 @@ function DesignationDialog({
       setError('Give it a name.')
       return
     }
-    if (!Number.isInteger(level) || level < 1 || level > 100) {
+    if (missing) {
+      setError('Fill in the fields marked *.')
+      return
+    }
+    if (fm('level') !== 'hide' && (!Number.isInteger(level) || level < 1 || level > 100)) {
       setError('Level is a whole number from 1 (most senior) to 100.')
       return
     }
@@ -220,6 +310,7 @@ function DesignationDialog({
     setError(null)
     const body = {
       name: form.name.trim(),
+      code: form.code.trim() || null,
       level,
       department_id: form.department_id || null,
       is_active: form.is_active,
@@ -237,47 +328,24 @@ function DesignationDialog({
   return (
     <Dialog
       title={designation ? `Edit ${designation.name}` : 'Add Designation'}
+      narrow
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : designation ? 'Save' : 'Create designation'}
+            {busy ? 'Saving…' : designation ? 'Save' : 'Add'}
           </button>
         </>
       }
     >
       <div className="crm-form">
         {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
-        <Field label="Designation" wide>
-          <input
-            value={form.name}
-            onChange={(e) => set('name', e.target.value)}
-            placeholder="Senior Executive"
-            autoFocus
-          />
-        </Field>
-        <Field label="Level" hint="1 is the most senior. Titles can share a level.">
-          <input placeholder="e.g. 3"
-            type="number"
-            min={1}
-            max={100}
-            value={form.level}
-            onChange={(e) => set('level', e.target.value)}
-          />
-        </Field>
-        <Field label="Department" hint="Leave on Any for a title used across departments.">
-          <select value={form.department_id} onChange={(e) => set('department_id', e.target.value)}>
-            <option value="">Any</option>
-            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <div className="crm-field crm-form-wide">
-          <label className="crm-check">
-            <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
-            Active
-          </label>
+        <div className="crm-form-wide lf-settings">
+          <FieldSettings defs={DESIGNATION_FIELDS} sections={DESIGNATION_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
         </div>
+        {fields.orderOf('designation').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
     </Dialog>
   )

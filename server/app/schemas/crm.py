@@ -24,6 +24,7 @@ matching ``app.schemas.assets`` — but the patterns must stay in step with
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -48,7 +49,6 @@ ASSIGNMENT_RULE = r"^(unassigned|fixed|round_robin)$"
 OPPORTUNITY_BEHAVIOUR = r"^(open|won|lost|no_decision)$"
 FORECAST_CATEGORY = r"^(commit|best_case|pipeline|upside)$"
 LOST_OUTCOME = r"^(lost|no_decision)$"
-PRODUCT_CATEGORY = r"^(product|service|implementation|support_amc|recurring)$"
 #: Digits with an optional leading +, 8–20 long. Deliberately loose: this
 #: product sells in one country today and the validation must not be the reason
 #: it cannot sell in another tomorrow. The console formats; the server stores
@@ -181,61 +181,6 @@ class CityIn(NamedIn):
     district_id: uuid.UUID | None = None
 
     _blank = field_validator("district_id", mode="before")(_blank_to_none)
-
-
-class ProductOut(MasterOut):
-    description: str | None = None
-    hsn_sac: str | None = None
-    unit: str | None = None
-    rate: Decimal
-    gst_percent: Decimal
-    category: str = "product"
-    oem: str | None = None
-    plan_count: int = 0
-
-
-class ProductIn(NamedIn):
-    name: str = Field(min_length=1, max_length=160)
-    description: str | None = None
-    hsn_sac: str | None = Field(default=None, max_length=16)
-    unit: str | None = Field(default=None, max_length=24)
-    rate: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999.99"))
-    gst_percent: Decimal = Field(default=Decimal("18"), ge=0, le=100)
-    category: str = Field(default="product", pattern=PRODUCT_CATEGORY)
-    oem: str | None = Field(default=None, max_length=120)
-
-    _blank = field_validator("description", "hsn_sac", "unit", "oem", mode="before")(
-        _blank_to_none
-    )
-
-
-PLAN_CYCLE = r"^(monthly|quarterly|half_yearly|yearly|one_time)$"
-
-
-class PlanOut(MasterOut):
-    product_id: uuid.UUID
-    product_name: str | None = None
-    code: str | None = None
-    billing_cycle: str = "yearly"
-    duration_days: int | None = None
-    price: Decimal
-    gst_percent: Decimal | None = None
-    description: str | None = None
-
-
-class PlanIn(NamedIn):
-    name: str = Field(min_length=1, max_length=120)
-    product_id: uuid.UUID
-    code: str | None = Field(default=None, max_length=40)
-    billing_cycle: str = Field(default="yearly", pattern=PLAN_CYCLE)
-    #: Overrides the cycle's term — a 45-day trial. None with a one-time
-    #: cycle means perpetual: a one-off sale with no renewal date.
-    duration_days: int | None = Field(default=None, ge=1, le=36500)
-    price: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999.99"))
-    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
-    description: str | None = Field(default=None, max_length=2000)
-
-    _blank = field_validator("code", "description", "duration_days", "gst_percent", mode="before")(_blank_to_none)
 
 
 class DispositionOut(MasterOut):
@@ -692,6 +637,37 @@ class ActivityIn(CrmBase):
     kind: Literal["note", "call"] = "note"
 
 
+_MAIL_ADDRESS = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]{2,}$")
+
+
+class LeadEmailIn(CrmBase):
+    """An email composed from the leads list. `to` is prefilled from the lead but
+    stays editable, so a lead with no address on file can still be written to."""
+
+    to: str = Field(min_length=3, max_length=254)
+    name: str | None = Field(default=None, max_length=200)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=20000)
+    bcc: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("to")
+    @classmethod
+    def _to_is_an_address(cls, value: str) -> str:
+        value = value.strip()
+        if not _MAIL_ADDRESS.match(value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+    @field_validator("bcc")
+    @classmethod
+    def _bcc_are_addresses(cls, values: list[str]) -> list[str]:
+        cleaned = [v.strip() for v in values if v and v.strip()]
+        bad = [v for v in cleaned if not _MAIL_ADDRESS.match(v)]
+        if bad:
+            raise ValueError(f"Not a valid email address: {bad[0]}")
+        return list(dict.fromkeys(cleaned))
+
+
 class LeadDetailOut(LeadOut):
     """A lead with everything the detail drawer shows, in one round trip."""
 
@@ -839,7 +815,6 @@ class CustomerPlanOut(ORMModel):
     id: uuid.UUID
     customer_id: uuid.UUID
     product_id: uuid.UUID | None = None
-    plan_id: uuid.UUID | None = None
     product_name: str
     plan_name: str | None = None
     start_on: date
@@ -855,7 +830,6 @@ class CustomerPlanOut(ORMModel):
 
 class CustomerPlanIn(CrmBase):
     product_id: uuid.UUID | None = None
-    plan_id: uuid.UUID | None = None
     #: Free text is allowed so a plan can be recorded for something that is not
     #: on the master yet — the sale happened whether or not the catalogue caught
     #: up.
@@ -1106,7 +1080,6 @@ class VisitSummary(BaseModel):
 class QuotationLineOut(ORMModel):
     id: uuid.UUID
     product_id: uuid.UUID | None = None
-    plan_id: uuid.UUID | None = None
     name: str
     description: str | None = None
     hsn_sac: str | None = None
@@ -1127,7 +1100,6 @@ class QuotationLineIn(CrmBase):
     #: fills these in.
     name: str = Field(min_length=1, max_length=200)
     product_id: uuid.UUID | None = None
-    plan_id: uuid.UUID | None = None
     description: str | None = None
     hsn_sac: str | None = Field(default=None, max_length=16)
     quantity: Decimal = Field(default=Decimal("1"), gt=0, le=Decimal("999999"))
@@ -1387,3 +1359,29 @@ class LeadDashboardOut(BaseModel):
 # after them, which Pydantic resolves only when asked.
 LeadDetailOut.model_rebuild()
 CustomerDetailOut.model_rebuild()
+
+
+ACCESS_SCOPE = r"^(own|all|all_assign)$"
+
+
+class AccessMemberOut(CrmBase):
+    """One row of Settings > Access: a person, what they own, and how much of the
+    book they see. A scope of None means nobody has set one, so they have what
+    their role and reporting line give them (``lead_default`` says what that is)."""
+
+    user_id: uuid.UUID
+    name: str
+    email: str
+    team: str | None = None
+    is_admin: bool
+    own_leads: int
+    own_customers: int
+    lead_scope: str | None = None
+    customer_scope: str | None = None
+    lead_default: str
+    customer_default: str
+
+
+class AccessPatch(CrmBase):
+    lead_scope: str | None = Field(default=None, pattern=ACCESS_SCOPE)
+    customer_scope: str | None = Field(default=None, pattern=ACCESS_SCOPE)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useQuery } from '../lib/useQuery'
@@ -10,11 +10,89 @@ import { ExportButton } from '../components/ExportButton'
 import AgentInstall from '../components/AgentInstall'
 import { IconClose, IconEdit, IconFilter, IconPlus, IconSearch, IconUpload } from '../components/Icons'
 import EmployeeImport from '../components/EmployeeImport'
+import { ColumnSettings, useColumns, type ColumnDef } from '../components/ViewSettings'
 import '../styles/org.css'
 import '../styles/employees.css'
 
+/** What the roster can show. A person picks and orders these from Settings; the
+ *  first six are what it shows until they do. */
+type EmployeeColumn = ColumnDef & {
+  td: (row: User) => ReactNode
+  className?: string
+  thClass?: string
+}
+const dash = <span className="muted-sm">—</span>
+const EMPLOYEE_COLUMNS: EmployeeColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (employee) => (
+    <div className="identity">
+      <Avatar name={employee.full_name} />
+      <div className="identity-body">
+        <div className="identity-name">
+          <Link className="row-link" to={`/employees/${employee.id}`}>
+            {employee.full_name}
+          </Link>
+        </div>
+        <div className="identity-meta">
+          {employee.employee_code && <span className="emp-code">{employee.employee_code}</span>}
+          {employee.email}
+          {/* Two different records, deliberately reachable from one row.
+              `/employees/:id` is the account; `/people/:id` is the person
+              (statutory identity, documents, probation). The server refuses the
+              profile link for anyone without the people permission, so this is a
+              shortcut, not a grant. */}
+          <Link className="row-sublink" to={`/people/${employee.id}`}>
+            HR record
+          </Link>
+        </div>
+      </div>
+    </div>
+  ) },
+  { key: 'designation', label: 'Designation', td: (employee) => (
+    <>
+      <div className="emp-strong">{employee.designation_name ?? <span className="muted-sm">{employee.role}</span>}</div>
+      {(employee.department_name || employee.team_name) && (
+        <div className="muted-sm">{[employee.department_name, employee.team_name].filter(Boolean).join(' · ')}</div>
+      )}
+    </>
+  ) },
+  { key: 'branch', label: 'Branch', td: (employee) => employee.work_location ?? dash },
+  { key: 'manager', label: 'Reports to', td: (employee) => employee.manager_name ?? dash },
+  { key: 'joined', label: 'Joined', className: 'emp-nowrap', td: (employee) => (
+    employee.joined_on ? shortDate(employee.joined_on) : dash
+  ) },
+  /* Active or disabled; and, until accepted, the monitoring notice, which is an
+     actionable state because enrolment is refused until then. */
+  { key: 'status', label: 'Status', td: (employee) => (
+    <>
+      {employee.is_active ? (
+        <span className="badge badge-ok">
+          <span className="badge-dot" style={{ background: 'var(--status-good)' }} />
+          Active
+        </span>
+      ) : (
+        <span className="badge">
+          <span className="badge-dot" style={{ background: 'var(--text-muted)' }} />
+          Disabled
+        </span>
+      )}
+      <div className={`emp-notice${employee.notice_accepted_at ? '' : ' is-pending'}`}
+        title={employee.notice_accepted_at ? `Monitoring notice accepted ${dateTime(employee.notice_accepted_at)}` : 'Monitoring notice not accepted yet'}>
+        {employee.notice_accepted_at ? 'Notice accepted' : 'Notice pending'}
+      </div>
+    </>
+  ) },
+  { key: 'code', label: 'Employee code', initial: false, className: 'emp-nowrap', td: (e) => e.employee_code ?? dash },
+  { key: 'email', label: 'Email', initial: false, td: (e) => e.email },
+  { key: 'role', label: 'Access level', initial: false, td: (e) => <span style={{ textTransform: 'capitalize' }}>{e.role}</span> },
+  { key: 'roleName', label: 'Role', initial: false, td: (e) => e.role_name ?? dash },
+  { key: 'department', label: 'Department', initial: false, td: (e) => e.department_name ?? dash },
+  { key: 'team', label: 'Team', initial: false, td: (e) => e.team_name ?? dash },
+  { key: 'timezone', label: 'Time zone', initial: false, className: 'emp-nowrap', td: (e) => e.timezone },
+]
+
 export default function Employees() {
   const { user } = useAuth()
+  const columns = useColumns('employees', EMPLOYEE_COLUMNS)
   const isAdmin = canAdminister(user)
   const { data, error, loading, reload } = useQuery<User[]>('employees', () =>
     api.get<User[]>('/admin/employees'),
@@ -193,6 +271,8 @@ export default function Employees() {
         </div>
 
         <div className="emp-tools-right">
+          <ColumnSettings defs={EMPLOYEE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           {/* The software itself, next to the people it tracks. */}
           <button
             className="emp-icon-btn"
@@ -235,78 +315,18 @@ export default function Employees() {
           <table className="emp-table">
             <thead>
               <tr>
-                <th>Employee</th>
-                <th>Designation</th>
-                <th>Branch</th>
-                <th>Reports to</th>
-                <th>Joined</th>
-                <th>Status</th>
+                {(columns.visible as EmployeeColumn[]).map((col) => (
+                  <th key={col.key} className={col.thClass}>{col.label}</th>
+                ))}
                 {isAdmin && <th style={{ textAlign: 'center' }}>Edit</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map((employee) => (
                 <tr key={employee.id}>
-                  {/* Email rides along under the name rather than holding its own
-                      column — it identifies the person, it is not a facet anyone
-                      scans down. */}
-                  <td>
-                    <div className="identity">
-                      <Avatar name={employee.full_name} />
-                      <div className="identity-body">
-                        <div className="identity-name">
-                          <Link className="row-link" to={`/employees/${employee.id}`}>
-                            {employee.full_name}
-                          </Link>
-                        </div>
-                        <div className="identity-meta">
-                          {employee.employee_code && <span className="emp-code">{employee.employee_code}</span>}
-                          {employee.email}
-                          {/* Two different records, deliberately reachable from
-                              one row. `/employees/:id` is the account — role,
-                              placement, permissions, the agent key. `/people/:id`
-                              is the person — statutory identity, documents,
-                              probation. HR administering somebody needs both and
-                              was otherwise routed via the Directory to reach the
-                              second, which is silly. The server refuses the
-                              profile link for anyone without the people
-                              permission, so this is a shortcut, not a grant. */}
-                          <Link className="row-sublink" to={`/people/${employee.id}`}>
-                            HR record
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="emp-strong">{employee.designation_name ?? <span className="muted-sm">{employee.role}</span>}</div>
-                    {(employee.department_name || employee.team_name) && (
-                      <div className="muted-sm">{[employee.department_name, employee.team_name].filter(Boolean).join(' · ')}</div>
-                    )}
-                  </td>
-                  <td>{employee.work_location ?? <span className="muted-sm">—</span>}</td>
-                  <td>{employee.manager_name ?? <span className="muted-sm">—</span>}</td>
-                  <td className="emp-nowrap">{employee.joined_on ? shortDate(employee.joined_on) : <span className="muted-sm">—</span>}</td>
-                  {/* Active or disabled; and, until accepted, the monitoring
-                      notice — enrolment is refused until then, so it is an
-                      actionable state, not a blank field. */}
-                  <td>
-                    {employee.is_active ? (
-                      <span className="badge badge-ok">
-                        <span className="badge-dot" style={{ background: 'var(--status-good)' }} />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="badge">
-                        <span className="badge-dot" style={{ background: 'var(--text-muted)' }} />
-                        Disabled
-                      </span>
-                    )}
-                    <div className={`emp-notice${employee.notice_accepted_at ? '' : ' is-pending'}`}
-                      title={employee.notice_accepted_at ? `Monitoring notice accepted ${dateTime(employee.notice_accepted_at)}` : 'Monitoring notice not accepted yet'}>
-                      {employee.notice_accepted_at ? 'Notice accepted' : 'Notice pending'}
-                    </div>
-                  </td>
+                  {(columns.visible as EmployeeColumn[]).map((col) => (
+                    <td key={col.key} className={col.className}>{col.td(employee)}</td>
+                  ))}
                   {/* The Agent key column (reveal / rotate / set up) is hidden for now;
                       the keys themselves are unchanged. */}
                   {/* Opens the same ten-step form as Add employee, filled in. */}

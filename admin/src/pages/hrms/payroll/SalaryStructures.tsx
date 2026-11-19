@@ -18,7 +18,7 @@
       and `toPaise()` parses at the other; the annual figure is presented, never
       entered. */
 
-import { useCallback, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
@@ -30,7 +30,16 @@ import type {
   StructurePreview,
   UncoveredEmployee,
 } from '../../../lib/types'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
 import '../../../styles/payroll.css'
+
+// Server requires the gross and the effective date; the reason is optional.
+const REVISION_FIELDS: FieldDef[] = [
+  { key: 'gross', label: 'Monthly gross', section: 'revision', fixed: true },
+  { key: 'effective', label: 'Effective from', section: 'revision', fixed: true },
+  { key: 'reason', label: 'Reason', section: 'revision' },
+]
+const REVISION_SECTIONS: FieldSection[] = [{ id: 'revision', label: 'Revision' }]
 
 /** Basis points as a percentage: 4000 → "40%". */
 export function pct(bps: number): string {
@@ -326,6 +335,9 @@ function NewRevision({
     return new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
   })
   const [reason, setReason] = useState('')
+  const fields = useFieldModes('salary-revision-form', REVISION_FIELDS)
+  const fm = fields.mode
+  const missing = fm('reason') === 'mandatory' && !reason.trim()
   const [chosen, setChosen] = useState<Record<string, string>>(() =>
     Object.fromEntries(components.map((c) => [c.id, ''])),
   )
@@ -395,26 +407,40 @@ function NewRevision({
     )
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    gross: (
+      <label className="pr-field">
+        <span className="pr-field-label">Monthly gross *</span>
+        <input value={gross} inputMode="decimal" placeholder="50000"
+               className={gross && grossPaise === null ? 'is-bad' : ''}
+               onChange={(e) => { setGross(e.target.value); setPreview(null) }} />
+      </label>
+    ),
+    effective: (
+      <label className="pr-field">
+        <span className="pr-field-label">Effective from *</span>
+        <input type="date" value={effective}
+               onChange={(e) => setEffective(e.target.value)} />
+      </label>
+    ),
+    reason: fm('reason') !== 'hide' && (
+      <label className="pr-field pr-field-wide">
+        <span className="pr-field-label">Reason{fm('reason') === 'mandatory' ? ' *' : ''}</span>
+        <input value={reason} placeholder="Annual revision, promotion, correction"
+               onChange={(e) => setReason(e.target.value)} />
+      </label>
+    ),
+  }
+
   return (
     <section className="card pr-form">
       <h2 className="card-title">New revision</h2>
+      <div className="lf-settings">
+        <FieldSettings defs={REVISION_FIELDS} sections={REVISION_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
       <div className="pr-row">
-        <label className="pr-field">
-          <span className="pr-field-label">Monthly gross</span>
-          <input value={gross} inputMode="decimal" placeholder="50000"
-                 className={gross && grossPaise === null ? 'is-bad' : ''}
-                 onChange={(e) => { setGross(e.target.value); setPreview(null) }} />
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Effective from</span>
-          <input type="date" value={effective}
-                 onChange={(e) => setEffective(e.target.value)} />
-        </label>
-        <label className="pr-field pr-field-wide">
-          <span className="pr-field-label">Reason</span>
-          <input value={reason} placeholder="Annual revision, promotion, correction"
-                 onChange={(e) => setReason(e.target.value)} />
-        </label>
+        {fields.orderOf('revision').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
 
       <table className="table pr-picker">
@@ -467,11 +493,12 @@ function NewRevision({
           Preview
         </button>
         <button className="btn primary"
-                disabled={!preview || !grossPaise || busy || !effective}
+                disabled={!preview || !grossPaise || busy || !effective || missing}
                 onClick={save}>
           Save revision
         </button>
         <span className="muted">
+          {missing ? 'Fill in the fields marked *. ' : ''}
           Preview first — it is the server resolving these, so what you see is
           what gets stored.
         </span>

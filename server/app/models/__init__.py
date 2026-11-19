@@ -9,6 +9,7 @@ from app.models.assets import (
 )
 from app.models.attendance import (
     AttendanceRecord,
+    AttendanceDevice,
     AttendanceSettings,
     WorkMode,
     AttendanceStatus,
@@ -159,6 +160,7 @@ from app.models.chat import (
 )
 from app.models.crm_opportunity import CrmOpportunity, CrmRequirementType
 from app.models.crm import (
+    CrmAccess,
     CrmActivity,
     CrmCampaign,
     CrmCompetitor,
@@ -180,8 +182,6 @@ from app.models.crm import (
     CrmLeadStatus,
     CrmLostReason,
     CrmOpportunityStage,
-    CrmPlan,
-    CrmProduct,
     CrmQuotation,
     CrmQuotationLine,
     CrmReminder,
@@ -213,7 +213,7 @@ from app.models.meetings import Meeting, MeetingInvitee, MeetingStatus
 # its thirty-odd classes are only used by the ERP services, which import them
 # from `app.models.erp` directly.
 from app.models import erp  # noqa: F401,E402
-from app.models.org_structure import Department, Designation, Team, WorkSchedule
+from app.models.org_structure import Branch, Department, Designation, Team, WorkSchedule
 from app.models.organization import Organization, OrgSettings
 from app.models.plan import PlanRecord
 from app.models.mail import MailSettings
@@ -241,6 +241,9 @@ from app.models.user import Role, User, UserStatus
 # make this file the place people look for seed content, which is not what it is
 # for, and the two modules disagreed about whether to do it.
 __all__ = [
+    "AttendanceDevice",
+    "Branch",
+    "CrmAccess",
     "CrmActivity",
     "CrmDistrict",
     "CrmCampaign",
@@ -265,8 +268,6 @@ __all__ = [
     "CrmLead",
     "CrmLeadSource",
     "CrmLeadStatus",
-    "CrmPlan",
-    "CrmProduct",
     "CrmQuotation",
     "CrmQuotationLine",
     "CrmReminder",

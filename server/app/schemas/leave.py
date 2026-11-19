@@ -324,6 +324,9 @@ class LeaveCancelIn(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
+HOLIDAY_TYPES = ("public", "national", "festival", "optional", "company")
+
+
 class HolidayIn(BaseModel):
     #: Named holiday_date, not date, to match the column — see the model.
     holiday_date: date
@@ -331,6 +334,16 @@ class HolidayIn(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     is_optional: bool = False
     is_active: bool = True
+    #: Left out by the older calendar form; then the type follows ``is_optional`` and the branch is kept.
+    holiday_type: str = Field(default="public", pattern=r"^(public|national|festival|optional|company)$")
+    branch_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _optional_type_is_optional(self):
+        """The Optional / Restricted type and the opt-in flag are one idea."""
+        if self.holiday_type == "optional":
+            self.is_optional = True
+        return self
 
 
 class HolidayOut(ORMModel):
@@ -340,6 +353,9 @@ class HolidayOut(ORMModel):
     description: str | None = None
     is_optional: bool
     is_active: bool
+    holiday_type: str = "public"
+    branch_id: uuid.UUID | None = None
+    branch_name: str | None = None
     #: For an optional holiday, whether the requesting employee has opted in.
     #: Always false for a mandatory holiday, where opting in is meaningless —
     #: the day is off for everyone.

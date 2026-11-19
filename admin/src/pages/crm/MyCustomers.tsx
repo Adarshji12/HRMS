@@ -11,7 +11,7 @@
  * through to add one line.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/hrdash.css'
@@ -61,13 +61,116 @@ import {
   LfField,
   LfInput,
   LfSection,
+  ItemSelect,
   MasterSelect,
   OwnerSelect,
   StateText,
   WhatsAppButton,
 } from './parts'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../components/ViewSettings'
 
 type Created = '' | 'today' | '7d' | '30d' | 'year'
+
+/** What the customers table can show. A person picks and orders these from
+ *  Settings; the first eight are what it shows until they do. */
+type CustomerColumn = ColumnDef & {
+  td: (row: Customer, ctx: { open: (id: string) => void }) => ReactNode
+  className?: string
+}
+const none = <span className="crm-muted">—</span>
+const CUSTOMER_COLUMNS: CustomerColumn[] = [
+  { key: 'code', label: 'Customer ID', className: 'crm-code', td: (r) => r.code },
+  { key: 'customer', label: 'Customer', locked: true, td: (r, ctx) => (
+    <button className="link-btn cu-person" onClick={() => ctx.open(r.id)}>
+      <Avatar name={r.name} small />
+      <span>
+        <span className="crm-strong">{r.name}</span>
+        {r.company && <span className="crm-sub">{r.company}</span>}
+      </span>
+    </button>
+  ) },
+  { key: 'mobile', label: 'Mobile', className: 'crm-nowrap', td: (r) => (
+    <>
+      <WhatsAppButton mobile={r.whatsapp ?? r.mobile} />
+      {r.mobile}
+    </>
+  ) },
+  { key: 'item', label: 'Item', td: (r) => (
+    r.primary_plan ? (
+      <>
+        <span className="crm-pill">{r.primary_plan.product_name}</span>
+        {r.plan_count > 1 && <div className="crm-sub">+{r.plan_count - 1} more</div>}
+      </>
+    ) : (
+      <span className="crm-muted">Nothing recorded</span>
+    )
+  ) },
+  { key: 'period', label: 'Plan period', className: 'crm-nowrap crm-sub', td: (r) => (
+    r.primary_plan ? `${r.primary_plan.start_on} → ${r.primary_plan.end_on ?? 'perpetual'}` : '—'
+  ) },
+  { key: 'renewal', label: 'Renewal', className: 'crm-nowrap', td: (r) => (
+    <>
+      {r.primary_plan?.renewal_on ?? none}
+      {r.primary_plan?.days_to_renewal !== null && r.primary_plan?.days_to_renewal !== undefined && (
+        <div
+          className={
+            r.primary_plan.days_to_renewal < 0
+              ? 'crm-due-over'
+              : r.primary_plan.days_to_renewal <= 30
+                ? 'crm-due-today'
+                : 'crm-sub'
+          }
+        >
+          {inDays(r.primary_plan.days_to_renewal)}
+        </div>
+      )}
+    </>
+  ) },
+  { key: 'manager', label: 'Manager', td: (r) => r.manager_name ?? none },
+  { key: 'status', label: 'Status', td: (r) => <StateText value={r.status} /> },
+  { key: 'company', label: 'Company', initial: false, td: (r) => r.company ?? none },
+  { key: 'email', label: 'Email', initial: false, td: (r) => r.email ?? none },
+  { key: 'type', label: 'Customer type', initial: false, td: (r) => r.customer_type ?? none },
+  { key: 'industry', label: 'Industry', initial: false, td: (r) => r.industry_name ?? none },
+  { key: 'source', label: 'Source', initial: false, td: (r) => r.source_name ?? none },
+  { key: 'gstin', label: 'GSTIN', initial: false, className: 'crm-nowrap', td: (r) => r.gstin ?? none },
+  { key: 'state', label: 'State', initial: false, td: (r) => r.state_name ?? none },
+  { key: 'city', label: 'City', initial: false, td: (r) => r.city_name ?? none },
+  { key: 'since', label: 'Customer since', initial: false, className: 'crm-nowrap', td: (r) => new Date(r.created_at).toLocaleDateString('en-IN') },
+]
+
+/** What the customer form can show, make mandatory or hide. A customer's name
+ *  and mobile number are what the server needs, so they cannot be changed. */
+const CUSTOMER_SECTIONS: FieldSection[] = [
+  { id: 'customer', label: 'Customer' },
+  { id: 'contact', label: 'Contact' },
+  { id: 'business', label: 'Business & tax' },
+  { id: 'address', label: 'Address' },
+  { id: 'notes', label: 'Notes' },
+]
+const CUSTOMER_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Customer name', section: 'customer', fixed: true },
+  { key: 'company', label: 'Company name', section: 'customer' },
+  { key: 'code', label: 'Customer ID', section: 'customer' },
+  { key: 'type', label: 'Customer type', section: 'customer' },
+  { key: 'status', label: 'Status', section: 'customer' },
+  { key: 'mobile', label: 'Mobile number', section: 'contact', fixed: true },
+  { key: 'email', label: 'Email', section: 'contact' },
+  { key: 'whatsapp', label: 'WhatsApp number', section: 'contact' },
+  { key: 'industry', label: 'Industry', section: 'business' },
+  { key: 'source', label: 'Lead source', section: 'business' },
+  { key: 'manager', label: 'Account manager', section: 'business' },
+  { key: 'gstin', label: 'GSTIN', section: 'business' },
+  { key: 'country', label: 'Country', section: 'address' },
+  { key: 'state', label: 'State', section: 'address' },
+  { key: 'city', label: 'City', section: 'address' },
+  { key: 'pincode', label: 'Pincode', section: 'address' },
+  { key: 'address', label: 'Address', section: 'address' },
+  { key: 'notes', label: 'Notes', section: 'notes' },
+]
 
 function inCreated(iso: string, created: Created): boolean {
   if (!created) return true
@@ -82,6 +185,7 @@ function inCreated(iso: string, created: Created): boolean {
 
 export default function MyCustomers() {
   const [params, setParams] = useSearchParams()
+  const columns = useColumns('customers', CUSTOMER_COLUMNS)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [renewal, setRenewal] = useState('')
@@ -138,8 +242,8 @@ export default function MyCustomers() {
     (!sourceF || row.source_id === sourceF) &&
     (!stateF || row.state_id === stateF) &&
     (!cityF || row.city_id === cityF))
-  const moreCount = [renewal, typeF, industryF, sourceF, stateF, cityF].filter(Boolean).length
-  const filtered = Boolean(q || status || managerId || created || moreCount)
+  const moreCount = [status, created, managerId, renewal, typeF, industryF, sourceF, stateF, cityF].filter(Boolean).length
+  const filtered = Boolean(q || moreCount)
   const clearAll = () => {
     setQ(''); setStatus(''); setRenewal(''); setManagerId(''); setCreated('')
     setTypeF(''); setIndustryF(''); setSourceF(''); setStateF(''); setCityF('')
@@ -271,24 +375,6 @@ export default function MyCustomers() {
             aria-label="Search customers"
           />
         </div>
-        <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="on_hold">On hold</option>
-          <option value="expired">Expired</option>
-          <option value="churned">Churned</option>
-        </select>
-        <label className="cu-date" title="When the customer was added">
-          <IconCalendar size={14} />
-          <select value={created} onChange={(event) => setCreated(event.target.value as Created)} aria-label="Added">
-            <option value="">All time</option>
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="year">This year</option>
-          </select>
-        </label>
-        <OwnerSelect value={managerId} onChange={setManagerId} placeholder="All Managers" />
 
         <div className="ml-filter" ref={filterRef}>
           <button
@@ -302,6 +388,30 @@ export default function MyCustomers() {
           </button>
           {showFilters && (
             <div className="ml-pop cu-pop" role="dialog" aria-label="Filter customers">
+              <label className="ml-pop-field">
+                <span>Status</span>
+                <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="on_hold">On hold</option>
+                  <option value="expired">Expired</option>
+                  <option value="churned">Churned</option>
+                </select>
+              </label>
+              <label className="ml-pop-field">
+                <span>Added</span>
+                <select value={created} onChange={(event) => setCreated(event.target.value as Created)}>
+                  <option value="">All time</option>
+                  <option value="today">Today</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="year">This year</option>
+                </select>
+              </label>
+              <label className="ml-pop-field">
+                <span>Account manager</span>
+                <OwnerSelect value={managerId} onChange={setManagerId} placeholder="All managers" />
+              </label>
               <label className="ml-pop-field">
                 <span>Renewal</span>
                 <select value={renewal} onChange={(event) => setRenewal(event.target.value)}>
@@ -335,7 +445,7 @@ export default function MyCustomers() {
                 <MasterSelect kind="cities" parentId={stateF} value={cityF} onChange={setCityF} placeholder="All cities" />
               </label>
               <button type="button" className="ml-pop-reset" disabled={moreCount === 0}
-                      onClick={() => { setRenewal(''); setTypeF(''); setIndustryF(''); setSourceF(''); setStateF(''); setCityF('') }}>
+                      onClick={() => { setStatus(''); setCreated(''); setManagerId(''); setRenewal(''); setTypeF(''); setIndustryF(''); setSourceF(''); setStateF(''); setCityF('') }}>
                 Reset filters
               </button>
             </div>
@@ -349,6 +459,8 @@ export default function MyCustomers() {
         )}
 
         <span className="crm-push" />
+        <ColumnSettings defs={CUSTOMER_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         <button className="ml-icon-btn" onClick={exportCsv} disabled={list.length === 0}
                 title="Export this view as CSV" aria-label="Export this view as CSV">
           <IconDownload size={15} />
@@ -390,75 +502,18 @@ export default function MyCustomers() {
               <table className="crm-table-wide">
                 <thead>
                   <tr>
-                    <th>Customer ID</th>
-                    <th>Customer</th>
-                    <th>Mobile</th>
-                    <th>Product / Plan</th>
-                    <th>Plan period</th>
-                    <th>Renewal</th>
-                    <th>Manager</th>
-                    <th>Status</th>
+                    {(columns.visible as CustomerColumn[]).map((col) => (
+                      <th key={col.key}>{col.label}</th>
+                    ))}
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {list.map((row) => (
                     <tr key={row.id}>
-                      <td className="crm-code">{row.code}</td>
-                      <td>
-                        <button className="link-btn cu-person" onClick={() => setOpenId(row.id)}>
-                          <Avatar name={row.name} small />
-                          <span>
-                            <span className="crm-strong">{row.name}</span>
-                            {row.company && <span className="crm-sub">{row.company}</span>}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="crm-nowrap">
-                        <WhatsAppButton mobile={row.whatsapp ?? row.mobile} />
-                        {row.mobile}
-                      </td>
-                      <td>
-                        {row.primary_plan ? (
-                          <>
-                            <span className="crm-pill">{row.primary_plan.product_name}</span>
-                            {row.primary_plan.plan_name && (
-                              <div className="crm-sub">{row.primary_plan.plan_name}</div>
-                            )}
-                            {row.plan_count > 1 && (
-                              <div className="crm-sub">+{row.plan_count - 1} more</div>
-                            )}
-                          </>
-                        ) : (
-                          <span className="crm-muted">Nothing recorded</span>
-                        )}
-                      </td>
-                      <td className="crm-nowrap crm-sub">
-                        {row.primary_plan
-                          ? `${row.primary_plan.start_on} → ${row.primary_plan.end_on ?? 'perpetual'}`
-                          : '—'}
-                      </td>
-                      <td className="crm-nowrap">
-                        {row.primary_plan?.renewal_on ?? <span className="crm-muted">—</span>}
-                        {row.primary_plan?.days_to_renewal !== null &&
-                          row.primary_plan?.days_to_renewal !== undefined && (
-                            <div
-                              className={
-                                row.primary_plan.days_to_renewal < 0
-                                  ? 'crm-due-over'
-                                  : row.primary_plan.days_to_renewal <= 30
-                                    ? 'crm-due-today'
-                                    : 'crm-sub'
-                              }
-                            >
-                              {inDays(row.primary_plan.days_to_renewal)}
-                            </div>
-                          )}
-                      </td>
-                      <td>{row.manager_name ?? <span className="crm-muted">—</span>}</td>
-                      <td>
-                        <StateText value={row.status} />
-                      </td>
+                      {(columns.visible as CustomerColumn[]).map((col) => (
+                        <td key={col.key} className={col.className}>{col.td(row, { open: setOpenId })}</td>
+                      ))}
                       <td>
                         <div className="crm-row-actions">
                           <button
@@ -616,7 +671,7 @@ function CustomerProfile({ customerId, onBack, onChanged, onDelete }: {
         <span className="cp-gap" />
         <WhatsAppButton mobile={c.whatsapp ?? c.mobile} />
         <button type="button" className="btn" onClick={() => setEditing(true)}><IconEdit size={14} /> Edit</button>
-        <button type="button" className="btn btn-primary" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Product / Service</button>
+        <button type="button" className="btn btn-primary" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Item</button>
         <button type="button" className="crm-icon-btn crm-icon-danger" title="Delete customer" aria-label={`Delete ${c.name}`} onClick={() => onDelete(c)}>
           <IconTrash size={15} />
         </button>
@@ -643,27 +698,26 @@ function CustomerProfile({ customerId, onBack, onChanged, onDelete }: {
           </div>
         </CpCard>
 
-        <CpCard title="Products & services" badge={<span className="cp-count">{c.plans.length ? c.plans.length : 'none yet'}</span>}
-          action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Product / Service</button>}>
+        <CpCard title="Items" badge={<span className="cp-count">{c.plans.length ? c.plans.length : 'none yet'}</span>}
+          action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setAddingPlan(true)}><IconPlus size={14} /> Add Item</button>}>
           {c.plans.length === 0 ? (
             <CpEmpty icon={<IconBriefcase size={22} />} title="Nothing assigned yet"
-              body="Assign a product or service from your master to start the plan and renewal clock." />
+              body="Add an item from your Items master to start the renewal clock." />
           ) : (
             <div className="table-wrap"><table className="cp-table">
-              <thead><tr><th>Product / service</th><th>Plan</th><th>Period</th><th>Renewal</th><th className="crm-num">Amount</th><th>Payment</th><th className="cp-c-act" /></tr></thead>
+              <thead><tr><th>Item</th><th>Period</th><th>Renewal</th><th className="crm-num">Amount</th><th>Payment</th><th className="cp-c-act" /></tr></thead>
               <tbody>{c.plans.map((plan) => (
                 <tr key={plan.id}>
                   <td className="crm-strong">{plan.product_name}</td>
-                  <td>{plan.plan_name ?? <span className="crm-muted">—</span>}</td>
                   <td className="crm-sub">{fmtDate(plan.start_on)} → {plan.end_on ? fmtDate(plan.end_on) : 'Perpetual'}</td>
                   <td className={plan.days_to_renewal !== null && plan.days_to_renewal < 0 ? 'crm-due-over' : plan.days_to_renewal !== null && plan.days_to_renewal <= 30 ? 'crm-due-today' : ''}>
-                    {plan.end_on ? inDays(plan.days_to_renewal) : '—'}
+                    {plan.days_to_renewal !== null ? inDays(plan.days_to_renewal) : '—'}
                   </td>
                   <td className="crm-num">{rupees(plan.amount)}</td>
                   <td><StateText value={plan.payment_status} /></td>
                   <td className="cp-c-act">
                     <div className="crm-row-actions">
-                      <button type="button" className="crm-icon-btn" title="Edit" aria-label="Edit plan" onClick={() => setPlanEditing(plan)}><IconEdit size={14} /></button>
+                      <button type="button" className="crm-icon-btn" title="Edit" aria-label="Edit item" onClick={() => setPlanEditing(plan)}><IconEdit size={14} /></button>
                       <button type="button" className="crm-icon-btn crm-icon-danger" title="Remove" aria-label="Remove plan"
                         onClick={() => { if (window.confirm(`Remove ${plan.product_name} from ${c.name}?`)) void act(() => crm.deletePlan(plan.id), 'That plan could not be removed') }}>
                         <IconTrash size={14} />
@@ -931,40 +985,58 @@ function CustomerForm({
   const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const gstinBad = gstin.trim() !== '' && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(gstin.trim())
   const pincodeBad = pincode.trim() !== '' && !/^\d{6}$/.test(pincode.trim())
-  const ready = name.trim() !== '' && mobile.trim() !== ''
+  /* What this person has chosen to show, require or hide on the form. */
+  const fields = useFieldModes('customer-form', CUSTOMER_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const emptyField: Record<string, boolean> = {
+    company: company.trim() === '', code: code.trim() === '', type: !type, email: email.trim() === '',
+    whatsapp: !sameNumber && whatsapp.trim() === '', industry: !industryId, source: !sourceId,
+    manager: !managerId, gstin: gstin.trim() === '', country: !countryId, state: !stateId, city: !cityId,
+    pincode: pincode.trim() === '', address: address.trim() === '', notes: notes.trim() === '',
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const ready = name.trim() !== '' && mobile.trim() !== '' && !missing
     && !mobileBad && !whatsappBad && !emailBad && !gstinBad && !pincodeBad
 
-  const form = (
-      <form className="lf" id="crm-customer-form" noValidate
-            onSubmit={(event) => { event.preventDefault(); if (ready && !busy) save() }}>
-        {error && <ErrorNote>{error}</ErrorNote>}
-        <LfSection icon={<IconBuilding size={16} />} title="Customer" note="Who the account is, and where it stands.">
+  /* Every field of the form as an element, so the order a person arranged in
+     Settings can place them. A hidden field is nothing at all. */
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
           <LfField label="Customer name" required>
             <LfInput icon={<IconUser size={15} />}>
               <input value={name} onChange={(event) => setName(event.target.value)}
                      placeholder="e.g. Rahul Sharma" autoFocus required />
             </LfInput>
           </LfField>
-          <LfField label="Company name">
+        ),
+    company: fm('company') !== 'hide' && (
+          <LfField label="Company name" required={rq('company')}>
             <LfInput icon={<IconBriefcase size={15} />}>
               <input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Company / firm name" />
             </LfInput>
           </LfField>
-          <LfField label="Customer ID"
+        ),
+    code: fm('code') !== 'hide' && (
+          <LfField label="Customer ID" required={rq('code')}
                    hint={customer ? 'Fixed once the customer is created.' : 'Your own reference — generated when left blank.'}>
             <LfInput prefix="#">
               <input value={code} onChange={(event) => setCode(event.target.value)} disabled={Boolean(customer)}
                      placeholder="Auto-generated" />
             </LfInput>
           </LfField>
-          <LfField label="Customer type">
+        ),
+    type: fm('type') !== 'hide' && (
+          <LfField label="Customer type" required={rq('type')}>
             <select value={type} onChange={(event) => setType(event.target.value)}>
               <option value="">Select type</option>
               {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               {type && !CUSTOMER_TYPES.includes(type) && <option value={type}>{type}</option>}
             </select>
           </LfField>
-          <LfField label="Status" wide>
+        ),
+    status: fm('status') !== 'hide' && (
+          <LfField label="Status" required={rq('status')} wide>
             <div className="lf-pills" role="radiogroup" aria-label="Status">
               {CUSTOMER_STATUSES.map((s) => (
                 <button key={s.key} type="button" role="radio" aria-checked={status === s.key}
@@ -975,9 +1047,8 @@ function CustomerForm({
               ))}
             </div>
           </LfField>
-        </LfSection>
-
-        <LfSection icon={<IconPhone size={16} />} title="Contact" note="How the desk and the account manager reach them.">
+        ),
+    mobile: (
           <LfField label="Mobile number" required
                    error={touched.mobile && mobileBad ? 'Enter a 10-digit mobile number.' : undefined}>
             <LfInput icon={<IconPhone size={15} />} bad={touched.mobile && mobileBad}>
@@ -985,13 +1056,17 @@ function CustomerForm({
                      placeholder="98765 43210" inputMode="tel" required />
             </LfInput>
           </LfField>
-          <LfField label="Email" error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
+        ),
+    email: fm('email') !== 'hide' && (
+          <LfField label="Email" required={rq('email')} error={touched.email && emailBad ? 'That does not look like an email address.' : undefined}>
             <LfInput icon={<IconMail size={15} />} bad={touched.email && emailBad}>
               <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={touch('email')}
                      placeholder="name@company.com" />
             </LfInput>
           </LfField>
-          <LfField label="WhatsApp number" wide
+        ),
+    whatsapp: fm('whatsapp') !== 'hide' && (
+          <LfField label="WhatsApp number" required={rq('whatsapp')} wide
                    error={touched.whatsapp && whatsappBad ? 'Enter a 10-digit WhatsApp number.' : undefined}
                    aside={
                      <label className="lf-switch">
@@ -1006,19 +1081,24 @@ function CustomerForm({
                      placeholder={sameNumber ? 'Uses the mobile number' : 'WhatsApp number'} />
             </LfInput>
           </LfField>
-        </LfSection>
-
-        <LfSection icon={<IconSheet size={16} />} title="Business & tax" note="Classification, ownership and GST for their quotations.">
-          <LfField label="Industry">
+        ),
+    industry: fm('industry') !== 'hide' && (
+          <LfField label="Industry" required={rq('industry')}>
             <MasterSelect kind="industries" value={industryId} onChange={setIndustryId} placeholder="Select industry" />
           </LfField>
-          <LfField label="Lead source">
+        ),
+    source: fm('source') !== 'hide' && (
+          <LfField label="Lead source" required={rq('source')}>
             <MasterSelect kind="sources" value={sourceId} onChange={setSourceId} placeholder="Select source" />
           </LfField>
-          <LfField label="Account manager" hint="Left empty, the account is yours.">
+        ),
+    manager: fm('manager') !== 'hide' && (
+          <LfField label="Account manager" required={rq('manager')} hint="Left empty, the account is yours.">
             <OwnerSelect value={managerId} onChange={setManagerId} placeholder="You" />
           </LfField>
-          <LfField label="GSTIN"
+        ),
+    gstin: fm('gstin') !== 'hide' && (
+          <LfField label="GSTIN" required={rq('gstin')}
                    error={touched.gstin && gstinBad ? 'A GSTIN is 15 characters, like 27AAAAA0000A1Z5.' : undefined}
                    hint="Decides the tax treatment on their quotations.">
             <LfInput icon={<IconCard size={15} />} bad={touched.gstin && gstinBad}>
@@ -1026,10 +1106,9 @@ function CustomerForm({
                      placeholder="27AAAAA0000A1Z5" maxLength={15} className="lf-mono" />
             </LfInput>
           </LfField>
-        </LfSection>
-
-        <LfSection icon={<IconPin size={16} />} title="Address" note="Billing address, and where visits are planned.">
-          <LfField label="Country">
+        ),
+    country: fm('country') !== 'hide' && (
+          <LfField label="Country" required={rq('country')}>
             <MasterSelect
               kind="countries"
               value={countryId}
@@ -1041,7 +1120,9 @@ function CustomerForm({
               placeholder="Select country"
             />
           </LfField>
-          <LfField label="State">
+        ),
+    state: fm('state') !== 'hide' && (
+          <LfField label="State" required={rq('state')}>
             <MasterSelect
               kind="states"
               value={stateId}
@@ -1053,19 +1134,75 @@ function CustomerForm({
               placeholder="Select state"
             />
           </LfField>
-          <LfField label="City" hint={stateId ? undefined : 'Pick a state first.'}>
+        ),
+    city: fm('city') !== 'hide' && (
+          <LfField label="City" required={rq('city')} hint={stateId ? undefined : 'Pick a state first.'}>
             <MasterSelect kind="cities" value={cityId} onChange={setCityId} parentId={stateId} placeholder="Select city" />
           </LfField>
-          <LfField label="Pincode" error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
+        ),
+    pincode: fm('pincode') !== 'hide' && (
+          <LfField label="Pincode" required={rq('pincode')} error={touched.pincode && pincodeBad ? 'A pincode is 6 digits.' : undefined}>
             <LfInput icon={<IconPin size={15} />} bad={touched.pincode && pincodeBad}>
               <input value={pincode} onChange={(event) => setPincode(event.target.value)} onBlur={touch('pincode')}
                      placeholder="6-digit pincode" inputMode="numeric" maxLength={6} />
             </LfInput>
           </LfField>
-          <LfField label="Address" wide>
+        ),
+    address: fm('address') !== 'hide' && (
+          <LfField label="Address" required={rq('address')} wide>
             <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={2}
                       placeholder="Building, street, area, landmark" />
           </LfField>
+        ),
+    notes: fm('notes') !== 'hide' && (
+          <LfField label="Notes" wide required={rq('notes')}>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={4000}
+                      placeholder="Preferences, history, special terms…" />
+          </LfField>
+        ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
+  const form = (
+      <form className="lf" id="crm-customer-form" noValidate
+            onSubmit={(event) => { event.preventDefault(); if (ready && !busy) save() }}>
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <div className="lf-settings">
+          <FieldSettings defs={CUSTOMER_FIELDS} sections={CUSTOMER_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
+        <LfSection icon={<IconBuilding size={16} />} title="Customer" note="Who the account is, and where it stands.">
+          {fieldsOf('customer')}
+          
+          
+          
+          
+          
+        </LfSection>
+
+        <LfSection icon={<IconPhone size={16} />} title="Contact" note="How the desk and the account manager reach them.">
+          {fieldsOf('contact')}
+          
+          
+          
+        </LfSection>
+
+        <LfSection icon={<IconSheet size={16} />} title="Business & tax" note="Classification, ownership and GST for their quotations.">
+          {fieldsOf('business')}
+          
+          
+          
+          
+        </LfSection>
+
+        <LfSection icon={<IconPin size={16} />} title="Address" note="Billing address, and where visits are planned.">
+          {fieldsOf('address')}
+          
+          
+          
+          
+          
         </LfSection>
 
         <LfSection icon={<IconSheet size={16} />} title="Notes" note="Anything the team should know about this account.">
@@ -1075,10 +1212,8 @@ function CustomerForm({
                      readOnly disabled className="lf-readonly" />
             </LfField>
           )}
-          <LfField label="Notes" wide>
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={4000}
-                      placeholder="Preferences, history, special terms…" />
-          </LfField>
+          
+          {fieldsOf('notes')}
         </LfSection>
         {extras && !page && <div className="lf-extras">{extras}</div>}
       </form>
@@ -1128,7 +1263,9 @@ function CustomerForm({
         </div>
 
         <footer className="cup-foot">
-          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
+          {missing
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
           {error && <span className="error">{error}</span>}
           <span className="crm-push" />
           <button className="btn" type="button" onClick={onClose}>Cancel</button>
@@ -1149,7 +1286,9 @@ function CustomerForm({
       onClose={onClose}
       footer={
         <>
-          <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>
+          {missing
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
           <button className="btn" type="button" onClick={onClose}>
             Cancel
           </button>
@@ -1190,12 +1329,14 @@ function PlanForm({
   onSaved: () => void
 }) {
   const [productId, setProductId] = useState(plan?.product_id ?? '')
-  const [planId, setPlanId] = useState(plan?.plan_id ?? '')
   const [productName, setProductName] = useState(plan?.product_name ?? '')
   const [startOn, setStartOn] = useState(plan?.start_on ?? todayISO())
   const [endOn, setEndOn] = useState(plan?.end_on ?? '')
   const [renewalOn, setRenewalOn] = useState(plan?.renewal_on ?? '')
   const [amount, setAmount] = useState(plan?.amount ?? '')
+  /* The amount follows the chosen item's price until the person types their own
+     (or, editing a saved plan, keeps what was saved). */
+  const [amountTyped, setAmountTyped] = useState(Boolean(plan && Number(plan.amount)))
   const [payment, setPayment] = useState(plan?.payment_status ?? 'pending')
   const [status, setStatus] = useState(plan?.status ?? 'active')
   const [notes, setNotes] = useState(plan?.notes ?? '')
@@ -1207,7 +1348,6 @@ function PlanForm({
     setError(null)
     const body = {
       product_id: productId || null,
-      plan_id: planId || null,
       // Free text is allowed so a sale can be recorded for something the
       // catalogue has not caught up with — the sale happened either way.
       product_name: productName || null,
@@ -1231,8 +1371,8 @@ function PlanForm({
 
   return (
     <Dialog
-      title={plan ? 'Edit plan' : 'Add a plan'}
-      subtitle="Leave the end date blank and it is worked out from the plan's own duration."
+      title={plan ? 'Edit item' : 'Add an item'}
+      subtitle="Pick the item they bought, then set the end and renewal dates."
       onClose={onClose}
       footer={
         <>
@@ -1240,7 +1380,7 @@ function PlanForm({
             Cancel
           </button>
           <button className="btn btn-primary" onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : 'Save plan'}
+            {busy ? 'Saving…' : 'Save item'}
           </button>
         </>
       }
@@ -1251,24 +1391,20 @@ function PlanForm({
             <ErrorNote>{error}</ErrorNote>
           </div>
         )}
-        <Field label="Product / Service">
-          <MasterSelect
-            kind="products"
+        <Field label="Item">
+          <ItemSelect
             value={productId}
-            onChange={(next) => {
-              setProductId(next)
-              setPlanId('')
+            onChange={setProductId}
+            onPick={(item) => {
+              // Fill the amount from the item's price unless one was typed.
+              if (!amountTyped) setAmount(item ? item.sale_price : '')
             }}
           />
-        </Field>
-        <Field label="Plan">
-          <MasterSelect kind="plans" value={planId} onChange={setPlanId} parentId={productId} />
         </Field>
 
         <Field
           label="Or type what they bought"
-          wide
-          hint="Used when it is not on the catalogue yet."
+          hint="Used when it is not in Items yet."
         >
           <input
             value={productName}
@@ -1284,13 +1420,13 @@ function PlanForm({
           <input type="date" value={endOn} onChange={(event) => setEndOn(event.target.value)} />
         </Field>
 
-        <Field label="Renewal date" hint="Defaults to the end date.">
+        <Field label="Renewal date" hint="Type it. Defaults to the end date.">
           <input type="date" value={renewalOn} onChange={(event) => setRenewalOn(event.target.value)} />
         </Field>
         <Field label="Amount">
           <input
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onChange={(event) => { setAmount(event.target.value); setAmountTyped(event.target.value !== '') }}
             inputMode="decimal"
             placeholder="0.00"
           />

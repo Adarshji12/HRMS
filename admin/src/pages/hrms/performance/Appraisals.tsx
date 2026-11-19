@@ -19,9 +19,10 @@
  * button that quietly does more than it says.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
+import { dateTime } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type {
   Competency,
@@ -29,7 +30,59 @@ import type {
   ReviewCycle,
 } from '../../../lib/types'
 import { RatingPicker, STATUS_LABEL, rating, weight } from './MyReview'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 import './performance.css'
+
+type ReviewCtx = {
+  busy: boolean
+  open: string | null
+  setOpen: (id: string | null) => void
+  act: (fn: () => Promise<unknown>) => void
+}
+type ReviewColumn = ColumnDef & {
+  td: (review: PerformanceReview, ctx: ReviewCtx) => ReactNode
+  className?: string
+  thClass?: string
+}
+
+const REVIEW_COLUMNS: ReviewColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (r) => r.user_name },
+  { key: 'manager', label: 'Manager', className: 'muted', td: (r) => r.manager_name ?? '—' },
+  { key: 'status', label: 'Status', td: (r) => (
+    <>
+      <span className={`perf-pill perf-${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
+      {r.status === 'finalised' && !r.shared_at && <span className="muted"> · not released</span>}
+    </>
+  ) },
+  { key: 'score', label: 'Score', className: 'num', thClass: 'num',
+    td: (r) => rating(r.score_centi ?? r.live_score_centi) },
+  { key: 'rating', label: 'Rating', className: 'num', thClass: 'num', td: (r) => r.overall_rating ?? '—' },
+  { key: 'self_submitted', label: 'Self review sent', initial: false,
+    td: (r) => (r.self_submitted_at ? dateTime(r.self_submitted_at) : '—') },
+  { key: 'reviewed', label: 'Manager reviewed', initial: false,
+    td: (r) => (r.reviewed_at ? dateTime(r.reviewed_at) : '—') },
+  { key: 'finalised', label: 'Finalised', initial: false,
+    td: (r) => (r.finalised_at ? dateTime(r.finalised_at) : '—') },
+  { key: 'released', label: 'Released', initial: false,
+    td: (r) => (r.shared_at ? dateTime(r.shared_at) : '—') },
+]
+
+// The server needs the name and both ends of the period; the rest has defaults.
+const CYCLE_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Name', section: 'cycle', fixed: true },
+  { key: 'period_start', label: 'Period from', section: 'cycle', fixed: true },
+  { key: 'period_end', label: 'to', section: 'cycle', fixed: true },
+  { key: 'rating_max', label: 'Rating scale', section: 'cycle' },
+  { key: 'requires_self_review', label: 'The employee writes first', section: 'rules', optionalOnly: true },
+  { key: 'weights_must_total', label: 'Goal weights must total 100%', section: 'rules', optionalOnly: true },
+]
+const CYCLE_SECTIONS: FieldSection[] = [
+  { id: 'cycle', label: 'Cycle' },
+  { id: 'rules', label: 'Rules' },
+]
 
 export default function Appraisals() {
   const cyclesQ = useQuery<ReviewCycle[]>('perf-admin-cycles', () =>
@@ -119,40 +172,48 @@ function NewCycle({
     weights_must_total: true,
   })
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('review-cycle-form', CYCLE_FIELDS)
+  const fm = fields.mode
 
-  return (
-    <section className="card perf-form">
-      <h2 className="card-title">New cycle</h2>
-      <div className="perf-row">
-        <label className="perf-field">
-          <span className="perf-field-label">Name</span>
-          <input
-            value={form.name}
-            placeholder="FY2025-26 Annual"
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-        </label>
-        <label className="perf-field">
-          <span className="perf-field-label">Period from</span>
-          <input type="date" value={form.period_start}
-                 onChange={(e) => setForm({ ...form, period_start: e.target.value })} />
-          <span className="perf-field-hint">
-            The period being appraised, not the window for doing the appraising.
-          </span>
-        </label>
-        <label className="perf-field">
-          <span className="perf-field-label">to</span>
-          <input type="date" value={form.period_end}
-                 onChange={(e) => setForm({ ...form, period_end: e.target.value })} />
-        </label>
-        <label className="perf-field">
-          <span className="perf-field-label">Rating scale</span>
-          <select value={form.rating_max}
-                  onChange={(e) => setForm({ ...form, rating_max: Number(e.target.value) })}>
-            {[3, 4, 5, 10].map((n) => <option key={n} value={n}>1 to {n}</option>)}
-          </select>
-        </label>
-      </div>
+  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const fieldNodes: Record<string, ReactNode> = {
+    name: (
+      <label className="perf-field">
+        <span className="perf-field-label">Name *</span>
+        <input
+          value={form.name}
+          placeholder="FY2025-26 Annual"
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+      </label>
+    ),
+    period_start: (
+      <label className="perf-field">
+        <span className="perf-field-label">Period from *</span>
+        <input type="date" value={form.period_start}
+               onChange={(e) => setForm({ ...form, period_start: e.target.value })} />
+        <span className="perf-field-hint">
+          The period being appraised, not the window for doing the appraising.
+        </span>
+      </label>
+    ),
+    period_end: (
+      <label className="perf-field">
+        <span className="perf-field-label">to *</span>
+        <input type="date" value={form.period_end}
+               onChange={(e) => setForm({ ...form, period_end: e.target.value })} />
+      </label>
+    ),
+    rating_max: fm('rating_max') !== 'hide' && (
+      <label className="perf-field">
+        <span className="perf-field-label">Rating scale{star('rating_max')}</span>
+        <select value={form.rating_max}
+                onChange={(e) => setForm({ ...form, rating_max: Number(e.target.value) })}>
+          {[3, 4, 5, 10].map((n) => <option key={n} value={n}>1 to {n}</option>)}
+        </select>
+      </label>
+    ),
+    requires_self_review: fm('requires_self_review') !== 'hide' && (
       <label className="perf-check">
         <input type="checkbox" checked={form.requires_self_review}
                onChange={(e) => setForm({ ...form, requires_self_review: e.target.checked })} />
@@ -161,6 +222,8 @@ function NewCycle({
           common for probation reviews.
         </span>
       </label>
+    ),
+    weights_must_total: fm('weights_must_total') !== 'hide' && (
       <label className="perf-check">
         <input type="checkbox" checked={form.weights_must_total}
                onChange={(e) => setForm({ ...form, weights_must_total: e.target.checked })} />
@@ -169,6 +232,22 @@ function NewCycle({
           competencies, where goals are context rather than the score.
         </span>
       </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
+  return (
+    <section className="card perf-form">
+      <h2 className="card-title">New cycle</h2>
+      <div className="lf-settings">
+        <FieldSettings defs={CYCLE_FIELDS} sections={CYCLE_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
+      <div className="perf-row">
+        {fieldsOf('cycle')}
+      </div>
+      {fieldsOf('rules')}
       <div className="perf-actions">
         <button
           className="btn primary"
@@ -209,6 +288,7 @@ function CycleBody({
   )
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
+  const columns = useColumns('appraisal-reviews', REVIEW_COLUMNS)
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -290,31 +370,29 @@ function CycleBody({
           employee — running it twice is harmless.
         </Empty>
       ) : (
+        <>
+        <div className="lf-settings">
+          <ColumnSettings defs={REVIEW_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+        </div>
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Employee</th><th>Manager</th><th>Status</th>
-                <th className="num">Score</th><th className="num">Rating</th><th />
+                {(columns.visible as ReviewColumn[]).map((col) => (
+                  <th key={col.key} className={col.thClass}>{col.label}</th>
+                ))}
+                <th />
               </tr>
             </thead>
             <tbody>
               {reviews.map((review) => (
                 <tr key={review.id}>
-                  <td>{review.user_name}</td>
-                  <td className="muted">{review.manager_name ?? '—'}</td>
-                  <td>
-                    <span className={`perf-pill perf-${review.status}`}>
-                      {STATUS_LABEL[review.status] ?? review.status}
-                    </span>
-                    {review.status === 'finalised' && !review.shared_at && (
-                      <span className="muted"> · not released</span>
-                    )}
-                  </td>
-                  <td className="num">
-                    {rating(review.score_centi ?? review.live_score_centi)}
-                  </td>
-                  <td className="num">{review.overall_rating ?? '—'}</td>
+                  {(columns.visible as ReviewColumn[]).map((col) => (
+                    <td key={col.key} className={col.className}>
+                      {col.td(review, { busy, open, setOpen, act })}
+                    </td>
+                  ))}
                   <td className="row-actions">
                     <button className="btn small"
                             onClick={() => setOpen(open === review.id ? null : review.id)}>
@@ -341,6 +419,7 @@ function CycleBody({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {open && (

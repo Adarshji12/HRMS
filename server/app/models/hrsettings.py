@@ -41,3 +41,5 @@ class HrSettings(UUIDMixin, TimestampMixin, Base):
     probation_warn_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     #: How far ahead "document expiring" is flagged on the HR dashboard.
     document_warn_days: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    #: How far ahead upcoming birthdays are listed on the HR dashboard. 0 lists none.
+    birthday_lookahead_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)

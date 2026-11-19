@@ -26,6 +26,8 @@ import type { Asset } from '../../assets/assetLib'
 import type { HrSettings } from '../../HRMSSettings'
 import { ErrorNote, Loading } from '../../../../components/ui'
 import { Dialog } from '../../../crm/parts'
+import { FieldSettings, useFieldModes } from '../../../../components/ViewSettings'
+import { HIRE_FIELDS, HIRE_SECTIONS, applyFieldModes } from './hireFields'
 import {
   STEPS, addMonths, changed, compact, countErrors, draftFromEmployee, emptyDraft, fullName, suggestCode, validate,
   type HireDraft, type OnFile, type StepId,
@@ -194,14 +196,29 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
+  /* What this person has chosen to show, require or hide on the form. */
+  const fields = useFieldModes('employee-form', HIRE_FIELDS)
+  const fieldMode = fields.mode
   const errors = useMemo(() => {
     const e = validate(d)
     // Somebody created before named roles holds none; an edit need not force one.
     if (editing && !original?.role_id && !d.role_id) delete e.access.role_id
     // Likewise a joining date that was never recorded.
     if (editing && !original?.joined_on && !d.joined_on) delete e.basic.joined_on
-    return e
-  }, [d, editing, original])
+    const excuse: string[] = []
+    if (editing && !original?.role_id) excuse.push('role_id')
+    if (editing && !original?.joined_on) excuse.push('joined_on')
+    return applyFieldModes(e, d, fieldMode, {
+      people: can.people,
+      salary: can.payroll && !!lookups.data?.components.some((c) => c.kind === 'earning' && c.is_active),
+      excuse,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d, editing, original, fields.modes, can.people, can.payroll, lookups.data])
+  const settingsButton = (
+    <FieldSettings defs={HIRE_FIELDS} sections={HIRE_SECTIONS} modes={fields.modes} order={fields.order}
+                   onSave={fields.save} onReset={fields.reset} />
+  )
   const index = STEPS.findIndex((s) => s.id === step)
   const required = countErrors(errors.basic) + countErrors(errors.access)
   const total = STEPS.reduce((n, s) => n + countErrors(errors[s.id]), 0)
@@ -545,7 +562,7 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
 
   const props: StepProps = {
     d, set, errors: errors[step], lk: lookups.data, can, touched: visited.has(step), goTo,
-    editing, onFile,
+    editing, onFile, fm: fieldMode, orderOf: fields.orderOf,
   }
   const current = STEPS[index]
   const stepLabel = (s: (typeof STEPS)[number]) => (editing && s.id === 'review' ? 'Review & save' : s.label)
@@ -558,6 +575,7 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
     return frame(
       <>
         {fatal && <ErrorNote>{fatal}</ErrorNote>}
+        <div className="lf-settings">{settingsButton}</div>
         {STEPS.filter((x) => DIALOG_STEPS.includes(x.id)).map((x) => (
           <div key={x.id} className="hire-edit-step">
             <StepBody id={x.id} p={{ ...props, errors: errors[x.id], touched: visited.has(x.id) }} />
@@ -597,6 +615,7 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
             </span>
           </div>
         <div className="hire-top-actions">
+          {settingsButton}
           <button type="button" className="btn" onClick={() => {
             if (!dirty || window.confirm(editing
               ? 'Discard your changes?'

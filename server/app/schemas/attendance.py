@@ -17,10 +17,11 @@ shift assignment is backdated, and backdating a rota is routine.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import ORMModel
 
@@ -41,21 +42,37 @@ class OfficeLocationIn(BaseModel):
     # Bounded, so a transposed lat/lng pair — a classic and otherwise silent geo
     # bug — is caught by the 90-degree ceiling rather than by a manager
     # wondering why the Bengaluru office is in the sea.
-    lat: float = Field(ge=-90.0, le=90.0)
-    lng: float = Field(ge=-180.0, le=180.0)
+    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
     # Floor of 25 m: anything tighter is smaller than consumer GPS error and
     # would flag every genuine punch. Ceiling of 20 km keeps a fat-fingered
     # radius from silently verifying an entire city.
     radius_m: int = Field(default=200, ge=25, le=20000)
     is_active: bool = True
+    branch_id: uuid.UUID | None = None
+    state: str | None = Field(default=None, max_length=120)
+    district: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _both_or_neither(self):
+        """A latitude without a longitude is a half-entered point, not a place."""
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("Give both latitude and longitude, or neither")
+        return self
 
 
 class OfficeLocationOut(ORMModel):
     id: uuid.UUID
     name: str
     address: str | None = None
-    lat: float
-    lng: float
+    branch_id: uuid.UUID | None = None
+    branch_name: str | None = None
+    state: str | None = None
+    district: str | None = None
+    city: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     radius_m: int
     is_active: bool
     created_at: datetime
@@ -85,6 +102,18 @@ class AttendanceSettingsIn(BaseModel):
     geofence_work_from_home: str | None = Field(default=None, pattern=_MODE_POLICY_PATTERN)
     geofence_on_duty: str | None = Field(default=None, pattern=_MODE_POLICY_PATTERN)
 
+    # Overtime policy. None leaves it as it is.
+    overtime_enabled: bool | None = None
+    overtime_min_minutes: int | None = Field(default=None, ge=0, le=480)
+    overtime_on_off_days: bool | None = None
+
+    # Punch methods. None leaves them as they are.
+    manual_enabled: bool | None = None
+    manual_web_enabled: bool | None = None
+    manual_mobile_enabled: bool | None = None
+    face_enabled: bool | None = None
+    biometric_enabled: bool | None = None
+
 
 class AttendanceSettingsOut(ORMModel):
     geofence_enforcement: str
@@ -99,6 +128,97 @@ class AttendanceSettingsOut(ORMModel):
     geofence_office: str | None = None
     geofence_work_from_home: str | None = None
     geofence_on_duty: str | None = None
+
+    overtime_enabled: bool = True
+    overtime_min_minutes: int = 0
+    overtime_on_off_days: bool = True
+
+    manual_enabled: bool = True
+    manual_web_enabled: bool = True
+    manual_mobile_enabled: bool = True
+    face_enabled: bool = False
+    biometric_enabled: bool = False
+
+
+# --- devices -----------------------------------------------------------------
+
+
+_IP_WILDCARD = re.compile(r"^(\d{1,3}|\*)(\.(\d{1,3}|\*)){3}$")
+
+
+def _valid_ip_rule(rule: str) -> bool:
+    """An address, a CIDR range, or a wildcard such as 192.168.1.*"""
+    import ipaddress
+
+    try:
+        ipaddress.ip_network(rule, strict=False)
+        return True
+    except ValueError:
+        pass
+    return bool(_IP_WILDCARD.match(rule)) and "*" in rule and all(p == "*" or int(p) <= 255 for p in rule.split("."))
+
+
+class DeviceIn(BaseModel):
+    kind: str = Field(pattern=r"^(face|biometric)$")
+    name: str = Field(min_length=1, max_length=120)
+    device_code: str | None = Field(default=None, max_length=80)
+    location_id: uuid.UUID | None = None
+    branch_id: uuid.UUID | None = None
+    is_active: bool = True
+
+    location_required: bool = False
+    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
+    radius_m: int | None = Field(default=None, ge=25, le=20000)
+    ip_required: bool = False
+    allowed_ips: str | None = Field(default=None, max_length=4000)
+    cooldown_s: int = Field(default=120, ge=0, le=3600)
+    allowed_from_min: int = Field(default=120, ge=0, le=1440)
+    allowed_until_min: int = Field(default=240, ge=0, le=1440)
+
+    @field_validator("device_code")
+    @classmethod
+    def _tidy(cls, value: str | None) -> str | None:
+        value = (value or "").strip()
+        return value or None
+
+    @field_validator("allowed_ips")
+    @classmethod
+    def _tidy_ips(cls, value: str | None) -> str | None:
+        lines = [line.strip() for line in (value or "").replace(",", "\n").splitlines() if line.strip()]
+        bad = [line for line in lines if not _valid_ip_rule(line)]
+        if bad:
+            raise ValueError(f"Not an IP address, range or wildcard: {bad[0]}")
+        return "\n".join(lines) or None
+
+    @model_validator(mode="after")
+    def _what_each_switch_needs(self):
+        if self.location_required and (self.lat is None or self.lng is None or self.radius_m is None):
+            raise ValueError("Location required needs a latitude, a longitude and a radius")
+        if self.ip_required and not self.allowed_ips:
+            raise ValueError("IP address required needs at least one allowed address")
+        return self
+
+
+class DeviceOut(ORMModel):
+    id: uuid.UUID
+    kind: str
+    name: str
+    device_code: str | None = None
+    location_id: uuid.UUID | None = None
+    location_name: str | None = None
+    branch_id: uuid.UUID | None = None
+    branch_name: str | None = None
+    is_active: bool
+    location_required: bool = False
+    lat: float | None = None
+    lng: float | None = None
+    radius_m: int | None = None
+    ip_required: bool = False
+    allowed_ips: str | None = None
+    cooldown_s: int = 120
+    allowed_from_min: int = 120
+    allowed_until_min: int = 240
 
 
 # --- shifts ------------------------------------------------------------------

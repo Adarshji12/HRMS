@@ -196,6 +196,33 @@ def enforcement_for(
     return app_settings.geofence_enforcement_default
 
 
+def require_manual_allowed(db: Session, org_id: uuid.UUID, source: str) -> None:
+    """Refuse a button punch the company has switched off.
+
+    Only the two channels an employee presses a button on are checked: ``web`` (the
+    dashboard) and ``mobile_web`` (the phone app). A desktop-agent or device punch is
+    another method with its own switch and is never refused here. A company that never
+    opened the settings has no row, and every manual channel is on.
+    """
+    if source not in ("web", "mobile_web"):
+        return
+    row = db.get(AttendanceSettings, org_id)
+    if row is None:
+        return
+    off = (
+        not row.manual_enabled
+        or (source == "web" and not row.manual_web_enabled)
+        or (source == "mobile_web" and not row.manual_mobile_enabled)
+    )
+    if off:
+        where = "on the web dashboard" if source == "web" else "in the mobile app"
+        raise _refuse(
+            http_status.HTTP_403_FORBIDDEN,
+            "manual_attendance_off",
+            f"Manual check-in and check-out {where} is switched off for this company. Ask an administrator.",
+        )
+
+
 def active_locations(db: Session, org_id: uuid.UUID) -> list[OfficeLocation]:
     return list(
         db.scalars(
@@ -203,6 +230,9 @@ def active_locations(db: Session, org_id: uuid.UUID) -> list[OfficeLocation]:
             .where(
                 OfficeLocation.org_id == org_id,
                 OfficeLocation.is_active.is_(True),
+                # A site that has not been mapped yet cannot verify anybody.
+                OfficeLocation.lat.is_not(None),
+                OfficeLocation.lng.is_not(None),
             )
             .order_by(OfficeLocation.name)
         ).all()
@@ -237,6 +267,8 @@ def update_settings(
     enforcement: str | None,
     *,
     per_mode: dict[str, str | None] | None = None,
+    overtime: dict[str, object] | None = None,
+    methods: dict[str, object] | None = None,
 ) -> AttendanceSettings:
     """Write the org's attendance policy, refusing the one setting that bricks it.
 
@@ -293,6 +325,10 @@ def update_settings(
                 active_location_count=0,
             )
         setattr(row, field, resolved)
+
+    for field, value in {**(overtime or {}), **(methods or {})}.items():
+        if value is not None:
+            setattr(row, field, value)
 
     db.flush()
     return row

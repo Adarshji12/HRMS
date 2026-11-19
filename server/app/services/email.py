@@ -39,11 +39,16 @@ class EmailError(RuntimeError):
 
 
 def _build(to: str, subject: str, body: str, sender: str, html: str | None = None,
-           attachments: list[tuple[str, bytes, str]] | None = None) -> EmailMessage:
+           attachments: list[tuple[str, bytes, str]] | None = None,
+           bcc: list[str] | None = None) -> EmailMessage:
     message = EmailMessage()
     name, address = parseaddr(sender)
     message["From"] = formataddr((name or settings.app_name, address or "no-reply@localhost"))
     message["To"] = to
+    if bcc:
+        # send_message() delivers to Bcc addresses and strips the header, so the
+        # recipient never sees who else was copied.
+        message["Bcc"] = ", ".join(bcc)
     message["Subject"] = subject
     message.set_content(body)
     if html:
@@ -61,6 +66,7 @@ def send(
     html: str | None = None,
     org_id=None,
     attachments: list[tuple[str, bytes, str]] | None = None,
+    bcc: list[str] | None = None,
 ) -> bool:
     """Returns True if handed to an SMTP server, False if only logged.
 
@@ -72,7 +78,7 @@ def send(
     # every tenant's mail would leave through the platform default, which is
     # exactly the "why does this arrive from someone else's domain" problem.
     config = mailconfig.resolve(org_id=org_id)
-    message = _build(to, subject, body, config.sender, html, attachments)
+    message = _build(to, subject, body, config.sender, html, attachments, bcc)
 
     if not config.configured:
         log.warning(

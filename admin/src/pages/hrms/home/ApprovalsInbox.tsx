@@ -24,6 +24,8 @@ import {
 } from '../attendance/regularization'
 import { dayLabel, days as leaveDays, errorText, rangeLabel, type LeaveApplication } from '../leave/MyLeave'
 import { permits } from '../helpdesk/Helpdesk'
+import { CostsheetApprovalsPanel, costsheetsWaiting, useCostsheetQueue } from '../../crm/CostsheetApprovals'
+import { approvalTabOpen, mayApproveCostsheets } from '../../../lib/nav'
 
 /**
  * The merged approvals inbox — §9.4.
@@ -246,7 +248,7 @@ export default function ApprovalsInbox() {
      as an instant and only means anything read back in `org.timezone`, which is
      the zone the server validated it against. */
   const tz = organization?.timezone
-  const [lane, setLane] = useState<Lane | 'all'>('all')
+  const [lane, setLane] = useState<Lane | 'all' | 'costsheet'>('all')
   const [reloadKey, setReloadKey] = useState(0)
   /* Rows the reader has just decided. Held here rather than refetched away, so
      the row can say what happened instead of vanishing mid-sentence — and so
@@ -264,24 +266,38 @@ export default function ApprovalsInbox() {
      flag. The role half is the same for all three, so it gates the page; the
      flag half differs, so it gates each lane. */
   const isTeamViewer = canViewTeam(user)
-  const mayLeave = isTeamViewer && permits(user, 'can_approve_leave')
-  const mayReg = isTeamViewer && canApproveRegularization(user)
-  const mayTimesheet = isTeamViewer && permits(user, 'can_approve_timesheets')
+  /* Which tabs the role ticked on Roles & Permission. A tab left out is gone
+     everywhere on this page: it is not drawn, not fetched and its items are not
+     in All. A tab the role did tick is drawn even for somebody who cannot decide
+     it yet - they see it empty rather than not at all - but is only fetched when
+     they hold the right for it, so it never raises a "may not approve" error. */
+  const tabOpen = (tab: string) => approvalTabOpen(user?.menu_rights ?? null, tab, true)
+  const approvalsRow = user?.menu_rights?.['/approvals']
+  const tabTicked = (tab: string) => Boolean(approvalsRow?.access && approvalsRow[`tab_${tab}`] === true)
+  const mayLeave = isTeamViewer && permits(user, 'can_approve_leave') && tabOpen('leave')
+  const mayReg = isTeamViewer && canApproveRegularization(user) && tabOpen('regularization')
+  const mayTimesheet = isTeamViewer && permits(user, 'can_approve_timesheets') && tabOpen('timesheet')
   /* Money, unlike the three above, is not a team-viewer question: an approver
      of spending need not be anybody's manager, and finance routinely is not.
      So these two check their own flag and nothing else — the same rule the
      services enforce, rather than a stricter one invented here that would hide
      rows the server would happily have decided. */
-  const mayExpense = permits(user, 'can_approve_expenses')
-  const mayLoan = permits(user, 'can_approve_loans')
+  const mayExpense = permits(user, 'can_approve_expenses') && tabOpen('expense')
+  const mayLoan = permits(user, 'can_approve_loans') && tabOpen('loan')
   /* Appraisals are assigned per review rather than by a permission flag: the
      review records the manager it was given to, and a reorganisation must not
      move somebody's appraisal to whoever manages them today. So the lane is
      fetched for any team viewer and the server returns only the ones actually
      assigned to this reader. */
-  const mayReview = isTeamViewer
+  const mayReview = isTeamViewer && tabOpen('performance')
+  /* CRM costsheets waiting for sign-off. The tab only exists when the queue
+     loaded: a company without CRM gets no tab rather than an error. */
+  const mayCostsheet = mayApproveCostsheets({ canViewTeam: isTeamViewer, menuRights: user?.menu_rights ?? null })
+  const costsheetQ = useCostsheetQueue(mayCostsheet)
+  const showCostsheets = mayCostsheet && !costsheetQ.error
+  const ticked = ['regularization', 'leave', 'timesheet', 'expense', 'loan', 'performance', 'costsheet'].some(tabTicked)
   const mayAnything =
-    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayReview
+    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayReview || ticked
 
   /* The lanes fetch in parallel and fail independently. A leave outage must
      not hide the four regularizations that are also waiting. */
@@ -674,7 +690,7 @@ export default function ApprovalsInbox() {
      show them — but it has stopped waiting, so it must stop being counted.
      Tiles and chips that keep counting decided work are the reason people stop
      believing the number at the top of a queue. */
-  const outstanding = items.filter((i) => !settled[i.key])
+  const outstanding = items.filter((i) => !settled[i.key] && tabOpen(i.lane))
   /* Derived from LANE_LABEL rather than spelled out: a sixth lane added to the
      type without a count here was a compile error only because every key is
      required, and building it from the label map removes the chance entirely. */
@@ -685,7 +701,7 @@ export default function ApprovalsInbox() {
     ]),
   ) as Record<Lane, number>
   const needle = search.trim().toLowerCase()
-  const inLane = lane === 'all' ? items : items.filter((i) => i.lane === lane)
+  const inLane = lane === 'all' ? items.filter((i) => tabOpen(i.lane)) : items.filter((i) => i.lane === lane)
   const matched = needle
     ? inLane.filter(
         (i) =>
@@ -763,12 +779,12 @@ export default function ApprovalsInbox() {
   }
 
   const laneTabs: Array<{ id: Lane; allowed: boolean }> = [
-    { id: 'regularization', allowed: mayReg },
-    { id: 'leave', allowed: mayLeave },
-    { id: 'timesheet', allowed: mayTimesheet },
-    { id: 'expense', allowed: mayExpense },
-    { id: 'loan', allowed: mayLoan },
-    { id: 'performance', allowed: mayReview },
+    { id: 'regularization', allowed: mayReg || tabTicked('regularization') },
+    { id: 'leave', allowed: mayLeave || tabTicked('leave') },
+    { id: 'timesheet', allowed: mayTimesheet || tabTicked('timesheet') },
+    { id: 'expense', allowed: mayExpense || tabTicked('expense') },
+    { id: 'loan', allowed: mayLoan || tabTicked('loan') },
+    { id: 'performance', allowed: mayReview || tabTicked('performance') },
   ]
 
   return (
@@ -857,8 +873,17 @@ export default function ApprovalsInbox() {
                   onPick={() => setLane(t.id)}
                 />
               ))}
+            {showCostsheets && (
+              <SegButton
+                label="Costsheet"
+                count={costsheetsWaiting(costsheetQ.data)}
+                on={lane === 'costsheet'}
+                onPick={() => setLane('costsheet')}
+              />
+            )}
           </div>
           <div className="ai-tools">
+            {lane !== 'costsheet' && (<>
             <label className="ai-search">
               <IconSearch size={13} />
               <input
@@ -875,6 +900,7 @@ export default function ApprovalsInbox() {
             >
               <IconFilter size={13} /> {newestFirst ? 'Newest first' : 'Oldest first'}
             </button>
+            </>)}
             <button
               className="btn btn-sm btn-ghost"
               onClick={() => {
@@ -882,6 +908,7 @@ export default function ApprovalsInbox() {
                 setFailures({})
                 setSelected(new Set())
                 setReloadKey((n) => n + 1)
+                costsheetQ.reload()
               }}
               title="Reload every queue"
               aria-label="Refresh"
@@ -891,7 +918,7 @@ export default function ApprovalsInbox() {
           </div>
         </div>
 
-        {picked.length > 0 && (
+        {lane !== 'costsheet' && picked.length > 0 && (
           <div className="ai-bulk">
             <span>
               <b>{picked.length}</b> selected
@@ -916,7 +943,9 @@ export default function ApprovalsInbox() {
           </div>
         )}
 
-        {loading ? (
+        {lane === 'costsheet' ? (
+          <CostsheetApprovalsPanel approved={costsheetQ} />
+        ) : loading ? (
           <Loading label="Gathering your queues…" />
         ) : visible.length === 0 ? (
           <EmptyState

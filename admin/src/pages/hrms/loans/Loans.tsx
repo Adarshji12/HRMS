@@ -19,7 +19,7 @@
       wording here, and the ledger shows waived rows distinctly, because
       reporting a written-down amount as recovered would overstate collections. */
 
-import { useCallback, useState } from 'react'
+import { Fragment, useCallback, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
@@ -30,7 +30,16 @@ import type {
   LoanSummary,
   LoanType,
 } from '../../../lib/types'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
 import '../../../styles/loans.css'
+
+const REQUEST_FIELDS: FieldDef[] = [
+  { key: 'type', label: 'Type', section: 'request', fixed: true },
+  { key: 'amount', label: 'Amount', section: 'request', fixed: true },
+  { key: 'months', label: 'Months', section: 'request', fixed: true },
+  { key: 'purpose', label: 'What is it for?', section: 'request' },
+]
+const REQUEST_SECTIONS: FieldSection[] = [{ id: 'request', label: 'Request' }]
 
 const TYPES: LoanType[] = [
   'salary_advance', 'personal_loan', 'emergency_loan', 'travel_advance', 'other',
@@ -561,10 +570,14 @@ function RequestForm({
   const [count, setCount] = useState('6')
   const [purpose, setPurpose] = useState('')
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('loan-request-form', REQUEST_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
 
   const paise = toPaise(amount)
   const months = Number(count)
-  const ready = Boolean(paise && paise > 0 && months > 0 && months <= 120)
+  const missing = rq('purpose') && !purpose.trim()
+  const ready = Boolean(paise && paise > 0 && months > 0 && months <= 120) && !missing
 
   async function submit() {
     setBusy(true)
@@ -583,25 +596,42 @@ function RequestForm({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    type: (
+      <select value={loanType} onChange={(e) => setLoanType(e.target.value as LoanType)}
+              aria-label="Type">
+        {TYPES.map((type) => <option key={type} value={type}>{label(type)}</option>)}
+      </select>
+    ),
+    amount: (
+      <input placeholder="Amount *" value={amount} inputMode="decimal"
+             className={amount && paise === null ? 'is-bad' : ''}
+             onChange={(e) => setAmount(e.target.value)} aria-label="Amount in rupees" />
+    ),
+    months: (
+      <input placeholder="Months *" value={count} inputMode="numeric"
+             onChange={(e) => setCount(e.target.value)} aria-label="Instalments" />
+    ),
+    purpose: fm('purpose') !== 'hide' && (
+      <input placeholder={rq('purpose') ? 'What is it for? *' : 'What is it for?'} value={purpose}
+             onChange={(e) => setPurpose(e.target.value)} />
+    ),
+  }
+
   return (
     <section className="card ln-request">
-      <h2 className="card-title">Request an advance</h2>
+      <h2 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        Request an advance
+        <FieldSettings defs={REQUEST_FIELDS} sections={REQUEST_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Request fields" />
+      </h2>
       <div className="ln-row">
-        <select value={loanType} onChange={(e) => setLoanType(e.target.value as LoanType)}
-                aria-label="Type">
-          {TYPES.map((type) => <option key={type} value={type}>{label(type)}</option>)}
-        </select>
-        <input placeholder="Amount" value={amount} inputMode="decimal"
-               className={amount && paise === null ? 'is-bad' : ''}
-               onChange={(e) => setAmount(e.target.value)} aria-label="Amount in rupees" />
-        <input placeholder="Months" value={count} inputMode="numeric"
-               onChange={(e) => setCount(e.target.value)} aria-label="Instalments" />
-        <input placeholder="What is it for?" value={purpose}
-               onChange={(e) => setPurpose(e.target.value)} />
+        {fields.orderOf('request').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
         <button className="btn primary" disabled={!ready || busy} onClick={submit}>
           {busy ? 'Sending…' : 'Request'}
         </button>
       </div>
+      {missing && <p className="muted">Fill in the fields marked *.</p>}
       {ready && (
         <p className="muted">
           Roughly {money(Math.round((paise as number) / months))} a month for{' '}

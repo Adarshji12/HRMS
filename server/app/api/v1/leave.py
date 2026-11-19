@@ -285,6 +285,17 @@ def update_type(
 # --------------------------------------------------------------------------- #
 
 
+def _own_branch(db, org_id: uuid.UUID, branch_id: uuid.UUID | None) -> None:
+    """A holiday may only be tied to one of this company's own branches."""
+    from app.models import Branch
+
+    if branch_id is None:
+        return
+    branch = db.get(Branch, branch_id)
+    if branch is None or branch.org_id != org_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That branch is not in this company")
+
+
 @router.get("/holidays", response_model=list[HolidayOut])
 def list_holidays(
     viewer: CurrentUser,
@@ -347,6 +358,7 @@ def list_holidays(
 def create_holiday(
     payload: HolidayIn, viewer: AdminUser, request: Request, db: DbSession
 ) -> HolidayOut:
+    _own_branch(db, viewer.org_id, payload.branch_id)
     holiday = Holiday(org_id=viewer.org_id, **payload.model_dump())
     db.add(holiday)
     db.flush()
@@ -471,7 +483,18 @@ def update_holiday(
     holiday = db.get(Holiday, holiday_id)
     if holiday is None or holiday.org_id != viewer.org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Holiday not found")
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    if "branch_id" not in payload.model_fields_set:
+        data.pop("branch_id")  # the older calendar form never sends it: keep what is there
+    else:
+        _own_branch(db, viewer.org_id, payload.branch_id)
+    if "holiday_type" not in payload.model_fields_set:
+        # Only the opt-in flag was sent, so the type follows it.
+        data["holiday_type"] = (
+            "optional" if payload.is_optional
+            else ("public" if holiday.holiday_type == "optional" else holiday.holiday_type)
+        )
+    for field, value in data.items():
         setattr(holiday, field, value)
     audit(
         db, org_id=viewer.org_id, actor=viewer, action="leave.holiday_updated",

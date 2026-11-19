@@ -115,23 +115,6 @@ export interface CityRow extends Master {
   country_id: string | null
 }
 
-export interface Product extends Master {
-  description: string | null
-  hsn_sac: string | null
-  unit: string | null
-  rate: string
-  gst_percent: string
-  plan_count: number
-}
-
-export interface PlanRow extends Master {
-  product_id: string
-  product_name: string | null
-  duration_days: number | null
-  price: string
-  gst_percent: string | null
-}
-
 export interface Disposition extends Master {
   closes_interaction: boolean
   sort_order: number
@@ -225,7 +208,6 @@ export interface CustomerPlan {
   id: string
   customer_id: string
   product_id: string | null
-  plan_id: string | null
   product_name: string
   plan_name: string | null
   start_on: string
@@ -329,7 +311,6 @@ export interface CustomerDetail extends Customer {
 export interface QuotationLine {
   id?: string
   product_id: string | null
-  plan_id: string | null
   name: string
   description: string | null
   hsn_sac: string | null
@@ -670,6 +651,11 @@ export const crm = {
     api.get<LeadPage>(`/crm/leads${qs(params)}`),
   lead: (id: string) => api.get<LeadDetail>(`/crm/leads/${id}`),
   createLead: (body: unknown) => api.post<Lead>('/crm/leads', body),
+  /** Is this number already a lead? `name` is withheld for a lead outside the viewer's reach. */
+  checkLeadMobile: (mobile: string, excludeId?: string) =>
+    api.get<{ exists: boolean; code?: string; name?: string | null; owner_name?: string | null }>(
+      `/crm/leads/check-mobile?mobile=${encodeURIComponent(mobile)}${excludeId ? `&exclude_id=${excludeId}` : ''}`,
+    ),
   patchLead: (id: string, body: unknown) => api.patch<Lead>(`/crm/leads/${id}`, body),
   opportunities: (leadId: string) => api.get<Opportunity[]>(`/crm/leads/${leadId}/opportunities`),
   createOpportunity: (leadId: string, body: OpportunityInput) =>
@@ -693,8 +679,13 @@ export const crm = {
   deleteCustomer: (id: string) => api.del(`/crm/customers/${id}`),
   addActivity: (id: string, body: unknown) =>
     api.post<Activity>(`/crm/leads/${id}/activities`, body),
+  emailLead: (id: string, body: { to: string; name: string | null; subject: string; body: string; bcc: string[] }) =>
+    api.post<Activity>(`/crm/leads/${id}/email`, body),
   convertLead: (id: string, body: unknown) =>
     api.post<Customer>(`/crm/leads/${id}/convert`, body),
+  access: () => api.get<AccessMember[]>('/crm/access'),
+  setAccess: (userId: string, body: { lead_scope?: AccessScope | null; customer_scope?: AccessScope | null }) =>
+    api.put<AccessMember>(`/crm/access/${userId}`, body),
   assignLeads: (body: unknown) => api.post<{ moved: number }>('/crm/leads/assign', body),
   importLeads: (body: unknown) =>
     api.post<{ created: number; skipped: number; errors: string[] }>('/crm/leads/import', body),
@@ -769,4 +760,22 @@ export function whatsappLink(mobile: string | null | undefined, text?: string): 
   const digits = (mobile ?? '').replace(/\D/g, '')
   if (digits.length < 8) return null
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ''}`
+}
+
+/** How much of the lead or customer book a person sees: their own, everybody's,
+ *  or everybody's with the right to hand it out. null means nobody has set it. */
+export type AccessScope = 'own' | 'all' | 'all_assign'
+
+export interface AccessMember {
+  user_id: string
+  name: string
+  email: string
+  team: string | null
+  is_admin: boolean
+  own_leads: number
+  own_customers: number
+  lead_scope: AccessScope | null
+  customer_scope: AccessScope | null
+  lead_default: string
+  customer_default: string
 }

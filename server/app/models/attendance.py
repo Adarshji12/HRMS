@@ -33,10 +33,11 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     Uuid,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
@@ -145,6 +146,18 @@ class OfficeLocation(UUIDMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: The branch this site belongs to, if any. A deleted branch leaves its sites standing.
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True
+    )
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    branch: Mapped["Branch | None"] = relationship("Branch", lazy="joined")
+
+    @property
+    def branch_name(self) -> str | None:
+        return self.branch.name if self.branch is not None else None
 
     # Float, not Integer-scaled or Numeric, and this is not a violation of the
     # money-is-paise rule: a coordinate is a measurement, not a quantity that
@@ -152,8 +165,10 @@ class OfficeLocation(UUIDMixin, TimestampMixin, Base):
     # SQLite — roughly 0.1 mm of latitude — against a geofence measured in
     # hundreds of metres. Numeric would only force a Decimal-to-float conversion
     # inside every Haversine call for no accuracy anyone can stand in.
-    lat: Mapped[float] = mapped_column(Float, nullable=False)
-    lng: Mapped[float] = mapped_column(Float, nullable=False)
+    #: Optional: a site can be listed before it is mapped. One with no coordinates is
+    #: never part of the punch check (see services.attendance.active_locations).
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Metres. 200 m is deliberately loose: consumer GPS indoors is routinely off
     # by 50-100 m, and the cost of a false flag (a manager chasing a present
@@ -204,6 +219,25 @@ class AttendanceSettings(TimestampMixin, Base):
     geofence_office: Mapped[str | None] = mapped_column(String(16), nullable=True)
     geofence_work_from_home: Mapped[str | None] = mapped_column(String(16), nullable=True)
     geofence_on_duty: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # --- overtime policy -----------------------------------------------------
+    # Defaults reproduce what timesheets did before there was a policy: overtime counts,
+    # from the first minute past the expected day, and a day off counts whole.
+    overtime_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Minutes past the expected day below which nothing counts. 0 counts every minute.
+    overtime_min_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Whether work on a weekly off or holiday counts as overtime.
+    overtime_on_off_days: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # --- punch methods -------------------------------------------------------
+    # Manual is the employee pressing Check In / Check Out, on the web or in the app. On by
+    # default: it is how every company already punched. Face and biometric hardware are off
+    # until switched on (and nothing receives device punches yet).
+    manual_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    manual_web_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    manual_mobile_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    face_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    biometric_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     def geofence_for(self, work_mode: str | None) -> str:
         """The enforcement level that applies to one punch.
@@ -476,3 +510,53 @@ class AttendanceRecord(UUIDMixin, TimestampMixin, Base):
     # — the agent observes a session starting, it does not know whether the desk
     # it is running on is at home or in the office.
     work_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
+class AttendanceDevice(UUIDMixin, TimestampMixin, Base):
+    """A face-recognition or biometric terminal the company owns.
+
+    A register only: it says which devices exist and where they sit. Receiving punches
+    from them is not built, so a device here records nothing yet.
+    """
+
+    __tablename__ = "attendance_devices"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: face | biometric
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: The terminal's own serial or ID, as the vendor prints it.
+    device_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("office_locations.id", ondelete="SET NULL"), nullable=True
+    )
+    location: Mapped["OfficeLocation | None"] = relationship("OfficeLocation", lazy="joined")
+    #: The branch it belongs to; none means the whole company.
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True
+    )
+    branch: Mapped["Branch | None"] = relationship("Branch", lazy="joined")
+    # Verification: a punch must be inside a radius and/or come from an allowed network.
+    location_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    radius_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ip_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: One per line: 203.0.113.7, 10.0.0.0/8 or 192.168.1.*
+    allowed_ips: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Timing. A second scan inside the cooldown is a duplicate; a scan is accepted from
+    # ``allowed_from_min`` before the shift starts to ``allowed_until_min`` after it ends.
+    cooldown_s: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    allowed_from_min: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    allowed_until_min: Mapped[int] = mapped_column(Integer, default=240, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    @property
+    def branch_name(self) -> str | None:
+        return self.branch.name if self.branch is not None else None
+
+    @property
+    def location_name(self) -> str | None:
+        return self.location.name if self.location is not None else None

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../styles/timesheets.css'
 import { api } from '../lib/api'
@@ -8,6 +8,10 @@ import { todayISO } from '../lib/format'
 import type { Project } from '../lib/types'
 import { Loading, ErrorNote, StatTile } from '../components/ui'
 import { ExportButton } from '../components/ExportButton'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../components/ViewSettings'
 
 type Period = 'daily' | 'weekly' | 'monthly'
 
@@ -137,6 +141,42 @@ function periodBounds(iso: string, period: Period): { start: string; end: string
   return { start: first.toISOString().slice(0, 10), end: last.toISOString().slice(0, 10) }
 }
 
+type TeamRow = TeamSheet['rows'][number]
+type TeamColumn = ColumnDef & { td: (row: TeamRow, ctx: { onOpen: (userId: string) => void }) => ReactNode; className?: string; thClass?: string }
+
+const TEAM_COLUMNS: TeamColumn[] = [
+  { key: 'employee', label: 'Employee', locked: true, td: (row, ctx) => (
+    <>
+      <button className="link-btn" onClick={() => ctx.onOpen(row.user_id)}>
+        {row.full_name}
+      </button>
+      <div className="muted-sm">{row.email}</div>
+    </>
+  ) },
+  { key: 'tracked', label: 'Tracked', className: 'num', thClass: 'num', td: (row) => hm(row.totals.tracked_minutes) },
+  { key: 'entered', label: 'Entered', className: 'num', thClass: 'num', td: (row) => hm(row.totals.entered_minutes) },
+  { key: 'worked', label: 'Worked', className: 'num', thClass: 'num', td: (row) => <b>{hm(row.totals.worked_minutes)}</b> },
+  { key: 'expected', label: 'Expected', className: 'num', thClass: 'num', td: (row) => hm(row.totals.expected_minutes) },
+  { key: 'overtime', label: 'Overtime', className: 'num', thClass: 'num', td: (row) => (
+    <span className={row.totals.overtime_minutes > 0 ? 'ts-over' : undefined}>{hm(row.totals.overtime_minutes)}</span>
+  ) },
+  { key: 'billable', label: 'Billable', className: 'num', thClass: 'num', td: (row) => hm(row.totals.billable_minutes) },
+  { key: 'status', label: 'Status', td: (row) => <ApprovalPill status={row.approval.status} /> },
+  { key: 'non_billable', label: 'Non-billable', initial: false, className: 'num', thClass: 'num', td: (row) => hm(row.totals.non_billable_minutes) },
+  { key: 'shortfall', label: 'Shortfall', initial: false, className: 'num', thClass: 'num', td: (row) => hm(row.totals.shortfall_minutes) },
+  { key: 'idle', label: 'Idle', initial: false, className: 'num', thClass: 'num', td: (row) => hm(row.totals.idle_minutes) },
+  { key: 'days', label: 'Days worked', initial: false, className: 'num', thClass: 'num', td: (row) => `${row.totals.days_worked} of ${row.totals.working_days}` },
+]
+
+const ENTRY_FIELDS: FieldDef[] = [
+  { key: 'entry_date', label: 'Date', section: 'entry', fixed: true },
+  { key: 'hours', label: 'Hours', section: 'entry', fixed: true },
+  { key: 'project_id', label: 'Project', section: 'entry' },
+  { key: 'description', label: 'What was it?', section: 'entry' },
+  { key: 'is_billable', label: 'Billable', section: 'entry', optionalOnly: true },
+]
+const ENTRY_SECTIONS: FieldSection[] = [{ id: 'entry', label: 'Entry' }]
+
 export default function Timesheets() {
   const { user } = useAuth()
   const canSeeTeam = user?.role !== 'employee'
@@ -228,6 +268,7 @@ function TeamView({
   day: string
   onOpen: (userId: string) => void
 }) {
+  const columns = useColumns('timesheet-team', TEAM_COLUMNS)
   const { data, error, loading, refetching } = useQuery<TeamSheet>(
     `ts-team:${period}:${day}`,
     () => api.get<TeamSheet>(`/timesheets/team?day=${day}&period=${period}`),
@@ -251,37 +292,32 @@ function TeamView({
       </div>
 
       <section className="card">
+        <div className="card-head">
+          <h2 className="card-title">Team</h2>
+          <ColumnSettings defs={TEAM_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Employee</th><th className="num">Tracked</th><th className="num">Entered</th>
-                <th className="num">Worked</th><th className="num">Expected</th>
-                <th className="num">Overtime</th><th className="num">Billable</th><th>Status</th>
+                {columns.visible.map((col) => (
+                  <th key={col.key} className={(col as TeamColumn).thClass}>{col.label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.user_id}>
-                  <td>
-                    <button className="link-btn" onClick={() => onOpen(row.user_id)}>
-                      {row.full_name}
-                    </button>
-                    <div className="muted-sm">{row.email}</div>
-                  </td>
-                  <td className="num">{hm(row.totals.tracked_minutes)}</td>
-                  <td className="num">{hm(row.totals.entered_minutes)}</td>
-                  <td className="num"><b>{hm(row.totals.worked_minutes)}</b></td>
-                  <td className="num">{hm(row.totals.expected_minutes)}</td>
-                  <td className={`num ${row.totals.overtime_minutes > 0 ? 'ts-over' : ''}`}>
-                    {hm(row.totals.overtime_minutes)}
-                  </td>
-                  <td className="num">{hm(row.totals.billable_minutes)}</td>
-                  <td><ApprovalPill status={row.approval.status} /></td>
+                  {columns.visible.map((col) => (
+                    <td key={col.key} className={(col as TeamColumn).className}>
+                      {(col as TeamColumn).td(row, { onOpen })}
+                    </td>
+                  ))}
                 </tr>
               ))}
               {data.rows.length === 0 && (
-                <tr><td colSpan={8} className="empty">Nobody in scope.</td></tr>
+                <tr><td colSpan={columns.visible.length} className="empty">Nobody in scope.</td></tr>
               )}
             </tbody>
           </table>
@@ -577,9 +613,17 @@ function AddEntry({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const projects = useQuery<Project[]>('projects:false', () => api.get<Project[]>('/projects'))
+  const fields = useFieldModes('timesheet-entry-form', ENTRY_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => (rq(key) ? <span className="lf-req"> *</span> : null)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if ((rq('project_id') && !form.project_id) || (rq('description') && !form.description.trim())) {
+      setError('Fill in the fields marked *.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -601,47 +645,65 @@ function AddEntry({
     }
   }
 
+  const fieldNodes: Record<string, ReactNode> = {
+    entry_date: (
+      <label className="setting">
+        Date
+        <input type="date" value={form.entry_date} onChange={(e) => setForm({ ...form, entry_date: e.target.value })} required />
+      </label>
+    ),
+    hours: (
+      <label className="setting">
+        Hours
+        <input placeholder="e.g. 2"
+          type="number"
+          min={0.25}
+          max={24}
+          step={0.25}
+          value={form.hours}
+          onChange={(e) => setForm({ ...form, hours: Number(e.target.value) })}
+          required
+        />
+      </label>
+    ),
+    project_id: fm('project_id') !== 'hide' && (
+      <label className="setting">
+        Project{star('project_id')}
+        <select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })}>
+          <option value="">None</option>
+          {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+    ),
+    description: fm('description') !== 'hide' && (
+      <label className="setting">
+        What was it?{star('description')}
+        <input
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          placeholder="Client workshop, offsite"
+        />
+      </label>
+    ),
+    is_billable: fm('is_billable') !== 'hide' && (
+      <div className="setting">
+        <label className="switch-row">
+          <input type="checkbox" checked={form.is_billable} onChange={(e) => setForm({ ...form, is_billable: e.target.checked })} />
+          <span>Billable</span>
+        </label>
+      </div>
+    ),
+  }
+
   return (
     <form className="ts-entry-form" onSubmit={submit}>
+      <div className="lf-settings">
+        <FieldSettings defs={ENTRY_FIELDS} sections={ENTRY_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Entry fields" />
+      </div>
       {error && <div style={{ marginBottom: 12 }}><ErrorNote>{error}</ErrorNote></div>}
       <div className="settings-grid">
-        <label className="setting">
-          Date
-          <input type="date" value={form.entry_date} onChange={(e) => setForm({ ...form, entry_date: e.target.value })} required />
-        </label>
-        <label className="setting">
-          Hours
-          <input placeholder="e.g. 2"
-            type="number"
-            min={0.25}
-            max={24}
-            step={0.25}
-            value={form.hours}
-            onChange={(e) => setForm({ ...form, hours: Number(e.target.value) })}
-            required
-          />
-        </label>
-        <label className="setting">
-          Project
-          <select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })}>
-            <option value="">None</option>
-            {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-        <label className="setting">
-          What was it?
-          <input
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Client workshop, offsite"
-          />
-        </label>
-        <div className="setting">
-          <label className="switch-row">
-            <input type="checkbox" checked={form.is_billable} onChange={(e) => setForm({ ...form, is_billable: e.target.checked })} />
-            <span>Billable</span>
-          </label>
-        </div>
+        {fields.orderOf('entry').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
       </div>
       <div style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Add entry'}</button>

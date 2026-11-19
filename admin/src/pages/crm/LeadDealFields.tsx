@@ -7,8 +7,8 @@
  * form already and is passed in; email, phone and salesperson come from the lead.
  */
 
-import { type KeyboardEvent } from 'react'
-import { IconBriefcase, IconClose, IconDownload, IconStar, IconUpload } from '../../components/Icons'
+import { type KeyboardEvent, type ReactNode } from 'react'
+import { IconBriefcase, IconClose, IconDownload, IconUpload } from '../../components/Icons'
 import { api, download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { crm, crmError, type Opportunity, type OpportunityFile, type OpportunityStage } from './api'
@@ -74,7 +74,7 @@ const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionD
 
 /** Has anything been entered that only an opportunity can hold? */
 export function dealStarted(d: Deal): boolean {
-  return Boolean(d.closing || d.customerId || d.priority || d.tags.length || d.tagDraft.trim() || d.requirementId
+  return Boolean(d.closing || d.customerId || d.tags.length || d.tagDraft.trim() || d.requirementId
     || d.oemId || d.rawCost.trim() || d.teamId || d.mailSent || d.approve || d.notes.trim()
     || d.files.costsheet || d.files.quotation)
 }
@@ -132,7 +132,7 @@ export async function uploadDealFiles(id: string, d: Deal, saved?: Opportunity |
   }
 }
 
-export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', all }: {
+export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', all, leading }: {
   deal: Deal
   onChange: (d: Deal) => void
   revenue: string
@@ -142,6 +142,8 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
   all?: boolean
   /** The opportunity being edited, when the lead already has one. */
   saved?: Opportunity | null
+  /** A field the lead form owns (Expected revenue), shown first in the opportunity details. */
+  leading?: ReactNode
 }) {
   const set = (patch: Partial<Deal>) => onChange({ ...deal, ...patch })
   const teams = useQuery<Array<{ id: string; name: string; is_active: boolean }>>('teams', () => api.get('/org/teams'))
@@ -175,7 +177,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
     <>
     {showDeal && <LfSection icon={<IconBriefcase size={16} />} title="Deal details"
                note={saved ? 'Saved on this lead\'s opportunity.' : 'Optional. Fill these in to create the opportunity with the lead.'}>
-      <LfField label="Probability" error={probabilityBad(deal) ? 'Between 0 and 100.' : undefined}>
+      <LfField label="Probability" required error={probabilityBad(deal) ? 'Between 0 and 100.' : undefined}>
         <LfInput prefix="%" bad={probabilityBad(deal)}>
           <input value={deal.probability} inputMode="numeric" placeholder="e.g. 30" aria-label="Probability"
                  onChange={(e) => set({ probability: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
@@ -196,17 +198,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
         <input value="INR (₹)" readOnly disabled className="lf-readonly" aria-label="Currency" />
       </LfField>
 
-      <LfField label="Priority" required={req}>
-        <div className="opp-stars" role="radiogroup" aria-label="Priority">
-          {[1, 2, 3].map((n) => (
-            <button key={n} type="button" role="radio" aria-checked={deal.priority === n} className={n <= deal.priority ? 'is-on' : undefined}
-                    aria-label={`${n} star${n === 1 ? '' : 's'}`} onClick={() => set({ priority: deal.priority === n ? 0 : n })}>
-              <IconStar size={20} />
-            </button>
-          ))}
-        </div>
-      </LfField>
-      <LfField label="Tags" required={req} hint="Press Enter or comma after each tag.">
+      <LfField label="Tags" required={req} wide hint="Press Enter or comma after each tag.">
         <div className="opp-tags">
           {deal.tags.map((tag) => (
             <span className="opp-tag" key={tag}>
@@ -237,6 +229,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
           <option value="lost">Lost</option>
         </select>
       </LfField>
+      {leading}
       {deal.stage === 'lost' && (
         <LfField label="Reason lost" required>
           <LostReasonSelect value={deal.lostReason} onChange={(v) => set({ lostReason: v })} />
@@ -290,7 +283,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
                 }} />
               </label>
               {which === 'costsheet' && (
-                <label className="crm-check opp-approve" title="Sends the costsheet to the Costsheet Approval tab, where a manager approves or rejects it">
+                <label className="crm-check opp-approve" title="Sends the costsheet to the Costsheet tab on the Approvals page, where a manager approves or rejects it">
                   <input type="checkbox" checked={deal.approve} onChange={(e) => set({ approve: e.target.checked })} /> Approve
                   {status !== 'none' && (
                     <span className={`opp-decision is-${status}`}>
@@ -342,7 +335,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
 /** Editing: what is still empty. Every field but the two tick boxes is required. */
 export function dealIncomplete(d: Deal, saved?: Opportunity | null): boolean {
   const hasFile = (which: OpportunityFile) => Boolean(d.files[which] || (saved?.[which] && !d.removed[which]))
-  return !d.title.trim() || !d.closing || !d.customerId || d.priority === 0 || (d.tags.length === 0 && !d.tagDraft.trim())
+  return !d.title.trim() || !d.closing || !d.customerId || (d.tags.length === 0 && !d.tagDraft.trim())
     || !d.requirementId || !d.oemId || !d.rawCost.trim() || !d.teamId || !d.notes.trim()
     || !hasFile('costsheet') || !hasFile('quotation')
 }

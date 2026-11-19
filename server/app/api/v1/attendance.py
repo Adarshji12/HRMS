@@ -34,6 +34,7 @@ from app.api.deps import (
 from app.api.tenancy import OptionalTenant
 from app.core.security import decode_access_token, token_digest
 from app.models import (
+    AttendanceDevice,
     AttendanceRecord,
     AttendanceSettings,
     Device,
@@ -50,6 +51,8 @@ from app.schemas.attendance import (
     AttendanceSettingsIn,
     AttendanceSettingsOut,
     OfficeLocationIn,
+    DeviceIn,
+    DeviceOut,
     OfficeLocationOut,
     PunchIn,
     PunchResultOut,
@@ -279,6 +282,7 @@ def punch_in(
     succeeds unverified; only ``geofence_enforcement = 'required'`` refuses, and
     then with a typed error the console can render (§2.2).
     """
+    svc.require_manual_allowed(db, actor.org.id, actor.source(payload.source))
     outcome = svc.punch_in(
         db,
         actor.org,
@@ -320,6 +324,7 @@ def punch_out(
     payload: PunchIn, actor: Puncher, request: Request, db: DbSession
 ) -> PunchResultOut:
     """Check out, closing today's open row — or yesterday's on a night shift."""
+    svc.require_manual_allowed(db, actor.org.id, actor.source(payload.source))
     outcome = svc.punch_out(
         db,
         actor.org,
@@ -419,6 +424,17 @@ def team_attendance(
 # --------------------------------------------------------------------------- #
 
 
+def _own_branch(db, org_id: uuid.UUID, branch_id: uuid.UUID | None) -> None:
+    """A location may only belong to one of this company's own branches."""
+    from app.models import Branch
+
+    if branch_id is None:
+        return
+    branch = db.get(Branch, branch_id)
+    if branch is None or branch.org_id != org_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That branch is not in this company")
+
+
 @router.get("/locations", response_model=list[OfficeLocationOut])
 def list_locations(viewer: CurrentUser, db: DbSession) -> list[OfficeLocationOut]:
     """Readable by any employee: the punch screen tells people where to stand."""
@@ -449,6 +465,7 @@ def create_location(
                 "message": "An office location with that name already exists.",
             },
         )
+    _own_branch(db, admin.org_id, payload.branch_id)
     location = OfficeLocation(
         org_id=admin.org_id, **payload.model_dump(exclude={"name"}), name=name
     )
@@ -470,6 +487,7 @@ def update_location(
     db: DbSession,
 ) -> OfficeLocationOut:
     location = _office(db, admin.org_id, location_id)
+    _own_branch(db, admin.org_id, payload.branch_id)
     if location.is_active and not payload.is_active:
         _guard_last_active_location(db, admin.org_id, location_id)
     for field, value in payload.model_dump().items():
@@ -523,6 +541,14 @@ def get_settings(viewer: CurrentUser, db: DbSession) -> AttendanceSettingsOut:
         geofence_office=row.geofence_office if row else None,
         geofence_work_from_home=row.geofence_work_from_home if row else None,
         geofence_on_duty=row.geofence_on_duty if row else None,
+        overtime_enabled=row.overtime_enabled if row else True,
+        overtime_min_minutes=row.overtime_min_minutes if row else 0,
+        overtime_on_off_days=row.overtime_on_off_days if row else True,
+        manual_enabled=row.manual_enabled if row else True,
+        manual_web_enabled=row.manual_web_enabled if row else True,
+        manual_mobile_enabled=row.manual_mobile_enabled if row else True,
+        face_enabled=row.face_enabled if row else False,
+        biometric_enabled=row.biometric_enabled if row else False,
     )
 
 
@@ -540,6 +566,18 @@ def put_settings(
             "geofence_work_from_home": payload.geofence_work_from_home,
             "geofence_on_duty": payload.geofence_on_duty,
         },
+        methods={
+            "manual_enabled": payload.manual_enabled,
+            "manual_web_enabled": payload.manual_web_enabled,
+            "manual_mobile_enabled": payload.manual_mobile_enabled,
+            "face_enabled": payload.face_enabled,
+            "biometric_enabled": payload.biometric_enabled,
+        },
+        overtime={
+            "overtime_enabled": payload.overtime_enabled,
+            "overtime_min_minutes": payload.overtime_min_minutes,
+            "overtime_on_off_days": payload.overtime_on_off_days,
+        },
     )
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.settings_updated",
           request=request, target_type="attendance_settings", target_id=str(admin.org_id),
@@ -556,7 +594,77 @@ def put_settings(
         geofence_office=row.geofence_office,
         geofence_work_from_home=row.geofence_work_from_home,
         geofence_on_duty=row.geofence_on_duty,
+        overtime_enabled=row.overtime_enabled,
+        overtime_min_minutes=row.overtime_min_minutes,
+        overtime_on_off_days=row.overtime_on_off_days,
+        manual_enabled=row.manual_enabled, manual_web_enabled=row.manual_web_enabled,
+        manual_mobile_enabled=row.manual_mobile_enabled, face_enabled=row.face_enabled,
+        biometric_enabled=row.biometric_enabled,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Devices
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/devices", response_model=list[DeviceOut])
+def list_devices(admin: AdminUser, db: DbSession) -> list[DeviceOut]:
+    return list(db.scalars(select(AttendanceDevice).where(AttendanceDevice.org_id == admin.org_id)
+                           .order_by(AttendanceDevice.kind, AttendanceDevice.name)).all())
+
+
+@router.post("/devices", response_model=DeviceOut, status_code=status.HTTP_201_CREATED)
+def create_device(payload: DeviceIn, admin: AdminUser, request: Request, db: DbSession) -> DeviceOut:
+    _check_device(db, admin.org_id, payload, None)
+    device = AttendanceDevice(org_id=admin.org_id, **payload.model_dump())
+    db.add(device)
+    db.flush()
+    audit(db, org_id=admin.org_id, actor=admin, action="attendance.device_created", request=request,
+          target_type="attendance_device", target_id=str(device.id), detail={"name": device.name, "kind": device.kind})
+    db.commit()
+    return device
+
+
+@router.patch("/devices/{device_id}", response_model=DeviceOut)
+def update_device(device_id: uuid.UUID, payload: DeviceIn, admin: AdminUser, request: Request, db: DbSession) -> DeviceOut:
+    device = db.get(AttendanceDevice, device_id)
+    if device is None or device.org_id != admin.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _check_device(db, admin.org_id, payload, device.id)
+    for field, value in payload.model_dump().items():
+        setattr(device, field, value)
+    audit(db, org_id=admin.org_id, actor=admin, action="attendance.device_updated", request=request,
+          target_type="attendance_device", target_id=str(device.id))
+    db.commit()
+    return device
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_device(device_id: uuid.UUID, admin: AdminUser, request: Request, db: DbSession) -> None:
+    device = db.get(AttendanceDevice, device_id)
+    if device is None or device.org_id != admin.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    audit(db, org_id=admin.org_id, actor=admin, action="attendance.device_deleted", request=request,
+          target_type="attendance_device", target_id=str(device.id), detail={"name": device.name})
+    db.delete(device)
+    db.commit()
+
+
+def _check_device(db, org_id: uuid.UUID, payload: DeviceIn, own_id: uuid.UUID | None) -> None:
+    """The location and branch must be the company's own, and a device ID is not used twice."""
+    _own_branch(db, org_id, payload.branch_id)
+    if payload.location_id is not None:
+        place = db.get(OfficeLocation, payload.location_id)
+        if place is None or place.org_id != org_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That location is not in this company")
+    if payload.device_code:
+        clash = db.scalar(select(AttendanceDevice.id).where(
+            AttendanceDevice.org_id == org_id, AttendanceDevice.kind == payload.kind,
+            AttendanceDevice.device_code == payload.device_code,
+            *([AttendanceDevice.id != own_id] if own_id else [])))
+        if clash:
+            raise HTTPException(status.HTTP_409_CONFLICT, "A device with that ID is already registered")
 
 
 # --------------------------------------------------------------------------- #

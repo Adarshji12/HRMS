@@ -161,13 +161,14 @@ export default function QuotationSetupPanel() {
       </div>
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <Card icon={<IconSheet size={16} />} title="Quotation style">
+      <Card icon={<IconSheet size={16} />} title="Quotation style"
+            badge={<span className="qs-active">Active: {original.setup.style === 'detailed' ? 'Detailed / Proposal' : 'Simple'}</span>}>
         <div className="qs-styles" role="radiogroup" aria-label="Quotation style">
           {([
-            ['simple', 'Simple', 'Items, totals, terms and payment details on one clean page.'],
-            ['detailed', 'Detailed / Proposal',
+            ['simple', 'Simple', '1 page', 'Items, totals, terms and payment details on one clean page.'],
+            ['detailed', 'Detailed / Proposal', 'Multi-page',
               'A multi-page B2B proposal: coloured letterhead from your company details, covering letter, bordered price table with HSN, then terms and bank details.'],
-          ] as const).map(([key, title, body]) => (
+          ] as const).map(([key, title, pages, body]) => (
             <button
               key={key}
               type="button"
@@ -177,10 +178,11 @@ export default function QuotationSetupPanel() {
               onClick={() => set({ style: key })}
             >
               <span className="qs-radio" aria-hidden />
-              <span>
-                <strong>{title}</strong>
+              <span className="qs-style-text">
+                <strong>{title} <em className="qs-tag">{pages}</em></strong>
                 <span>{body}</span>
               </span>
+              <span className={`qs-thumb is-${key}`} aria-hidden><i /><i /><i /></span>
             </button>
           ))}
         </div>
@@ -193,6 +195,7 @@ export default function QuotationSetupPanel() {
       </Card>
 
       {detailed && (
+        <div className="qs-subbar">
         <nav className="qs-subtabs" aria-label="Proposal setup">
           {([
             ['basics', 'Basics', <IconBuilding key="b" size={15} />],
@@ -205,6 +208,8 @@ export default function QuotationSetupPanel() {
             </button>
           ))}
         </nav>
+        <span className="qs-caption">Configured values automatically populate new PDF &amp; web quotations</span>
+        </div>
       )}
 
       {showing === 'letterhead' && <LetterheadPanel setup={setup} set={set} />}
@@ -231,9 +236,9 @@ export default function QuotationSetupPanel() {
                 <input value={setup.website ?? ''} placeholder="www.company.com"
                        onChange={(e) => set({ website: e.target.value })} />
               </Field>
-              <Field label="GSTIN"
+              <Field label="GSTIN" aside={gstState(setup.gstin) && <span className="qs-state">{gstState(setup.gstin)}</span>}
                      hint="Its first two digits set your GST state. Blank uses the state in Company profile.">
-                <input value={setup.gstin ?? ''} placeholder="22AAAAA0000A1Z5" maxLength={15}
+                <input className="qs-mono" value={setup.gstin ?? ''} placeholder="22AAAAA0000A1Z5" maxLength={15}
                        onChange={(e) => set({ gstin: e.target.value.toUpperCase() })} />
               </Field>
               <Field label="Address">
@@ -249,12 +254,15 @@ export default function QuotationSetupPanel() {
                 hint="Numbers run in sequence and restart each period. A deleted quotation never gives its number back.">
             <div className="crm-grid-2">
               <Field label="Prefix">
-                <input placeholder="QT" value={draft.quotation_prefix} maxLength={12}
+                <input className="qs-mono" placeholder="QT" value={draft.quotation_prefix} maxLength={12}
                        onChange={(e) => setTop({ quotation_prefix: e.target.value })} />
               </Field>
               <Field label="Next number looks like"
                      hint={numberingEdited ? 'The exact number shows after saving.' : undefined}>
-                <input className="qs-mono" value={preview} readOnly tabIndex={-1} />
+                <span className="qs-affixed">
+                  <input className="qs-mono" value={preview} readOnly tabIndex={-1} />
+                  <span className="qs-affix qs-affix-tag" aria-hidden>Preview</span>
+                </span>
               </Field>
               <div className="crm-form-wide">
                 <Field label="Number format (optional)"
@@ -273,12 +281,18 @@ export default function QuotationSetupPanel() {
                 </div>
               </div>
               <Field label="Valid for (days)" hint="Sets the Valid until date on a new quotation.">
-                <input placeholder="15" type="number" min={1} max={365} value={draft.quotation_validity_days}
-                       onChange={(e) => setTop({ quotation_validity_days: Number(e.target.value) })} />
+                <span className="qs-affixed">
+                  <input className="qs-mono" placeholder="15" type="number" min={1} max={365} value={draft.quotation_validity_days}
+                         onChange={(e) => setTop({ quotation_validity_days: Number(e.target.value) })} />
+                  <span className="qs-affix" aria-hidden>days</span>
+                </span>
               </Field>
               <Field label="Default GST %" hint="Used when a product carries no rate of its own.">
-                <input placeholder="18" type="number" min={0} max={28} step="0.01" value={setup.default_gst}
-                       onChange={(e) => set({ default_gst: e.target.value })} />
+                <span className="qs-affixed">
+                  <input className="qs-mono" placeholder="18" type="number" min={0} max={28} step="0.01" value={setup.default_gst}
+                         onChange={(e) => set({ default_gst: e.target.value })} />
+                  <span className="qs-affix" aria-hidden>%</span>
+                </span>
               </Field>
             </div>
           </Card>
@@ -297,11 +311,11 @@ export default function QuotationSetupPanel() {
                   <input placeholder="e.g. Acme Industries Pvt Ltd" value={setup.account_name ?? ''} onChange={(e) => set({ account_name: e.target.value })} />
                 </Field>
                 <Field label="Account number">
-                  <input placeholder="e.g. 50200012345678" value={setup.account_number ?? ''} inputMode="numeric"
+                  <input className="qs-mono" placeholder="e.g. 50200012345678" value={setup.account_number ?? ''} inputMode="numeric"
                          onChange={(e) => set({ account_number: e.target.value })} />
                 </Field>
                 <Field label="IFSC">
-                  <input value={setup.ifsc ?? ''} maxLength={11} placeholder="HDFC0001234"
+                  <input className="qs-mono" value={setup.ifsc ?? ''} maxLength={11} placeholder="HDFC0001234"
                          onChange={(e) => set({ ifsc: e.target.value.toUpperCase() })} />
                 </Field>
                 <Field label="Branch">
@@ -313,7 +327,7 @@ export default function QuotationSetupPanel() {
                     on={setup.upi_enabled} onChange={(on) => set({ upi_enabled: on })}>
               <div className="crm-grid-2">
                 <Field label="UPI ID">
-                  <input value={setup.upi_id ?? ''} placeholder="company@okhdfc"
+                  <input className="qs-mono" value={setup.upi_id ?? ''} placeholder="company@okhdfc"
                          onChange={(e) => set({ upi_id: e.target.value.trim() })} />
                 </Field>
                 <Field label="Payee name">
@@ -325,7 +339,7 @@ export default function QuotationSetupPanel() {
 
           <Card icon={<IconStar size={16} />} title="Terms, footer & stamp"
                 hint="Written once and carried onto every new quotation, where it can still be edited for that one document.">
-            <Field label="Terms & conditions">
+            <Field label="Terms & conditions" aside={<span className="qs-count">{clauseCount(draft.quotation_terms)} {clauseCount(draft.quotation_terms) === 1 ? 'clause' : 'clauses'}</span>}>
               <textarea rows={4} value={draft.quotation_terms}
                         placeholder={'1. Prices are valid until the date stated above.\n2. 50% advance, balance before delivery.\n3. Taxes as applicable.'}
                         onChange={(e) => setTop({ quotation_terms: e.target.value })} />
@@ -477,17 +491,41 @@ function LetterPanel({ setup, set }: { setup: QuotationSetup; set: SetFn }) {
   )
 }
 
-function Card({ icon, title, hint, children }: { icon: ReactNode; title: string; hint?: string; children: ReactNode }) {
+function Card({ icon, title, hint, badge, children }: { icon: ReactNode; title: string; hint?: string; badge?: ReactNode; children: ReactNode }) {
   return (
     <section className="card qs-card">
       <div className="qs-card-head">
         <span className="qs-card-icon" aria-hidden>{icon}</span>
-        <h2>{title}</h2>
+        <div className="qs-card-titles">
+          <h2>{title}</h2>
+          {hint && <p className="qs-card-hint">{hint}</p>}
+        </div>
+        {badge}
       </div>
-      {hint && <p className="qs-card-hint">{hint}</p>}
       <div className="qs-card-body">{children}</div>
     </section>
   )
+}
+
+/** Number of non-empty lines — one clause per line, as the terms are written. */
+function clauseCount(text: string | null | undefined): number {
+  return (text ?? '').split('\n').filter((line) => line.trim() !== '').length
+}
+
+const GST_STATES: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
+  '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura',
+  '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha',
+  '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat', '26': 'Dadra & Nagar Haveli and Daman & Diu',
+  '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu',
+  '34': 'Puducherry', '35': 'Andaman & Nicobar', '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh',
+}
+
+/** "24 · Gujarat" from a GSTIN's first two digits, or nothing while it is incomplete. */
+function gstState(gstin: string | null | undefined): string | null {
+  const code = (gstin ?? '').slice(0, 2)
+  return GST_STATES[code] ? `${code} · ${GST_STATES[code]}` : null
 }
 
 function Toggle({ label, hint, on, onChange, children }: {

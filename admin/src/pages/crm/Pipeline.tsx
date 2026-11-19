@@ -9,7 +9,7 @@
 import { useState, type DragEvent } from 'react'
 import '../../styles/crm.css'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconPlus, IconStar } from '../../components/Icons'
+import { IconPlus } from '../../components/Icons'
 import { useQuery } from '../../lib/useQuery'
 import { api } from '../../lib/api'
 import { crm, crmError, rupees, type Lead, type Opportunity, type OpportunityStage } from './api'
@@ -116,11 +116,6 @@ export default function Pipeline() {
                       <div className="pipe-money">{rupees(row.expected_revenue)}</div>
                       {row.stage === 'lost' && row.lost_reason && <div className="pipe-lost">Lost: {row.lost_reason}</div>}
                       <div className="pipe-foot">
-                        <span className="pipe-stars" aria-label={`${row.priority} star priority`}>
-                          {[1, 2, 3].map((n) => (
-                            <IconStar key={n} size={13} className={n <= row.priority ? 'is-on' : undefined} />
-                          ))}
-                        </span>
                         <span className="crm-sub">{row.probability}%</span>
                         <select
                           className="pipe-stage"

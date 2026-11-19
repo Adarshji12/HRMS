@@ -87,3 +87,16 @@ def test_another_companys_title_cannot_be_edited(client, tenants):
         f"/api/v1/org/designations/{theirs['id']}", json={"name": "Hijacked"}, headers=acme.headers()
     )
     assert response.status_code == 404
+
+
+def test_a_designation_can_carry_a_short_code(client, tenants):
+    tenant, _ = tenants
+    made = client.post("/api/v1/org/designations", json={"name": "Senior Executive Code", "level": 5, "code": " se "},
+                       headers=tenant.headers())
+    assert made.status_code == 201, made.text
+    assert made.json()["code"] == "SE"
+    blank = client.patch(f"/api/v1/org/designations/{made.json()['id']}",
+                         json={"name": "Senior Executive Code", "level": 5, "code": "  "}, headers=tenant.headers())
+    assert blank.json()["code"] is None
+    too_long = client.post("/api/v1/org/designations", json={"name": "X", "code": "ABCDEFGHIJKLM"}, headers=tenant.headers())
+    assert too_long.status_code == 422

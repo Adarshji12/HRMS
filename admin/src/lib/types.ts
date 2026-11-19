@@ -232,6 +232,8 @@ export interface Team {
 export interface Designation {
   id: string
   name: string
+  /** A few letters for the title, e.g. "SE". */
+  code?: string | null
   /** 1 is the most senior. */
   level: number
   /** Null when the title is used in any department. */
@@ -1613,6 +1615,8 @@ export interface MenuRight {
   add?: boolean
   edit?: boolean
   delete?: boolean
+  /** `tab_<key>` — a tab inside the screen this role may see (Approvals only so far). */
+  [tab: string]: boolean | undefined
 }
 
 export type MenuRights = Record<string, MenuRight>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import '../../../styles/assets.css'
 import { api } from '../../../lib/api'
@@ -23,6 +23,39 @@ import {
   type RenewalState,
 } from './assetLib'
 import { permits } from './Assets'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
+
+type RenewalColumn = ColumnDef & { td: (asset: Asset) => ReactNode; right?: boolean }
+
+const RENEWAL_COLUMNS: RenewalColumn[] = [
+  { key: 'asset', label: 'Asset', locked: true, td: (a) => (
+    <>
+      <div className="as-tag">{a.asset_tag}</div>
+      {a.name && <div className="as-name">{a.name}</div>}
+    </>
+  ) },
+  { key: 'category', label: 'Category', td: (a) => <span className="as-cat">{categoryLabel(a.category)}</span> },
+  { key: 'vendor', label: 'Vendor', td: (a) => a.vendor ?? <span className="as-muted">—</span> },
+  { key: 'due', label: 'Due date', td: (a) => (
+    <>
+      {day(a.renewal_date)}
+      <div className="as-when">{dueText(a)}</div>
+    </>
+  ) },
+  { key: 'status', label: 'Status', td: (a) => <RenewalPill asset={a} /> },
+  { key: 'cycle', label: 'Cycle', td: (a) => (
+    <span className="as-when">
+      {CYCLE_LABEL[a.renewal_cycle] ?? a.renewal_cycle}
+      {a.auto_renew ? ' · auto' : ''}
+    </span>
+  ) },
+  { key: 'cost', label: 'Cost', right: true, td: (a) => rupees(a.renewal_cost_paise) },
+  { key: 'serial', label: 'Serial / licence key', initial: false, td: (a) => a.serial_number ?? '—' },
+  { key: 'brand', label: 'Brand', initial: false, td: (a) => a.brand ?? '—' },
+  { key: 'location', label: 'Location', initial: false, td: (a) => a.location ?? '—' },
+  { key: 'holder', label: 'Assigned to', initial: false, td: (a) => a.current_holder_name ?? '—' },
+  { key: 'reminder', label: 'Remind (days before)', initial: false, td: (a) => a.reminder_days },
+]
 
 const STATES: Array<RenewalState | 'all'> = ['overdue', 'due', 'upcoming', 'ok', 'all']
 
@@ -33,6 +66,7 @@ export default function AssetRenewals() {
   const state = (params.get('state') as RenewalState | 'all' | null) ?? 'all'
   const [tab, setTab] = useState<'schedule' | 'history'>('schedule')
   const [renewing, setRenewing] = useState<Asset | null>(null)
+  const columns = useColumns('asset-renewals', RENEWAL_COLUMNS)
 
   const assets = useQuery<Asset[]>('assets', () => api.get<Asset[]>('/assets'), { enabled: allowed })
   const history = useQuery<AssetRenewal[]>('asset-renewals', () => api.get<AssetRenewal[]>('/assets/renewals'), {
@@ -112,6 +146,10 @@ export default function AssetRenewals() {
           </p>
         </div>
         <div className="head-actions">
+          {tab === 'schedule' && (
+            <ColumnSettings defs={RENEWAL_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                            onSave={columns.save} onReset={columns.reset} />
+          )}
           <button
             className="btn"
             onClick={tab === 'schedule' ? exportSchedule : exportHistory}
@@ -185,37 +223,18 @@ export default function AssetRenewals() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Asset</th>
-                      <th>Category</th>
-                      <th>Vendor</th>
-                      <th>Due date</th>
-                      <th>Status</th>
-                      <th>Cycle</th>
-                      <th style={{ textAlign: 'right' }}>Cost</th>
+                      {(columns.visible as RenewalColumn[]).map((col) => (
+                        <th key={col.key} style={col.right ? { textAlign: 'right' } : undefined}>{col.label}</th>
+                      ))}
                       <th />
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((a) => (
                       <tr key={a.id}>
-                        <td>
-                          <div className="as-tag">{a.asset_tag}</div>
-                          {a.name && <div className="as-name">{a.name}</div>}
-                        </td>
-                        <td className="as-cat">{categoryLabel(a.category)}</td>
-                        <td>{a.vendor ?? <span className="as-muted">—</span>}</td>
-                        <td>
-                          {day(a.renewal_date)}
-                          <div className="as-when">{dueText(a)}</div>
-                        </td>
-                        <td>
-                          <RenewalPill asset={a} />
-                        </td>
-                        <td className="as-when">
-                          {CYCLE_LABEL[a.renewal_cycle] ?? a.renewal_cycle}
-                          {a.auto_renew ? ' · auto' : ''}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>{rupees(a.renewal_cost_paise)}</td>
+                        {(columns.visible as RenewalColumn[]).map((col) => (
+                          <td key={col.key} style={col.right ? { textAlign: 'right' } : undefined}>{col.td(a)}</td>
+                        ))}
                         <td>
                           <div className="as-actions">
                             <button

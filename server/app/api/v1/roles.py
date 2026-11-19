@@ -107,6 +107,8 @@ class MenuOut(BaseModel):
     actions: list[str]
     #: The older permission flags shown as the row's other rights.
     rights: list[str]
+    #: Tabs a role can be limited to inside this screen.
+    tabs: list[dict[str, str]] = []
 
 
 class MenuGroupOut(BaseModel):
@@ -123,7 +125,8 @@ def list_menus(admin: AdminUser) -> list[MenuGroupOut]:
         MenuGroupOut(
             key=g.key, label=g.label, description=g.description,
             menus=[MenuOut(key=m.key, label=m.label, parent=m.parent, note=m.note,
-                           actions=list(m.actions), rights=list(m.rights)) for m in g.menus],
+                           actions=list(m.actions), rights=list(m.rights),
+                           tabs=[{"key": k, "label": lab} for k, lab in m.tabs]) for m in g.menus],
         )
         for g in menus.GROUPS
     ]

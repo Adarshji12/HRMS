@@ -39,6 +39,9 @@ class Menu:
     #: Shown indented under this menu key on the roles screen.
     parent: str | None = None
     note: str | None = None
+    #: Tabs inside the screen that a role can be limited to: (key, label). Each is saved on
+    #: the menu's row as ``tab_<key>``. Empty for a menu with no tabs.
+    tabs: tuple[tuple[str, str], ...] = ()
 
     @property
     def actions(self) -> tuple[str, ...]:
@@ -61,6 +64,14 @@ def _m(key: str, label: str, group: str, writes: tuple[str, ...] = (), rights: t
     return Menu(key=key, label=label, group=group, writes=writes, rights=rights, **kw)
 
 
+#: The tabs of the Approvals inbox. A role ticks the ones its people may see; a role that
+#: has Approvals but ticks only Costsheet opens the inbox with just that queue.
+APPROVAL_TABS: tuple[tuple[str, str], ...] = (
+    ("regularization", "Attendance"), ("leave", "Leave"), ("timesheet", "Timesheet"),
+    ("expense", "Expense"), ("loan", "Loan"), ("performance", "Review"), ("costsheet", "Costsheet"),
+)
+
+
 GROUPS: tuple[Group, ...] = (
     _g("overview", "Overview", "Where people land, and what they sign off.",
        _m("/", "Dashboard", "overview", note="The company's own numbers"),
@@ -69,7 +80,7 @@ GROUPS: tuple[Group, ...] = (
        _m("/dashboards/leave", "Leave", "overview", parent="/"),
        _m("/dashboards/expenses", "Expenses", "overview", parent="/"),
        _m("/home", "Home", "overview"),
-       _m("/approvals", "Approvals", "overview", ("/approvals",))),
+       _m("/approvals", "Approvals", "overview", ("/approvals",), tabs=APPROVAL_TABS)),
     _g("people", "Employees", "The roster, roles and the reporting line.",
        _m("/employees", "Employee", "people", ("/admin/employees", "/people"), ("can_manage_people",)),
        _m("/roles", "Role & Permission", "people", ("/roles",), aliases=("/settings/roles",)),
@@ -224,6 +235,16 @@ def clean_menu_rights(raw: dict | None) -> dict[str, dict[str, bool]] | None:
         row = {"access": access}
         for action in menu.actions:
             row[action] = access and bool(value.get(action))
+        for tab, _label in menu.tabs:
+            name = f"tab_{tab}"
+            if not access:
+                row[name] = False
+            elif name in value:
+                row[name] = bool(value[name])
+            elif tab != "costsheet":
+                # A role saved before tabs existed keeps every tab it had. The costsheet
+                # tab is left unsaid, so it keeps following the older rule (managers).
+                row[name] = True
         out[key] = row
     return out
 

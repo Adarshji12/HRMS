@@ -2,10 +2,10 @@
  * Costsheet approvals: every opportunity whose costsheet has been ticked
  * "Approve", as a table.
  *
- * It lives in the Employee tabs because that is where the people who sign
- * these off already work, but the data is the CRM's: the same opportunities the
- * lead pages show, read through the same ownership scope. An account that is
- * not licensed for CRM gets an explanation here, not a broken table.
+ * It is a tab on the Approvals page, next to leave and expenses, because that
+ * is where the people who sign these off already work. The data is the CRM's:
+ * the same opportunities the lead pages show, read through the same ownership
+ * scope. An account that is not licensed for CRM gets no tab, not a broken table.
  */
 
 import { useState } from 'react'
@@ -18,10 +18,20 @@ import { dateTime } from '../../lib/format'
 import { useQuery } from '../../lib/useQuery'
 import { crm, crmError, rupees, type Opportunity } from './api'
 
-export default function CostsheetApprovals() {
-  const approved = useQuery<Opportunity[]>('crm-costsheet-approvals', () =>
-    api.get<Opportunity[]>('/crm/opportunities?costsheet_status=requested'),
+/** The costsheets sent for approval. Held by the Approvals page, so its tab can show a count. */
+export function useCostsheetQueue(enabled: boolean) {
+  return useQuery<Opportunity[]>(
+    'crm-costsheet-approvals',
+    () => api.get<Opportunity[]>('/crm/opportunities?costsheet_status=requested'),
+    { enabled },
   )
+}
+
+/** How many of them still wait for a decision. */
+export const costsheetsWaiting = (rows: Opportunity[] | null | undefined) =>
+  (rows ?? []).filter((row) => row.costsheet_status === 'pending').length
+
+export function CostsheetApprovalsPanel({ approved }: { approved: ReturnType<typeof useCostsheetQueue> }) {
   const rows = approved.data ?? []
   const [busy, setBusy] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -42,12 +52,7 @@ export default function CostsheetApprovals() {
 
   return (
     <div className="crm">
-      <header className="hrd-hero">
-        <div className="hrd-hero-text">
-          <h1 className="hrd-title">Costsheet approval</h1>
-          <p className="crm-sub">Costsheets sent for approval. Approve or reject each one.</p>
-        </div>
-      </header>
+      <p className="crm-sub" style={{ margin: '0 0 10px' }}>Costsheets sent for approval. Approve or reject each one.</p>
 
       {approved.error ? (
         <ErrorNote>{crmError(approved.cause, 'Could not load the approved costsheets')}</ErrorNote>

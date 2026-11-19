@@ -17,7 +17,7 @@
  * table.
  */
 
-import { useState } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { shortDate } from '../../../lib/format'
@@ -28,7 +28,60 @@ import type {
   PulseSurvey,
   SurveyResults,
 } from '../../../lib/types'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 import './engagement.css'
+
+type PostColumn = ColumnDef & { td: (post: AnnouncementPost) => ReactNode; className?: string }
+
+const POST_COLUMNS: PostColumn[] = [
+  { key: 'title', label: 'Title', locked: true, td: (post) => (
+    <>
+      {post.is_pinned && <span className="eg-pin">Pinned</span>}
+      {post.title}
+      {post.requires_acknowledgement && <span className="eg-tag">Needs acknowledgement</span>}
+    </>
+  ) },
+  { key: 'audience', label: 'Audience', className: 'muted', td: (post) => post.audience_kind },
+  { key: 'status', label: 'Status', td: (post) => <span className={`eg-pill eg-${post.status}`}>{post.status}</span> },
+  { key: 'published', label: 'Published', className: 'muted',
+    td: (post) => (post.published_at ? shortDate(post.published_at) : '—') },
+  { key: 'by', label: 'Published by', initial: false, className: 'muted', td: (post) => post.published_by_name ?? '—' },
+  { key: 'created', label: 'Written', initial: false, className: 'muted', td: (post) => shortDate(post.created_at) },
+  { key: 'expires', label: 'Expires', initial: false, className: 'muted',
+    td: (post) => (post.expires_on ? shortDate(post.expires_on) : '—') },
+]
+
+type SurveyColumn = ColumnDef & { td: (survey: PulseSurvey) => ReactNode; className?: string; thClass?: string }
+
+const SURVEY_COLUMNS: SurveyColumn[] = [
+  { key: 'title', label: 'Survey', locked: true, td: (survey) => survey.title },
+  { key: 'kind', label: 'Kind', td: (survey) => (
+    survey.is_anonymous ? <span className="eg-tag">Anonymous</span> : <span className="eg-tag is-named">Named</span>
+  ) },
+  { key: 'status', label: 'Status', td: (survey) => <span className={`eg-pill eg-${survey.status}`}>{survey.status}</span> },
+  { key: 'responses', label: 'Responses', className: 'num', thClass: 'num',
+    td: (survey) => `${survey.responded}/${survey.invited}` },
+  { key: 'audience', label: 'Audience', initial: false, td: (survey) => survey.audience_kind },
+  { key: 'opens', label: 'Opens', initial: false, td: (survey) => (survey.opens_on ? shortDate(survey.opens_on) : '—') },
+  { key: 'closes', label: 'Closes', initial: false, td: (survey) => (survey.closes_on ? shortDate(survey.closes_on) : '—') },
+  { key: 'created', label: 'Created', initial: false, td: (survey) => shortDate(survey.created_at) },
+]
+
+// The server needs the title and the body; the rest is optional.
+const POST_FIELDS: FieldDef[] = [
+  { key: 'title', label: 'Title', section: 'post', fixed: true },
+  { key: 'body', label: 'Message', section: 'post', fixed: true },
+  { key: 'is_pinned', label: 'Pin it to the top of the feed', section: 'options', optionalOnly: true },
+  { key: 'requires_acknowledgement', label: 'Require an acknowledgement', section: 'options', optionalOnly: true },
+  { key: 'expires_on', label: 'Expires', section: 'options' },
+]
+const POST_SECTIONS: FieldSection[] = [
+  { id: 'post', label: 'Announcement' },
+  { id: 'options', label: 'Options' },
+]
 
 /** Hundredths as a rating. 370 → "3.70". */
 function mean(centi: number | null): string {
@@ -71,6 +124,7 @@ function Posts({ onError }: { onError: (m: string | null) => void }) {
   const [writing, setWriting] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const columns = useColumns('announcements', POST_COLUMNS)
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -88,6 +142,8 @@ function Posts({ onError }: { onError: (m: string | null) => void }) {
   return (
     <>
       <div className="eg-actions">
+        <ColumnSettings defs={POST_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         <button className="btn primary" onClick={() => setWriting((v) => !v)}>
           {writing ? 'Close' : 'Write an announcement'}
         </button>
@@ -106,24 +162,16 @@ function Posts({ onError }: { onError: (m: string | null) => void }) {
           <table className="table">
             <thead>
               <tr>
-                <th>Title</th><th>Audience</th><th>Status</th><th>Published</th><th />
+                {(columns.visible as PostColumn[]).map((col) => <th key={col.key}>{col.label}</th>)}
+                <th />
               </tr>
             </thead>
             <tbody>
               {listQ.data.map((post) => (
                 <tr key={post.id}>
-                  <td>
-                    {post.is_pinned && <span className="eg-pin">Pinned</span>}
-                    {post.title}
-                    {post.requires_acknowledgement && (
-                      <span className="eg-tag">Needs acknowledgement</span>
-                    )}
-                  </td>
-                  <td className="muted">{post.audience_kind}</td>
-                  <td><span className={`eg-pill eg-${post.status}`}>{post.status}</span></td>
-                  <td className="muted">
-                    {post.published_at ? shortDate(post.published_at) : '—'}
-                  </td>
+                  {(columns.visible as PostColumn[]).map((col) => (
+                    <td key={col.key} className={col.className}>{col.td(post)}</td>
+                  ))}
                   <td className="row-actions">
                     {post.status === 'draft' && (
                       <button className="btn small primary" disabled={busy}
@@ -211,19 +259,27 @@ function NewPost({
     requires_acknowledgement: false, expires_on: '',
   })
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('announcement-form', POST_FIELDS)
+  const fm = fields.mode
+  const missing = fm('expires_on') === 'mandatory' && !form.expires_on
 
-  return (
-    <section className="card eg-form">
-      <h2 className="card-title">New announcement</h2>
-      <input value={form.title} placeholder="Title"
+  const fieldNodes: Record<string, ReactNode> = {
+    title: (
+      <input value={form.title} placeholder="Title *"
              onChange={(e) => setForm({ ...form, title: e.target.value })} />
-      <textarea rows={6} value={form.body} placeholder="What are you telling people?"
+    ),
+    body: (
+      <textarea rows={6} value={form.body} placeholder="What are you telling people? *"
                 onChange={(e) => setForm({ ...form, body: e.target.value })} />
+    ),
+    is_pinned: fm('is_pinned') !== 'hide' && (
       <label className="eg-check">
         <input type="checkbox" checked={form.is_pinned}
                onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })} />
         <span>Pin it to the top of the feed</span>
       </label>
+    ),
+    requires_acknowledgement: fm('requires_acknowledgement') !== 'hide' && (
       <label className="eg-check">
         <input type="checkbox" checked={form.requires_acknowledgement}
                onChange={(e) =>
@@ -233,8 +289,10 @@ function NewPost({
           a policy change needs the second, a canteen notice does not.
         </span>
       </label>
+    ),
+    expires_on: fm('expires_on') !== 'hide' && (
       <label className="eg-field">
-        <span className="eg-label">Expires (optional)</span>
+        <span className="eg-label">Expires{fm('expires_on') === 'mandatory' ? ' *' : ' (optional)'}</span>
         <input type="date" value={form.expires_on}
                onChange={(e) => setForm({ ...form, expires_on: e.target.value })} />
         <span className="muted">
@@ -242,8 +300,22 @@ function NewPost({
           one-day notice.
         </span>
       </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
+  return (
+    <section className="card eg-form">
+      <h2 className="card-title">New announcement</h2>
+      <div className="lf-settings">
+        <FieldSettings defs={POST_FIELDS} sections={POST_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
+      {fieldsOf('post')}
+      {fieldsOf('options')}
       <div className="eg-actions">
-        <button className="btn primary" disabled={busy || !form.title || !form.body}
+        <button className="btn primary" disabled={busy || !form.title || !form.body || missing}
                 onClick={async () => {
                   setBusy(true)
                   onError(null)
@@ -260,7 +332,9 @@ function NewPost({
                 }}>
           Save as draft
         </button>
-        <span className="muted">Nobody sees it until you publish.</span>
+        <span className="muted">
+          {missing ? 'Fill in the fields marked *. ' : ''}Nobody sees it until you publish.
+        </span>
       </div>
     </section>
   )
@@ -275,6 +349,7 @@ function Surveys({ onError }: { onError: (m: string | null) => void }) {
   const [writing, setWriting] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const columns = useColumns('surveys', SURVEY_COLUMNS)
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -292,6 +367,8 @@ function Surveys({ onError }: { onError: (m: string | null) => void }) {
   return (
     <>
       <div className="eg-actions">
+        <ColumnSettings defs={SURVEY_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                        onSave={columns.save} onReset={columns.reset} />
         <button className="btn primary" onClick={() => setWriting((v) => !v)}>
           {writing ? 'Close' : 'New survey'}
         </button>
@@ -309,27 +386,18 @@ function Surveys({ onError }: { onError: (m: string | null) => void }) {
           <table className="table">
             <thead>
               <tr>
-                <th>Survey</th><th>Kind</th><th>Status</th>
-                <th className="num">Responses</th><th />
+                {(columns.visible as SurveyColumn[]).map((col) => (
+                  <th key={col.key} className={col.thClass}>{col.label}</th>
+                ))}
+                <th />
               </tr>
             </thead>
             <tbody>
               {listQ.data.map((survey) => (
                 <tr key={survey.id}>
-                  <td>{survey.title}</td>
-                  <td>
-                    {survey.is_anonymous ? (
-                      <span className="eg-tag">Anonymous</span>
-                    ) : (
-                      <span className="eg-tag is-named">Named</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`eg-pill eg-${survey.status}`}>{survey.status}</span>
-                  </td>
-                  <td className="num">
-                    {survey.responded}/{survey.invited}
-                  </td>
+                  {(columns.visible as SurveyColumn[]).map((col) => (
+                    <td key={col.key} className={col.className}>{col.td(survey)}</td>
+                  ))}
                   <td className="row-actions">
                     {survey.status === 'draft' && (
                       <button className="btn small primary" disabled={busy}

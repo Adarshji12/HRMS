@@ -387,31 +387,53 @@ def test_renewal_window_filters_the_customer_list(client, acme):
     assert client.get("/api/v1/crm/customers?renewal=expired", headers=acme.headers()).json() == []
 
 
-def test_plan_end_date_comes_from_the_plan_duration(client, acme):
-    product = client.post(
-        "/api/v1/crm/masters/products",
-        json={"name": "Bizinteract", "rate": "25000", "gst_percent": "18"},
+def _item(client, acme, name="Bizinteract", code="BIZ-1", price="25000"):
+    r = client.post(
+        "/api/v1/erp/items",
+        json={"code": code, "name": name, "item_type": "service", "sale_price": price,
+              "gst_percent": "18"},
         headers=acme.headers(),
-    ).json()
-    plan = client.post(
-        "/api/v1/crm/masters/plans",
-        json={"name": "Annual", "product_id": product["id"], "duration_days": 365,
-              "price": "25000"},
-        headers=acme.headers(),
-    ).json()
+    )
+    assert r.status_code in (200, 201), r.text
+    return r.json()
+
+
+def test_customer_plan_takes_an_item_and_a_typed_renewal_date(client, acme):
+    item = _item(client, acme)
     customer = _customer(client, acme)
     row = client.post(
         f"/api/v1/crm/customers/{customer['id']}/plans",
         json={
-            "product_id": product["id"], "plan_id": plan["id"],
-            "start_on": "2026-01-01", "amount": "25000",
+            "product_id": item["id"], "start_on": "2026-01-01", "end_on": "2027-01-01",
+            "amount": "25000",
         },
         headers=acme.headers(),
     ).json()
+    assert row["product_id"] == item["id"] and row["product_name"] == "Bizinteract"
+    # Nothing works the end date out any more: there is no plan term to read.
     assert row["end_on"] == "2027-01-01"
     # Renewal defaults to the end date rather than being left empty — an
     # unscheduled renewal is one that gets noticed after it lapses.
     assert row["renewal_on"] == "2027-01-01"
+    typed = client.post(
+        f"/api/v1/crm/customers/{customer['id']}/plans",
+        json={"product_id": item["id"], "start_on": "2026-01-01", "end_on": "2027-01-01",
+              "renewal_on": "2026-12-01"},
+        headers=acme.headers(),
+    ).json()
+    assert typed["renewal_on"] == "2026-12-01"
+
+
+def test_a_lead_can_be_interested_in_an_item(client, acme):
+    item = _item(client, acme, name="Firewall", code="FW-1")
+    lead = _new_lead(client, acme, product_id=item["id"])
+    assert lead["product_id"] == item["id"] and lead["product_name"] == "Firewall"
+
+
+def test_product_and_plan_masters_are_gone(client, acme):
+    for kind in ("products", "plans"):
+        r = client.get(f"/api/v1/crm/masters/{kind}", headers=acme.headers())
+        assert r.status_code in (404, 422), (kind, r.status_code)
 
 
 def test_logging_a_call_can_book_a_follow_up(client, acme):
@@ -931,3 +953,144 @@ def test_item_companies_are_a_master_list(client, acme):
     )
     assert created.status_code == 201, created.text
     assert [r["name"] for r in _masters(client, acme, "item-companies")] == ["Hikvision"]
+
+
+def test_a_mobile_number_cannot_be_added_twice(client, acme):
+    first = _new_lead(client, acme, mobile="+919811100001")
+    # The same digits, written differently, are the same number.
+    check = client.get(
+        "/api/v1/crm/leads/check-mobile", params={"mobile": "91 98111-00001"},
+        headers=acme.headers(),
+    ).json()
+    assert check["exists"] is True and check["code"] == first["code"]
+    assert client.get(
+        "/api/v1/crm/leads/check-mobile", params={"mobile": "+919811100002"},
+        headers=acme.headers(),
+    ).json() == {"exists": False}
+
+    again = client.post(
+        "/api/v1/crm/leads", json={"name": "Copy", "mobile": "+919811100001"},
+        headers=acme.headers(),
+    )
+    assert again.status_code == 422
+    assert again.json()["detail"]["reason"] == "duplicate_mobile"
+
+    other = _new_lead(client, acme, mobile="+919811100003")
+    clash = client.patch(
+        f"/api/v1/crm/leads/{other['id']}", json={"mobile": "+919811100001"},
+        headers=acme.headers(),
+    )
+    assert clash.status_code == 422
+    # Saving a lead without changing its own number is not a clash.
+    ok = client.patch(
+        f"/api/v1/crm/leads/{other['id']}", json={"mobile": "+919811100003", "name": "Renamed"},
+        headers=acme.headers(),
+    )
+    assert ok.status_code == 200, ok.text
+
+
+# ------------------------------------------------------------- email a lead --- #
+
+
+def test_email_a_lead_sends_with_bcc_and_logs_it(client, acme, monkeypatch):
+    from app.services import email, mailconfig
+
+    lead = _new_lead(client, acme, mobile="919000000077")
+    sent = {}
+
+    def fake_send(to, subject, body, html=None, org_id=None, attachments=None, bcc=None):
+        sent.update(to=to, subject=subject, body=body, bcc=bcc)
+        return True
+
+    monkeypatch.setattr(mailconfig, "resolve", lambda db=None, org_id=None: type("C", (), {"configured": True})())
+    monkeypatch.setattr(email, "send", fake_send)
+    response = client.post(
+        f"/api/v1/crm/leads/{lead['id']}/email",
+        json={"to": "buyer@example.com", "name": "Rohit", "subject": "Hello", "body": "Hi there",
+              "bcc": ["boss@example.com", "boss@example.com", "acc@example.com"]},
+        headers=acme.headers(),
+    )
+    assert response.status_code == 200, response.text
+    assert sent == {"to": "buyer@example.com", "subject": "Hello", "body": "Hi there",
+                    "bcc": ["boss@example.com", "acc@example.com"]}
+    detail = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=acme.headers()).json()
+    assert any("Hello" in a["body"] and "buyer@example.com" in a["body"] for a in detail["activities"])
+
+
+def test_email_is_refused_when_no_mail_connector_is_set_up(client, acme):
+    lead = _new_lead(client, acme, mobile="919000000078")
+    response = client.post(
+        f"/api/v1/crm/leads/{lead['id']}/email",
+        json={"to": "buyer@example.com", "subject": "Hello", "body": "Hi"},
+        headers=acme.headers(),
+    )
+    assert response.status_code == 409
+    assert "not set up" in response.json()["detail"]
+
+
+def test_email_rejects_bad_addresses(client, acme):
+    lead = _new_lead(client, acme, mobile="919000000079")
+    for body in (
+        {"to": "not-an-address", "subject": "s", "body": "b"},
+        {"to": "ok@example.com", "subject": "s", "body": "b", "bcc": ["nope"]},
+        {"to": "ok@example.com", "subject": "", "body": "b"},
+    ):
+        response = client.post(f"/api/v1/crm/leads/{lead['id']}/email", json=body, headers=acme.headers())
+        assert response.status_code == 422, body
+
+
+# ------------------------------------------------------------ Settings > Access --- #
+
+
+def _set_access(client, acme, **body):
+    return client.put(
+        f"/api/v1/crm/access/{acme.employee.id}", json=body, headers=acme.headers()
+    )
+
+
+def test_access_lists_members_and_is_admin_only(client, acme):
+    rows = client.get("/api/v1/crm/access", headers=acme.headers()).json()
+    staff = next(r for r in rows if r["user_id"] == str(acme.employee.id))
+    assert staff["lead_scope"] is None and staff["customer_scope"] is None
+    assert next(r for r in rows if r["user_id"] == str(acme.owner.id))["is_admin"] is True
+    assert client.get("/api/v1/crm/access", headers=acme.headers(acme.employee_token)).status_code == 403
+    assert client.put(
+        f"/api/v1/crm/access/{acme.employee.id}", json={"lead_scope": "all"},
+        headers=acme.headers(acme.employee_token),
+    ).status_code == 403
+
+
+def test_all_leads_lets_an_employee_see_every_lead(client, acme):
+    _new_lead(client, acme, name="Boss lead", mobile="919000000061", owner_id=str(acme.owner.id))
+    staff = acme.headers(acme.employee_token)
+    assert "Boss lead" not in {r["name"] for r in client.get("/api/v1/crm/leads", headers=staff).json()["rows"]}
+
+    assert _set_access(client, acme, lead_scope="all").status_code == 200
+    assert "Boss lead" in {r["name"] for r in client.get("/api/v1/crm/leads", headers=staff).json()["rows"]}
+
+    # Back to the default by clearing it.
+    assert _set_access(client, acme, lead_scope=None).json()["lead_scope"] is None
+    assert "Boss lead" not in {r["name"] for r in client.get("/api/v1/crm/leads", headers=staff).json()["rows"]}
+
+
+def test_seeing_all_leads_is_not_the_right_to_assign_them(client, acme):
+    lead = _new_lead(client, acme, mobile="919000000062", owner_id=str(acme.employee.id))
+    staff = acme.headers(acme.employee_token)
+    body = {"lead_ids": [lead["id"]], "owner_id": str(acme.owner.id)}
+
+    _set_access(client, acme, lead_scope="all")
+    assert client.post("/api/v1/crm/leads/assign", json=body, headers=staff).status_code == 403
+    assert client.patch(
+        f"/api/v1/crm/leads/{lead['id']}", json={"owner_id": str(acme.owner.id)}, headers=staff
+    ).status_code == 403
+
+    _set_access(client, acme, lead_scope="all_assign")
+    assert client.post("/api/v1/crm/leads/assign", json=body, headers=staff).json() == {"moved": 1}
+
+
+def test_own_only_narrows_a_person_and_customers_have_their_own_setting(client, acme):
+    _set_access(client, acme, lead_scope="own", customer_scope="all")
+    row = next(r for r in client.get("/api/v1/crm/access", headers=acme.headers()).json()
+               if r["user_id"] == str(acme.employee.id))
+    assert (row["lead_scope"], row["customer_scope"]) == ("own", "all")
+    assert _set_access(client, acme, lead_scope="everything").status_code == 422

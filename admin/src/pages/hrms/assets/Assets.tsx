@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/assets.css'
 import { api } from '../../../lib/api'
@@ -30,8 +30,90 @@ import {
   type AssetAssignment,
   type AssetRenewal,
 } from './assetLib'
+import {
+  ColumnSettings, FieldSettings, useColumns, useFieldModes,
+  type ColumnDef, type FieldDef, type FieldSection,
+} from '../../../components/ViewSettings'
 
 export { CATEGORY_LABEL, errorText }
+
+type AssetColumn = ColumnDef & {
+  td: (asset: Asset) => ReactNode
+  className?: string
+  thClass?: string
+}
+
+const ASSET_COLUMNS: AssetColumn[] = [
+  { key: 'asset', label: 'Asset', locked: true, td: (asset) => (
+    <>
+      <div className="as-tag">{asset.asset_tag}</div>
+      {asset.name && <div className="as-name">{asset.name}</div>}
+      {(asset.serial_number || asset.location) && (
+        <div className="as-serial">
+          {[asset.serial_number, asset.location].filter(Boolean).join(' · ')}
+        </div>
+      )}
+    </>
+  ) },
+  { key: 'category', label: 'Category', className: 'as-cat', td: (a) => categoryLabel(a.category) },
+  { key: 'status', label: 'Status', td: (a) => <AssetStatusPill value={a.status} /> },
+  { key: 'holder', label: 'Assigned to', td: (a) => (
+    <>
+      {a.current_holder_name ?? <span className="as-muted">nobody</span>}
+      {a.assigned_at && <div className="as-when">since {dateTime(a.assigned_at)}</div>}
+    </>
+  ) },
+  { key: 'renewal', label: 'Renewal', td: (a) => (
+    <>
+      <RenewalPill asset={a} />
+      {a.renewal_date && a.renewal_state !== 'none' && (
+        <div className="as-when">{day(a.renewal_date)} · {dueText(a)}</div>
+      )}
+    </>
+  ) },
+  { key: 'brand', label: 'Brand', initial: false, td: (a) => a.brand ?? '—' },
+  { key: 'model', label: 'Model', initial: false, td: (a) => a.model_name ?? '—' },
+  { key: 'serial', label: 'Serial / licence key', initial: false, td: (a) => a.serial_number ?? '—' },
+  { key: 'location', label: 'Location', initial: false, td: (a) => a.location ?? '—' },
+  { key: 'vendor', label: 'Vendor', initial: false, td: (a) => a.vendor ?? '—' },
+  { key: 'invoice', label: 'Invoice number', initial: false, td: (a) => a.invoice_number ?? '—' },
+  { key: 'purchase_date', label: 'Purchase date', initial: false, td: (a) => day(a.purchase_date) },
+  { key: 'purchase_cost', label: 'Purchase cost', initial: false, className: 'num', thClass: 'num', td: (a) => rupees(a.purchase_cost_paise) },
+  { key: 'warranty', label: 'Warranty till', initial: false, td: (a) => day(a.warranty_expiry) },
+  { key: 'renewal_cost', label: 'Renewal cost', initial: false, className: 'num', thClass: 'num', td: (a) => rupees(a.renewal_cost_paise) },
+]
+
+// Only the asset tag is required by the server; the category always has a value.
+const ASSET_FIELDS: FieldDef[] = [
+  { key: 'asset_tag', label: 'Asset tag / ID', section: 'basic', fixed: true },
+  { key: 'name', label: 'Asset name', section: 'basic' },
+  { key: 'category', label: 'Category', section: 'basic', initial: 'mandatory' },
+  { key: 'brand', label: 'Brand / make', section: 'basic' },
+  { key: 'model_name', label: 'Model', section: 'basic' },
+  { key: 'serial_number', label: 'Serial / licence key / reg. no.', section: 'basic' },
+  { key: 'location', label: 'Location', section: 'basic' },
+  { key: 'status', label: 'Status', section: 'basic', initial: 'mandatory' },
+  { key: 'vendor', label: 'Vendor / supplier', section: 'purchase' },
+  { key: 'invoice_number', label: 'Invoice number', section: 'purchase' },
+  { key: 'purchase_date', label: 'Purchase date', section: 'purchase' },
+  { key: 'purchase_cost', label: 'Purchase cost (₹)', section: 'purchase' },
+  { key: 'warranty_expiry', label: 'Warranty valid till', section: 'purchase' },
+  { key: 'tracks_renewal', label: 'This asset needs renewal', section: 'renewal', optionalOnly: true },
+  { key: 'renewal_date', label: 'Next renewal date', section: 'renewal', fixed: true },
+  { key: 'renewal_cycle', label: 'Renews every', section: 'renewal' },
+  { key: 'renewal_cost', label: 'Renewal cost (₹)', section: 'renewal' },
+  { key: 'reminder_days', label: 'Remind me (days before)', section: 'renewal' },
+  { key: 'auto_renew', label: 'Auto-renews with the vendor', section: 'renewal', optionalOnly: true },
+  { key: 'assign_to', label: 'Assign to employee', section: 'assign' },
+  { key: 'notes', label: 'Notes', section: 'notes' },
+]
+const ASSET_SECTIONS: FieldSection[] = [
+  { id: 'basic', label: 'Basic details' },
+  { id: 'purchase', label: 'Purchase & warranty' },
+  { id: 'renewal', label: 'Renewal' },
+  { id: 'assign', label: 'Assign (optional)' },
+  { id: 'notes', label: 'Notes' },
+]
 export type { Asset, AssetAssignment }
 
 /** The three statuses an asset can be *put into*. `assigned` is absent on
@@ -94,6 +176,7 @@ export default function Assets() {
   const [category, setCategory] = useState(params.get('category') ?? '')
   const [holderId, setHolderId] = useState('')
   const [renewal, setRenewal] = useState(params.get('renewal') ?? '')
+  const columns = useColumns('assets', ASSET_COLUMNS)
 
   /* Filtered in the browser rather than re-fetched per dropdown, the same call
      Employees.tsx makes: a register is a few hundred rows, and the endpoint's
@@ -196,6 +279,8 @@ export default function Assets() {
           </p>
         </div>
         <div className="head-actions">
+          <ColumnSettings defs={ASSET_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+                          onSave={columns.save} onReset={columns.reset} />
           <button
             className="btn"
             disabled={rows.length === 0}
@@ -389,44 +474,18 @@ export default function Assets() {
             <table>
               <thead>
                 <tr>
-                  <th>Asset</th>
-                  <th>Category</th>
-                  <th>Status</th>
-                  <th>Assigned to</th>
-                  <th>Renewal</th>
+                  {(columns.visible as AssetColumn[]).map((col) => (
+                    <th key={col.key} className={col.thClass}>{col.label}</th>
+                  ))}
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((asset) => (
                   <tr key={asset.id} className={asset.current_assignment_id ? 'as-row-open' : undefined}>
-                    <td>
-                      <div className="as-tag">{asset.asset_tag}</div>
-                      {asset.name && <div className="as-name">{asset.name}</div>}
-                      {(asset.serial_number || asset.location) && (
-                        <div className="as-serial">
-                          {[asset.serial_number, asset.location].filter(Boolean).join(' · ')}
-                        </div>
-                      )}
-                    </td>
-                    <td className="as-cat">{categoryLabel(asset.category)}</td>
-                    <td>
-                      <AssetStatusPill value={asset.status} />
-                    </td>
-                    <td>
-                      {asset.current_holder_name ?? <span className="as-muted">nobody</span>}
-                      {asset.assigned_at && (
-                        <div className="as-when">since {dateTime(asset.assigned_at)}</div>
-                      )}
-                    </td>
-                    <td>
-                      <RenewalPill asset={asset} />
-                      {asset.renewal_date && asset.renewal_state !== 'none' && (
-                        <div className="as-when">
-                          {day(asset.renewal_date)} · {dueText(asset)}
-                        </div>
-                      )}
-                    </td>
+                    {(columns.visible as AssetColumn[]).map((col) => (
+                      <td key={col.key} className={col.className}>{col.td(asset)}</td>
+                    ))}
                     <td>
                       <div className="as-actions">
                         <AssetRowActions
@@ -680,6 +739,26 @@ function AssetForm({
   const [busy, setBusy] = useState(false)
 
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
+  const fields = useFieldModes('asset-form', ASSET_FIELDS)
+  const fm = fields.mode
+  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const emptyField: Record<string, boolean> = {
+    name: !form.name.trim(),
+    brand: !form.brand.trim(),
+    model_name: !form.model_name.trim(),
+    serial_number: !form.serial_number.trim(),
+    location: !form.location.trim(),
+    vendor: !form.vendor.trim(),
+    invoice_number: !form.invoice_number.trim(),
+    purchase_date: !form.purchase_date,
+    purchase_cost: !form.purchase_cost.trim(),
+    warranty_expiry: !form.warranty_expiry,
+    renewal_cost: tracksRenewal && !form.renewal_cost.trim(),
+    reminder_days: tracksRenewal && !String(form.reminder_days).trim(),
+    assign_to: !asset && form.status === 'available' && !assignTo,
+    notes: !form.notes.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
   const isCustom = form.category === '__custom'
 
   async function submit(event: FormEvent) {
@@ -745,208 +824,217 @@ function AssetForm({
     }
   }
 
-  return (
-    <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
-      <div className="card-head">
-        <h2 className="card-title">{asset ? `Edit ${asset.asset_tag}` : 'Add an asset'}</h2>
-      </div>
-      {error && (
-        <div style={{ marginBottom: 12 }}>
-          <ErrorNote>{error}</ErrorNote>
-        </div>
-      )}
-
-      <h3 className="as-subhead">Basic details</h3>
-      <div className="settings-grid">
-        <label className="setting">
-          Asset tag / ID *
+  const fieldNodes: Record<string, ReactNode> = {
+    asset_tag: (
+      <label className="setting">
+        Asset tag / ID *
+        <input
+          value={form.asset_tag}
+          onChange={(e) => set({ asset_tag: e.target.value })}
+          placeholder="LAP-0142"
+          required
+          maxLength={64}
+          autoFocus
+        />
+        <span className="setting-hint">Your own label or sticker number. Unique per company.</span>
+      </label>
+    ),
+    name: fm('name') !== 'hide' && (
+      <label className="setting">
+        Asset name{star('name')}
+        <input
+          value={form.name}
+          onChange={(e) => set({ name: e.target.value })}
+          placeholder="Dell Latitude 5420 / Microsoft 365 / Office AC"
+          maxLength={160}
+        />
+      </label>
+    ),
+    category: fm('category') !== 'hide' && (
+      <label className="setting">
+        Category{star('category')}
+        <select value={form.category} onChange={(e) => set({ category: e.target.value })}>
+          {categories.map((value) => (
+            <option key={value} value={value}>
+              {categoryLabel(value)}
+            </option>
+          ))}
+          <option value="__custom">+ New category…</option>
+        </select>
+        {isCustom && (
           <input
-            value={form.asset_tag}
-            onChange={(e) => set({ asset_tag: e.target.value })}
-            placeholder="LAP-0142"
+            style={{ marginTop: 6 }}
+            value={customCategory}
+            onChange={(e) => setCustomCategory(e.target.value)}
+            placeholder="e.g. Delivery van, CCTV camera"
             required
-            maxLength={64}
-            autoFocus
           />
-          <span className="setting-hint">Your own label or sticker number. Unique per company.</span>
-        </label>
-        <label className="setting">
-          Asset name
-          <input
-            value={form.name}
-            onChange={(e) => set({ name: e.target.value })}
-            placeholder="Dell Latitude 5420 / Microsoft 365 / Office AC"
-            maxLength={160}
-          />
-        </label>
-        <label className="setting">
-          Category *
-          <select value={form.category} onChange={(e) => set({ category: e.target.value })}>
-            {categories.map((value) => (
-              <option key={value} value={value}>
-                {categoryLabel(value)}
-              </option>
-            ))}
-            <option value="__custom">+ New category…</option>
-          </select>
-          {isCustom && (
-            <input
-              style={{ marginTop: 6 }}
-              value={customCategory}
-              onChange={(e) => setCustomCategory(e.target.value)}
-              placeholder="e.g. Delivery van, CCTV camera"
-              required
-            />
-          )}
-        </label>
-        <label className="setting">
-          Brand / make
-          <input placeholder="e.g. Dell" value={form.brand} onChange={(e) => set({ brand: e.target.value })} maxLength={120} />
-        </label>
-        <label className="setting">
-          Model
-          <input placeholder="e.g. Latitude 5440" value={form.model_name} onChange={(e) => set({ model_name: e.target.value })} maxLength={120} />
-        </label>
-        <label className="setting">
-          Serial / licence key / reg. no.
-          <input placeholder="e.g. SN-7H2K9Q1" value={form.serial_number} onChange={(e) => set({ serial_number: e.target.value })} maxLength={120} />
-        </label>
-        <label className="setting">
-          Location
-          <input
-            value={form.location}
-            onChange={(e) => set({ location: e.target.value })}
-            placeholder="Head office, 2nd floor"
-            maxLength={160}
-          />
-        </label>
-        <label className="setting">
-          Status
-          <select value={form.status} onChange={(e) => set({ status: e.target.value })} disabled={held}>
-            {SETTABLE_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {ASSET_STATUS_LABEL[value]}
-              </option>
-            ))}
-          </select>
-          <span className="setting-hint">
-            {held
-              ? 'Assigned, so the status follows the assignment. Record the return to change it.'
-              : '“Assigned” is set by assigning the asset to someone.'}
-          </span>
-        </label>
-      </div>
-
-      <h3 className="as-subhead">Purchase &amp; warranty</h3>
-      <div className="settings-grid">
-        <label className="setting">
-          Vendor / supplier
-          <input placeholder="e.g. Croma Retail Pvt Ltd" value={form.vendor} onChange={(e) => set({ vendor: e.target.value })} maxLength={160} />
-        </label>
-        <label className="setting">
-          Invoice number
-          <input placeholder="e.g. INV-2024-0183" value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} maxLength={80} />
-        </label>
-        <label className="setting">
-          Purchase date
-          <input type="date" value={form.purchase_date} onChange={(e) => set({ purchase_date: e.target.value })} />
-        </label>
-        <label className="setting">
-          Purchase cost (₹)
-          <input
-            value={form.purchase_cost}
-            onChange={(e) => set({ purchase_cost: e.target.value })}
-            inputMode="decimal"
-            placeholder="0.00"
-          />
-        </label>
-        <label className="setting">
-          Warranty valid till
-          <input type="date" value={form.warranty_expiry} onChange={(e) => set({ warranty_expiry: e.target.value })} />
-        </label>
-      </div>
-
-      <h3 className="as-subhead">Renewal</h3>
-      <label className="as-check">
+        )}
+      </label>
+    ),
+    brand: fm('brand') !== 'hide' && (
+      <label className="setting">
+        Brand / make{star('brand')}
+        <input placeholder="e.g. Dell" value={form.brand} onChange={(e) => set({ brand: e.target.value })} maxLength={120} />
+      </label>
+    ),
+    model_name: fm('model_name') !== 'hide' && (
+      <label className="setting">
+        Model{star('model_name')}
+        <input placeholder="e.g. Latitude 5440" value={form.model_name} onChange={(e) => set({ model_name: e.target.value })} maxLength={120} />
+      </label>
+    ),
+    serial_number: fm('serial_number') !== 'hide' && (
+      <label className="setting">
+        Serial / licence key / reg. no.{star('serial_number')}
+        <input placeholder="e.g. SN-7H2K9Q1" value={form.serial_number} onChange={(e) => set({ serial_number: e.target.value })} maxLength={120} />
+      </label>
+    ),
+    location: fm('location') !== 'hide' && (
+      <label className="setting">
+        Location{star('location')}
+        <input
+          value={form.location}
+          onChange={(e) => set({ location: e.target.value })}
+          placeholder="Head office, 2nd floor"
+          maxLength={160}
+        />
+      </label>
+    ),
+    status: fm('status') !== 'hide' && (
+      <label className="setting">
+        Status{star('status')}
+        <select value={form.status} onChange={(e) => set({ status: e.target.value })} disabled={held}>
+          {SETTABLE_STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {ASSET_STATUS_LABEL[value]}
+            </option>
+          ))}
+        </select>
+        <span className="setting-hint">
+          {held
+            ? 'Assigned, so the status follows the assignment. Record the return to change it.'
+            : '“Assigned” is set by assigning the asset to someone.'}
+        </span>
+      </label>
+    ),
+    vendor: fm('vendor') !== 'hide' && (
+      <label className="setting">
+        Vendor / supplier{star('vendor')}
+        <input placeholder="e.g. Croma Retail Pvt Ltd" value={form.vendor} onChange={(e) => set({ vendor: e.target.value })} maxLength={160} />
+      </label>
+    ),
+    invoice_number: fm('invoice_number') !== 'hide' && (
+      <label className="setting">
+        Invoice number{star('invoice_number')}
+        <input placeholder="e.g. INV-2024-0183" value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} maxLength={80} />
+      </label>
+    ),
+    purchase_date: fm('purchase_date') !== 'hide' && (
+      <label className="setting">
+        Purchase date{star('purchase_date')}
+        <input type="date" value={form.purchase_date} onChange={(e) => set({ purchase_date: e.target.value })} />
+      </label>
+    ),
+    purchase_cost: fm('purchase_cost') !== 'hide' && (
+      <label className="setting">
+        Purchase cost (₹){star('purchase_cost')}
+        <input
+          value={form.purchase_cost}
+          onChange={(e) => set({ purchase_cost: e.target.value })}
+          inputMode="decimal"
+          placeholder="0.00"
+        />
+      </label>
+    ),
+    warranty_expiry: fm('warranty_expiry') !== 'hide' && (
+      <label className="setting">
+        Warranty valid till{star('warranty_expiry')}
+        <input type="date" value={form.warranty_expiry} onChange={(e) => set({ warranty_expiry: e.target.value })} />
+      </label>
+    ),
+    tracks_renewal: fm('tracks_renewal') !== 'hide' && (
+      <label className="as-check" style={{ gridColumn: '1 / -1' }}>
         <input type="checkbox" checked={tracksRenewal} onChange={(e) => setTracksRenewal(e.target.checked)} />
         This asset needs renewal (licence, subscription, domain, insurance, AMC, registration…)
       </label>
-      {tracksRenewal && (
-        <div className="settings-grid" style={{ marginTop: 10 }}>
-          <label className="setting">
-            Next renewal date *
-            <input
-              type="date"
-              value={form.renewal_date}
-              onChange={(e) => set({ renewal_date: e.target.value })}
-              required
-            />
-          </label>
-          <label className="setting">
-            Renews every
-            <select value={form.renewal_cycle} onChange={(e) => set({ renewal_cycle: e.target.value })}>
-              {Object.entries(CYCLE_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="setting">
-            Renewal cost (₹)
-            <input
-              value={form.renewal_cost}
-              onChange={(e) => set({ renewal_cost: e.target.value })}
-              inputMode="decimal"
-              placeholder="0.00"
-            />
-          </label>
-          <label className="setting">
-            Remind me (days before)
-            <input placeholder="30"
-              type="number"
-              min={0}
-              max={365}
-              value={form.reminder_days}
-              onChange={(e) => set({ reminder_days: e.target.value })}
-            />
-            <span className="setting-hint">Shows as “Due soon” on the dashboard from this many days out.</span>
-          </label>
-          <label className="as-check" style={{ alignSelf: 'center' }}>
-            <input type="checkbox" checked={form.auto_renew} onChange={(e) => set({ auto_renew: e.target.checked })} />
-            Auto-renews with the vendor
-          </label>
-        </div>
-      )}
-
-      {!asset && (
-        <>
-          <h3 className="as-subhead">Assign (optional)</h3>
-          <div className="settings-grid">
-            <label className="setting">
-              Assign to employee
-              <select
-                value={assignTo}
-                onChange={(e) => setAssignTo(e.target.value)}
-                disabled={form.status !== 'available'}
-              >
-                <option value="">Keep unassigned</option>
-                {people
-                  .filter((p) => p.is_active)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.full_name}
-                    </option>
-                  ))}
-              </select>
-              <span className="setting-hint">You can also assign it later from the list.</span>
-            </label>
-          </div>
-        </>
-      )}
-
-      <label className="setting" style={{ marginTop: 14, display: 'grid' }}>
-        Notes
+    ),
+    renewal_date: tracksRenewal && (
+      <label className="setting">
+        Next renewal date *
+        <input
+          type="date"
+          value={form.renewal_date}
+          onChange={(e) => set({ renewal_date: e.target.value })}
+          required
+        />
+      </label>
+    ),
+    renewal_cycle: tracksRenewal && fm('renewal_cycle') !== 'hide' && (
+      <label className="setting">
+        Renews every{star('renewal_cycle')}
+        <select value={form.renewal_cycle} onChange={(e) => set({ renewal_cycle: e.target.value })}>
+          {Object.entries(CYCLE_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    renewal_cost: tracksRenewal && fm('renewal_cost') !== 'hide' && (
+      <label className="setting">
+        Renewal cost (₹){star('renewal_cost')}
+        <input
+          value={form.renewal_cost}
+          onChange={(e) => set({ renewal_cost: e.target.value })}
+          inputMode="decimal"
+          placeholder="0.00"
+        />
+      </label>
+    ),
+    reminder_days: tracksRenewal && fm('reminder_days') !== 'hide' && (
+      <label className="setting">
+        Remind me (days before){star('reminder_days')}
+        <input placeholder="30"
+          type="number"
+          min={0}
+          max={365}
+          value={form.reminder_days}
+          onChange={(e) => set({ reminder_days: e.target.value })}
+        />
+        <span className="setting-hint">Shows as “Due soon” on the dashboard from this many days out.</span>
+      </label>
+    ),
+    auto_renew: tracksRenewal && fm('auto_renew') !== 'hide' && (
+      <label className="as-check" style={{ alignSelf: 'center' }}>
+        <input type="checkbox" checked={form.auto_renew} onChange={(e) => set({ auto_renew: e.target.checked })} />
+        Auto-renews with the vendor
+      </label>
+    ),
+    assign_to: !asset && fm('assign_to') !== 'hide' && (
+      <label className="setting">
+        Assign to employee{star('assign_to')}
+        <select
+          value={assignTo}
+          onChange={(e) => setAssignTo(e.target.value)}
+          disabled={form.status !== 'available'}
+        >
+          <option value="">Keep unassigned</option>
+          {people
+            .filter((p) => p.is_active)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name}
+              </option>
+            ))}
+        </select>
+        <span className="setting-hint">You can also assign it later from the list.</span>
+      </label>
+    ),
+    notes: fm('notes') !== 'hide' && (
+      <label className="setting" style={{ display: 'grid' }}>
+        Notes{star('notes')}
         <textarea
           value={form.notes}
           onChange={(e) => set({ notes: e.target.value })}
@@ -955,14 +1043,52 @@ function AssetForm({
           placeholder="Accessories included, account login owner, policy number…"
         />
       </label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
+
+  return (
+    <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
+      <div className="card-head">
+        <h2 className="card-title">{asset ? `Edit ${asset.asset_tag}` : 'Add an asset'}</h2>
+        <div className="lf-settings">
+          <FieldSettings defs={ASSET_FIELDS} sections={ASSET_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} />
+        </div>
+      </div>
+      {error && (
+        <div style={{ marginBottom: 12 }}>
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
+
+      <h3 className="as-subhead">Basic details</h3>
+      <div className="settings-grid">{fieldsOf('basic')}</div>
+
+      <h3 className="as-subhead">Purchase &amp; warranty</h3>
+      <div className="settings-grid">{fieldsOf('purchase')}</div>
+
+      <h3 className="as-subhead">Renewal</h3>
+      <div className="settings-grid">{fieldsOf('renewal')}</div>
+
+      {!asset && (
+        <>
+          <h3 className="as-subhead">Assign (optional)</h3>
+          <div className="settings-grid">{fieldsOf('assign')}</div>
+        </>
+      )}
+
+      <div style={{ marginTop: 14 }}>{fieldsOf('notes')}</div>
 
       <div className="btn-group" style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy}>
+        <button className="btn btn-primary" disabled={busy || missing}>
           {busy ? 'Saving…' : asset ? 'Save changes' : 'Save asset'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
+        {missing && <span className="as-muted">Fill in the fields marked *.</span>}
       </div>
     </form>
   )

@@ -408,82 +408,6 @@ class CrmCity(UUIDMixin, TimestampMixin, Base):
     district: Mapped["CrmDistrict | None"] = relationship()
 
 
-class CrmProduct(UUIDMixin, TimestampMixin, Base):
-    """Something the company sells. Priced here; over-ridable per quotation line."""
-
-    __tablename__ = "crm_products"
-    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_crm_products_org_name"),)
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    name: Mapped[str] = mapped_column(String(160), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: HSN (goods) or SAC (services). Printed on the quotation where set.
-    hsn_sac: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    unit: Mapped[str | None] = mapped_column(String(24), nullable=True)
-    rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
-    gst_percent: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), default=Decimal("18"), nullable=False
-    )
-    #: Which revenue component a line of this product counts towards -- see
-    #: ``ProductCategory``. Drives the opportunity amount split.
-    category: Mapped[str] = mapped_column(
-        String(20), default=ProductCategory.PRODUCT.value, server_default="product", nullable=False
-    )
-    #: The manufacturer whose product this is, for OEM-wise targets and win/loss.
-    #: Free text: an OEM is a label on a product, not something with a life.
-    oem: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-    plans: Mapped[list["CrmPlan"]] = relationship(
-        back_populates="product", cascade="all, delete-orphan"
-    )
-
-
-class CrmPlan(UUIDMixin, TimestampMixin, Base):
-    """A priced term of a product — "Enterprise, 12 months".
-
-    ``duration_days`` is what a renewal date is computed from. Nullable means
-    perpetual: a one-off sale has no renewal, and inventing one would put every
-    hardware sale in next year's renewal report.
-    """
-
-    __tablename__ = "crm_plans"
-    __table_args__ = (
-        UniqueConstraint("org_id", "product_id", "name", name="uq_crm_plans_org_product_name"),
-    )
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("crm_products.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    #: The company's own reference for the plan, e.g. AMC-GOLD-12.
-    code: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    #: monthly, quarterly, half_yearly, yearly or one_time. The renewal term
-    #: comes from here unless ``duration_days`` says otherwise.
-    billing_cycle: Mapped[str] = mapped_column(
-        String(20), default="yearly", server_default="yearly", nullable=False
-    )
-    duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    price: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
-    gst_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-    product: Mapped["CrmProduct"] = relationship(back_populates="plans")
-
-    @property
-    def term_days(self) -> int | None:
-        """Days until renewal: the explicit duration, else the billing cycle's."""
-        if self.duration_days:
-            return self.duration_days
-        return {"monthly": 30, "quarterly": 91, "half_yearly": 182, "yearly": 365}.get(self.billing_cycle)
-
-
 class CrmDisposition(UUIDMixin, TimestampMixin, Base):
     """What a logged call was about — "Update call", "Complaint", "Renewal"."""
 
@@ -857,8 +781,9 @@ class CrmLead(UUIDMixin, TimestampMixin, Base):
     industry_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("crm_industries.id", ondelete="SET NULL"), nullable=True
     )
+    #: The item (ERP Item / Service master) the lead is interested in.
     product_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_products.id", ondelete="SET NULL"), nullable=True
+        Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True
     )
 
     #: Who is working it. SET NULL so an employee leaving returns their pipeline
@@ -909,7 +834,7 @@ class CrmLead(UUIDMixin, TimestampMixin, Base):
     status: Mapped["CrmLeadStatus | None"] = relationship()
     source: Mapped["CrmLeadSource | None"] = relationship()
     industry: Mapped["CrmIndustry | None"] = relationship()
-    product: Mapped["CrmProduct | None"] = relationship()
+    product: Mapped["ErpItem | None"] = relationship()
     owner: Mapped["User | None"] = relationship(foreign_keys="CrmLead.owner_id")
     state: Mapped["CrmState | None"] = relationship()
     city: Mapped["CrmCity | None"] = relationship()
@@ -1093,10 +1018,7 @@ class CrmCustomerPlan(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     product_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_products.id", ondelete="SET NULL"), nullable=True
-    )
-    plan_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_plans.id", ondelete="SET NULL"), nullable=True
+        Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True
     )
     #: Snapshots, so a renamed product does not rewrite what was sold.
     product_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -1115,8 +1037,7 @@ class CrmCustomerPlan(UUIDMixin, TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     customer: Mapped["CrmCustomer"] = relationship(back_populates="plans")
-    product: Mapped["CrmProduct | None"] = relationship()
-    plan: Mapped["CrmPlan | None"] = relationship()
+    product: Mapped["ErpItem | None"] = relationship()
 
 
 class CrmInteraction(UUIDMixin, TimestampMixin, Base):
@@ -1378,10 +1299,7 @@ class CrmQuotationLine(UUIDMixin, Base):
         Uuid, ForeignKey("crm_quotations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     product_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_products.id", ondelete="SET NULL"), nullable=True
-    )
-    plan_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("crm_plans.id", ondelete="SET NULL"), nullable=True
+        Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1519,3 +1437,28 @@ class CrmReminderRun(UUIDMixin, TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     reminder: Mapped["CrmReminder"] = relationship(back_populates="runs")
+
+
+class CrmAccess(UUIDMixin, TimestampMixin, Base):
+    """How much of the lead and customer book one person sees, and whether they
+    may hand it out. Set on Settings > Access.
+
+    A person with no row keeps the scope their role and reporting line give them,
+    so adding this table changes nothing until somebody is edited. `own` is the
+    person's own records, `all` is everybody's, and `all_assign` is everybody's
+    plus the right to reassign them. Administrators see everything whatever is
+    stored here.
+    """
+
+    __tablename__ = "crm_access"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_crm_access_user"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: own | all | all_assign — or NULL for "as before".
+    lead_scope: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    customer_scope: Mapped[str | None] = mapped_column(String(12), nullable=True)

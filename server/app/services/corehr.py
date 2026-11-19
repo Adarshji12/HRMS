@@ -997,3 +997,34 @@ def probation_due(db: Session, viewer: User, within_days: int = 30) -> list[Empl
         if subject is not None:
             out.append(to_out(db, viewer, subject, profile))
     return out
+
+
+def birthdays_soon(db: Session, viewer: User, within_days: int = 30) -> list[dict]:
+    """Active people whose birthday falls in the next ``within_days`` days, soonest first.
+
+    Each row carries the date it next falls on, not the birth date: the report is
+    for saying happy birthday, and a date of birth is personal data it does not
+    need to hand out. A 29 February birthday is marked on 28 February in a common year.
+    """
+    if not is_people_admin(viewer):
+        raise CoreHRError("not_permitted", "Only an administrator may read this report.", 403)
+    today = date.today()
+    horizon = today + timedelta(days=within_days)
+    rows = db.execute(
+        select(EmployeeProfile.user_id, EmployeeProfile.date_of_birth, User.full_name)
+        .join(User, User.id == EmployeeProfile.user_id)
+        .where(EmployeeProfile.org_id == viewer.org_id, EmployeeProfile.date_of_birth.is_not(None),
+               User.is_active.is_(True))
+    ).all()
+    out: list[dict] = []
+    for user_id, born, name in rows:
+        for year in (today.year, today.year + 1):
+            try:
+                nxt = born.replace(year=year)
+            except ValueError:  # 29 February in a common year
+                nxt = date(year, 2, 28)
+            if nxt >= today:
+                break
+        if nxt <= horizon:
+            out.append({"user_id": user_id, "full_name": name, "on": nxt})
+    return sorted(out, key=lambda r: (r["on"], r["full_name"] or ""))

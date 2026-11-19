@@ -59,3 +59,39 @@ def test_hand_typed_next_code_advances_the_counter(client, tenants):
     assert after != preview
     minted = _hire(client, tenant, "auto@example.com")
     assert minted["employee_code"] == after
+
+
+def test_birthday_lookahead_defaults_to_thirty_and_is_saved(client, tenants):
+    tenant, _ = tenants
+    body = client.get("/api/v1/hr/settings", headers=tenant.headers()).json()
+    assert body["birthday_lookahead_days"] == 30
+    saved = client.put("/api/v1/hr/settings", json={**body, "birthday_lookahead_days": 14, "probation_warn_days": 0},
+                       headers=tenant.headers())
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["birthday_lookahead_days"] == 14 and saved.json()["probation_warn_days"] == 0
+    assert client.put("/api/v1/hr/settings", json={**body, "birthday_lookahead_days": 400},
+                      headers=tenant.headers()).status_code == 422
+
+
+def test_the_office_time_zone_must_be_a_real_one(client, tenants):
+    tenant, _ = tenants
+    assert client.put("/api/v1/org/company", json={"timezone": "Mars/Olympus"}, headers=tenant.headers()).status_code == 422
+    ok = client.put("/api/v1/org/company", json={"timezone": "Asia/Kolkata"}, headers=tenant.headers())
+    assert ok.status_code == 200, ok.text
+
+
+def test_birthdays_report_lists_the_next_birthdays_without_the_birth_year(client, tenants):
+    from datetime import date, timedelta
+
+    tenant, _ = tenants
+    soon = date.today() + timedelta(days=5)
+    born = soon.replace(year=soon.year - 30) if not (soon.month == 2 and soon.day == 29) else date(1992, 2, 28)
+    client.patch(f"/api/v1/people/{tenant.employee.id}", json={"date_of_birth": born.isoformat()},
+                 headers=tenant.headers(tenant.employee_token))
+
+    rows = client.get("/api/v1/people/reports/birthdays?within_days=10", headers=tenant.headers()).json()
+    mine = [r for r in rows if r["user_id"] == str(tenant.employee.id)]
+    assert len(mine) == 1 and mine[0]["on"] == soon.isoformat()
+    assert "date_of_birth" not in mine[0] and "turns" not in mine[0]
+    assert client.get("/api/v1/people/reports/birthdays?within_days=2", headers=tenant.headers()).json() == []
+    assert client.get("/api/v1/people/reports/birthdays", headers=tenant.headers(tenant.employee_token)).status_code == 403

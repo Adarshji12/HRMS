@@ -14,24 +14,21 @@
  * Master menu lists.
  */
 
-import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
-import { EmptyState, ErrorNote, Loading } from '../../components/ui'
+import { Avatar, EmptyState, ErrorNote, Loading } from '../../components/ui'
 import {
-  IconCheck,
   IconGear,
   IconSheet,
   IconShield,
   IconUsers,
 } from '../../components/Icons'
-import { crm, crmError, type CrmSettings as Settings } from './api'
+import { crm, crmError, type AccessMember, type AccessScope, type CrmSettings as Settings } from './api'
 import { CrmPage, Field, OwnerSelect } from './parts'
 import QuotationSetupPanel from './QuotationSetup'
-import type { OrgRole } from '../hrms/roles/Roles'
 
 type Glyph = (p: { size?: number }) => JSX.Element
 
@@ -49,6 +46,7 @@ type TabKey = 'general' | 'access' | 'quotation'
 export default function CrmSettings() {
   const { user } = useAuth()
   const [tab, setTab] = useState<TabKey>('general')
+  const [unsaved, setUnsaved] = useState(false)
 
   if (!canAdminister(user)) {
     return (
@@ -57,7 +55,7 @@ export default function CrmSettings() {
           <EmptyState
             icon={<IconGear size={22} />}
             title="CRM configuration is administrator-only"
-            body="Stages, sources, products and assignment rules decide how everybody's pipeline behaves, so they are not edited from a salesperson's account. You can still use every dropdown they define."
+            body="Stages, sources and assignment rules decide how everybody's pipeline behaves, so they are not edited from a salesperson's account. You can still use every dropdown they define."
           />
         </section>
       </CrmPage>
@@ -66,25 +64,32 @@ export default function CrmSettings() {
 
   return (
     // No page heading: the top bar already names the page, so the tabs lead.
-    <div className="crm">
-      <nav className="cs-tabs" aria-label="CRM settings sections">
-        {TABS.map((entry) => {
-          const Icon = entry.icon
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              className={`cs-tab${tab === entry.key ? ' is-on' : ''}`}
-              aria-current={tab === entry.key ? 'page' : undefined}
-              onClick={() => setTab(entry.key)}
-            >
-              <Icon size={15} /> {entry.label}
-            </button>
-          )
-        })}
-      </nav>
+    <div className="crm cs-page">
+      <div className="cs-topbar">
+        <nav className="cs-tabs" aria-label="CRM settings sections">
+          {TABS.map((entry) => {
+            const Icon = entry.icon
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                className={`cs-tab${tab === entry.key ? ' is-on' : ''}`}
+                aria-current={tab === entry.key ? 'page' : undefined}
+                onClick={() => setTab(entry.key)}
+              >
+                <Icon size={15} /> {entry.label}
+              </button>
+            )
+          })}
+        </nav>
+        {tab === 'general' && (
+          <span className={`cs-status${unsaved ? ' is-dirty' : ''}`} role="status">
+            <span className="cs-status-dot" aria-hidden /> {unsaved ? 'Unsaved changes' : 'All changes saved'}
+          </span>
+        )}
+      </div>
 
-      {tab === 'general' && <GeneralPanel />}
+      {tab === 'general' && <GeneralPanel onDirty={setUnsaved} />}
       {tab === 'access' && <AccessPanel />}
       {tab === 'quotation' && <QuotationSetupPanel />}
     </div>
@@ -93,11 +98,12 @@ export default function CrmSettings() {
 
 /* ---------------------------------------------------------------- general --- */
 
-function GeneralPanel() {
+function GeneralPanel({ onDirty }: { onDirty: (dirty: boolean) => void }) {
   return (
     <div className="cs-stack">
       <AssignmentCard />
       <SettingsForm
+        onDirty={onDirty}
         title="Support & renewals"
         hint="How support tickets are numbered, and how early a customer shows as due for renewal."
         fields={['ticket_prefix', 'renewal_window_days']}
@@ -137,8 +143,8 @@ function AssignmentCard() {
         badge={saved ? <span className="crm-state crm-state-good">Saved</span> : undefined}
       />
       {error && <div className="cs-pad"><ErrorNote>{error}</ErrorNote></div>}
-      <div className="crm-grid-2 cs-pad">
-        <Field label="Assignment rule">
+      <div className="cs-fields">
+        <CsField label="Assignment rule" hint={RULE_HINTS[current.assignment_rule]}>
           <select
             value={current.assignment_rule}
             onChange={(event) => patch({ assignment_rule: event.target.value as Settings['assignment_rule'] })}
@@ -147,19 +153,23 @@ function AssignmentCard() {
             <option value="fixed">Always to one person</option>
             <option value="round_robin">Round robin across a pool</option>
           </select>
-        </Field>
+        </CsField>
 
         {current.assignment_rule === 'fixed' && (
-          <Field label="Send every lead to">
+          <CsField label="Send every lead to" hint="Every lead that arrives on its own goes to this person.">
             <OwnerSelect
               value={current.default_owner_id ?? ''}
               onChange={(value) => patch({ default_owner_id: value || null })}
             />
-          </Field>
+          </CsField>
         )}
 
         {current.assignment_rule === 'round_robin' && (
-          <Field label="Add somebody to the pool" hint={`Currently ${current.assignment_pool.length} in the rotation.`}>
+          <CsField
+            label="Add somebody to the pool"
+            aside={<span className="cs-chip">Currently {current.assignment_pool.length} in the rotation</span>}
+            hint="Select a team member to append them to the active rotation."
+          >
             <OwnerSelect
               value=""
               onChange={(value) =>
@@ -169,96 +179,199 @@ function AssignmentCard() {
               }
               placeholder="Pick somebody to add"
             />
-          </Field>
+          </CsField>
         )}
       </div>
 
       {current.assignment_rule === 'round_robin' && current.assignment_pool.length > 0 && (
-        <div className="cs-pool">
-          {current.assignment_pool.map((id) => (
-            <span className="crm-pill" key={id}>
-              <PoolMember id={id} />
-              <button
-                className="link-btn"
-                aria-label="Remove from the pool"
-                onClick={() => patch({ assignment_pool: current.assignment_pool.filter((entry) => entry !== id) })}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
+        <div className="cs-rotation">
+          <div className="cs-rotation-head">
+            <span className="cs-label">Active rotation sequence</span>
+            <span className="cs-aside">Click × to remove from pool</span>
+          </div>
+          <div className="cs-pool">
+            {current.assignment_pool.map((id, index) => (
+              <PoolChip
+                key={id}
+                id={id}
+                position={index + 1}
+                onRemove={() => patch({ assignment_pool: current.assignment_pool.filter((entry) => entry !== id) })}
+              />
+            ))}
+          </div>
         </div>
       )}
     </section>
   )
 }
 
-/** Resolves one pool member's name. Reads the same roster the pickers do, so
- *  the name comes out of cache rather than a request per chip. */
-function PoolMember({ id }: { id: string }) {
+const RULE_HINTS: Record<Settings['assignment_rule'], string> = {
+  unassigned: 'New leads wait in the pool until a manager hands them out.',
+  fixed: 'Every lead that arrives on its own goes to one person.',
+  round_robin: 'Distributes incoming leads equally in sequential order.',
+}
+
+/** A label row (with an optional note on the right), the control, and a hint. */
+function CsField({ label, aside, hint, children }: { label: string; aside?: ReactNode; hint?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="cs-field">
+      <div className="cs-field-top">
+        <span className="cs-label">{label}</span>
+        {aside}
+      </div>
+      {children}
+      {hint && <span className="cs-hint">{hint}</span>}
+    </div>
+  )
+}
+
+/** One person in the rotation: avatar, name, position, and a remove button.
+ *  Reads the same roster the pickers do, so the name comes out of cache rather
+ *  than a request per chip. */
+function PoolChip({ id, position, onRemove }: { id: string; position: number; onRemove: () => void }) {
   const team = useQuery<Array<{ id: string; full_name: string }>>('crm-team', () =>
     api.get<Array<{ id: string; full_name: string }>>('/admin/employees').catch(() => []),
   )
-  const person = (team.data ?? []).find((member) => member.id === id)
-  return <>{person?.full_name ?? 'Unknown user'}</>
+  const name = (team.data ?? []).find((member) => member.id === id)?.full_name ?? 'Unknown user'
+  return (
+    <span className="cs-member">
+      <Avatar name={name} small />
+      <span className="cs-member-name">{name}</span>
+      <span className="cs-member-pos">#{position}</span>
+      <button type="button" className="cs-member-x" aria-label={`Remove ${name} from the pool`} onClick={onRemove}>×</button>
+    </span>
+  )
 }
 
 /* ----------------------------------------------------------------- access --- */
 
-interface MenuDef { key: string; label: string; actions: string[] }
-interface MenuGroup { key: string; label: string; menus: MenuDef[] }
 
-/** Which CRM menus each role opens — read here, changed on Role & Permission,
- *  where the rest of each role's rights are. */
+type AccessTab = 'lead' | 'customer'
+
+/** Settings > Access: how much of the lead and customer book each person sees,
+ *  and which menus each role opens. */
 function AccessPanel() {
-  const roles = useQuery<OrgRole[]>('org-roles', () => api.get<OrgRole[]>('/roles'))
-  const menus = useQuery<MenuGroup[]>('org-role-menus', () => api.get<MenuGroup[]>('/roles/menus'))
+  const [tab, setTab] = useState<AccessTab>('lead')
+  const tabs: Array<{ key: AccessTab; label: string; icon: Glyph }> = [
+    { key: 'lead', label: 'Lead Access', icon: IconShield },
+    { key: 'customer', label: 'Customer Access', icon: IconUsers },
+  ]
+  return (
+    <>
+      <nav className="cs-tabs cs-subtabs" aria-label="Access sections">
+        {tabs.map((entry) => {
+          const Icon = entry.icon
+          return (
+            <button key={entry.key} type="button" className={`cs-tab${tab === entry.key ? ' is-on' : ''}`}
+                    aria-current={tab === entry.key ? 'page' : undefined} onClick={() => setTab(entry.key)}>
+              <Icon size={15} /> {entry.label}
+            </button>
+          )
+        })}
+      </nav>
+      <PeopleAccessPanel kind={tab} />
+    </>
+  )
+}
 
-  if (roles.error || menus.error) return <ErrorNote>{roles.error ?? menus.error}</ErrorNote>
-  if (!roles.data || !menus.data) return <Loading />
+const SCOPE_WORDS = {
+  lead: { noun: 'lead', plural: 'leads', own: 'Own Leads Only', all: 'All Leads', assign: 'All Leads + Assign' },
+  customer: { noun: 'customer', plural: 'customers', own: 'Own Customers Only', all: 'All Customers', assign: 'All Customers + Reassign' },
+} as const
 
-  const crmMenus = menus.data.find((group) => group.key === 'crm')?.menus ?? []
-  const opens = (role: OrgRole, key: string) =>
-    role.base_role === 'owner' || role.menu_rights === null || Boolean(role.menu_rights?.[key]?.access)
+/** One row per person: pick how much of the book they see. Saved on click. */
+function PeopleAccessPanel({ kind }: { kind: 'lead' | 'customer' }) {
+  const people = useQuery<AccessMember[]>('crm-access', () => crm.access())
+  const [saving, setSaving] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const words = SCOPE_WORDS[kind]
+
+  if (people.error) return <ErrorNote>{people.error}</ErrorNote>
+  if (!people.data) return <Loading />
+
+  const scopeOf = (person: AccessMember) => (kind === 'lead' ? person.lead_scope : person.customer_scope)
+  const seeAll = people.data.filter((p) => p.is_admin || scopeOf(p) === 'all' || scopeOf(p) === 'all_assign').length
+
+  async function choose(person: AccessMember, scope: AccessScope) {
+    setSaving(person.user_id)
+    setError(null)
+    try {
+      await crm.setAccess(person.user_id, kind === 'lead' ? { lead_scope: scope } : { customer_scope: scope })
+      people.reload()
+    } catch (err) {
+      setError(crmError(err, 'That could not be saved'))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const options: Array<[AccessScope, string]> = [['own', words.own], ['all', words.all], ['all_assign', words.assign]]
 
   return (
     <section className="card cs-card">
       <CardHead
-        icon={<IconShield size={16} />}
-        title="Who can use the CRM"
-        hint="Which CRM menus each role opens. A role not yet limited by menu opens all of them."
-        badge={<Link className="btn btn-sm" to="/roles">Edit in Role &amp; Permission</Link>}
+        icon={kind === 'lead' ? <IconShield size={16} /> : <IconUsers size={16} />}
+        title={`${kind === 'lead' ? 'Lead' : 'Customer'} Access`}
+        hint={kind === 'lead'
+          ? 'How much of the pipeline each person sees. Nobody loses sight of their own leads.'
+          : 'How much of the customer book each person sees, by account manager. Nobody loses sight of their own accounts.'}
+        badge={<span className="muted">{seeAll} of {people.data.length} see all {words.plural}</span>}
       />
+      {error && <ErrorNote>{error}</ErrorNote>}
       <div className="table-wrap">
-        <table className="cs-access">
+        <table className="cs-access cs-people">
           <thead>
             <tr>
-              <th>Role</th>
-              {crmMenus.map((menu) => <th key={menu.key} className="c">{menu.label}</th>)}
+              <th>Member</th>
+              <th>Team</th>
+              <th className="c">{kind === 'lead' ? 'Own Leads' : 'Own Customers'}</th>
+              <th>{kind === 'lead' ? 'Lead' : 'Customer'} Visibility</th>
             </tr>
           </thead>
           <tbody>
-            {roles.data.map((role) => (
-              <tr key={role.id}>
-                <td>
-                  <span className="crm-strong">{role.name}</span>
-                  <span className="cs-role-meta">
-                    {role.member_count} {role.member_count === 1 ? 'person' : 'people'}
-                    {role.base_role === 'owner' ? ' · always everything' : role.menu_rights === null ? ' · not limited' : ''}
-                  </span>
-                </td>
-                {crmMenus.map((menu) => (
-                  <td key={menu.key} className="c">
-                    {opens(role, menu.key)
-                      ? <span className="cs-yes" aria-label="Opens"><IconCheck size={14} /></span>
-                      : <span className="cs-no" aria-label="Closed">—</span>}
+            {people.data.map((person) => {
+              const scope = scopeOf(person)
+              return (
+                <tr key={person.user_id}>
+                  <td>
+                    <span className="crm-strong">{person.name}</span>
+                    <span className="cs-role-meta">{person.email}</span>
                   </td>
-                ))}
-              </tr>
-            ))}
+                  <td>{person.team ?? <span className="muted">—</span>}</td>
+                  <td className="c">{kind === 'lead' ? person.own_leads : person.own_customers}</td>
+                  <td>
+                    {person.is_admin ? (
+                      <span className="muted">Admin — always sees every {words.noun}</span>
+                    ) : (
+                      <>
+                        <div className="cs-seg" role="radiogroup" aria-label={`${person.name}: ${words.noun} visibility`}>
+                          {options.map(([value, label]) => (
+                            <button key={value} type="button" role="radio" aria-checked={scope === value}
+                                    className={scope === value ? 'is-on' : ''} disabled={saving === person.user_id}
+                                    onClick={() => scope !== value && choose(person, value)}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {scope === null && (
+                          <span className="cs-role-meta">
+                            Not set — sees {kind === 'lead' ? person.lead_default : person.customer_default} {words.plural}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      <p className="muted cs-foot">
+        Takes effect on the member's next request — no re-login needed.
+        {kind === 'customer' ? ' Covers My Customers, the support desk and every customer report.' : ''}
+        {' '}"{words.all}" lets someone see every {words.noun} but not hand them to anyone else; "{words.assign}" also lets them.
+      </p>
     </section>
   )
 }
@@ -282,7 +395,7 @@ type FieldKey = 'quotation_prefix' | 'quotation_validity_days' | 'quotation_term
   | 'ticket_prefix' | 'renewal_window_days'
 
 /** A card of settings saved together with one button. */
-function SettingsForm({ title, hint, fields }: { title: string; hint: string; fields: FieldKey[] }) {
+function SettingsForm({ title, hint, fields, onDirty }: { title: string; hint: string; fields: FieldKey[]; onDirty?: (dirty: boolean) => void }) {
   const settings = useQuery<Settings>('crm-settings', () => crm.settings())
   const [draft, setDraft] = useState<Partial<Settings>>({})
   const [busy, setBusy] = useState(false)
@@ -293,6 +406,8 @@ function SettingsForm({ title, hint, fields }: { title: string; hint: string; fi
   const value = <K extends keyof Settings>(key: K): Settings[K] | undefined =>
     (draft[key] ?? current?.[key]) as Settings[K] | undefined
   const set = (patch: Partial<Settings>) => setDraft((d) => ({ ...d, ...patch }))
+  const dirty = Object.keys(draft).length > 0
+  useEffect(() => { onDirty?.(dirty) }, [dirty, onDirty])
 
   async function save() {
     setBusy(true)
@@ -336,18 +451,28 @@ function SettingsForm({ title, hint, fields }: { title: string; hint: string; fi
       </Field>
     ),
     ticket_prefix: (
-      <Field label="Support ticket prefix" hint={`e.g. ${value('ticket_prefix')}-00001`}>
+      <CsField
+        label="Support ticket prefix"
+        aside={<span className="cs-aside">Live format: <span className="cs-chip">{value('ticket_prefix') || 'TKT'}-00001</span></span>}
+        hint={<>e.g. <code>{value('ticket_prefix') || 'TKT'}-00001</code> · Automatically prepended to new tickets.</>}
+      >
         <input placeholder="TKT" value={value('ticket_prefix') ?? ''} onChange={(e) => set({ ticket_prefix: e.target.value })} />
-      </Field>
+      </CsField>
     ),
     renewal_window_days: (
-      <Field label="Renewal window (days)" hint="How early a customer starts showing as renewal due.">
-        <input placeholder="30" type="number" min={1} max={365} value={value('renewal_window_days') ?? 30}
-               onChange={(e) => set({ renewal_window_days: Number(e.target.value) })} />
-      </Field>
+      <CsField
+        label="Renewal window (days)"
+        aside={<span className="cs-aside">Range: 1–365</span>}
+        hint={<>Customers show as due <strong>{value('renewal_window_days') ?? 30} days</strong> before expiry.</>}
+      >
+        <span className="cs-suffixed">
+          <input placeholder="30" type="number" min={1} max={365} value={value('renewal_window_days') ?? 30}
+                 onChange={(e) => set({ renewal_window_days: Number(e.target.value) })} />
+          <span className="cs-suffix" aria-hidden>days</span>
+        </span>
+      </CsField>
     ),
   }
-  const dirty = Object.keys(draft).length > 0
 
   return (
     <section className="card cs-card">
@@ -358,10 +483,12 @@ function SettingsForm({ title, hint, fields }: { title: string; hint: string; fi
         badge={saved ? <span className="crm-state crm-state-good">Saved</span> : undefined}
       />
       {error && <div className="cs-pad"><ErrorNote>{error}</ErrorNote></div>}
-      <div className="crm-grid-2 cs-pad">
+      <div className="cs-fields">
         {fields.map((key) => <div key={key} className={key === 'quotation_terms' ? 'crm-form-wide' : undefined}>{control[key]}</div>)}
       </div>
       <div className="cs-foot">
+        <span className="cs-foot-note">Changes apply immediately to newly created leads and tickets.</span>
+        <span className="cs-push" />
         {dirty && <button className="link-btn" onClick={() => setDraft({})}>Discard</button>}
         <button className="btn btn-primary" onClick={save} disabled={busy || !dirty}>
           {busy ? 'Saving…' : 'Save changes'}

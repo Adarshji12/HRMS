@@ -482,3 +482,17 @@
 .crm .dm-card tbody td { padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
 .crm .dm-card th:first-child, .crm .dm-card td:first-child { padding-left: 14px; }
 .crm .dm-card th:last-child, .crm .dm-card td:last-child { padding-right: 14px; }
+
+/* Branch and Location forms. */
+.crm .om-geo { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.crm .om-checks { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.crm .om-geofence {
+  display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--crm-hair); border-radius: 12px;
+  background: var(--crm-sunken);
+}
+.crm .om-geofence-title { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.crm .om-geofence-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 720px) {
+  .crm .om-geo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm .om-geofence-grid { grid-template-columns: minmax(0, 1fr); }
+}

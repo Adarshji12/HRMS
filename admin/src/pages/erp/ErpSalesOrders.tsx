@@ -22,6 +22,7 @@ import DispatchChallan from './DispatchChallan'
 import SalesOrderPrint, { DELIVERY_MODES, downloadSalesOrderPdf, FREIGHT_TERMS, salesOrderPdfBase64 } from './SalesOrderPrint'
 import { erp, erpError, qtyText, rupees, type Item, type SalesOrder, type SalesOrderDetail, type SalesOrderQuery } from './api'
 import { asUTC, dateTime } from '../../lib/format'
+import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 import '../../styles/so-view.css'
 import '../../styles/so-form.css'
 import {
@@ -59,6 +60,79 @@ function SortTh({ col, sort, dir, onSort, num, className, children }: {
   )
 }
 
+
+type SoColumn = ColumnDef & { td: (so: SalesOrder) => ReactNode; className?: string; thClass?: string; sort?: string; num?: boolean }
+const muted = <span className="itl-muted">—</span>
+const SO_COLUMNS: SoColumn[] = [
+  { key: 'number', label: 'Sales order no.', locked: true, sort: 'number', td: (so) => (
+    <>
+      <span className="pol-no">{so.number}</span>
+      {/* Only what needs noticing from the list. The rest is in View. */}
+      {(so.status === 'on_hold' || so.status === 'closed' || so.has_deviation || (so.priority && so.priority !== 'normal')) && (
+        <span className="sol-tags">
+          {so.status === 'on_hold' && <em className="is-high">On hold</em>}
+          {so.status === 'closed' && <em>Closed</em>}
+          {so.priority && so.priority !== 'normal' && <em className={`is-${so.priority}`}>{titleCase(so.priority)}</em>}
+          {so.has_deviation && <em className="is-dev">Deviation</em>}
+        </span>
+      )}
+    </>
+  ) },
+  { key: 'order_date', label: 'Order date', sort: 'order_date', td: (so) => <DateText iso={so.order_date} /> },
+  { key: 'customer', label: 'Customer', sort: 'customer', className: 'sol-c-cust', thClass: 'sol-c-cust',
+    td: (so) => <b title={so.customer_name}>{so.customer_name}</b> },
+  { key: 'required_by', label: 'Delivery date', sort: 'required_by', td: (so) => so.required_by ? <DateText iso={so.required_by} /> : muted },
+  { key: 'grand_total', label: 'Order value', sort: 'grand_total', num: true, className: 'crm-num', td: (so) => <b className="pol-amt">{rupees(so.grand_total)}</b> },
+  { key: 'invoiced', label: 'Invoiced', sort: 'invoiced', num: true, className: 'crm-num', td: (so) => <>{rupees(so.invoiced_total)}</> },
+  { key: 'pending', label: 'Pending', sort: 'pending', num: true, td: (so) => <>{Number(so.pending_amount) > 0 ? rupees(so.pending_amount) : '—'}</> },
+  { key: 'approval', label: 'Approval', sort: 'approval',
+    td: (so) => <span className={`crm-state crm-state-${APPROVAL[so.approval_status][1]}`}>{approvalText(so)}</span> },
+  { key: 'delivery', label: 'Delivery status', sort: 'delivery',
+    td: (so) => <span className={`crm-state crm-state-${DELIVERY[so.delivery_status][1]}`}>{DELIVERY[so.delivery_status][0]}</span> },
+  { key: 'customer_po', label: 'Customer PO', initial: false, td: (so) => <>{so.customer_po_number || muted}</> },
+  { key: 'quotation', label: 'Quotation', initial: false, td: (so) => <>{so.quotation_number || muted}</> },
+  { key: 'salesperson', label: 'Salesperson', initial: false, td: (so) => <>{so.salesperson_name || muted}</> },
+  { key: 'status', label: 'Status', initial: false, td: (so) => <>{label(so.status)}</> },
+  { key: 'created_by', label: 'Created by', initial: false, td: (so) => <>{so.created_by_name || muted}</> },
+]
+
+const SO_SECTIONS: FieldSection[] = [
+  { id: 'head', label: 'Order details' }, { id: 'dispatch', label: 'Dispatch & charges' },
+  { id: 'address', label: 'Addresses' }, { id: 'notes', label: 'Notes & terms' },
+]
+// Only the header; the item grid, milestones and attachments stay as they are. The
+// customer is the one thing the server insists on.
+const SO_FIELDS: FieldDef[] = [
+  { key: 'customer', label: 'Customer', section: 'head', fixed: true },
+  { key: 'site_id', label: 'Site', section: 'head' },
+  { key: 'so_number', label: 'SO no. (assigned automatically)', section: 'head', optionalOnly: true },
+  { key: 'order_date', label: 'Date', section: 'head', initial: 'mandatory' },
+  { key: 'order_type', label: 'Type', section: 'head' },
+  { key: 'salesperson_id', label: 'Salesperson', section: 'head' },
+  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head', initial: 'mandatory' },
+  { key: 'payment', label: 'Payment terms', section: 'head', initial: 'mandatory' },
+  { key: 'required_by', label: 'Delivery date', section: 'head' },
+  { key: 'customer_po_number', label: 'Customer PO', section: 'head' },
+  { key: 'customer_po_date', label: 'PO date', section: 'head' },
+  { key: 'customer_po_value', label: 'PO value', section: 'head' },
+  { key: 'reference', label: 'Reference', section: 'head' },
+  { key: 'status', label: 'Status (shown only)', section: 'head', optionalOnly: true },
+  { key: 'delivery_mode', label: 'Delivery mode', section: 'dispatch' },
+  { key: 'transporter_name', label: 'Transporter', section: 'dispatch' },
+  { key: 'delivery_terms', label: 'Delivery terms', section: 'dispatch' },
+  { key: 'freight_terms', label: 'Freight terms', section: 'dispatch' },
+  { key: 'freight', label: 'Freight charges', section: 'dispatch' },
+  { key: 'other_charges', label: 'Other charges', section: 'dispatch' },
+  { key: 'charges_gst', label: 'GST on charges', section: 'dispatch', optionalOnly: true },
+  { key: 'billing_address', label: 'Billing address', section: 'address' },
+  { key: 'ship_to', label: 'Ship to', section: 'address', optionalOnly: true },
+  { key: 'delivery_instructions', label: 'Delivery instructions', section: 'address' },
+  { key: 'notes', label: 'Notes to customer', section: 'notes' },
+  { key: 'terms', label: 'Terms & conditions', section: 'notes' },
+  { key: 'internal_notes', label: 'Internal notes', section: 'notes' },
+  { key: 'deviation_note', label: 'Deviation note (when it differs from the quotation / PO)', section: 'notes' },
+]
+
 /** Page numbers around the current one, with the ends always reachable. */
 function pageWindow(page: number, pages: number): number[] {
   const near = new Set([1, pages, page - 1, page, page + 1])
@@ -92,6 +166,7 @@ export default function ErpSalesOrders() {
   const [delivery, setDelivery] = useState('')
   const [filtering, setFiltering] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const columns = useColumns('sales-orders', SO_COLUMNS)
   const [sort, setSort] = useState('created')
   const [dir, setDir] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
@@ -326,6 +401,7 @@ export default function ErpSalesOrders() {
             </div>
           )}
         </div>
+        <ColumnSettings defs={SO_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
         {seller && (
           <div className="sol-actions">
             <button className="btn" onClick={() => setConverting(true)} title="Book an order from an accepted CRM quotation">
@@ -347,41 +423,20 @@ export default function ErpSalesOrders() {
         ) : (
           <div className="table-wrap"><table className="itl sol">
             <thead><tr>
-              <SortTh col="number" sort={sort} dir={dir} onSort={onSort}>Sales order no.</SortTh>
-              <SortTh col="order_date" sort={sort} dir={dir} onSort={onSort}>Order date</SortTh>
-              <SortTh col="customer" sort={sort} dir={dir} onSort={onSort} className="sol-c-cust">Customer</SortTh>
-              <SortTh col="required_by" sort={sort} dir={dir} onSort={onSort}>Delivery date</SortTh>
-              <SortTh col="grand_total" sort={sort} dir={dir} onSort={onSort} num>Order value</SortTh>
-              <SortTh col="invoiced" sort={sort} dir={dir} onSort={onSort} num>Invoiced</SortTh>
-              <SortTh col="pending" sort={sort} dir={dir} onSort={onSort} num>Pending</SortTh>
-              <SortTh col="approval" sort={sort} dir={dir} onSort={onSort}>Approval</SortTh>
-              <SortTh col="delivery" sort={sort} dir={dir} onSort={onSort}>Delivery status</SortTh>
+              {columns.visible.map((c) => { const col = c as SoColumn; return col.sort
+                ? <SortTh key={col.key} col={col.sort} sort={sort} dir={dir} onSort={onSort} num={col.num} className={col.thClass}>{col.label}</SortTh>
+                : <th key={col.key} className={col.thClass}>{col.label}</th> })}
               <th className="itl-c-act">Actions</th>
             </tr></thead>
             <tbody>{rows.map((so) => {
               const billed = Number(so.grand_total) > 0 ? Math.min(100, Math.round((Number(so.invoiced_total || 0) / Number(so.grand_total)) * 100)) : 0
               return (
                 <tr key={so.id} onClick={() => setOpenId(so.id)} className={`sol-row${so.status === 'cancelled' ? ' is-off' : ''}`}>
-                  <td>
-                    <span className="pol-no">{so.number}</span>
-                    {/* Only what needs noticing from the list. The rest is in View. */}
-                    {(so.status === 'on_hold' || so.status === 'closed' || so.has_deviation || (so.priority && so.priority !== 'normal')) && (
-                      <span className="sol-tags">
-                        {so.status === 'on_hold' && <em className="is-high">On hold</em>}
-                        {so.status === 'closed' && <em>Closed</em>}
-                        {so.priority && so.priority !== 'normal' && <em className={`is-${so.priority}`}>{titleCase(so.priority)}</em>}
-                        {so.has_deviation && <em className="is-dev">Deviation</em>}
-                      </span>
-                    )}
-                  </td>
-                  <td><DateText iso={so.order_date} /></td>
-                  <td className="sol-c-cust"><b title={so.customer_name}>{so.customer_name}</b></td>
-                  <td>{so.required_by ? <DateText iso={so.required_by} /> : <span className="itl-muted">—</span>}</td>
-                  <td className="crm-num"><b className="pol-amt">{rupees(so.grand_total)}</b></td>
-                  <td className="crm-num" title={`${billed}% invoiced`}>{rupees(so.invoiced_total)}</td>
-                  <td className={`crm-num${Number(so.pending_amount) > 0 ? ' sol-pending' : ' itl-muted'}`}>{Number(so.pending_amount) > 0 ? rupees(so.pending_amount) : '—'}</td>
-                  <td><span className={`crm-state crm-state-${APPROVAL[so.approval_status][1]}`}>{approvalText(so)}</span></td>
-                  <td><span className={`crm-state crm-state-${DELIVERY[so.delivery_status][1]}`}>{DELIVERY[so.delivery_status][0]}</span></td>
+                  {columns.visible.map((c) => {
+                    const col = c as SoColumn
+                    const cls = col.key === 'pending' ? `crm-num${Number(so.pending_amount) > 0 ? ' sol-pending' : ' itl-muted'}` : col.className
+                    return <td key={col.key} className={cls} title={col.key === 'invoiced' ? `${billed}% invoiced` : undefined}>{col.td(so)}</td>
+                  })}
                   <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="crm-row-actions itl-actions">
                       <button className="crm-icon-btn" title="View" aria-label={`View ${so.number}`} onClick={() => setOpenId(so.id)}><IconSheet size={14} /></button>
@@ -708,6 +763,10 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
   const next = useQuery(`erp-so-next-${head.order_date}`, () => erp.nextSoNumber(head.order_date || todayISO()))
   const { busy, error, run } = useRun()
   const set = (k: keyof typeof head, v: string) => setHead((h) => ({ ...h, [k]: v }))
+  const fields = useFieldModes('sales-order-form', SO_FIELDS)
+  const fm = fields.mode
+  const rq = (key: string) => fm(key) === 'mandatory'
+  const star = (key: string) => rq(key) ? <b className="pof-req"> *</b> : null
   const fileInput = useRef<HTMLInputElement>(null)
 
   const all = customers.data ?? []
@@ -736,7 +795,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
   }))
   const filled = lines.filter((l) => l.item_id || l.description.trim())
   const linesBad = filled.some((l) => !(Number(l.quantity) > 0) || Number(l.rate) < 0 || !(Number(l.discount_percent || 0) <= 100))
-  const datesBad = Boolean(head.required_by && head.order_date && head.required_by < head.order_date)
+  const datesBad = fm('required_by') !== 'hide' && Boolean(head.required_by && head.order_date && head.required_by < head.order_date)
   // ── Delivery & terms ──
   const states = useQuery<Array<{ id: string; name: string; gst_code?: string | null; is_active: boolean }>>('crm-master-states', () => crm.masters('states'))
   const stateList = (states.data ?? []).filter((x) => x.is_active || x.name === head.place_of_supply).sort((x, y) => x.name.localeCompare(y.name))
@@ -769,13 +828,13 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
   const gstin = account?.gstin || customer?.crm_gstin || ''
   const gstinState = /^\d{2}/.test(gstin) ? GST_CODES.get(gstin.slice(0, 2)) ?? null : null
   const moneyOk = (v: string) => v === '' || /^\d{1,10}(\.\d{1,2})?$/.test(v.trim())
-  const freightBad = !moneyOk(head.freight)
-  const otherBad = !moneyOk(head.other_charges)
-  const posBad = Boolean(head.customer_id) && (!head.place_of_supply
+  const freightBad = fm('freight') !== 'hide' && !moneyOk(head.freight)
+  const otherBad = fm('other_charges') !== 'hide' && !moneyOk(head.other_charges)
+  const posBad = fm('place_of_supply') !== 'hide' && Boolean(head.customer_id) && (!head.place_of_supply
     || (stateList.length > 0 && !stateList.some((x) => x.name.toLowerCase() === head.place_of_supply.toLowerCase())))
-  const advBad = pay.kind === 'partial' && !(Number(pay.advance) >= 1 && Number(pay.advance) <= 99)
-  const customPayBad = pay.kind === 'custom' && !pay.custom.trim()
-  const shipBad = shipMode !== 'same' && head.shipping_address.trim().length < 5
+  const advBad = fm('payment') !== 'hide' && pay.kind === 'partial' && !(Number(pay.advance) >= 1 && Number(pay.advance) <= 99)
+  const customPayBad = fm('payment') !== 'hide' && pay.kind === 'custom' && !pay.custom.trim()
+  const shipBad = fm('ship_to') !== 'hide' && shipMode !== 'same' && head.shipping_address.trim().length < 5
   const total = lines.reduce((t, l) => t + priceLine(l).amount, 0) + charges + Math.round(charges * effRate) / 100
   const deviation = Boolean(so?.quotation_id) || Boolean(head.customer_po_value)
   const msUsed = milestones.filter((m) => m.name.trim() || Number(m.taxable_amount) > 0 || m.due_date)
@@ -786,7 +845,19 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
   const msTotal = msUsed.reduce((t, m) => t + Number(m.taxable_amount || 0), 0)
   const msSub = lines.reduce((t, l) => t + priceLine(l).taxable, 0) + charges
   const msOver = msUsed.length > 0 && msSub > 0 && msTotal > msSub + 0.005
-  const poValueBad = !moneyOk(head.customer_po_value)
+  const poValueBad = fm('customer_po_value') !== 'hide' && !moneyOk(head.customer_po_value)
+  // A field the person made mandatory must be filled in, unless they have hidden it.
+  const emptyField: Record<string, boolean> = {
+    site_id: !head.site_id, order_date: !head.order_date, order_type: !head.order_type, salesperson_id: !head.salesperson_id,
+    place_of_supply: !head.place_of_supply, required_by: !head.required_by, customer_po_number: !head.customer_po_number.trim(),
+    customer_po_date: !head.customer_po_date, customer_po_value: !head.customer_po_value.trim(), reference: !head.reference.trim(),
+    delivery_mode: !head.delivery_mode, transporter_name: !noTransport && !head.transporter_name.trim(),
+    delivery_terms: !head.delivery_terms, freight_terms: !head.freight_terms, freight: !head.freight.trim(),
+    other_charges: !head.other_charges.trim(), billing_address: !head.billing_address.trim(),
+    delivery_instructions: !head.delivery_instructions.trim(), notes: !head.notes.trim(), terms: !head.terms.trim(),
+    internal_notes: !head.internal_notes.trim(), deviation_note: deviation && !head.deviation_note.trim(),
+  }
+  const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
   const problem = !head.customer_id ? 'Choose a customer to begin'
     : !filled.length ? 'Add at least one item'
       : linesBad ? 'Each item needs a quantity above 0, a rate and a discount of 100 % or less'
@@ -798,6 +869,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
                   : poValueBad ? 'Enter the customer PO value as an amount'
                     : milestonesBad ? 'Each billing milestone needs a name, an amount above 0 and GST of 0–28 %'
                       : msOver ? 'Billing milestones add up to more than the order value'
+                        : missing ? 'Fill in the fields marked *'
                         : null
   const ready = !problem && !busy
   const overdue = customer && Number(customer.overdue) > 0
@@ -860,6 +932,218 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     }, submit ? 'The order could not be submitted' : 'The order could not be saved')
   }
 
+  const headNodes: Record<string, ReactNode> = {
+    customer: (
+        <div className={`sb-f ${sites.length > 0 && fm('site_id') !== 'hide' ? 'c4' : 'c6'} sof-cust`}>
+          <span>Customer <b className="pof-req">*</b></span>
+          <SearchSelect label="Customer" value={head.customer_id} onChange={pickCustomer} options={customerOptions}
+            placeholder="Search customer by name, code or GSTIN" empty="No customer matches — add one in CRM › My customers" />
+        </div>
+    ),
+    site_id: fm('site_id') !== 'hide' && sites.length > 0 && (
+          <label className="sb-f c2">
+            <span>Site{star('site_id')}</span>
+            <select value={head.site_id} aria-label="Customer site" onChange={(e) => set('site_id', e.target.value)}>
+              <option value="">— Main address —</option>
+              {sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </label>
+    ),
+    so_number: fm('so_number') !== 'hide' && (
+        <div className="sb-f sb-f-billno c2">
+          <span>SO no.</span>
+          <em title={so || stored ? 'Assigned' : 'Auto-generated'}>{so?.number ?? stored?.number ?? next.data?.number ?? '…'}</em>
+        </div>
+    ),
+    status: fm('status') !== 'hide' && (
+        <div className="sb-f c2">
+          <span>Status</span>
+          <ErpState value={stored?.status ?? so?.status ?? 'draft'} />
+        </div>
+    ),
+    order_date: fm('order_date') !== 'hide' && (
+        <label className="sb-f c2">
+          <span>Date{star('order_date')}</span>
+          <input type="date" value={head.order_date} max={todayISO()} aria-label="Order date" onChange={(e) => set('order_date', e.target.value)} />
+        </label>
+    ),
+    order_type: fm('order_type') !== 'hide' && (
+        <label className="sb-f c2">
+          <span>Type{star('order_type')}</span>
+          <select value={head.order_type} aria-label="Order type" onChange={(e) => set('order_type', e.target.value)}>
+            {ORDER_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+    ),
+    salesperson_id: fm('salesperson_id') !== 'hide' && (
+        <label className="sb-f c3">
+          <span>Salesperson{star('salesperson_id')}</span>
+          <OwnerSelect value={head.salesperson_id} onChange={(v) => set('salesperson_id', v)} placeholder="— None —" />
+        </label>
+    ),
+    place_of_supply: fm('place_of_supply') !== 'hide' && (
+        <label className={`sb-f c3${posBad ? ' is-bad' : ''}`} title={posBad ? (head.place_of_supply ? 'Not in the States master' : 'Required — GST depends on it') : 'From the customer; change it for a different delivery state'}>
+          <span>Supply{star('place_of_supply')}</span>
+          <select value={head.place_of_supply} aria-label="Place of supply" onChange={(e) => set('place_of_supply', e.target.value)}>
+            <option value="">— Select state —</option>
+            {stateList.map((st) => <option key={st.id} value={st.name}>{st.name}{st.gst_code ? ` (${st.gst_code})` : ''}</option>)}
+          </select>
+        </label>
+    ),
+    payment: fm('payment') !== 'hide' && (
+        <label className="sb-f c3">
+          <span>Payment{star('payment')}</span>
+          <select value={pay.kind} aria-label="Payment terms" onChange={(e) => setPay((p) => ({ ...p, kind: e.target.value }))}>
+            {PAY_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+    ),
+    required_by: fm('required_by') !== 'hide' && (
+        <label className={`sb-f c3${datesBad ? ' is-bad' : ''}`} title={datesBad ? 'Cannot be before the order date' : undefined}>
+          <span>Delivery{star('required_by')}</span>
+          <input type="date" value={head.required_by} min={head.order_date || undefined} aria-label="Delivery date"
+            onChange={(e) => set('required_by', e.target.value)} />
+        </label>
+    ),
+    customer_po_number: fm('customer_po_number') !== 'hide' && (
+        <label className="sb-f c3">
+          <span>Customer PO{star('customer_po_number')}</span>
+          <input value={head.customer_po_number} maxLength={60} aria-label="Customer PO no." onChange={(e) => set('customer_po_number', e.target.value)} placeholder="e.g. PO-4501-778" />
+        </label>
+    ),
+    customer_po_date: fm('customer_po_date') !== 'hide' && (
+        <label className="sb-f c2">
+          <span>PO date{star('customer_po_date')}</span>
+          <input type="date" value={head.customer_po_date} max={todayISO()} aria-label="PO date" onChange={(e) => set('customer_po_date', e.target.value)} />
+        </label>
+    ),
+    customer_po_value: fm('customer_po_value') !== 'hide' && (
+        <label className={`sb-f c3${poValueBad ? ' is-bad' : ''}`} title={poValueBad ? 'Enter an amount like 1250 or 1250.50' : 'Including tax'}>
+          <span>PO value ₹{star('customer_po_value')}</span>
+          <input inputMode="decimal" value={head.customer_po_value} aria-label="PO value (incl. tax)" onChange={(e) => set('customer_po_value', e.target.value)} placeholder="Flags a mismatch" />
+        </label>
+    ),
+    reference: fm('reference') !== 'hide' && (
+        <label className="sb-f c2">
+          <span>Ref.{star('reference')}</span>
+          <input value={head.reference} maxLength={80} aria-label="Reference" onChange={(e) => set('reference', e.target.value)} placeholder="Tender / enquiry no." />
+        </label>
+    ),
+  }
+
+  const panelNodes: Record<string, ReactNode> = {
+    delivery_mode: fm('delivery_mode') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Delivery mode{star('delivery_mode')}</span>
+              <select value={head.delivery_mode} onChange={(e) => set('delivery_mode', e.target.value)}>
+                <option value="">— Select —</option>{DELIVERY_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+    ),
+    transporter_name: fm('transporter_name') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Transporter{star('transporter_name')}</span>
+              <select value={transporterPick} disabled={noTransport} onChange={(e) => {
+                const v = e.target.value
+                setTransporterPick(v)
+                set('transporter_name', v === OTHER ? '' : v)
+              }}>
+                <option value="">{noTransport ? '— Not needed —' : '— Select —'}</option>
+                {transporters.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value={OTHER}>Other (type name)…</option>
+              </select>
+              {transporterPick === OTHER && !noTransport && (
+                <input className="sdt-under" value={head.transporter_name} maxLength={120} autoFocus
+                  onChange={(e) => set('transporter_name', e.target.value)} placeholder="Transporter name" />
+              )}
+              {!noTransport && transporters.length === 0 && <small className="sdt-note">Add transporters in Vendor master (type: Transporter)</small>}
+            </label>
+    ),
+    delivery_terms: fm('delivery_terms') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Delivery terms{star('delivery_terms')}</span>
+              <select value={head.delivery_terms} onChange={(e) => set('delivery_terms', e.target.value)}>
+                <option value="">— Select —</option>
+                {[...DELIVERY_TERMS, ...(head.delivery_terms && !DELIVERY_TERMS.includes(head.delivery_terms) ? [head.delivery_terms] : [])]
+                  .map((t) => <option key={t} value={t}>{t}</option>)}
+              </select></label>
+    ),
+    freight_terms: fm('freight_terms') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Freight terms{star('freight_terms')}</span>
+              <select value={head.freight_terms} onChange={(e) => set('freight_terms', e.target.value)}>
+                <option value="">— Select —</option>{FREIGHT_TERMS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+    ),
+    freight: fm('freight') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Freight charges{star('freight')}</span>
+              <span className={`pof-affix${freightBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.freight} placeholder="0.00"
+                onChange={(e) => set('freight', e.target.value)} /></span>
+              {freightBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
+    ),
+    other_charges: fm('other_charges') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Other charges{star('other_charges')}</span>
+              <span className={`pof-affix${otherBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
+                onChange={(e) => set('other_charges', e.target.value)} /></span>
+              {otherBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
+    ),
+    charges_gst: fm('charges_gst') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">GST on charges</span>
+              <select value={chargesRate} onChange={(e) => setChargesRate(e.target.value)}>
+                <option value="">Auto — highest item rate ({autoRate}%)</option>
+                {['0', '5', '12', '18', '28'].map((g) => <option key={g} value={g}>{g}%</option>)}
+              </select>
+              <small className="sdt-note">{charges > 0 ? `${rupees(charges)} + GST ${rupees(Math.round(charges * effRate) / 100)}` : 'Applied when charges are entered'}</small></label>
+    ),
+    billing_address: fm('billing_address') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Billing address{star('billing_address')}</span>
+              <textarea rows={3} value={head.billing_address} onChange={(e) => set('billing_address', e.target.value)}
+                placeholder={customer ? 'No billing address on the customer — type it here' : 'Choose a customer first'} />
+              <small className="sdt-note">{customer ? 'From the customer master — edit for this order only' : ''}</small></label>
+    ),
+    ship_to: fm('ship_to') !== 'hide' && (
+            <div className="pof-f"><span className="pof-l">Ship to</span>
+              <div className="sof-seg sdt-ship" role="radiogroup" aria-label="Ship to">
+                {([['same', 'Same as billing'], ['site', 'Customer site'], ['other', 'Different']] as const)
+                  .filter(([k]) => k !== 'site' || shipSites.length > 0)
+                  .map(([k, l]) => (
+                    <button key={k} type="button" role="radio" aria-checked={shipMode === k} className={shipMode === k ? 'is-on' : ''}
+                      onClick={() => pickShip(k)}>{l}</button>
+                  ))}
+              </div>
+              {shipMode === 'site' && (
+                <select className="sdt-under" value={shipSite} onChange={(e) => { setShipSite(e.target.value); set('shipping_address', siteAddress(e.target.value)) }}>
+                  <option value="">— Choose site —</option>
+                  {shipSites.map((x) => <option key={x.id} value={x.id}>{x.name}{x.state ? ` · ${x.state}` : ''}</option>)}
+                </select>
+              )}
+              {shipMode === 'same'
+                ? <div className="sdt-addr">{head.billing_address || <span>Same as the billing address</span>}</div>
+                : <textarea className={`sdt-under${shipBad ? ' is-bad' : ''}`} rows={shipMode === 'site' ? 2 : 3} value={head.shipping_address}
+                  onChange={(e) => set('shipping_address', e.target.value)} placeholder="Full delivery address with PIN code" />}
+              {shipBad && <small className="pof-err">Enter the delivery address</small>}
+            </div>
+    ),
+    delivery_instructions: fm('delivery_instructions') !== 'hide' && (
+            <label className="pof-f"><span className="pof-l">Delivery instructions{star('delivery_instructions')}</span>
+              <textarea rows={3} value={head.delivery_instructions} maxLength={2000} onChange={(e) => set('delivery_instructions', e.target.value)}
+                placeholder="Optional — e.g. unload at gate 2; call the site engineer before arrival" /></label>
+    ),
+    notes: fm('notes') !== 'hide' && (
+              <label className="pof-f"><span className="pof-l">Notes to customer{star('notes')}</span>
+                <textarea rows={2} value={head.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Printed on the order" /></label>
+    ),
+    terms: fm('terms') !== 'hide' && (
+              <label className="pof-f"><span className="pof-l">Terms &amp; conditions{star('terms')}</span>
+                <textarea rows={2} value={head.terms} onChange={(e) => set('terms', e.target.value)} placeholder="Warranty, jurisdiction, validity…" /></label>
+    ),
+    internal_notes: fm('internal_notes') !== 'hide' && (
+              <label className="pof-f"><span className="pof-l">Internal notes{star('internal_notes')} <small className="sof-private">not printed</small></span>
+                <textarea rows={2} value={head.internal_notes} onChange={(e) => set('internal_notes', e.target.value)} placeholder="For the team only" /></label>
+    ),
+    deviation_note: fm('deviation_note') !== 'hide' && deviation && (
+                <label className="pof-f"><span className="pof-l">Deviation note{star('deviation_note')}</span>
+                  <input value={head.deviation_note} onChange={(e) => set('deviation_note', e.target.value)} placeholder="Why the order differs from the quotation / PO value" /></label>
+    ),
+  }
+  const fieldsOf = (section: string) =>
+    fields.orderOf(section).map((key) => <Fragment key={key}>{panelNodes[key]}</Fragment>)
+
   return (
     <div className="sb sb-page sof">
       <div className="sb-bar">
@@ -881,84 +1165,15 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
         </div>
         <span className="sb-bar-gap" />
         <small className="sof-req-note">Fields marked <b className="pof-req">*</b> are required</small>
+        <FieldSettings defs={SO_FIELDS} sections={SO_SECTIONS} modes={fields.modes} order={fields.order}
+          onSave={fields.save} onReset={fields.reset} />
         <button type="button" className="btn btn-sm" onClick={onShowAll}><IconSheet size={14} /> All sales orders</button>
       </div>
 
       <div className="sb-head sof-head">
-        <div className={`sb-f ${sites.length > 0 ? 'c4' : 'c6'} sof-cust`}>
-          <span>Customer <b className="pof-req">*</b></span>
-          <SearchSelect label="Customer" value={head.customer_id} onChange={pickCustomer} options={customerOptions}
-            placeholder="Search customer by name, code or GSTIN" empty="No customer matches — add one in CRM › My customers" />
-        </div>
-        {sites.length > 0 && (
-          <label className="sb-f c2">
-            <span>Site</span>
-            <select value={head.site_id} aria-label="Customer site" onChange={(e) => set('site_id', e.target.value)}>
-              <option value="">— Main address —</option>
-              {sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
-          </label>
-        )}
-        <div className="sb-f sb-f-billno c2">
-          <span>SO no.</span>
-          <em title={so || stored ? 'Assigned' : 'Auto-generated'}>{so?.number ?? stored?.number ?? next.data?.number ?? '…'}</em>
-        </div>
-        <label className="sb-f c2">
-          <span>Date <b className="pof-req">*</b></span>
-          <input type="date" value={head.order_date} max={todayISO()} aria-label="Order date" onChange={(e) => set('order_date', e.target.value)} />
-        </label>
-        <label className="sb-f c2">
-          <span>Type</span>
-          <select value={head.order_type} aria-label="Order type" onChange={(e) => set('order_type', e.target.value)}>
-            {ORDER_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
-        </label>
+        {fields.orderOf('head').map((key) => <Fragment key={key}>{headNodes[key]}</Fragment>)}
 
-        <label className="sb-f c3">
-          <span>Salesperson</span>
-          <OwnerSelect value={head.salesperson_id} onChange={(v) => set('salesperson_id', v)} placeholder="— None —" />
-        </label>
-        <label className={`sb-f c3${posBad ? ' is-bad' : ''}`} title={posBad ? (head.place_of_supply ? 'Not in the States master' : 'Required — GST depends on it') : 'From the customer; change it for a different delivery state'}>
-          <span>Supply <b className="pof-req">*</b></span>
-          <select value={head.place_of_supply} aria-label="Place of supply" onChange={(e) => set('place_of_supply', e.target.value)}>
-            <option value="">— Select state —</option>
-            {stateList.map((st) => <option key={st.id} value={st.name}>{st.name}{st.gst_code ? ` (${st.gst_code})` : ''}</option>)}
-          </select>
-        </label>
-        <label className="sb-f c3">
-          <span>Payment <b className="pof-req">*</b></span>
-          <select value={pay.kind} aria-label="Payment terms" onChange={(e) => setPay((p) => ({ ...p, kind: e.target.value }))}>
-            {PAY_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
-        </label>
-        <label className={`sb-f c3${datesBad ? ' is-bad' : ''}`} title={datesBad ? 'Cannot be before the order date' : undefined}>
-          <span>Delivery</span>
-          <input type="date" value={head.required_by} min={head.order_date || undefined} aria-label="Delivery date"
-            onChange={(e) => set('required_by', e.target.value)} />
-        </label>
-
-        <label className="sb-f c3">
-          <span>Customer PO</span>
-          <input value={head.customer_po_number} maxLength={60} aria-label="Customer PO no." onChange={(e) => set('customer_po_number', e.target.value)} placeholder="e.g. PO-4501-778" />
-        </label>
-        <label className="sb-f c2">
-          <span>PO date</span>
-          <input type="date" value={head.customer_po_date} max={todayISO()} aria-label="PO date" onChange={(e) => set('customer_po_date', e.target.value)} />
-        </label>
-        <label className={`sb-f c3${poValueBad ? ' is-bad' : ''}`} title={poValueBad ? 'Enter an amount like 1250 or 1250.50' : 'Including tax'}>
-          <span>PO value ₹</span>
-          <input inputMode="decimal" value={head.customer_po_value} aria-label="PO value (incl. tax)" onChange={(e) => set('customer_po_value', e.target.value)} placeholder="Flags a mismatch" />
-        </label>
-        <label className="sb-f c2">
-          <span>Ref.</span>
-          <input value={head.reference} maxLength={80} aria-label="Reference" onChange={(e) => set('reference', e.target.value)} placeholder="Tender / enquiry no." />
-        </label>
-        <div className="sb-f c2">
-          <span>Status</span>
-          <ErpState value={stored?.status ?? so?.status ?? 'draft'} />
-        </div>
-
-        {pay.kind === 'partial' && (
+        {fm('payment') !== 'hide' && pay.kind === 'partial' && (
           <div className={`sb-f c6${advBad ? ' is-bad' : ''}`} title={advBad ? 'Advance must be between 1 and 99 %' : undefined}>
             <span>Part advance</span>
             <input className="sof-tiny" placeholder="50" inputMode="numeric" value={pay.advance} aria-label="Advance percent"
@@ -969,7 +1184,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
             <small>days</small>
           </div>
         )}
-        {pay.kind === 'custom' && (
+        {fm('payment') !== 'hide' && pay.kind === 'custom' && (
           <label className={`sb-f c6${customPayBad ? ' is-bad' : ''}`} title={customPayBad ? 'Describe the payment terms' : undefined}>
             <span>Custom terms</span>
             <input value={pay.custom} maxLength={160} aria-label="Custom payment terms"
@@ -997,84 +1212,14 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
         <section className="pof-sec sdt sof-p-a">
           <header className="pof-sec-head"><h3>Dispatch &amp; charges</h3></header>
           <div className="sof-fields">
-            <label className="pof-f"><span className="pof-l">Delivery mode</span>
-              <select value={head.delivery_mode} onChange={(e) => set('delivery_mode', e.target.value)}>
-                <option value="">— Select —</option>{DELIVERY_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select></label>
-            <label className="pof-f"><span className="pof-l">Transporter</span>
-              <select value={transporterPick} disabled={noTransport} onChange={(e) => {
-                const v = e.target.value
-                setTransporterPick(v)
-                set('transporter_name', v === OTHER ? '' : v)
-              }}>
-                <option value="">{noTransport ? '— Not needed —' : '— Select —'}</option>
-                {transporters.map((t) => <option key={t} value={t}>{t}</option>)}
-                <option value={OTHER}>Other (type name)…</option>
-              </select>
-              {transporterPick === OTHER && !noTransport && (
-                <input className="sdt-under" value={head.transporter_name} maxLength={120} autoFocus
-                  onChange={(e) => set('transporter_name', e.target.value)} placeholder="Transporter name" />
-              )}
-              {!noTransport && transporters.length === 0 && <small className="sdt-note">Add transporters in Vendor master (type: Transporter)</small>}
-            </label>
-            <label className="pof-f"><span className="pof-l">Delivery terms</span>
-              <select value={head.delivery_terms} onChange={(e) => set('delivery_terms', e.target.value)}>
-                <option value="">— Select —</option>
-                {[...DELIVERY_TERMS, ...(head.delivery_terms && !DELIVERY_TERMS.includes(head.delivery_terms) ? [head.delivery_terms] : [])]
-                  .map((t) => <option key={t} value={t}>{t}</option>)}
-              </select></label>
-            <label className="pof-f"><span className="pof-l">Freight terms</span>
-              <select value={head.freight_terms} onChange={(e) => set('freight_terms', e.target.value)}>
-                <option value="">— Select —</option>{FREIGHT_TERMS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select></label>
-            <label className="pof-f"><span className="pof-l">Freight charges</span>
-              <span className={`pof-affix${freightBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.freight} placeholder="0.00"
-                onChange={(e) => set('freight', e.target.value)} /></span>
-              {freightBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
-            <label className="pof-f"><span className="pof-l">Other charges</span>
-              <span className={`pof-affix${otherBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
-                onChange={(e) => set('other_charges', e.target.value)} /></span>
-              {otherBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
-            <label className="pof-f"><span className="pof-l">GST on charges</span>
-              <select value={chargesRate} onChange={(e) => setChargesRate(e.target.value)}>
-                <option value="">Auto — highest item rate ({autoRate}%)</option>
-                {['0', '5', '12', '18', '28'].map((g) => <option key={g} value={g}>{g}%</option>)}
-              </select>
-              <small className="sdt-note">{charges > 0 ? `${rupees(charges)} + GST ${rupees(Math.round(charges * effRate) / 100)}` : 'Applied when charges are entered'}</small></label>
+            {fieldsOf('dispatch')}
           </div>
         </section>
 
         <section className="pof-sec sdt sof-p-b">
           <header className="pof-sec-head"><h3>Addresses</h3></header>
           <div className="sof-stack">
-            <label className="pof-f"><span className="pof-l">Billing address</span>
-              <textarea rows={3} value={head.billing_address} onChange={(e) => set('billing_address', e.target.value)}
-                placeholder={customer ? 'No billing address on the customer — type it here' : 'Choose a customer first'} />
-              <small className="sdt-note">{customer ? 'From the customer master — edit for this order only' : ''}</small></label>
-            <div className="pof-f"><span className="pof-l">Ship to</span>
-              <div className="sof-seg sdt-ship" role="radiogroup" aria-label="Ship to">
-                {([['same', 'Same as billing'], ['site', 'Customer site'], ['other', 'Different']] as const)
-                  .filter(([k]) => k !== 'site' || shipSites.length > 0)
-                  .map(([k, l]) => (
-                    <button key={k} type="button" role="radio" aria-checked={shipMode === k} className={shipMode === k ? 'is-on' : ''}
-                      onClick={() => pickShip(k)}>{l}</button>
-                  ))}
-              </div>
-              {shipMode === 'site' && (
-                <select className="sdt-under" value={shipSite} onChange={(e) => { setShipSite(e.target.value); set('shipping_address', siteAddress(e.target.value)) }}>
-                  <option value="">— Choose site —</option>
-                  {shipSites.map((x) => <option key={x.id} value={x.id}>{x.name}{x.state ? ` · ${x.state}` : ''}</option>)}
-                </select>
-              )}
-              {shipMode === 'same'
-                ? <div className="sdt-addr">{head.billing_address || <span>Same as the billing address</span>}</div>
-                : <textarea className={`sdt-under${shipBad ? ' is-bad' : ''}`} rows={shipMode === 'site' ? 2 : 3} value={head.shipping_address}
-                  onChange={(e) => set('shipping_address', e.target.value)} placeholder="Full delivery address with PIN code" />}
-              {shipBad && <small className="pof-err">Enter the delivery address</small>}
-            </div>
-            <label className="pof-f"><span className="pof-l">Delivery instructions</span>
-              <textarea rows={3} value={head.delivery_instructions} maxLength={2000} onChange={(e) => set('delivery_instructions', e.target.value)}
-                placeholder="Optional — e.g. unload at gate 2; call the site engineer before arrival" /></label>
+            {fieldsOf('address')}
           </div>
         </section>
 
@@ -1123,16 +1268,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
           <section className="pof-sec">
             <header className="pof-sec-head"><h3>Notes &amp; terms</h3></header>
             <div className="sof-notes">
-              <label className="pof-f"><span className="pof-l">Notes to customer</span>
-                <textarea rows={2} value={head.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Printed on the order" /></label>
-              <label className="pof-f"><span className="pof-l">Terms &amp; conditions</span>
-                <textarea rows={2} value={head.terms} onChange={(e) => set('terms', e.target.value)} placeholder="Warranty, jurisdiction, validity…" /></label>
-              <label className="pof-f"><span className="pof-l">Internal notes <small className="sof-private">not printed</small></span>
-                <textarea rows={2} value={head.internal_notes} onChange={(e) => set('internal_notes', e.target.value)} placeholder="For the team only" /></label>
-              {deviation && (
-                <label className="pof-f"><span className="pof-l">Deviation note</span>
-                  <input value={head.deviation_note} onChange={(e) => set('deviation_note', e.target.value)} placeholder="Why the order differs from the quotation / PO value" /></label>
-              )}
+              {fieldsOf('notes')}
             </div>
           </section>
         </div>

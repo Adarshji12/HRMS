@@ -10,7 +10,14 @@ import { useQuery } from '../../../lib/useQuery'
 import { money } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type { PayRun, PayRunDetail, PayrollRegister, Payslip } from '../../../lib/types'
+import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
 import '../../../styles/payroll.css'
+
+// Opening a month: the server takes the period alone, the pay date is optional.
+const OPEN_FIELDS: FieldDef[] = [
+  { key: 'pay_date', label: 'Pay date', section: 'run' },
+]
+const OPEN_SECTIONS: FieldSection[] = [{ id: 'run', label: 'Pay run' }]
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -350,6 +357,9 @@ function OpenMonth({
 }) {
   const [payDate, setPayDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const fields = useFieldModes('payrun-open-form', OPEN_FIELDS)
+  const fm = fields.mode
+  const missing = fm('pay_date') === 'mandatory' && !payDate
 
   async function create() {
     setBusy(true)
@@ -376,17 +386,24 @@ function OpenMonth({
           say so.
         </p>
       </div>
+      <div className="lf-settings">
+        <FieldSettings defs={OPEN_FIELDS} sections={OPEN_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} />
+      </div>
       <div className="pr-row">
-        <label className="pr-field">
-          <span className="pr-field-label">Pay date</span>
-          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
-          <span className="pr-field-hint">
-            When salaries are credited — often the 1st of the next month. Can be set later.
-          </span>
-        </label>
-        <button className="btn btn-primary" disabled={busy} onClick={create}>
+        {fm('pay_date') !== 'hide' && (
+          <label className="pr-field">
+            <span className="pr-field-label">Pay date{fm('pay_date') === 'mandatory' ? ' *' : ''}</span>
+            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+            <span className="pr-field-hint">
+              When salaries are credited — often the 1st of the next month. Can be set later.
+            </span>
+          </label>
+        )}
+        <button className="btn btn-primary" disabled={busy || missing} onClick={create}>
           {busy ? 'Opening…' : `Open ${label}`}
         </button>
+        {missing && <span className="muted">Fill in the fields marked *.</span>}
       </div>
     </section>
   )
