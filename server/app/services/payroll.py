@@ -264,6 +264,32 @@ def update_component(
 # --------------------------------------------------------------------------- #
 
 
+class _Ruled:
+    """A catalogue component read with a template's own rule laid over it. Never written back."""
+
+    def __init__(self, base, calculation, rate_bps):
+        self._base = base
+        self.calculation = calculation
+        self.rate_bps = rate_bps
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+def with_rules(chosen, lines):
+    """Overlay each line's calculation and rate on its catalogue component."""
+    over = {l.component_id: l for l in lines if getattr(l, "calculation", None) is not None}
+    out = []
+    for c in chosen:
+        l = over.get(c.id)
+        if l is None:
+            out.append(c)
+        else:
+            rate = l.rate_bps if l.rate_bps is not None else c.rate_bps
+            out.append(_Ruled(c, l.calculation.value if hasattr(l.calculation, "value") else l.calculation, rate))
+    return out
+
+
 def _bps_of(amount: int, bps: int) -> int:
     """``bps`` basis points of ``amount``, rounded half-up, in paise.
 
@@ -427,7 +453,7 @@ def set_structure(
     unknown = chosen_ids - {c.id for c in catalogue}
     if unknown:
         raise PayrollError("component_not_found", "Unknown pay component.", 404)
-    chosen = [c for c in catalogue if c.id in chosen_ids]
+    chosen = with_rules([c for c in catalogue if c.id in chosen_ids], payload.components)
     fixed_amounts = {
         line.component_id: line.amount
         for line in payload.components

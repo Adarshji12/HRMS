@@ -142,6 +142,7 @@ from app.models.payroll import (
     SalaryStructureComponent,
 )
 from app.models.salary_template import SalaryTemplate
+from app.models.payslip_design import PayslipDesign
 from app.models.onboarding import (
     OnboardingCategory,
     OnboardingDocument,
@@ -246,6 +247,7 @@ from app.models.user import Role, User, UserStatus
 # for, and the two modules disagreed about whether to do it.
 __all__ = [
     "SalaryTemplate",
+    "PayslipDesign",
     "IncentiveStatus",
     "SalesIncentive",
     "SalesIncentiveSettings",

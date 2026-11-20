@@ -24,5 +24,7 @@ class SalaryTemplate(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     component_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    #: component id -> {"calculation": ..., "rate_bps": ...}: the template's own rule for it.
+    rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

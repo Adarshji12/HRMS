@@ -325,6 +325,19 @@ export async function openPrintable(path: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** POST a JSON body and read back an HTML page as text (the payslip design preview). */
+export async function postHtml(path: string, body: unknown): Promise<string> {
+  const token = getToken()
+  const headers = withTenant(new Headers({ 'Content-Type': 'application/json' }))
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await fetch(`${API_BASE}/api/v1${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+  if (!response.ok) {
+    const { message, reason, detail } = await readError(response)
+    throw new ApiError(response.status, message, reason, detail)
+  }
+  return response.text()
+}
+
 /** Triggers a download from an endpoint that must be POSTed.
  *
  * The bank file is a POST although it reads nothing: it decrypts every account

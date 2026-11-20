@@ -510,3 +510,7 @@
   .att2 .att-hero-main, .att2 .att-hero-side { padding: 20px 16px; }
   .att2 .wm-selected { position: static; margin: -4px 0 8px; }
 }
+
+/* Breathing room around the day-flag chips and the office-locations card. */
+.att2 .att-hero-side .att-flags { margin: 16px 0 16px; gap: 8px; }
+.att2 .att-hero-side .att-offices { margin-top: auto; }

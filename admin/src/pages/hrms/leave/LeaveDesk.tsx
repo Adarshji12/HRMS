@@ -1,7 +1,7 @@
 /* HRMS → Leave: Requests, Balances and Calendar for the people the viewer sees.
  * An administrator sees the company, a manager their reporting line. */
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/leavedesk.css'
 import { api } from '../../../lib/api'
@@ -34,22 +34,29 @@ const range = (a: string, b: string) => (a === b ? dmy(a) : `${dmy(a)} – ${dmy
 export default function LeaveDesk() {
   const [params, setParams] = useSearchParams()
   const tab: Tab = (['requests', 'balances', 'calendar'] as const).find((t) => t === params.get('tab')) ?? 'requests'
+  const [applying, setApplying] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [refresh, setRefresh] = useState(0)
   return (
     <div className="ld">
-      <div className="page-head">
+      <div className="ld-head">
         <div>
           <h1 className="page-title">Leave</h1>
           <p className="page-sub">Applications, balances and who is off when</p>
         </div>
+        <div className="ld-head-right">
+          <nav className="ld-tabs" role="tablist">
+            {([['requests', 'Requests', <IconReturn size={15} key="a" />], ['balances', 'Balances', <IconClock size={15} key="b" />], ['calendar', 'Calendar', <IconCalendar size={15} key="c" />]] as const).map(([key, label, icon]) => (
+              <button key={key} role="tab" aria-selected={tab === key} className={`ld-tab${tab === key ? ' is-on' : ''}`} onClick={() => setParams({ tab: key }, { replace: true })}>
+                {icon} {label}
+              </button>
+            ))}
+          </nav>
+          {tab === 'requests' && <button type="button" className="btn btn-primary" onClick={() => setApplying(true)}><IconPlus size={15} /> Apply for Leave</button>}
+        </div>
       </div>
-      <nav className="ld-tabs" role="tablist">
-        {([['requests', 'Requests', <IconReturn size={15} key="a" />], ['balances', 'Balances', <IconClock size={15} key="b" />], ['calendar', 'Calendar', <IconCalendar size={15} key="c" />]] as const).map(([key, label, icon]) => (
-          <button key={key} role="tab" aria-selected={tab === key} className={`ld-tab${tab === key ? ' is-on' : ''}`} onClick={() => setParams({ tab: key }, { replace: true })}>
-            {icon} {label}
-          </button>
-        ))}
-      </nav>
-      {tab === 'requests' ? <RequestsTab /> : tab === 'balances' ? <BalancesTab /> : <CalendarTab />}
+      {tab === 'requests' ? <RequestsTab refresh={refresh} notice={notice} /> : tab === 'balances' ? <BalancesTab /> : <CalendarTab />}
+      {applying && <ApplyDialog onClose={() => setApplying(false)} onDone={(m) => { setApplying(false); setNotice(m); setRefresh((n) => n + 1) }} />}
     </div>
   )
 }
@@ -63,12 +70,13 @@ const TILES: Array<{ key: Status; label: string; icon: JSX.Element; tone: string
   { key: 'cancelled', label: 'Cancelled', icon: <IconClose size={20} />, tone: 'muted' },
 ]
 
-function RequestsTab() {
+function RequestsTab({ refresh, notice: outer }: { refresh: number; notice: string | null }) {
   const [view, setView] = useState<Status | 'all'>('pending')
   const [mine, setMine] = useState(false)
-  const [applying, setApplying] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [inner, setNotice] = useState<string | null>(null)
+  const notice = inner ?? outer
   const q = useQuery<Requests>('leave-desk-requests', () => api.get<Requests>('/leave/requests'))
+  useEffect(() => { if (refresh) void q.reload() }, [refresh]) // eslint-disable-line react-hooks/exhaustive-deps
   if (q.error) return <ErrorNote>{errorText(q.error)}</ErrorNote>
   if (!q.data) return <Loading />
   const data = q.data
@@ -89,14 +97,15 @@ function RequestsTab() {
         <div className="ld-bar">
           <div className="ld-pills">
             {([['pending', 'Awaiting'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['cancelled', 'Cancelled'], ['all', 'All']] as const).map(([k, label]) => (
-              <button key={k} type="button" className={`ld-pill${view === k ? ' is-on' : ''}`} onClick={() => setView(k)}>{label}</button>
+              <button key={k} type="button" className={`ld-pill${view === k ? ' is-on' : ''}`} onClick={() => setView(k)}>
+                {label} <span className="ld-count">{k === 'all' ? data.items.length : (data.counts[k] ?? 0)}</span>
+              </button>
             ))}
           </div>
           <div className="ld-bar-right">
             <button type="button" className={`btn ld-wait${mine ? ' is-on' : ''}`} onClick={() => setMine(!mine)}>
-              Waiting on me{data.waiting_on_me ? ` (${data.waiting_on_me})` : ''}
+              <span className="ld-wait-dot" /> Waiting on me{data.waiting_on_me ? ` (${data.waiting_on_me})` : ''}
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => setApplying(true)}><IconPlus size={15} /> Apply for Leave</button>
           </div>
         </div>
         {notice && <div className="notice notice-ok" style={{ margin: 16 }}>{notice}</div>}
@@ -114,7 +123,6 @@ function RequestsTab() {
         )}
       </section>
 
-      {applying && <ApplyDialog onClose={() => setApplying(false)} onDone={(m) => { setApplying(false); setNotice(m); void q.reload() }} />}
     </>
   )
 }
@@ -138,7 +146,7 @@ function Row({ r, onDone }: { r: Item; onDone: (message: string) => void }) {
   }
   return (
     <tr>
-      <td><b>{r.name}</b>{r.code && <div className="muted-sm">{r.code}</div>}</td>
+      <td><span className="ld-who"><span className="ld-av">{r.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span><b>{r.name}</b></span></td>
       <td><span className="ld-dot" style={{ background: r.color ?? '#0ea5e9' }} />{r.leave_type}</td>
       <td>{range(r.start_date, r.end_date)}{r.is_half_day && <div className="muted-sm">{r.half_day_session === 'second_half' ? 'Second half' : 'First half'}</div>}</td>
       <td>{days(r.duration_milli_days)}</td>
@@ -365,15 +373,25 @@ function CalendarTab() {
       ) : (
         <div className="table-wrap">
           <table className="ld-cal">
-            <thead><tr><th>Employee</th>{Array.from({ length: last }, (_, i) => <th key={i} className="ld-d">{i + 1}</th>)}</tr></thead>
+            <thead><tr><th>Employee</th>{Array.from({ length: last }, (_, i) => {
+              const dow = new Date(year, month - 1, i + 1).getDay()
+              const isToday = iso(i + 1) === todayISO()
+              return (
+                <th key={i} className={`ld-d ld-dh${dow === 0 || dow === 6 ? ' ld-wk' : ''}${isToday ? ' ld-today' : ''}`}>
+                  <span className="ld-dow">{'SMTWTFS'[dow]}</span>
+                  <span className="ld-dn">{i + 1}</span>
+                </th>
+              )
+            })}</tr></thead>
             <tbody>
               {people.map(([uid, name]) => (
                 <tr key={uid}>
-                  <td>{name}</td>
+                  <td><span className="ld-who"><span className="ld-av">{name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>{name}</span></td>
                   {Array.from({ length: last }, (_, i) => {
                     const day = iso(i + 1)
+                    const dow = new Date(year, month - 1, i + 1).getDay()
                     const hit = items.find((x) => x.user_id === uid && x.start_date <= day && x.end_date >= day)
-                    return <td key={i} className={`ld-d${hit ? (hit.status === 'pending' ? ' ld-pend' : ' ld-on') : ''}`} style={hit ? { ['--c' as string]: hit.color } : undefined} title={hit ? `${hit.leave_type}${hit.status === 'pending' ? ' (awaiting)' : ''}` : undefined} />
+                    return <td key={i} className={`ld-d${dow === 0 || dow === 6 ? ' ld-wk' : ''}${hit ? (hit.status === 'pending' ? ' ld-pend' : ' ld-on') : ''}`} style={hit ? { ['--c' as string]: hit.color } : undefined} title={hit ? `${hit.leave_type}${hit.status === 'pending' ? ' (awaiting)' : ''}` : undefined} />
                   })}
                 </tr>
               ))}

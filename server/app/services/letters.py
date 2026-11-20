@@ -255,6 +255,20 @@ def preview(
     return lettermerge.render(template.body, context)
 
 
+def render_text(
+    db: Session, viewer: User, *, user_id: uuid.UUID, body: str, subject: str | None, on: date | None
+) -> tuple[lettermerge.Rendered, lettermerge.Rendered | None]:
+    """Fill merge fields in wording the administrator has edited, for one person. Writes nothing."""
+    _require_issuer(viewer)
+    person, profile = _subject_and_profile(db, viewer.org_id, user_id)
+    org = db.get(Organization, viewer.org_id)
+    context = lettermerge.context_for(
+        db, org=org, subject=person, profile=profile,
+        reference="(allocated on issue)", issued_on=on or date.today(),
+    )
+    return lettermerge.render(body, context), (lettermerge.render(subject, context) if subject else None)
+
+
 def _next_reference(db: Session, org: Organization, on: date) -> str:
     """``ACME/HR/2026/0007``.
 
@@ -378,39 +392,20 @@ def _as_html(row: IssuedLetter, org: Organization) -> bytes:
         for block in row.body.split("\n\n")
         if block.strip()
     )
-    signature = ""
-    if row.signatory_name:
-        signature = (
-            f'<div class="sign"><div class="sign-name">{escape(row.signatory_name)}</div>'
-            f'<div class="sign-title">{escape(row.signatory_title or "")}</div></div>'
-        )
-    return f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>{escape(row.subject or row.letter_type)}</title>
-<style>
-  body {{ font: 12pt/1.6 Georgia, serif; color: #111; max-width: 720px;
-         margin: 40px auto; padding: 0 24px; }}
-  .head {{ display: flex; justify-content: space-between; align-items: baseline;
-          border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 28px; }}
-  .org {{ font-size: 16pt; font-weight: 700; }}
-  .meta {{ font-size: 10pt; color: #555; text-align: right; }}
-  h1 {{ font-size: 13pt; text-transform: uppercase; letter-spacing: .08em;
-       text-align: center; margin: 0 0 24px; }}
-  p {{ margin: 0 0 14px; text-align: justify; }}
-  .sign {{ margin-top: 48px; }}
-  .sign-name {{ font-weight: 700; }}
-  .sign-title {{ font-size: 10pt; color: #555; }}
-  /* The whole reason this is HTML: the browser's own PDF export. */
-  @media print {{ body {{ margin: 0; max-width: none; }} }}
-</style></head><body>
-<div class="head">
-  <div class="org">{escape(org.legal_name or org.name or "")}</div>
-  <div class="meta">{escape(row.reference_no or "")}<br>
-    {escape(row.issued_on.isoformat() if row.issued_on else "")}</div>
-</div>
-<h1>{escape(row.subject or row.letter_type.replace("_", " "))}</h1>
-{paragraphs}
-{signature}
-</body></html>""".encode("utf-8")
+    from app.models import PayslipDesign
+    from app.services import letterhead_render as lh
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import object_session
+
+    db = object_session(row)
+    design = db.scalar(_select(PayslipDesign).where(PayslipDesign.org_id == row.org_id)) if db else None
+    settings = {**lh.DEFAULTS, **((design.data or {}).get("letterhead", {}) if design else {})}
+    return lh.render(settings, {
+        "ref": row.reference_no or "", "date": row.issued_on.strftime("%d %B %Y").lstrip("0") if row.issued_on else "",
+        "subject": row.subject or row.letter_type.replace("_", " "), "body_html": paragraphs,
+        "signatory_name": row.signatory_name, "signatory_title": row.signatory_title,
+        "company": org.legal_name or org.name or "",
+    }).encode("utf-8")
 
 
 def _file_copy(db: Session, row: IssuedLetter, org: Organization, actor: User) -> None:

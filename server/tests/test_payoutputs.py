@@ -314,7 +314,7 @@ def test_a_payslip_renders_as_a_printable_page(client, tenants):
     assert page.status_code == 200
     assert acme.employee.full_name in page.text
     assert "June 2026" in page.text
-    assert "Net pay" in page.text
+    assert "NET PAY" in page.text
 
 
 def test_filing_payslips_is_idempotent(client, tenants):

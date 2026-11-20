@@ -30,7 +30,7 @@ import type {
 } from '../../../lib/types'
 import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
 import { Dialog } from '../../crm/parts'
-import type { SalaryTemplate } from './SalarySetup'
+import type { RichPreview, SalaryTemplate } from './SalarySetup'
 import '../../../styles/payroll.css'
 
 // Server requires the gross and the effective date; the reason is optional.
@@ -155,7 +155,7 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
   const [templateId, setTemplateId] = useState<string | null>(null)
   const chosenId = templateId ?? templates.find((t) => t.is_default)?.id ?? ''
   const chosen = templates.find((t) => t.id === chosenId)
-  const [preview, setPreview] = useState<StructurePreview | null>(null)
+  const [preview, setPreview] = useState<RichPreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [fail, setFail] = useState<string | null>(null)
   const grossPaise = toPaise(gross)
@@ -163,18 +163,19 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
     () => components.filter((c) => c.kind === 'earning' && (!chosen || chosen.component_ids.includes(c.id))),
     [components, chosen],
   )
-  const fixed = earnings.filter((c) => c.calculation === 'fixed')
+  const fixed = earnings.filter((c) => (chosen?.rules?.[c.id]?.calculation ?? c.calculation) === 'fixed')
 
   const lines = useCallback(() => earnings.map((c) => ({
     component_id: c.id,
-    amount: c.calculation === 'fixed' ? toPaise(amounts[c.id] ?? '') : null,
-  })), [earnings, amounts])
+    amount: (chosen?.rules?.[c.id]?.calculation ?? c.calculation) === 'fixed' ? toPaise(amounts[c.id] ?? '') : null,
+    ...(chosen?.rules?.[c.id]?.calculation ? { calculation: chosen.rules[c.id].calculation, rate_bps: chosen.rules[c.id].rate_bps } : {}),
+  })), [earnings, amounts, chosen])
 
   useEffect(() => {
     if (!grossPaise) { setPreview(null); return }
     const t = setTimeout(async () => {
       try {
-        setPreview(await api.post<StructurePreview>('/payroll/preview', { gross_monthly: grossPaise, components: lines() }))
+        setPreview(await api.post<RichPreview>('/payroll/preview', { gross_monthly: grossPaise, components: lines() }))
         setFail(null)
       } catch (caught) { setPreview(null); setFail((caught as Error).message) }
     }, 350)
@@ -242,9 +243,12 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
                   <tr key={l.component_id}><td>{l.code}<div className="muted-sm">{ruleOf(l)}</div></td><td className="num">{money(l.amount)}</td></tr>
                 ))}
                 <tr className="pr-total-row"><td>Gross</td><td className="num">{money(preview.gross_monthly)}</td></tr>
+                {preview.deductions.map((l) => <tr key={l.code}><td>{l.name}</td><td className="num" style={{ color: '#e5484d' }}>-{money(l.amount)}</td></tr>)}
+                <tr className="pr-total-row"><td>Net pay</td><td className="num" style={{ color: '#0f9d6a' }}>{money(preview.net_monthly)}</td></tr>
               </tbody>
             </table>
           )}
+          {preview?.notes.map((n, i) => <p key={i} className="muted-sm">{n}</p>)}
         </aside>
       </div>
     </Dialog>

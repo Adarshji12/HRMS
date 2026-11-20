@@ -614,10 +614,53 @@ def render_payslip(db: Session, viewer: User, payslip_id: uuid.UUID) -> tuple[Pa
             .order_by(PayslipLine.sort_order, PayslipLine.code)
         )
     )
-    return slip, _payslip_html(
-        slip, lines, org=org, employee=employee, profile=profile,
+    return slip, _designed_payslip(
+        db, slip, lines, org=org, employee=employee, profile=profile,
         designation=designation, period=period_label(slip.run),
     )
+
+
+def _designed_payslip(db, slip, lines, *, org, employee, profile, designation, period) -> bytes:
+    """The payslip drawn from the company's design settings (layout, identifiers, images)."""
+    from app.api.v1.payslip_design import load
+    from app.core.crypto import decrypt_secret, mask_tail
+    from app.models import PayRun
+    from app.services import payslip_render as pr
+
+    settings = load(db, slip.org_id)
+    try:
+        pan = decrypt_secret(profile.pan_enc, label="PAN") if profile and profile.pan_enc else None
+        acct = decrypt_secret(profile.bank_account_enc, label="account") if profile and profile.bank_account_enc else None
+    except Exception:  # an undecryptable value is left off rather than failing the page
+        pan = acct = None
+    bank = " · ".join(x for x in ((profile.bank_name if profile else None), mask_tail(acct) if acct else None) if x) or None
+    ytd = None
+    if slip.run is not None:
+        fy = slip.run.period_year if slip.run.period_month >= 4 else slip.run.period_year - 1
+        mine = [p for p in db.scalars(select(Payslip).where(Payslip.user_id == slip.user_id)) if p.run is not None
+                and (p.run.period_year, p.run.period_month) <= (slip.run.period_year, slip.run.period_month)
+                and (p.run.period_year if p.run.period_month >= 4 else p.run.period_year - 1) == fy]
+        ytd = {"Gross earnings": sum(p.gross for p in mine), "Deductions": sum(p.total_deductions for p in mine),
+               "Net paid": sum(p.net for p in mine)}
+    data = {
+        "company": (org.legal_name or org.name) if org else "", "period": period,
+        "ref": f"{(employee.employee_code if employee else '') or ''} / {period.upper()[:3]}-{slip.run.period_year if slip.run else ''}",
+        "employee": {
+            "name": employee.full_name if employee else "", "code": employee.employee_code if employee else None,
+            "designation": designation, "department": employee.department_name if employee else None,
+            "doj": employee.joined_on.strftime("%d %b %Y") if employee and employee.joined_on else None,
+            "pan": pan, "uan": profile.uan if profile else None, "bank": bank,
+            "ifsc": profile.bank_ifsc if profile else None},
+        "paid_days": slip.payable_days, "month_days": slip.month_days,
+        "attendance": {"Working": slip.month_days, "Paid": slip.payable_days, "LOP": round(slip.lop_milli_days / 1000, 1)},
+        "earnings": [(l.name, l.amount) for l in lines if l.kind == "earning"],
+        "deductions": [(l.name, l.amount) for l in lines if l.kind == "deduction"],
+        "employer": [(l.name, l.amount) for l in lines if l.kind == "employer"],
+        "gross": slip.gross, "total_deductions": slip.total_deductions, "net": slip.net, "ytd": ytd,
+        "note": (f"Paid for {slip.payable_days} of {slip.month_days} days. A full month would be "
+                 f"{slip.full_gross / 100:,.2f}.") if slip.payable_days != slip.month_days else None,
+    }
+    return pr.render(settings, data).encode("utf-8")
 
 
 def _payslip_html(slip, lines, *, org, employee, profile, designation,

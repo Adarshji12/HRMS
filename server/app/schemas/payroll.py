@@ -102,6 +102,9 @@ class StructureLineIn(BaseModel):
     #: Paise. Required for a ``fixed`` component, ignored for the rest — the
     #: server computes those from the rule.
     amount: int | None = Field(default=None, ge=0, le=MAX_MONTHLY_PAISE)
+    #: A salary template may pay this component on a different rule than the catalogue's.
+    calculation: Calculation | None = None
+    rate_bps: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class StructureIn(BaseModel):
@@ -171,6 +174,11 @@ class PreviewOut(BaseModel):
     pf_wage_monthly: int = 0
     esi_wage_monthly: int = 0
     taxable_monthly: int = 0
+    #: What statutory rules would take and add on top at this gross; informational only.
+    deductions: list[dict] = []
+    employer: list[dict] = []
+    net_monthly: int = 0
+    notes: list[str] = []
 
 
 class UncoveredOut(BaseModel):

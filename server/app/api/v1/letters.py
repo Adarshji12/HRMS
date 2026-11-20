@@ -21,9 +21,11 @@ storage key.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import NoReturn
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
 from app.models import IssuedLetter, LetterStatus, User
@@ -178,6 +180,32 @@ def delete_template(
 # --------------------------------------------------------------------------- #
 # Preview
 # --------------------------------------------------------------------------- #
+
+
+class RenderIn(BaseModel):
+    user_id: uuid.UUID
+    body: str = Field(min_length=1, max_length=20000)
+    subject: str | None = Field(default=None, max_length=300)
+    issued_on: date | None = None
+
+
+class RenderOut(BaseModel):
+    text: str
+    subject: str | None = None
+    unknown: list[str] = []
+    empty: list[str] = []
+
+
+@router.post("/render", response_model=RenderOut)
+def render_text(payload: RenderIn, viewer: CurrentUser, db: DbSession) -> RenderOut:
+    """Fill the merge fields in wording as edited in the issue dialog, before anything is stored."""
+    try:
+        body, subject = svc.render_text(db, viewer, user_id=payload.user_id, body=payload.body,
+                                        subject=payload.subject, on=payload.issued_on)
+    except svc.LetterError as error:
+        _fail(error)
+    return RenderOut(text=body.text, subject=subject.text if subject else None,
+                     unknown=list(body.unknown), empty=list(body.empty))
 
 
 @router.get("/preview", response_model=PreviewOut)

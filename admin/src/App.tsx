@@ -83,6 +83,11 @@ import MyLoans, { LoanAdmin, LoanDeductions } from './pages/hrms/loans/Loans'
 import MySalary from './pages/hrms/payroll/MySalary'
 import SalaryStructures from './pages/hrms/payroll/SalaryStructures'
 import SalarySetup from './pages/hrms/payroll/SalarySetup'
+import SalesTargets from './pages/hrms/payroll/SalesTargets'
+import FormsRegisters from './pages/hrms/payroll/FormsRegisters'
+import PayslipDesign from './pages/hrms/payroll/PayslipDesign'
+import Letters from './pages/hrms/payroll/Letters'
+import LetterTemplates from './pages/hrms/payroll/LetterTemplates'
 import PayRuns, { MyPayslips } from './pages/hrms/payroll/PayRuns'
 import SalarySlips from './pages/hrms/payroll/SalarySlips'
 import PayrollOverview from './pages/hrms/payroll/PayrollOverview'
@@ -872,6 +877,26 @@ function Shell() {
             <Route
               path="/payroll"
               element={isAdmin ? <SalaryStructures /> : <Navigate to="/salary" replace />}
+            />
+            <Route
+              path="/payroll/targets"
+              element={isAdmin ? <SalesTargets /> : <Navigate to="/salary" replace />}
+            />
+            <Route
+              path="/payroll/design"
+              element={isAdmin ? <PayslipDesign /> : <Navigate to="/salary" replace />}
+            />
+            <Route
+              path="/payroll/letters"
+              element={isAdmin ? <Letters /> : <Navigate to="/salary" replace />}
+            />
+            <Route
+              path="/payroll/letter-templates"
+              element={isAdmin ? <LetterTemplates /> : <Navigate to="/salary" replace />}
+            />
+            <Route
+              path="/payroll/forms"
+              element={isAdmin ? <FormsRegisters /> : <Navigate to="/salary" replace />}
             />
             <Route
               path="/payroll/setup"

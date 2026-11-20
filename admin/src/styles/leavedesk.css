@@ -50,3 +50,40 @@
 .ld-key { display: inline-block; width: 18px; height: 12px; border-radius: 3px; background: #0f9d8a; }
 .ld-key.ld-pend { background: repeating-linear-gradient(135deg, #0f9d8a 0 3px, transparent 3px 6px); }
 @media (max-width: 800px) { .ld-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ld-two { grid-template-columns: 1fr; } }
+
+/* --- Leave desk, restyled: header with tabs and Apply on the right ------------------------ */
+.ld-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.ld-head-right { display: flex; align-items: center; gap: 12px; }
+.ld-head .ld-tabs { margin-bottom: 0; padding: 5px; gap: 2px; }
+.ld-head .ld-tab { padding: 8px 14px; font-size: 13px; }
+.ld-tile { position: relative; overflow: hidden; }
+.ld-tile.is-on { border-color: #f4c46a; }
+.ld-tile.is-on::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: #f4b73c; }
+.ld-good.is-on { border-color: #86d6b5; } .ld-good.is-on::before { background: #25b883; }
+.ld-bad.is-on { border-color: #f5a3aa; } .ld-bad.is-on::before { background: #ea5b66; }
+.ld-muted.is-on { border-color: var(--border-strong, #c8d0da); } .ld-muted.is-on::before { background: #8b95a1; }
+.ld-pill { display: inline-flex; align-items: center; gap: 6px; }
+.ld-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 6px; background: var(--surface-2); font-size: 11.5px; color: var(--text-secondary); }
+.ld-pill.is-on .ld-count { background: #bfeedd; color: #0f7a54; }
+.ld-wait { border-radius: 999px; font-size: 13px; }
+.ld-wait-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #f4b73c; }
+.ld-who { display: inline-flex; align-items: center; gap: 10px; }
+.ld-av { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); font-size: 10.5px; font-weight: 700; color: var(--text-secondary); flex: none; }
+.ld-card thead th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+
+/* calendar */
+.ld-cal { border-collapse: collapse; border-spacing: 0; width: 100%; }
+.ld-cal th, .ld-cal td { border: 1px solid var(--border); }
+.ld-cal td, .ld-cal th { padding: 0; }
+.ld-cal td:first-child, .ld-cal th:first-child { padding: 10px 16px; text-align: left; min-width: 200px; }
+.ld-cal .ld-d { width: 30px; min-width: 30px; height: 46px; border-radius: 0; }
+.ld-cal .ld-dh { height: auto; padding: 8px 0; font-weight: 600; }
+.ld-cal .ld-dow { display: block; font-size: 10.5px; color: var(--text-muted); }
+.ld-cal .ld-dn { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; font-size: 12px; }
+.ld-cal .ld-wk { background: var(--surface-2); }
+.ld-cal .ld-today .ld-dn { background: #12a07f; color: #fff; }
+.ld-cal .ld-today .ld-dow { color: #12a07f; }
+.ld-cal td.ld-on { background: var(--c, #0ea5e9); }
+.ld-cal td.ld-pend { background: repeating-linear-gradient(135deg, var(--c, #0ea5e9) 0 4px, #fff 4px 8px); }
+.ld-cal-wrap { padding: 0 18px 8px; }
+@media (max-width: 800px) { .ld-head { flex-direction: column; } .ld-head-right { flex-wrap: wrap; } }

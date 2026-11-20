@@ -34,6 +34,7 @@ from app.api.v1 import (
     payroll,
     performance,
     payoutputs,
+    payslip_design,
     payrun,
     projects,
     regularization,
@@ -98,6 +99,7 @@ api_router.include_router(incentives.router, dependencies=[Depends(require_modul
 api_router.include_router(incometax.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(form16.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(payoutputs.router, dependencies=[Depends(require_module("payroll"))])
+api_router.include_router(payslip_design.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(assets.router, dependencies=[Depends(require_module("assets"))])
 api_router.include_router(helpdesk.router, dependencies=[Depends(require_module("helpdesk"))])
 api_router.include_router(onboarding.router, dependencies=[Depends(require_module("onboarding"))])

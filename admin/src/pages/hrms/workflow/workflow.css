@@ -18,6 +18,7 @@
      drawn 1200px wide. */
   max-width: 420px;
 }
+
 .wf-scope-hint {
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
@@ -25,21 +26,42 @@
   color: var(--text-muted);
 }
 
-.wf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin: 8px 0; }
-.wf-field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
-.wf-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--text-muted);
+.wf-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin: 8px 0;
 }
+
+.wf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.wf-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* Buttons only. The "already submitted" caveat used to sit in this row as a
    90-character span, which made three controls and a paragraph read as four
    buttons of wildly different widths. */
 .wf-actions {
-  display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
+
 .wf-caveat {
   margin: var(--space-3) 0 0;
   font-size: var(--text-sm);
@@ -51,33 +73,68 @@
 /* One rung. The number is a rail down the left rather than a label, so the
    order reads at a glance — which is the only thing a chain really says. */
 .wf-level {
-  display: flex; gap: 14px; align-items: flex-start;
-  padding: 14px 0; border-top: 1px solid var(--gridline);
-}
-.wf-level-body { flex: 1; min-width: 0; }
-.wf-level-no {
-  flex: none; width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--brand); color: #fff;
-  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-top: 1px solid var(--gridline);
 }
 
-.wf-levels { list-style: none; padding: 0; margin: 12px 0; }
-.wf-levels li {
-  display: flex; gap: 12px; align-items: center;
-  padding: 9px 0; border-bottom: 1px solid var(--gridline); font-size: 13px;
+.wf-level-body {
+  flex: 1;
+  min-width: 0;
 }
-.wf-levels li:last-child { border-bottom: none; }
+
+.wf-level-no {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-levels {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.wf-levels li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--gridline);
+  font-size: 13px;
+}
+
+.wf-levels li:last-child {
+  border-bottom: none;
+}
+
 /* Inherited: shown, not editable, visibly not this scope's own. */
-.wf-levels.is-inherited { opacity: 0.72; }
-.wf-levels.is-inherited .wf-level-no { background: var(--text-muted); }
+.wf-levels.is-inherited {
+  opacity: 0.72;
+}
+
+.wf-levels.is-inherited .wf-level-no {
+  background: var(--text-muted);
+}
 
 /* ── conditional routing ───────────────────────────────────────────────────
    A rule is a condition and a whole chain. The list is ordered and the order is
    the routing, so the visual weight goes on the number and on the fallback
    sitting last — the two things a reader has to be able to see at a glance. */
 
-.wf-rules { margin-top: var(--space-6); }
+.wf-rules {
+  margin-top: var(--space-6);
+}
 
 .wf-rules-head {
   display: flex;
@@ -86,8 +143,19 @@
   flex-wrap: wrap;
   margin-bottom: var(--space-4);
 }
-.wf-rules-title { margin: 0 0 2px; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
-.wf-rules-head .muted { margin: 0; max-width: 68ch; line-height: 1.55; }
+
+.wf-rules-title {
+  margin: 0 0 2px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.wf-rules-head .muted {
+  margin: 0;
+  max-width: 68ch;
+  line-height: 1.55;
+}
+
 .wf-rules-actions {
   margin-left: auto;
   display: flex;
@@ -95,9 +163,20 @@
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-.wf-saved { color: var(--success-text); font-size: var(--text-md); font-weight: var(--weight-semibold); }
 
-.wf-rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.wf-saved {
+  color: var(--success-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.wf-rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
 
 .wf-rule {
   border: 1px solid var(--border);
@@ -107,14 +186,22 @@
   display: grid;
   gap: var(--space-3);
 }
+
 /* The fallback is visibly the last resort rather than another rule. */
 .wf-rule.is-fallback {
   background: var(--surface-2);
   border-style: dashed;
 }
-.wf-rule.is-off { opacity: 0.6; }
 
-.wf-rule-head { display: flex; align-items: center; gap: var(--space-2); }
+.wf-rule.is-off {
+  opacity: 0.6;
+}
+
+.wf-rule-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 .wf-rule-order {
   display: grid;
@@ -128,7 +215,11 @@
   font-weight: var(--weight-semibold);
   flex-shrink: 0;
 }
-.wf-rule.is-fallback .wf-rule-order { background: var(--surface-1); color: var(--text-muted); }
+
+.wf-rule.is-fallback .wf-rule-order {
+  background: var(--surface-1);
+  color: var(--text-muted);
+}
 
 .wf-rule-name {
   flex: 1;
@@ -139,10 +230,22 @@
   padding: 5px 8px;
   border-radius: var(--radius-sm);
 }
-.wf-rule-name:hover { border-color: var(--border); }
-.wf-rule-name:focus { border-color: var(--brand); background: var(--surface-1); }
 
-.wf-rule-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.wf-rule-name:hover {
+  border-color: var(--border);
+}
+
+.wf-rule-name:focus {
+  border-color: var(--brand);
+  background: var(--surface-1);
+}
+
+.wf-rule-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
 
 .wf-move {
   width: 26px;
@@ -153,7 +256,11 @@
   cursor: pointer;
   color: var(--text-secondary);
 }
-.wf-move:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.wf-move:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
 .wf-toggle {
   display: inline-flex;
@@ -173,12 +280,21 @@
   cursor: pointer;
   color: var(--text-muted);
 }
-.wf-remove:hover { color: var(--status-critical); background: var(--surface-hover); }
+
+.wf-remove:hover {
+  color: var(--status-critical);
+  background: var(--surface-hover);
+}
 
 /* "When" and "Then" are labelled rather than implied by position: a reader
    arriving at row four should not have to count back to the header to work out
    which half is the condition. */
-.wf-when, .wf-then { display: flex; align-items: flex-start; gap: var(--space-3); }
+.wf-when,
+.wf-then {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
 
 .wf-when-label {
   width: 44px;
@@ -191,7 +307,13 @@
   color: var(--text-muted);
 }
 
-.wf-clauses, .wf-then-levels { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.wf-clauses,
+.wf-then-levels {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
 
 .wf-clause {
   display: flex;
@@ -199,13 +321,19 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+
 .wf-clause-join {
   width: 26px;
   font-size: var(--text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.wf-clause select, .wf-clause input { min-width: 0; }
+
+.wf-clause select,
+.wf-clause input {
+  min-width: 0;
+}
+
 .wf-clause-help {
   flex-basis: 100%;
   padding-left: 32px;
@@ -214,8 +342,15 @@
   line-height: 1.5;
 }
 
-.wf-money { display: inline-flex; align-items: center; gap: 4px; }
-.wf-money input { width: 120px; }
+.wf-money {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wf-money input {
+  width: 120px;
+}
 
 .wf-add-clause {
   justify-self: start;
@@ -227,9 +362,18 @@
   color: var(--brand-ink);
   cursor: pointer;
 }
-.wf-add-clause:hover { text-decoration: underline; }
 
-.wf-then-level { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wf-add-clause:hover {
+  text-decoration: underline;
+}
+
+.wf-then-level {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .wf-then-num {
   display: grid;
   place-items: center;
@@ -243,7 +387,9 @@
   flex-shrink: 0;
 }
 
-.wf-rule-when { margin: 0; }
+.wf-rule-when {
+  margin: 0;
+}
 
 .wf-rules-note {
   margin: var(--space-3) 0 0;
@@ -252,3 +398,263 @@
   max-width: 72ch;
   line-height: 1.55;
 }
+
+/* --- Approval workflow, regrouped: flow tabs in two rows, scope card on the left ------------ */
+.wf-maxpill {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 3px 12px;
+  border: 1px solid #b9dff2;
+  border-radius: 999px;
+  background: #eaf6fc;
+  color: #0b6b95;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.wf-groups {
+  padding: 6px 22px;
+  margin-bottom: 18px;
+  display: grid;
+}
+
+.wf-group {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 14px 0;
+}
+
+.wf-group+.wf-group {
+  border-top: 1px solid var(--border);
+}
+
+.wf-group-label {
+  flex: none;
+  width: 150px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wf-group-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.wf-tone-teal::before {
+  background: #19a3b4;
+}
+
+.wf-tone-indigo::before {
+  background: #6b7cff;
+}
+
+.wf-group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.wf-flowtab {
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.wf-flowtab:hover {
+  background: var(--surface-2);
+}
+
+.wf-flowtab.is-on {
+  border-color: #8fd0ec;
+  background: #eaf6fc;
+  color: #0b6b95;
+  font-weight: 600;
+}
+
+.wf-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.wf-side {
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.wf-scope-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wf-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.wf-scope-select {
+  width: 100%;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.wf-scope-note {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.wf-route {
+  display: grid;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.wf-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.wf-step b {
+  display: block;
+  font-size: 13px;
+}
+
+.wf-step small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.wf-step-no {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.wf-step-done {
+  border-color: #a7e6cf;
+  background: #e9faf2;
+}
+
+.wf-step-done .wf-step-no {
+  background: #c8f1de;
+  color: #0f7a54;
+}
+
+.wf-arrow {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.wf-chain-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wf-addlevel {
+  border-color: #8fd0ec;
+  background: #eaf6fc;
+  color: #0b6b95;
+}
+
+.wf-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 30px 10px 40px;
+}
+
+@media (max-width: 900px) {
+  .wf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wf-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* One row per group: the tabs stay on a single line and scroll sideways rather than wrapping. */
+.wf-group-label {
+  width: 130px;
+}
+
+.wf-group-tabs {
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  min-width: 0;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.wf-flowtab {
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+/* Tighter card: less padding around and between the two rows; labels share one width so the tabs line up. */
+.wf-groups { padding: 2px 16px; margin-bottom: 14px; }
+.wf-group { padding: 8px 0; gap: 14px; }
+.wf-group-label { width: 150px; white-space: nowrap; }
+.wf-flowtab { padding: 5px 10px; }
+
+/* --- Conditional routing as a card, matching the chain card above ------------------------- */
+.wf-rules { margin-top: 20px; padding: 20px 22px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-1); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.wf-rules-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.wf-rules-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.wf-rules-head .muted { margin: 0; max-width: 64ch; font-size: 12.5px; line-height: 1.55; color: var(--text-muted); }
+.wf-rules-actions { margin-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wf-rules .wf-rule-list { gap: 12px; }
+.wf-rules > .empty, .wf-rules .empty-state { padding: 26px 10px 18px; }
+@media (max-width: 800px) { .wf-rules-actions { width: 100%; } }
+
+/* The first level already draws a rule above itself, so the header does not add a second one. */
+.wf-chain-head { border-bottom: 0; margin-bottom: 0; padding-bottom: 12px; }

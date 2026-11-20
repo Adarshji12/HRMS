@@ -19,11 +19,10 @@
  * yesterday's claims to route through it will otherwise file a bug.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../../components/ui'
-import Tabs from '../../../components/Tabs'
 import { IconSitemap } from '../../../components/Icons'
 import './workflow.css'
 
@@ -80,6 +79,7 @@ const KIND_LABEL: Record<string, string> = {
   expense: 'Expense claims',
   loan: 'Loans & advances',
   performance: 'Performance reviews',
+  sales_incentive: 'Sales incentives',
   purchase_requisition: 'ERP · Purchase requisitions',
   purchase_order: 'ERP · Purchase orders',
   stock_adjustment: 'ERP · Stock adjustments',
@@ -116,7 +116,7 @@ export default function WorkflowSetup() {
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>Approval workflow</h1>
+          <h1>Approval workflow <span className="wf-maxpill">Max 5 levels</span></h1>
           <p className="muted">
             Route requests through up to five levels, escalating when nobody answers.
           </p>
@@ -138,33 +138,25 @@ export default function WorkflowSetup() {
           {/* Guarded on `kind`: it is null until the flow list loads, and a tab
               bar with no selected tab has no thumb to place. */}
           {kind && (
-            <Tabs
-              label="Approval flows"
-              items={kinds.map((k) => ({ id: k, label: KIND_LABEL[k] ?? k }))}
-              value={kind}
-              onChange={setKind}
-            />
+            <div className="card wf-groups" role="tablist" aria-label="Approval flows">
+              {[
+                { title: 'HR & Operations', tone: 'teal', items: kinds.filter((k) => !k.startsWith('purchase_') && !['stock_adjustment', 'sales_order', 'credit_note'].includes(k)) },
+                { title: 'ERP Modules', tone: 'indigo', items: kinds.filter((k) => k.startsWith('purchase_') || ['stock_adjustment', 'sales_order', 'credit_note'].includes(k)) },
+              ].filter((g) => g.items.length).map((g) => (
+                <div className="wf-group" key={g.title}>
+                  <span className={`wf-group-label wf-tone-${g.tone}`}>{g.title}</span>
+                  <div className="wf-group-tabs">
+                    {g.items.map((k) => (
+                      <button key={k} type="button" role="tab" aria-selected={kind === k}
+                              className={`wf-flowtab${kind === k ? ' is-on' : ''}`} onClick={() => setKind(k)}>
+                        {(KIND_LABEL[k] ?? k).replace('ERP · ', '')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-
-          <div className="wf-scope">
-            <label className="wf-field">
-              <span className="wf-label">Applies to</span>
-              <select value={departmentId}
-                      onChange={(e) => setDepartmentId(e.target.value)}>
-                <option value="">Everyone in the company</option>
-                {(deptQ.data ?? []).map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </label>
-            {/* Out of the label. Inside it, the hint was a third stacked child
-                of a column flex and stretched the select to the full page
-                width — a 1200px dropdown holding "Everyone in the company". */}
-            <p className="wf-scope-hint">
-              A department chain <strong>replaces</strong> the company one for
-              its people — it does not add to it.
-            </p>
-          </div>
 
           {kind && (
             <ChainEditor
@@ -173,6 +165,23 @@ export default function WorkflowSetup() {
               departmentId={departmentId || null}
               people={peopleQ.data ?? []}
               onError={setError}
+              scopeNode={(
+                <>
+                  <div className="wf-scope-head">
+                    <span className="wf-label">Applies to</span>
+                    {!departmentId && <span className="wf-badge">Company default</span>}
+                  </div>
+                  <select className="wf-scope-select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                    <option value="">Everyone in the company</option>
+                    {(deptQ.data ?? []).map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                  <p className="wf-scope-note">
+                    A department chain <strong>replaces</strong> the company one for its people — it does not add to it.
+                  </p>
+                </>
+              )}
             />
           )}
 
@@ -201,11 +210,13 @@ function ChainEditor({
   departmentId,
   people,
   onError,
+  scopeNode,
 }: {
   kind: string
   departmentId: string | null
   people: Person[]
   onError: (m: string | null) => void
+  scopeNode: ReactNode
 }) {
   const scope = departmentId ? `?department_id=${departmentId}` : ''
   const ownQ = useQuery<Level[]>(`wf-own-${kind}-${departmentId}`, () =>
@@ -253,8 +264,33 @@ function ChainEditor({
     }
   }
 
+  const flowName = (KIND_LABEL[kind] ?? kind).replace('ERP · ', '')
+  const shown = rows.length ? rows : effective
+  const left = (
+    <aside className="card wf-side">
+      {scopeNode}
+      <div className="wf-route">
+        <span className="wf-label">How requests currently route</span>
+        <div className="wf-step"><span className="wf-step-no">1</span>
+          <span><b>{flowName} submitted</b><small>By everyone in the company</small></span></div>
+        {shown.map((l, i) => (
+          <div key={i}>
+            <div className="wf-arrow">↓</div>
+            <div className="wf-step"><span className="wf-step-no">{i + 2}</span>
+              <span><b>Level {i + 1}</b><small>{(RULES.find((r) => r.value === l.reviewer_rule)?.label ?? l.reviewer_rule)}{l.reviewer_name ? ` — ${l.reviewer_name}` : ''}</small></span></div>
+          </div>
+        ))}
+        <div className="wf-arrow">↓</div>
+        <div className="wf-step wf-step-done"><span className="wf-step-no">✓</span>
+          <span><b>{shown.length ? 'Approved' : 'Direct 1-step approval'}</b>
+            <small>{shown.length ? 'After the last level' : 'Approved by permission holder'}</small></span></div>
+      </div>
+    </aside>
+  )
+
   if (inherited) {
     return (
+      <div className="wf-grid">{left}
       <section className="card">
         <h2 className="card-title">Inherited from the company chain</h2>
         <p className="muted">
@@ -273,25 +309,38 @@ function ChainEditor({
           Override for this department
         </button>
       </section>
+      </div>
     )
   }
 
   return (
+    <div className="wf-grid">{left}
     <section className="card">
       {/* Names the panel, not its state. It used to read "No chain" while the
           empty state below it also read "No chain" — the same two words twice,
           six lines apart. The count is genuinely useful once there IS a chain,
           so it stays for that case. */}
-      <h2 className="card-title">
-        {rows.length ? `Chain · ${rows.length} level${rows.length === 1 ? '' : 's'}` : 'Approval chain'}
-      </h2>
+      <div className="wf-chain-head">
+        <h2 className="card-title">
+          Approval chain
+          {rows.length > 0
+            ? <span className="wf-badge" style={{ marginLeft: 10 }}>{rows.length} level{rows.length === 1 ? '' : 's'}</span>
+            : <span className="wf-badge" style={{ marginLeft: 10 }}>Default: 1-step direct approval</span>}
+        </h2>
+        {rows.length < 5 && (
+          <button className="btn small wf-addlevel" onClick={() => setLevels([...rows, blankLevel()])}>+ Add approval level</button>
+        )}
+      </div>
 
       {!rows.length && (
-        <EmptyState
-          icon={<IconSitemap size={22} />}
-          title="No chain"
-          body="Requests are approved in one step by whoever holds the permission — which is how this flow works today, and is right for most companies. Add a level to route them through someone first."
-        />
+        <div className="wf-empty">
+          <EmptyState
+            icon={<IconSitemap size={22} />}
+            title={`No chain configured for ${flowName}`}
+            body="Requests are approved in one step by whoever holds the permission — which is how this flow works today, and is right for most companies. Add a level to route them through someone first."
+          />
+          <button className="btn btn-primary" onClick={() => setLevels([blankLevel()])}>+ Add level 1</button>
+        </div>
       )}
 
       {rows.map((level, index) => (
@@ -396,6 +445,7 @@ function ChainEditor({
         changes what happens to the next one.
       </p>
     </section>
+    </div>
   )
 }
 

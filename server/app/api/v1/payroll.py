@@ -95,6 +95,40 @@ def _structure_out(row: SalaryStructure, names: dict) -> StructureOut:
 # --------------------------------------------------------------------------- #
 
 
+# code, name, kind, calculation, rate_bps, basic, pf, esi
+_STANDARD = [
+    ("BASIC", "Basic Salary", "earning", "percent_of_gross", 5000, True, True, True),
+    ("HRA", "HRA", "earning", "percent_of_basic", 4000, False, False, True),
+    ("CONVEYANCE", "Conveyance", "earning", "fixed", 0, False, False, True),
+    ("MEDICAL", "Medical Allowance", "earning", "fixed", 0, False, False, True),
+    ("SPECIAL", "Special Allowance", "earning", "balance", 0, False, False, True),
+    ("BONUS", "Bonus", "earning", "fixed", 0, False, False, False),
+    ("INCENTIVES", "Incentives", "earning", "fixed", 0, False, False, False),
+    ("OTHER_EARN", "Other Earnings", "earning", "fixed", 0, False, False, False),
+    ("PF", "Provident Fund", "deduction", "fixed", 0, False, False, False),
+    ("ESIC", "ESIC", "deduction", "fixed", 0, False, False, False),
+    ("PT", "Professional Tax", "deduction", "fixed", 0, False, False, False),
+    ("TDS", "TDS", "deduction", "fixed", 0, False, False, False),
+    ("ADVANCE", "Advance Recovery", "deduction", "fixed", 0, False, False, False),
+    ("LOAN", "Loan Recovery", "deduction", "fixed", 0, False, False, False),
+    ("LATE", "Late Deduction", "deduction", "fixed", 0, False, False, False),
+    ("OTHER_DED", "Other Deductions", "deduction", "fixed", 0, False, False, False),
+]
+
+
+def _seed_standard_components(db, org_id) -> None:
+    """A company with no catalogue at all gets the usual Indian heads once, so setup starts from something."""
+    from app.models import PayComponent
+
+    if db.scalar(select(func.count(PayComponent.id)).where(PayComponent.org_id == org_id)):
+        return
+    for order, (code, name, kind, calc, bps, basic, pf, esi) in enumerate(_STANDARD, start=1):
+        db.add(PayComponent(
+            org_id=org_id, code=code, name=name, kind=kind, calculation=calc, rate_bps=bps, is_basic=basic,
+            is_pf_wage=pf, is_esi_wage=esi, is_taxable=kind == "earning", sort_order=order * 10, is_active=True))
+    db.commit()
+
+
 @router.get("/components", response_model=list[ComponentOut])
 def list_components(
     viewer: CurrentUser, db: DbSession, active_only: bool = False
@@ -110,6 +144,7 @@ def list_components(
     except svc.PayrollError as error:
         _fail(error)
 
+    _seed_standard_components(db, viewer.org_id)
     rows = svc.list_components(db, viewer.org_id, active_only=active_only)
     usage = {
         r[0]: int(r[1])
@@ -181,7 +216,7 @@ def preview(
         if len(chosen) != len(chosen_ids):
             raise svc.PayrollError("component_not_found", "Unknown pay component.", 404)
         lines = svc.resolve(
-            chosen,
+            svc.with_rules(chosen, payload.components),
             gross_monthly=payload.gross_monthly,
             fixed_amounts={
                 line.component_id: line.amount
@@ -207,7 +242,30 @@ def preview(
     out.pf_wage_monthly = sum(c.amount for c in out.components if c.is_pf_wage)
     out.esi_wage_monthly = sum(c.amount for c in out.components if c.is_esi_wage)
     out.taxable_monthly = sum(c.amount for c in out.components if c.is_taxable)
+    _statutory_preview(db, viewer, out)
     return out
+
+
+def _statutory_preview(db, viewer, out: PreviewOut) -> None:
+    """Fill the deductions, employer cost and net a salary at this gross would carry."""
+    from datetime import date as _date
+
+    from app.services import payrun as payrun_svc
+    from app.services import statutory as statutory_svc
+
+    config, slabs = payrun_svc._statutory_setup(db, viewer.org_id)
+    res = statutory_svc.compute(
+        config, pf_wage=out.pf_wage_monthly, esi_wage=out.esi_wage_monthly,
+        pt_gross=out.gross_monthly, month=_date.today().month, pt_slabs=slabs,
+    )
+    out.deductions = [{"code": l.code, "name": l.name, "amount": l.amount} for l in res.employee_lines]
+    out.employer = [{"code": l.code, "name": l.name, "amount": l.amount} for l in res.employer_lines]
+    out.net_monthly = out.gross_monthly - res.employee_total
+    if config is not None and config.esi_enabled and out.esi_wage_monthly >= config.esi_wage_threshold:
+        out.notes.append(f"ESIC not deducted — gross is above the ₹{config.esi_wage_threshold / 100:,.2f} ceiling.")
+    if res.employer_total:
+        out.notes.append(
+            f"Employer contributes ₹{res.employer_total / 100:,.2f} on top — cost to company ₹{(out.gross_monthly + res.employer_total) / 100:,.2f}.")
 
 
 @router.get("/uncovered", response_model=list[UncoveredOut])
@@ -233,13 +291,14 @@ class TemplateIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = None
     component_ids: list[uuid.UUID] = Field(default_factory=list)
+    rules: dict[str, dict] = Field(default_factory=dict)
     is_active: bool = True
     is_default: bool = False
 
 
 def _template_out(t: SalaryTemplate) -> dict:
     return {"id": str(t.id), "name": t.name, "description": t.description, "is_active": t.is_active,
-            "is_default": t.is_default, "component_ids": list(t.component_ids or [])}
+            "is_default": t.is_default, "component_ids": list(t.component_ids or []), "rules": t.rules or {}}
 
 
 def _managed(viewer) -> None:
@@ -264,6 +323,7 @@ def _save_template(db, viewer, t: SalaryTemplate, payload: TemplateIn) -> dict:
     t.name = payload.name.strip()
     t.description = (payload.description or "").strip() or None
     t.component_ids = [str(c) for c in payload.component_ids]
+    t.rules = {k: {"calculation": v.get("calculation"), "rate_bps": int(v.get("rate_bps") or 0)} for k, v in payload.rules.items()}
     t.is_active = payload.is_active
     t.is_default = payload.is_default
     if payload.is_default:
