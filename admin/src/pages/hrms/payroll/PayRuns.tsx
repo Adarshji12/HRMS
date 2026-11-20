@@ -11,6 +11,7 @@ import { money } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type { PayRun, PayRunDetail, PayrollRegister, Payslip } from '../../../lib/types'
 import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
+import { Dialog } from '../../crm/parts'
 import '../../../styles/payroll.css'
 
 // Opening a month: the server takes the period alone, the pay date is optional.
@@ -102,9 +103,101 @@ function fyOf(year: number, month: number): number {
   return month >= 4 ? year : year - 1
 }
 
+/** The runs list: one row a month, and a dialog to run a new one. */
+function RunsList({ runs, loading, error, onOpen, onReload }: {
+  runs: PayRun[]; loading: boolean; error: string | null
+  onOpen: (year: number, month: number) => void; onReload: () => void
+}) {
+  const now = new Date()
+  const [dlg, setDlg] = useState(false)
+  const [month, setMonth] = useState(now.getMonth() === 0 ? 12 : now.getMonth())
+  const [year, setYear] = useState(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())
+  const [busy, setBusy] = useState(false)
+  const [fail, setFail] = useState<string | null>(null)
+  const years = [now.getFullYear() - 2, now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
+
+  async function generate() {
+    setBusy(true); setFail(null)
+    try {
+      let run = runs.find((r) => r.period_year === year && r.period_month === month)
+      if (!run) run = await api.post<PayRun>('/payruns', { period_year: year, period_month: month, pay_date: null })
+      if (run.status === 'draft' || run.status === 'computed') {
+        await api.post(`/payruns/${run.id}/compute`, { overrides: [] })
+      }
+      setDlg(false)
+      onReload()
+      onOpen(year, month)
+    } catch (caught) {
+      setFail((caught as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="page pr-page">
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <section className="card">
+        <div className="card-head" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <h2 className="card-title">Payroll Runs</h2>
+            <p className="muted-sm">One per month. A locked run stops listening to attendance.</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => setDlg(true)}>Run Payroll</button>
+        </div>
+        {loading ? <Loading /> : runs.length === 0 ? (
+          <Empty>No payroll has been run. Set salaries first, then run a month.</Empty>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Period</th><th className="num">People</th><th className="num">Gross</th><th className="num">Net</th><th>Status</th></tr></thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(r.period_year, r.period_month)}>
+                    <td><b>{periodName(r)}</b></td>
+                    <td className="num">{r.employee_count}</td>
+                    <td className="num">{money(r.total_gross)}</td>
+                    <td className="num"><strong>{money(r.total_net)}</strong></td>
+                    <td><StatusPill status={r.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {dlg && (
+        <Dialog title="Run payroll" narrow onClose={() => setDlg(false)}
+                footer={<>
+                  <button className="btn" onClick={() => setDlg(false)}>Cancel</button>
+                  <button className="btn btn-primary" disabled={busy} onClick={generate}>{busy ? 'Generating…' : 'Generate'}</button>
+                </>}>
+          <div style={{ padding: '8px 24px 20px', display: 'grid', gap: 16 }}>
+          <div className="pr-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <label className="pr-field"><span className="pr-field-label">Month</span>
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+            </label>
+            <label className="pr-field"><span className="pr-field-label">Year</span>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="muted-sm" style={{ margin: 0 }}>Paid days come from the attendance register — approved leave, week offs and holidays are already accounted for. Running an existing draft again regenerates it.</p>
+          {fail && <ErrorNote>{fail}</ErrorNote>}
+          </div>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 export default function PayRuns() {
   const runsQ = useQuery<PayRun[]>('pay-runs', () => api.get<PayRun[]>('/payruns'))
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'list' | 'month'>('list')
 
   const now = new Date()
   const thisYear = now.getFullYear()
@@ -112,6 +205,14 @@ export default function PayRuns() {
 
   const [fy, setFy] = useState(() => fyOf(thisYear, thisMonth))
   const [picked, setPicked] = useState(() => ({ year: thisYear, month: thisMonth }))
+
+  if (view === 'list') {
+    return (
+      <RunsList runs={runsQ.data ?? []} loading={runsQ.loading && !runsQ.data} error={runsQ.error ?? error}
+                onReload={runsQ.reload}
+                onOpen={(y, m) => { setPicked({ year: y, month: m }); setFy(fyOf(y, m)); setView('month') }} />
+    )
+  }
 
   const months = financialYear(fy)
   const runs = runsQ.data ?? []
@@ -132,6 +233,7 @@ export default function PayRuns() {
     <div className="page pr-page">
       <div className="page-head">
         <div>
+          <button className="btn small" onClick={() => setView('list')}>← All payroll runs</button>
           <h1 className="page-title">Payroll</h1>
           <p className="page-sub">
             One run a month: open it, compute, review, approve, then record the payment.

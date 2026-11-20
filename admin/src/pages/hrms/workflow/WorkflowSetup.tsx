@@ -917,7 +917,7 @@ function ClauseRow({
         <span className="wf-money">
           <span aria-hidden="true">₹</span>
           <input
-            inputMode="decimal"
+            type="number" data-spin min={0} step="any"
             value={String(clause.value ?? '')}
             placeholder="50000"
             onChange={(e) => onChange({ ...clause, value: e.target.value })}
@@ -925,7 +925,7 @@ function ClauseRow({
         </span>
       ) : field?.type === 'number' || field?.type === 'days' ? (
         <input
-          inputMode="decimal"
+          type="number" data-spin min={0} step="any"
           value={String(clause.value ?? '')}
           placeholder={field.type === 'days' ? '3' : '0'}
           onChange={(e) => onChange({ ...clause, value: e.target.value })}

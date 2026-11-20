@@ -309,6 +309,21 @@ LOAN = Policy(
     stale_code="not_pending",
 )
 
+INCENTIVE = Policy(
+    kind="sales_incentive",
+    label="sales incentive",
+    pending=("pending",),
+    approved="approved",
+    rejected="rejected",
+    # Nobody approves their own incentive, the owner included.
+    self_review=SelfReview.FORBIDDEN,
+    reason_on_reject=True,
+    audit_action="incentive.reviewed",
+    target_type="sales_incentive",
+    reviewer_column="reviewed_by",
+    stale_code="not_pending",
+)
+
 PERFORMANCE = Policy(
     kind="performance",
     label="performance review",
@@ -452,7 +467,7 @@ ERP_CREDIT_NOTE = Policy(
 POLICIES: dict[str, Policy] = {
     p.kind: p
     for p in (
-        LEAVE, TIMESHEET, REGULARIZATION, EXPENSE, LOAN, PERFORMANCE, SETTLEMENT,
+        LEAVE, TIMESHEET, REGULARIZATION, EXPENSE, LOAN, INCENTIVE, PERFORMANCE, SETTLEMENT,
         ERP_REQUISITION, ERP_PURCHASE_ORDER, ERP_STOCK_ADJUSTMENT, ERP_SALES_ORDER,
         ERP_CREDIT_NOTE,
     )
@@ -564,6 +579,8 @@ def decide(
         db, record_id=record.id, viewer=reviewer, approve=approve,
         note=cleaned, capability=policy.capability,
     )
+    if moved.final and moved.outcome is not None:
+        approve = moved.outcome  # the chain's own result, e.g. after an optional level said no
     if not moved.final:
         # An intermediate approval. The record stays exactly as it is — still
         # pending, still unstamped — because it has not been approved yet, it

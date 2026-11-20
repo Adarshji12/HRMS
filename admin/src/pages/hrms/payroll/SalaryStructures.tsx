@@ -18,19 +18,19 @@
       and `toPaise()` parses at the other; the annual figure is presented, never
       entered. */
 
-import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type {
-  DirectoryEntry,
   PayComponent,
   SalaryStructure,
   StructurePreview,
-  UncoveredEmployee,
 } from '../../../lib/types'
 import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
+import { Dialog } from '../../crm/parts'
+import type { SalaryTemplate } from './SalarySetup'
 import '../../../styles/payroll.css'
 
 // Server requires the gross and the effective date; the reason is optional.
@@ -55,102 +55,199 @@ export function ruleOf(component: { calculation: string; rate_bps: number }): st
   }
 }
 
+interface RosterRow {
+  user_id: string; full_name: string; employee_code: string | null; designation: string | null
+  department: string | null; gross_monthly: number | null; effective_from: string | null
+}
+
 export default function SalaryStructures() {
-  const peopleQ = useQuery<DirectoryEntry[]>('payroll-directory', () =>
-    api.get<DirectoryEntry[]>('/people/directory'),
+  const rosterQ = useQuery<RosterRow[]>('payroll-roster', () => api.get<RosterRow[]>('/payroll/roster'))
+  const componentsQ = useQuery<PayComponent[]>('pay-components-active', () =>
+    api.get<PayComponent[]>('/payroll/components?active_only=true'),
   )
-  const uncoveredQ = useQuery<UncoveredEmployee[]>('payroll-uncovered', () =>
-    api.get<UncoveredEmployee[]>('/payroll/uncovered'),
-  )
-  const [userId, setUserId] = useState('')
+  const [search, setSearch] = useState('')
+  const [setting, setSetting] = useState<RosterRow | null>(null)
+  const [history, setHistory] = useState<RosterRow | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const rows = rosterQ.data ?? []
+  const q = search.trim().toLowerCase()
+  const shown = rows.filter((r) => !q || r.full_name.toLowerCase().includes(q) || (r.employee_code ?? '').toLowerCase().includes(q))
+  const onSalary = rows.filter((r) => r.gross_monthly != null).length
+
+  if (history) {
+    return (
+      <div className="page">
+        <header className="page-head">
+          <div>
+            <button className="btn small" onClick={() => { setHistory(null); rosterQ.reload() }}>← Employee salaries</button>
+            <h1>{history.full_name}</h1>
+            <p className="muted">Salary history. A change is a new revision, effective from a date.</p>
+          </div>
+        </header>
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <Person userId={history.user_id} onChanged={() => rosterQ.reload()} onError={setError} />
+      </div>
+    )
+  }
 
   return (
     <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>Salary structures</h1>
-          <p className="muted">
-            One person at a time. A change is a new revision, effective from a date.
-          </p>
-        </div>
-        <select value={userId} onChange={(event) => setUserId(event.target.value)}
-                aria-label="Employee">
-          <option value="">Choose an employee…</option>
-          {(peopleQ.data ?? []).map((person) => (
-            <option key={person.user_id} value={person.user_id}>
-              {person.full_name}
-              {person.employee_code ? ` · ${person.employee_code}` : ''}
-            </option>
-          ))}
-        </select>
-      </header>
-
       {error && <ErrorNote>{error}</ErrorNote>}
-
-      {!userId ? (
-        <Uncovered
-          rows={uncoveredQ.data ?? []}
-          loading={uncoveredQ.loading}
-          onPick={setUserId}
-        />
-      ) : (
-        <Person
-          userId={userId}
-          onChanged={() => uncoveredQ.reload()}
-          onError={setError}
-        />
+      <section className="card">
+        <div className="card-head" style={{ justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <h2 className="card-title">Employee Salaries</h2>
+            <p className="muted-sm">{rows.length} employees · {onSalary} on a salary</p>
+          </div>
+          <input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 260 }} />
+        </div>
+        {rosterQ.error ? <ErrorNote>{rosterQ.error}</ErrorNote> : rosterQ.loading && !rosterQ.data ? <Loading /> : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Employee</th><th>Department</th><th className="num">Monthly CTC</th><th className="num">Annual</th><th>Effective</th><th /></tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.user_id}>
+                    <td>
+                      <b>{r.full_name}</b>
+                      <div className="muted-sm">{[r.employee_code, r.designation].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td>{r.department ?? '—'}</td>
+                    <td className="num">{r.gross_monthly != null ? money(r.gross_monthly) : <span style={{ color: '#d97706' }}>Not set</span>}</td>
+                    <td className="num">{r.gross_monthly != null ? money(r.gross_monthly * 12) : '—'}</td>
+                    <td>{r.effective_from ?? '—'}</td>
+                    <td className="row-actions">
+                      {r.gross_monthly != null && <button className="btn small" onClick={() => setHistory(r)}>History</button>}{' '}
+                      <button className="btn small" onClick={() => setSetting(r)}>{r.gross_monthly != null ? 'Revise' : 'Set'}</button>
+                    </td>
+                  </tr>
+                ))}
+                {shown.length === 0 && <tr><td colSpan={6}><Empty>Nobody matches that search.</Empty></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {setting && (
+        <SalaryDialog person={setting} components={componentsQ.data ?? []}
+                      onClose={() => setSetting(null)} onSaved={() => { setSetting(null); rosterQ.reload() }} />
       )}
     </div>
   )
 }
 
-/** The setup view: who has no salary on file at all. */
-function Uncovered({
-  rows,
-  loading,
-  onPick,
-}: {
-  rows: UncoveredEmployee[]
-  loading: boolean
-  onPick: (id: string) => void
+/** Set or revise one person's pay: CTC, fixed amounts, and a live monthly breakdown beside it. */
+function SalaryDialog({ person, components, onClose, onSaved }: {
+  person: RosterRow; components: PayComponent[]; onClose: () => void; onSaved: () => void
 }) {
-  if (loading) return <Loading />
-  if (!rows.length) {
-    return <Empty>Everybody active has a salary structure. Pick a name above to review one.</Empty>
+  const [gross, setGross] = useState(person.gross_monthly != null ? String(person.gross_monthly / 100) : '')
+  const [effective, setEffective] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10)
+  })
+  const [amounts, setAmounts] = useState<Record<string, string>>({})
+  const [remarks, setRemarks] = useState('')
+  const templatesQ = useQuery<SalaryTemplate[]>('salary-templates', () => api.get<SalaryTemplate[]>('/payroll/templates'))
+  const templates = (templatesQ.data ?? []).filter((t) => t.is_active)
+  const [templateId, setTemplateId] = useState<string | null>(null)
+  const chosenId = templateId ?? templates.find((t) => t.is_default)?.id ?? ''
+  const chosen = templates.find((t) => t.id === chosenId)
+  const [preview, setPreview] = useState<StructurePreview | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [fail, setFail] = useState<string | null>(null)
+  const grossPaise = toPaise(gross)
+  const earnings = useMemo(
+    () => components.filter((c) => c.kind === 'earning' && (!chosen || chosen.component_ids.includes(c.id))),
+    [components, chosen],
+  )
+  const fixed = earnings.filter((c) => c.calculation === 'fixed')
+
+  const lines = useCallback(() => earnings.map((c) => ({
+    component_id: c.id,
+    amount: c.calculation === 'fixed' ? toPaise(amounts[c.id] ?? '') : null,
+  })), [earnings, amounts])
+
+  useEffect(() => {
+    if (!grossPaise) { setPreview(null); return }
+    const t = setTimeout(async () => {
+      try {
+        setPreview(await api.post<StructurePreview>('/payroll/preview', { gross_monthly: grossPaise, components: lines() }))
+        setFail(null)
+      } catch (caught) { setPreview(null); setFail((caught as Error).message) }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [grossPaise, lines])
+
+  async function save() {
+    setBusy(true); setFail(null)
+    try {
+      await api.post(`/payroll/${person.user_id}`, {
+        effective_from: effective, gross_monthly: grossPaise, components: lines(), reason: remarks.trim() || null,
+      })
+      onSaved()
+    } catch (caught) { setFail((caught as Error).message) } finally { setBusy(false) }
   }
+
   return (
-    <section className="card">
-      <h2 className="card-title">No salary on file</h2>
-      <p className="muted">
-        These active employees have no structure at all. Deliberately no amounts
-        here — it is a list of gaps, not of pay.
-      </p>
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr><th>Name</th><th>Code</th><th>Joined</th><th /></tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.user_id}>
-                <td>
-                  <div className="pr-title">{row.full_name}</div>
-                  <div className="muted">{row.email}</div>
-                </td>
-                <td>{row.employee_code ?? '—'}</td>
-                <td>{row.joined_on ?? '—'}</td>
-                <td className="row-actions">
-                  <button className="btn small" onClick={() => onPick(row.user_id)}>
-                    Set salary
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <Dialog title={`Set salary — ${person.full_name}`} wide onClose={onClose}
+            footer={<>
+              <button className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!grossPaise || !preview || busy || !effective} onClick={save}>
+                {busy ? 'Saving…' : 'Save salary'}
+              </button>
+            </>}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(240px,1fr)', gap: 20, padding: '8px 24px 20px' }}>
+        <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <label className="pr-field"><span className="pr-field-label">Monthly CTC (₹)</span>
+              <input type="number" data-spin min={0} step="any" placeholder="50000" value={gross} onChange={(e) => setGross(e.target.value)} />
+            </label>
+            <label className="pr-field"><span className="pr-field-label">Structure</span>
+              <select value={chosenId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">— Every active</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </label>
+            <label className="pr-field"><span className="pr-field-label">Effective from</span>
+              <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} />
+              <span className="pr-field-hint">A revision starts a new row</span>
+            </label>
+          </div>
+          {fixed.length > 0 && (
+            <fieldset style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, margin: 0 }}>
+              <legend className="pr-field-label">FIXED AMOUNTS FOR THIS PERSON</legend>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {fixed.map((c) => (
+                  <label key={c.id} className="pr-field"><span className="pr-field-label">{c.name} (₹)</span>
+                    <input inputMode="decimal" value={amounts[c.id] ?? ''} onChange={(e) => setAmounts((p) => ({ ...p, [c.id]: e.target.value }))} />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          <label className="pr-field"><span className="pr-field-label">Remarks</span>
+            <input value={remarks} placeholder="Annual revision, promotion, correction" onChange={(e) => setRemarks(e.target.value)} />
+          </label>
+          {fail && <ErrorNote>{fail}</ErrorNote>}
+        </div>
+        <aside style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 16, background: 'var(--surface-2)', alignSelf: 'start' }}>
+          <div className="pr-field-label" style={{ marginBottom: 10 }}>MONTHLY BREAKDOWN</div>
+          {!preview ? <p className="muted-sm">Enter a CTC to see the breakdown.</p> : (
+            <table className="table" style={{ background: 'transparent' }}>
+              <tbody>
+                {preview.components.map((l) => (
+                  <tr key={l.component_id}><td>{l.code}<div className="muted-sm">{ruleOf(l)}</div></td><td className="num">{money(l.amount)}</td></tr>
+                ))}
+                <tr className="pr-total-row"><td>Gross</td><td className="num">{money(preview.gross_monthly)}</td></tr>
+              </tbody>
+            </table>
+          )}
+        </aside>
       </div>
-    </section>
+    </Dialog>
   )
 }
 
@@ -411,7 +508,7 @@ function NewRevision({
     gross: (
       <label className="pr-field">
         <span className="pr-field-label">Monthly gross *</span>
-        <input value={gross} inputMode="decimal" placeholder="50000"
+        <input value={gross} type="number" data-spin min={0} step="any" placeholder="50000"
                className={gross && grossPaise === null ? 'is-bad' : ''}
                onChange={(e) => { setGross(e.target.value); setPreview(null) }} />
       </label>

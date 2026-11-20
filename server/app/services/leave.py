@@ -105,6 +105,7 @@ from app.models.leave import (
     OPTIONAL_HOLIDAY_QUOTA_UNLIMITED,
     AccrualType,
 )
+from app.services import eventmail
 from app.services import notifications as notif
 from app.services import reports, timesheets as ts
 from app.services import chains, workflow
@@ -191,6 +192,10 @@ class ResolvedLeaveSettings:
     leave_year_start_month: int
     optional_holiday_quota: int
     is_configured: bool
+    carry_forward_enabled: bool = True
+    carry_forward_max_milli_days: int = 15000
+    encash_enabled: bool = False
+    manager_before_hr: bool = True
 
     @property
     def optional_holidays_are_unlimited(self) -> bool:
@@ -211,7 +216,38 @@ def resolve_settings(db: Session, org_id: uuid.UUID) -> ResolvedLeaveSettings:
         leave_year_start_month=row.leave_year_start_month,
         optional_holiday_quota=row.optional_holiday_quota,
         is_configured=True,
+        carry_forward_enabled=row.carry_forward_enabled,
+        carry_forward_max_milli_days=row.carry_forward_max_milli_days,
+        encash_enabled=row.encash_enabled,
+        manager_before_hr=row.manager_before_hr,
     )
+
+
+def check_eligibility(db: Session, employee: User, leave_type: LeaveType, *, on: date) -> None:
+    """Whether this person may take this type at all: who it is offered to, and how long they
+    have served. Gender is read from the employee's HR record; a person with none recorded is
+    not refused a gender-specific type, because an empty field is missing data, not a "no".
+    """
+    if leave_type.offered_to in ("male", "female"):
+        from app.models import EmployeeProfile
+
+        profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == employee.id))
+        gender = (profile.gender or "").strip().lower() if profile else ""
+        if gender and gender != leave_type.offered_to:
+            raise LeaveError(
+                "not_offered",
+                f"{leave_type.name} is offered to {leave_type.offered_to} employees only",
+                403,
+            )
+    if leave_type.min_service_months and employee.joined_on is not None:
+        earned_from = _add_months(employee.joined_on, leave_type.min_service_months)
+        if on < earned_from:
+            raise LeaveError(
+                "service_too_short",
+                f"{leave_type.name} can be taken from {earned_from.isoformat()}, "
+                f"after {leave_type.min_service_months} months of service",
+                409,
+            )
 
 
 def policy_year_for(day: date, start_month: int) -> int:
@@ -1039,6 +1075,7 @@ def apply_for_leave(
     is_half_day: bool,
     half_day_session: str | None,
     reason: str | None,
+    contact_phone: str | None = None,
 ) -> LeaveApplication:
     """Create one application, with the duration frozen onto it.
 
@@ -1050,6 +1087,7 @@ def apply_for_leave(
         raise LeaveError(
             "half_day_not_allowed", f"{leave_type.name} cannot be taken as a half day"
         )
+    check_eligibility(db, employee, leave_type, on=start_date)
 
     resolved = resolve_settings(db, employee.org_id)
     today = org_today(db, employee.org_id)
@@ -1119,6 +1157,7 @@ def apply_for_leave(
         half_day_session=half_day_session,
         duration_milli_days=duration,
         reason=reason,
+        contact_phone=(contact_phone or None),
         status=LeaveStatus.PENDING.value,
         applied_at=utcnow(),
     )
@@ -1402,18 +1441,31 @@ def notify_applied(db: Session, application: LeaveApplication) -> bool:
     if manager is None:
         return False
     leave_type = db.get(LeaveType, application.leave_type_id)
+    detail = (
+        f"{_days(application.duration_milli_days)} of {leave_type.name if leave_type else 'leave'} from "
+        f"{application.start_date.isoformat()} to {application.end_date.isoformat()}.\n"
+        f"Reason: {application.reason or '-'}"
+    )
+    subject = f"Leave request from {employee.full_name}"
+    body = (
+        f"{employee.full_name} has applied for {_days(application.duration_milli_days)} "
+        f"of {leave_type.name if leave_type else 'leave'} from "
+        f"{application.start_date.isoformat()} to {application.end_date.isoformat()}.\n\n"
+        f"Reason: {application.reason or '-'}"
+    )
+    # The company's Notifications setting: it may switch this mail off or word it differently.
+    on, subject, body = eventmail.customise(
+        db, employee.org_id, "leave_applied", subject, body,
+        {"name": employee.full_name, "manager": manager.full_name, "detail": detail})
+    if not on:
+        return False
     return notify(
         db,
         manager,
         notif.Kind.LEAVE_APPLIED,
         dedupe_key=str(application.id),
-        subject=f"Leave request from {employee.full_name}",
-        body=(
-            f"{employee.full_name} has applied for {_days(application.duration_milli_days)} "
-            f"of {leave_type.name if leave_type else 'leave'} from "
-            f"{application.start_date.isoformat()} to {application.end_date.isoformat()}.\n\n"
-            f"Reason: {application.reason or '-'}"
-        ),
+        subject=subject,
+        body=body,
     )
 
 
@@ -1424,6 +1476,21 @@ def notify_decided(db: Session, application: LeaveApplication) -> bool:
         return False
     leave_type = db.get(LeaveType, application.leave_type_id)
     decision = application.status
+    subject = f"Your leave request was {decision}"
+    body = (
+        f"Your request for {_days(application.duration_milli_days)} of "
+        f"{leave_type.name if leave_type else 'leave'} from "
+        f"{application.start_date.isoformat()} to {application.end_date.isoformat()} "
+        f"was {decision}.\n\n"
+        f"Note: {application.review_note or '-'}"
+    )
+    if decision == LeaveStatus.APPROVED.value:
+        # The company's Notifications setting for an approval. A refusal is always sent.
+        on, subject, body = eventmail.customise(
+            db, employee.org_id, "leave_approved", subject, body,
+            {"name": employee.full_name, "detail": body})
+        if not on:
+            return False
     return notify(
         db,
         employee,
@@ -1432,14 +1499,8 @@ def notify_decided(db: Session, application: LeaveApplication) -> bool:
         # approval both send — two different pieces of news — while a
         # double-clicked Approve sends once.
         dedupe_key=f"{application.id}:{decision}",
-        subject=f"Your leave request was {decision}",
-        body=(
-            f"Your request for {_days(application.duration_milli_days)} of "
-            f"{leave_type.name if leave_type else 'leave'} from "
-            f"{application.start_date.isoformat()} to {application.end_date.isoformat()} "
-            f"was {decision}.\n\n"
-            f"Note: {application.review_note or '-'}"
-        ),
+        subject=subject,
+        body=body,
     )
 
 

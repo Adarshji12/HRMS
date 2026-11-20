@@ -502,7 +502,7 @@ function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => vo
     contact_person: fm('contact_person') !== 'hide' && <Field label="Contact person" required={rq('contact_person')}><input value={head.contact_person} maxLength={120} onChange={set('contact_person')} placeholder="Who vendors should call" /></Field>,
     payment_terms: fm('payment_terms') !== 'hide' && <Field label="Payment terms" required={rq('payment_terms')}><input list="rff-pay" value={head.payment_terms} maxLength={160} onChange={set('payment_terms')} placeholder="e.g. 30 days from invoice" /></Field>,
     delivery_terms: fm('delivery_terms') !== 'hide' && <Field label="Delivery terms" required={rq('delivery_terms')}><input list="rff-del" value={head.delivery_terms} maxLength={160} onChange={set('delivery_terms')} placeholder="e.g. FOR destination" /></Field>,
-    quote_validity_days: fm('quote_validity_days') !== 'hide' && <Field label="Quote valid for (days)" required={rq('quote_validity_days')}><input inputMode="numeric" value={head.quote_validity_days} onChange={(e) => setHead({ ...head, quote_validity_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="30" /></Field>,
+    quote_validity_days: fm('quote_validity_days') !== 'hide' && <Field label="Quote valid for (days)" required={rq('quote_validity_days')}><input type="number" data-spin min={0} step={1} value={head.quote_validity_days} onChange={(e) => setHead({ ...head, quote_validity_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="30" /></Field>,
     terms: fm('terms') !== 'hide' && <Field label="Terms and instructions for vendors" required={rq('terms')}><textarea rows={3} value={head.terms} onChange={set('terms')} placeholder="e.g. Quote with make and model. Prices inclusive of packing. Mention GST separately." /></Field>,
     notes: fm('notes') !== 'hide' && <Field label="Internal notes (not printed)" required={rq('notes')}><textarea rows={3} value={head.notes} onChange={set('notes')} placeholder="e.g. Budget approved up to ₹1.2 lakh" /></Field>,
   }
@@ -927,10 +927,10 @@ function QuoteForm({ rfq, vendorId, onClose, onSaved }: { rfq: Rfq; vendorId: st
             <Field label="Vendor quote ref"><input placeholder="e.g. Q-2026-0142" maxLength={60} value={meta.quote_ref} onChange={(e) => setMeta({ ...meta, quote_ref: e.target.value })} /></Field>
             <Field label="Quote date"><input type="date" value={meta.quote_date} onChange={(e) => setMeta({ ...meta, quote_date: e.target.value })} /></Field>
             <Field label="Valid until"><input type="date" value={meta.valid_until} min={meta.quote_date || undefined} className={validBad ? 'is-bad' : undefined} onChange={(e) => setMeta({ ...meta, valid_until: e.target.value })} /></Field>
-            <Field label="Delivery (days)"><input placeholder="e.g. 7" inputMode="numeric" value={meta.delivery_days} onChange={(e) => setMeta({ ...meta, delivery_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} /></Field>
+            <Field label="Delivery (days)"><input placeholder="e.g. 7" type="number" data-spin min={0} step={1} value={meta.delivery_days} onChange={(e) => setMeta({ ...meta, delivery_days: e.target.value.replace(/\D/g, '').slice(0, 3) })} /></Field>
             <Field label="Payment terms"><input list="rff-pay2" maxLength={160} placeholder="e.g. 30 days from invoice" value={meta.payment_terms} onChange={(e) => setMeta({ ...meta, payment_terms: e.target.value })} /></Field>
             <Field label="Warranty"><input placeholder="e.g. 12 months" maxLength={160} value={meta.warranty} onChange={(e) => setMeta({ ...meta, warranty: e.target.value })} /></Field>
-            <Field label="Freight (₹)"><input placeholder="0" inputMode="decimal" value={meta.freight} onChange={(e) => setMeta({ ...meta, freight: e.target.value })} /></Field>
+            <Field label="Freight (₹)"><input placeholder="0" type="number" data-spin min={0} step="any" value={meta.freight} onChange={(e) => setMeta({ ...meta, freight: e.target.value })} /></Field>
           </div>
           <datalist id="rff-pay2">{PAYMENT_TERMS.map((t) => <option key={t} value={t} />)}</datalist>
         </section>

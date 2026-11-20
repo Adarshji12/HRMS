@@ -185,7 +185,7 @@ export default function PayrollOverview() {
         </div>
         <div className="head-actions">
           <Link className="btn" to="/payroll">
-            Salary structures
+            Employee Salaries
           </Link>
           <Link className="btn btn-primary" to="/payroll/runs">
             Open pay runs
@@ -357,7 +357,7 @@ export default function PayrollOverview() {
               <IconSheet size={16} /> Pay runs, register and bank file
             </Link>
             <Link to="/payroll" className="pr-jump-link">
-              <IconCard size={16} /> Salary structures
+              <IconCard size={16} /> Employee Salaries
             </Link>
             <Link to="/payroll/components" className="pr-jump-link">
               <IconChart size={16} /> Pay components

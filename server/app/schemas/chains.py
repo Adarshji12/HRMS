@@ -32,6 +32,13 @@ class LevelIn(BaseModel):
     auto_forward_days: int = Field(default=0, ge=0, le=90)
     escalate_after_days: int = Field(default=0, ge=0, le=90)
     escalate_to_user_id: uuid.UUID | None = None
+    #: Must be passed; an optional level is skipped when nobody is assigned to it.
+    is_mandatory: bool = True
+    #: Skip this level when nobody is assigned, instead of showing it as unassigned.
+    auto_skip: bool = False
+    #: Approving here finishes the request.
+    is_final: bool = False
+    is_active: bool = True
 
 
 class LevelsIn(BaseModel):
@@ -51,6 +58,9 @@ class LevelOut(ORMModel):
     escalate_after_days: int
     escalate_to_user_id: uuid.UUID | None = None
     is_active: bool
+    is_mandatory: bool = True
+    auto_skip: bool = False
+    is_final: bool = False
 
     reviewer_name: str | None = None
     escalate_to_name: str | None = None
@@ -192,3 +202,29 @@ class PreviewIn(BaseModel):
 
     subject_user_id: uuid.UUID | None = None
     values: dict[str, Any] = Field(default_factory=dict)
+
+
+class FlowOut(BaseModel):
+    """One request type's switches."""
+
+    kind: str
+    is_enabled: bool = True
+    sequential: bool = True
+    reject_ends: bool = True
+    notify_approver: bool = True
+
+
+class FlowIn(BaseModel):
+    """Left out means unchanged."""
+
+    is_enabled: bool | None = None
+    sequential: bool | None = None
+    reject_ends: bool | None = None
+    notify_approver: bool | None = None
+
+
+class OverviewOut(BaseModel):
+    """A request type, its switches and its company-wide chain, for the settings screen."""
+
+    flow: FlowOut
+    levels: list[LevelOut] = []

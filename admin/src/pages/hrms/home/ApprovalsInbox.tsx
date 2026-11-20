@@ -141,7 +141,7 @@ interface TeamSheet {
   rows: TeamSheetRow[]
 }
 
-type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'loan' | 'performance'
+type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'loan' | 'performance' | 'incentive'
 
 /** One row of the merged queue, whichever module produced it. */
 interface InboxItem {
@@ -170,6 +170,7 @@ interface Settled {
 }
 
 const LANE_LABEL: Record<Lane, string> = {
+  incentive: 'Incentive',
   regularization: 'Attendance',
   leave: 'Leave',
   timesheet: 'Timesheet',
@@ -284,6 +285,9 @@ export default function ApprovalsInbox() {
      rows the server would happily have decided. */
   const mayExpense = permits(user, 'can_approve_expenses') && tabOpen('expense')
   const mayLoan = permits(user, 'can_approve_loans') && tabOpen('loan')
+  /* Sales incentives are asked of the person's manager (or an administrator); the endpoint returns
+     only the ones this reader may decide. */
+  const mayIncentive = isTeamViewer && tabOpen('incentive')
   /* Appraisals are assigned per review rather than by a permission flag: the
      review records the manager it was given to, and a reorganisation must not
      move somebody's appraisal to whoever manages them today. So the lane is
@@ -295,9 +299,9 @@ export default function ApprovalsInbox() {
   const mayCostsheet = mayApproveCostsheets({ canViewTeam: isTeamViewer, menuRights: user?.menu_rights ?? null })
   const costsheetQ = useCostsheetQueue(mayCostsheet)
   const showCostsheets = mayCostsheet && !costsheetQ.error
-  const ticked = ['regularization', 'leave', 'timesheet', 'expense', 'loan', 'performance', 'costsheet'].some(tabTicked)
+  const ticked = ['regularization', 'leave', 'timesheet', 'expense', 'loan', 'performance', 'incentive', 'costsheet'].some(tabTicked)
   const mayAnything =
-    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayReview || ticked
+    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayIncentive || mayReview || ticked
 
   /* The lanes fetch in parallel and fail independently. A leave outage must
      not hide the four regularizations that are also waiting. */
@@ -333,6 +337,11 @@ export default function ApprovalsInbox() {
     `inbox-expense:${reloadKey}`,
     () => api.get<PendingClaim[]>('/expenses/review'),
     { enabled: mayExpense },
+  )
+  const incentiveQ = useQuery<Array<{ id: string; user_id: string; name: string | null; period_year: number; period_month: number; target: number; achieved: number; amount: number; created_at: string | null }>>(
+    `inbox-incentive:${reloadKey}`,
+    () => api.get('/incentives?status=pending'),
+    { enabled: mayIncentive },
   )
   const loanQ = useQuery<PendingLoan[]>(
     `inbox-loan:${reloadKey}`,
@@ -608,6 +617,34 @@ export default function ApprovalsInbox() {
       })
     }
 
+    for (const row of incentiveQ.data ?? []) {
+      if (row.user_id === user?.id) continue  // your own is for somebody else to decide
+      out.push({
+        key: `incentive:${row.id}`,
+        lane: 'incentive',
+        userId: row.user_id,
+        personName: row.name ?? 'Unknown employee',
+        waitingSince: row.created_at ?? `${row.period_year}-${String(row.period_month).padStart(2, '0')}-28`,
+        claim: (
+          <>
+            Earned a sales incentive of <b>{money(row.amount)}</b> for {String(row.period_month).padStart(2, '0')}/{row.period_year}.
+          </>
+        ),
+        facts: (
+          <>
+            <span>Target <b>{row.target}</b></span>
+            <span>Achieved <b>{row.achieved}</b></span>
+            <span>Approving adds it to the next pay run as an Incentive earning.</span>
+          </>
+        ),
+        quote: null,
+        decide: async (approve, note) => {
+          await api.post(`/incentives/${row.id}/decision`, { approve, note: note.trim() || null })
+        },
+        outcome: (approve) => (approve ? 'Approved. It goes on the next pay run.' : 'Refused. They have been told why.'),
+      })
+    }
+
     for (const row of reviewQ.data ?? []) {
       const rated = row.goals.filter((g) => g.self_rating !== null).length
       out.push({
@@ -661,7 +698,7 @@ export default function ApprovalsInbox() {
     }
     return out.sort((a, b) => at(a) - at(b))
   }, [regQ.data, leaveQ.data, tsNowQ.data, tsPrevQ.data, expenseQ.data,
-      loanQ.data, reviewQ.data, tz])
+      loanQ.data, reviewQ.data, incentiveQ.data, tz])
 
   if (!mayAnything) {
     return (
@@ -721,6 +758,7 @@ export default function ApprovalsInbox() {
     (mayTimesheet && (tsNowQ.loading || tsPrevQ.loading)) ||
     (mayExpense && expenseQ.loading) ||
     (mayLoan && loanQ.loading) ||
+    (mayIncentive && incentiveQ.loading) ||
     (mayReview && (cyclesQ.loading || reviewQ.loading))
   const refetching =
     regQ.refetching || leaveQ.refetching || tsNowQ.refetching ||
@@ -784,6 +822,7 @@ export default function ApprovalsInbox() {
     { id: 'timesheet', allowed: mayTimesheet || tabTicked('timesheet') },
     { id: 'expense', allowed: mayExpense || tabTicked('expense') },
     { id: 'loan', allowed: mayLoan || tabTicked('loan') },
+    { id: 'incentive', allowed: mayIncentive || tabTicked('incentive') },
     { id: 'performance', allowed: mayReview || tabTicked('performance') },
   ]
 
@@ -839,6 +878,9 @@ export default function ApprovalsInbox() {
       )}
       {mayExpense && expenseQ.error && (
         <ErrorNote>Expense claims: {errorText(expenseQ.error, 'could not be loaded')}</ErrorNote>
+      )}
+      {mayIncentive && incentiveQ.error && (
+        <ErrorNote>Sales incentives: {errorText(incentiveQ.error, 'could not be loaded')}</ErrorNote>
       )}
       {mayLoan && loanQ.error && (
         <ErrorNote>Loan requests: {errorText(loanQ.error, 'could not be loaded')}</ErrorNote>

@@ -1050,7 +1050,7 @@ export function LeadForm({
              hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
       <LfInput prefix="₹" bad={touched.value && valueBad}>
         <input value={value ?? ''} onChange={(event) => setValue(event.target.value.replace(/,/g, ''))} onBlur={touch('value')}
-               inputMode="decimal" placeholder="e.g. 150000" aria-label="Expected revenue" />
+               type="number" data-spin min={0} step="any" placeholder="e.g. 150000" aria-label="Expected revenue" />
       </LfInput>
     </LfField>
   )
@@ -1694,7 +1694,7 @@ export function ConvertDialog({
               <input
                 value={amount}
                 onChange={(event) => { setAmount(event.target.value); setAmountTyped(event.target.value !== '') }}
-                inputMode="decimal"
+                type="number" data-spin min={0} step="any"
                 placeholder="0.00"
               />
             </Field>

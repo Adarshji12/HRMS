@@ -7,7 +7,7 @@ import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -58,7 +58,7 @@ from app.schemas.common import (
     UserWithKeyOut,
 )
 from app.services import hrsettings as hr_settings
-from app.services import agentdist, hierarchy, mailconfig, reports, storage
+from app.services import agentdist, eventmail, hierarchy, mailconfig, reports, storage
 from app.services import attendance as attendance_svc
 from app.services import corehr as corehr_svc
 from app.services import employee_io
@@ -546,10 +546,14 @@ def list_employees(viewer: CurrentUser, db: DbSession) -> list[User]:
 
 @router.post("/employees", response_model=UserWithKeyOut, status_code=status.HTTP_201_CREATED)
 def create_employee(
-    payload: UserCreate, admin: AdminUser, request: Request, db: DbSession
+    payload: UserCreate, admin: AdminUser, request: Request, db: DbSession, background: BackgroundTasks
 ) -> User:
     user = _create_employee(db, admin, payload, request)
     db.commit()
+    # Tell the new hire's reporting manager, if the company has switched that mail on.
+    background.add_task(
+        eventmail.send_event, "new_employee_onboarding", user.id, dedupe=str(user.id),
+        ctx={"date": user.joined_on.isoformat() if user.joined_on else "soon"})
     return user
 
 
@@ -659,9 +663,22 @@ def _create_employee(db, admin: User, payload: UserCreate, request: Request) -> 
     )
     db.add(user)
     db.flush()
+    _give_default_shift(db, admin.org_id, user)
     audit(db, org_id=admin.org_id, actor=admin, action="employee.created", request=request,
           target_type="user", target_id=str(user.id))
     return user
+
+
+def _give_default_shift(db, org_id, user: User) -> None:
+    """Put a new employee on the company's default shift, if one is set."""
+    from datetime import date as _date
+
+    from app.models import Shift, ShiftAssignment
+
+    shift = db.scalar(select(Shift).where(Shift.org_id == org_id, Shift.is_default.is_(True), Shift.is_active.is_(True)))
+    if shift is not None:
+        db.add(ShiftAssignment(org_id=org_id, user_id=user.id, shift_id=shift.id,
+                               effective_from=user.joined_on or _date.today()))
 
 
 @router.patch("/employees/{user_id}", response_model=UserWithKeyOut)

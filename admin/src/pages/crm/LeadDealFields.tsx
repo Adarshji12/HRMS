@@ -179,7 +179,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
                note={saved ? 'Saved on this lead\'s opportunity.' : 'Optional. Fill these in to create the opportunity with the lead.'}>
       <LfField label="Probability" required error={probabilityBad(deal) ? 'Between 0 and 100.' : undefined}>
         <LfInput prefix="%" bad={probabilityBad(deal)}>
-          <input value={deal.probability} inputMode="numeric" placeholder="e.g. 30" aria-label="Probability"
+          <input value={deal.probability} type="number" data-spin min={0} step={1} placeholder="e.g. 30" aria-label="Probability"
                  onChange={(e) => set({ probability: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
         </LfInput>
       </LfField>
@@ -244,7 +244,7 @@ export function LeadDealFields({ deal, onChange, revenue, saved, part = 'both', 
 
       <LfField label="Raw cost" required={req} error={costBad(deal) ? 'Enter an amount like 200000 or 200000.50.' : undefined}>
         <LfInput prefix="₹" bad={costBad(deal)}>
-          <input value={deal.rawCost} inputMode="decimal" placeholder="e.g. 200000" aria-label="Raw cost"
+          <input value={deal.rawCost} type="number" data-spin min={0} step="any" placeholder="e.g. 200000" aria-label="Raw cost"
                  onChange={(e) => set({ rawCost: e.target.value.replace(/,/g, '') })} />
         </LfInput>
       </LfField>

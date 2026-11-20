@@ -82,8 +82,9 @@ import ExpenseSettings from './pages/hrms/expenses/ExpenseSettings'
 import MyLoans, { LoanAdmin, LoanDeductions } from './pages/hrms/loans/Loans'
 import MySalary from './pages/hrms/payroll/MySalary'
 import SalaryStructures from './pages/hrms/payroll/SalaryStructures'
-import PayComponents from './pages/hrms/payroll/PayComponents'
+import SalarySetup from './pages/hrms/payroll/SalarySetup'
 import PayRuns, { MyPayslips } from './pages/hrms/payroll/PayRuns'
+import SalarySlips from './pages/hrms/payroll/SalarySlips'
 import PayrollOverview from './pages/hrms/payroll/PayrollOverview'
 import StatutorySettings from './pages/hrms/payroll/StatutorySettings'
 import TaxDeclarationPage from './pages/hrms/payroll/TaxDeclaration'
@@ -94,6 +95,8 @@ import YearEnd, { MyForm16 } from './pages/hrms/payroll/YearEnd'
 // lists every page.
 import MyAttendance from './pages/hrms/attendance/MyAttendance'
 import TeamAttendance from './pages/hrms/attendance/TeamAttendance'
+import LeaveDesk from './pages/hrms/leave/LeaveDesk'
+import EmployeeTracking from './pages/hrms/tracking/EmployeeTracking'
 import AttendanceSettings from './pages/hrms/attendance/AttendanceSettings'
 import MyLeave from './pages/hrms/leave/MyLeave'
 import TeamLeave from './pages/hrms/leave/TeamLeave'
@@ -678,6 +681,14 @@ function Shell() {
             path="/hrms/working-hours"
             element={access.canViewTeam ? <TimeOverview /> : <Navigate to="/home" replace />}
           />
+          <Route
+            path="/tracking"
+            element={access.canViewTeam ? <EmployeeTracking /> : <Navigate to="/attendance" replace />}
+          />
+          <Route
+            path="/hrms/leave"
+            element={access.canViewTeam ? <LeaveDesk /> : <Navigate to="/leave" replace />}
+          />
           <Route path="/hrms/joiners-letters" element={<JoinersLettersHub />} />
           <Route path="/hrms/settings" element={<HRMSSettings />} />
           {/* ERP phase one. Ungated at the route: every page reads /erp/access
@@ -855,12 +866,20 @@ function Shell() {
               element={isAdmin ? <PayRuns /> : <Navigate to="/payslips" replace />}
             />
             <Route
+              path="/payroll/slips"
+              element={isAdmin ? <SalarySlips /> : <Navigate to="/payslips" replace />}
+            />
+            <Route
               path="/payroll"
               element={isAdmin ? <SalaryStructures /> : <Navigate to="/salary" replace />}
             />
             <Route
+              path="/payroll/setup"
+              element={isAdmin ? <SalarySetup /> : <Navigate to="/salary" replace />}
+            />
+            <Route
               path="/payroll/components"
-              element={isAdmin ? <PayComponents /> : <Navigate to="/salary" replace />}
+              element={<Navigate to="/payroll/setup" replace />}
             />
             <Route
               path="/payroll/tax"

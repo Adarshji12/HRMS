@@ -357,7 +357,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
     sale_price: fm('sale_price') !== 'hide' && (
       <Field label="Sale price" required={rq('sale_price')}>
         <span className="itf-affix"><i>₹</i>
-          <input placeholder="e.g. 45000" inputMode="decimal" value={value('sale_price')} onChange={(e) => set('sale_price', e.target.value)} />
+          <input placeholder="e.g. 45000" type="number" data-spin min={0} step="any" value={value('sale_price')} onChange={(e) => set('sale_price', e.target.value)} />
         </span>
       </Field>
     ),
@@ -380,7 +380,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
     standard_cost: fm('standard_cost') !== 'hide' && (
       <Field label="Cost" required={rq('standard_cost')}>
         <span className="itf-affix"><i>₹</i>
-          <input placeholder="e.g. 32000" inputMode="decimal" value={value('standard_cost')} onChange={(e) => set('standard_cost', e.target.value)} />
+          <input placeholder="e.g. 32000" type="number" data-spin min={0} step="any" value={value('standard_cost')} onChange={(e) => set('standard_cost', e.target.value)} />
         </span>
       </Field>
     ),
@@ -420,7 +420,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
     warranty_months: fm('warranty_months') !== 'hide' && (
       <Field label="Warranty">
         <span className="itf-affix is-suffix">
-          <input placeholder="12" inputMode="numeric" value={String(form.warranty_months ?? 0)}
+          <input placeholder="12" type="number" data-spin min={0} step={1} value={String(form.warranty_months ?? 0)}
             onChange={(e) => set('warranty_months', Number(e.target.value.replace(/\D/g, '')) || 0)} />
           <i>months</i>
         </span>
@@ -429,7 +429,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
     weight_kg: fm('weight_kg') !== 'hide' && (
       <Field label="Weight" required={rq('weight_kg')}>
         <span className="itf-affix is-suffix">
-          <input inputMode="decimal" value={value('weight_kg')} placeholder="0.00"
+          <input type="number" data-spin min={0} step="any" value={value('weight_kg')} placeholder="0.00"
             onChange={(e) => set('weight_kg', e.target.value)} />
           <i>kg</i>
         </span>
@@ -438,7 +438,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
     volume_m3: fm('volume_m3') !== 'hide' && (
       <Field label="Volume" required={rq('volume_m3')}>
         <span className="itf-affix is-suffix">
-          <input inputMode="decimal" value={value('volume_m3')} placeholder="0.00"
+          <input type="number" data-spin min={0} step="any" value={value('volume_m3')} placeholder="0.00"
             onChange={(e) => set('volume_m3', e.target.value)} />
           <i>m³</i>
         </span>
@@ -1029,7 +1029,7 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
     payment_terms_days: fm('payment_terms_days') !== 'hide' && (
       <Field label="Payment terms">
         <span className="itf-affix is-suffix">
-          <input placeholder="30" inputMode="numeric" value={String(form.payment_terms_days)}
+          <input placeholder="30" type="number" data-spin min={0} step={1} value={String(form.payment_terms_days)}
             onChange={(e) => set('payment_terms_days', Number(e.target.value.replace(/\D/g, '')) || 0)} />
           <i>days</i>
         </span>
@@ -1403,8 +1403,8 @@ function CustomerDrawer({ customer, onClose, onChanged }: { customer: CustomerAc
     legal_name: fm('legal_name') !== 'hide' && <Field label="Legal name" wide required={rq('legal_name')}><input placeholder="e.g. Sharma Traders Pvt Ltd" disabled={!editable} value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} /></Field>,
     gstin: fm('gstin') !== 'hide' && <Field label="GSTIN" required={rq('gstin')}><input placeholder="22AAAAA0000A1Z5" disabled={!editable} value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value })} /></Field>,
     pan: fm('pan') !== 'hide' && <Field label="PAN" required={rq('pan')}><input placeholder="ABCDE1234F" disabled={!editable} value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value })} /></Field>,
-    credit_limit: fm('credit_limit') !== 'hide' && <Field label="Credit limit (₹, 0 = none)" required={rq('credit_limit')}><input placeholder="e.g. 500000" disabled={!editable} inputMode="decimal" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></Field>,
-    credit_days: fm('credit_days') !== 'hide' && <Field label="Credit days"><input placeholder="30" disabled={!editable} inputMode="numeric" value={String(form.credit_days)} onChange={(e) => setForm({ ...form, credit_days: Number(e.target.value) || 0 })} /></Field>,
+    credit_limit: fm('credit_limit') !== 'hide' && <Field label="Credit limit (₹, 0 = none)" required={rq('credit_limit')}><input placeholder="e.g. 500000" disabled={!editable} type="number" data-spin min={0} step="any" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></Field>,
+    credit_days: fm('credit_days') !== 'hide' && <Field label="Credit days"><input placeholder="30" disabled={!editable} type="number" data-spin min={0} step={1} value={String(form.credit_days)} onChange={(e) => setForm({ ...form, credit_days: Number(e.target.value) || 0 })} /></Field>,
     billing_state: fm('billing_state') !== 'hide' && <Field label="Billing state (place of supply)" required={rq('billing_state')}><input placeholder="e.g. Maharashtra" disabled={!editable} value={form.billing_state} onChange={(e) => setForm({ ...form, billing_state: e.target.value })} /></Field>,
     billing_address: fm('billing_address') !== 'hide' && <Field label="Billing address" wide required={rq('billing_address')}><textarea placeholder="e.g. 12 MG Road, Pune, Maharashtra 411001" disabled={!editable} rows={2} value={form.billing_address} onChange={(e) => setForm({ ...form, billing_address: e.target.value })} /></Field>,
     shipping_address: fm('shipping_address') !== 'hide' && <Field label="Shipping address" wide required={rq('shipping_address')}><textarea placeholder="e.g. 12 MG Road, Pune, Maharashtra 411001" disabled={!editable} rows={2} value={form.shipping_address} onChange={(e) => setForm({ ...form, shipping_address: e.target.value })} /></Field>,

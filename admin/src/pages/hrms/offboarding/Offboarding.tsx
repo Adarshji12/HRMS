@@ -2509,7 +2509,7 @@ function FnfForm({
           Gross dues
           <input
             className="offboard-money-input"
-            inputMode="decimal"
+            type="number" data-spin min={0} step="any"
             value={gross}
             onChange={(e) => setGross(e.target.value)}
             placeholder="0.00"
@@ -2521,7 +2521,7 @@ function FnfForm({
           Deductions
           <input
             className="offboard-money-input"
-            inputMode="decimal"
+            type="number" data-spin min={0} step="any"
             value={deductions}
             onChange={(e) => setDeductions(e.target.value)}
             placeholder="0.00"
@@ -2532,7 +2532,7 @@ function FnfForm({
           Net payable
           <input
             className="offboard-money-input"
-            inputMode="decimal"
+            type="number" data-spin min={0} step="any"
             value={net}
             onChange={(e) => setNet(e.target.value)}
             placeholder="0.00"

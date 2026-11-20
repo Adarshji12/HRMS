@@ -406,6 +406,19 @@ def _expense_claims(
     )
 
 
+def _incentive_lines(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> list:
+    """Approved sales incentives still to be paid. Not filtered by month: one approved after
+    its month closed still reaches the next run, like an approved expense claim."""
+    from app.models import IncentiveStatus, SalesIncentive
+
+    return list(db.scalars(
+        select(SalesIncentive).where(
+            SalesIncentive.org_id == org_id, SalesIncentive.user_id == user_id,
+            SalesIncentive.status == IncentiveStatus.APPROVED.value,
+        ).order_by(SalesIncentive.period_year, SalesIncentive.period_month)
+    ))
+
+
 def compute(
     db: Session,
     viewer: User,
@@ -572,6 +585,24 @@ def compute(
             )
             gross += amount
 
+        # --- sales incentives: approved and not yet paid -----------------------
+        # Taxable pay, like salary, but not a base for PF or ESI: it is a payment for a result,
+        # not wages for the month.
+        for incentive in _incentive_lines(db, viewer.org_id, employee.id):
+            if incentive.amount <= 0:
+                continue
+            db.add(
+                PayslipLine(
+                    org_id=viewer.org_id, payslip_id=payslip.id, kind="earning", code="INCENTIVE",
+                    name="Sales incentive", amount=incentive.amount, source=LineSource.INCENTIVE.value,
+                    source_id=incentive.id,
+                    detail=f"{incentive.period_month:02d}/{incentive.period_year}: {incentive.achieved} of {incentive.target}",
+                    sort_order=550,
+                )
+            )
+            gross += incentive.amount
+            taxable_salary += incentive.amount
+
         # --- deductions: loans only, until checkpoint 3 ---------------------
         deductions = 0
         for instalment, loan in _loan_lines(
@@ -681,7 +712,7 @@ def compute(
             already_deducted=ytd_tds,
             months_remaining=months_remaining,
         )
-        if tds.amount > 0:
+        if tds.amount > 0 and (config is None or config.tds_enabled):
             db.add(
                 PayslipLine(
                     org_id=viewer.org_id, payslip_id=payslip.id, kind="deduction",
@@ -803,7 +834,7 @@ def mark_paid(
             .where(
                 Payslip.run_id == run.id,
                 PayslipLine.source.in_(
-                    (LineSource.LOAN.value, LineSource.EXPENSE.value)
+                    (LineSource.LOAN.value, LineSource.EXPENSE.value, LineSource.INCENTIVE.value)
                 ),
             )
         )
@@ -840,6 +871,13 @@ def mark_paid(
                     loan.status = LoanStatus.CLOSED.value
                     loan.closed_on = paid_on
             loans_settled += 1
+        elif line.source == LineSource.INCENTIVE.value:
+            from app.models import IncentiveStatus, SalesIncentive
+
+            incentive = db.get(SalesIncentive, line.source_id)
+            if incentive is not None and incentive.status == IncentiveStatus.APPROVED.value:
+                incentive.status = IncentiveStatus.PAID.value
+                incentive.paid_at = _now()
         else:
             claim = db.get(ExpenseClaim, line.source_id)
             if claim is None or claim.status != ClaimStatus.APPROVED.value:
@@ -916,6 +954,20 @@ def payslips_for_run(db: Session, viewer: User, run_id: uuid.UUID) -> list[Paysl
             .join(User, User.id == Payslip.user_id)
             .where(Payslip.run_id == run.id)
             .order_by(User.full_name)
+        )
+    )
+
+
+def payslips_of(db: Session, viewer: User, user_id: uuid.UUID) -> list[Payslip]:
+    """Every payslip one employee has, newest month first, for the people who run payroll."""
+    _require_manager(viewer)
+    return list(
+        db.scalars(
+            select(Payslip)
+            .join(PayRun, PayRun.id == Payslip.run_id)
+            .where(Payslip.org_id == viewer.org_id, Payslip.user_id == user_id,
+                   PayRun.status != "cancelled")
+            .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
         )
     )
 

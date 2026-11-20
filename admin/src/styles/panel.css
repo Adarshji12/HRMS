@@ -123,3 +123,18 @@
      every pixel of the strip belongs to them. */
   .pnl-tab svg { display: none; }
 }
+
+/* A module whose pages run down the left (Payroll): the list beside the page rather than above it. */
+.pnl-side { flex-direction: row; align-items: flex-start; gap: 20px; }
+.pnl-side > .pnl-bar {
+  flex: none; flex-direction: column; align-items: stretch; width: 230px; position: sticky; top: 16px;
+  overflow: visible; gap: 6px;
+}
+.pnl-side > .pnl-bar .pnl-set { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 2px; }
+.pnl-side > .pnl-bar .pnl-set + .pnl-set { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.pnl-side > .pnl-bar .pnl-tab { width: 100%; justify-content: flex-start; }
+.pnl-side > .pnl-body { flex: 1; min-width: 0; }
+@media (max-width: 800px) {
+  .pnl-side { flex-direction: column; }
+  .pnl-side > .pnl-bar { flex-direction: row; width: auto; position: static; }
+}

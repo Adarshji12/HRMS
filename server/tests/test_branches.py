@@ -219,3 +219,102 @@ def test_a_device_records_its_verification_and_timing(client, tenants):
                        json={**base, "name": "B", "ip_required": True}).status_code == 422
     assert client.post("/api/v1/attendance/devices", headers=tenant.headers(),
                        json={**base, "name": "C", "ip_required": True, "allowed_ips": "not-an-ip"}).status_code == 422
+
+
+def test_a_biometric_device_records_its_protocol(client, tenants):
+    tenant, _ = tenants
+    made = client.post("/api/v1/attendance/devices", headers=tenant.headers(),
+                       json={"kind": "biometric", "name": "Gate", "protocol": "zkteco"})
+    assert made.status_code == 201, made.text
+    assert made.json()["protocol"] == "zkteco"
+    default = client.post("/api/v1/attendance/devices", headers=tenant.headers(), json={"kind": "biometric", "name": "Side door"}).json()
+    assert default["protocol"] == "generic"
+    assert client.post("/api/v1/attendance/devices", headers=tenant.headers(),
+                       json={"kind": "biometric", "name": "X", "protocol": "unknown"}).status_code == 422
+
+
+# -------------------------------------------------------------------- shifts --- #
+
+
+def _shift(client, tenant, **over):
+    body = {"name": "General Shift", "start_time": "09:30", "end_time": "18:30", **over}
+    return client.post("/api/v1/attendance/shifts", json=body, headers=tenant.headers())
+
+
+def test_a_shift_has_week_offs_a_colour_and_a_break(client, tenants):
+    tenant, _ = tenants
+    made = _shift(client, tenant, week_offs={"sun": "all", "sat": "2,4"}, break_minutes=45,
+                  full_day_minutes=540, color="#ff8800")
+    assert made.status_code == 201, made.text
+    body = made.json()
+    assert body["week_offs"] == {"sun": "all", "sat": "2,4"} and body["break_minutes"] == 45
+    assert body["full_day_hours"] == 9 and body["color"] == "#ff8800" and body["is_default"] is False
+    assert _shift(client, tenant, name="X", week_offs={"funday": "all"}).status_code == 422
+    assert _shift(client, tenant, name="Y", week_offs={"sat": "6"}).status_code == 422
+    assert _shift(client, tenant, name="Z", color="blue").status_code == 422
+
+
+def test_week_off_patterns_pick_the_right_saturdays():
+    import json
+    from datetime import date
+
+    from app.models import Shift
+
+    shift = Shift(week_offs=json.dumps({"sun": "all", "sat": "2,4", "fri": "last"}))
+    assert shift.is_off_on(date(2026, 11, 22)) is True      # a Sunday
+    assert shift.is_off_on(date(2026, 11, 14)) is True      # the 2nd Saturday
+    assert shift.is_off_on(date(2026, 11, 7)) is False      # the 1st Saturday
+    assert shift.is_off_on(date(2026, 11, 28)) is True      # the 4th Saturday
+    assert shift.is_off_on(date(2026, 11, 27)) is True      # the last Friday
+    assert shift.is_off_on(date(2026, 11, 20)) is False     # a Friday, not the last
+    assert shift.is_off_on(date(2026, 11, 18)) is False     # a Wednesday
+    assert Shift(week_offs=None).is_off_on(date(2026, 11, 22)) is None
+
+
+def test_only_one_shift_is_the_default_and_a_new_employee_gets_it(client, tenants):
+    tenant, _ = tenants
+    first = _shift(client, tenant, is_default=True).json()
+    second = _shift(client, tenant, name="Night", is_default=True).json()
+    rows = {s["id"]: s for s in client.get("/api/v1/attendance/shifts", headers=tenant.headers()).json()}
+    assert rows[second["id"]]["is_default"] is True and rows[first["id"]]["is_default"] is False
+
+    from tests.test_employee_hire import _grant_seats
+    _grant_seats(tenant.id)
+    hired = client.post("/api/v1/admin/employees", headers=tenant.headers(),
+                        json={"email": "newhire@example.com", "full_name": "New Hire", "role": "employee"})
+    assert hired.status_code == 201, hired.text
+    shifts = {s["id"]: s for s in client.get("/api/v1/attendance/shifts", headers=tenant.headers()).json()}
+    assert shifts[second["id"]]["assigned_count"] == 1
+
+
+def test_an_older_client_editing_a_shift_keeps_the_new_fields(client, tenants):
+    tenant, _ = tenants
+    made = _shift(client, tenant, week_offs={"sun": "all"}, color="#ff8800", break_minutes=30).json()
+    edited = client.patch(f"/api/v1/attendance/shifts/{made['id']}", headers=tenant.headers(), json={
+        "name": "General Shift", "start_time": "09:00", "end_time": "18:00"})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["week_offs"] == {"sun": "all"} and edited.json()["color"] == "#ff8800" and edited.json()["break_minutes"] == 30
+
+
+def test_overtime_is_rounded_down_in_steps_and_the_rate_settings_round_trip(client, tenants):
+    from datetime import date
+
+    from app.services.timesheets import DayRow
+
+    day = DayRow(day=date(2026, 8, 12), tracked_minutes=480 + 47, expected_minutes=480, ot_round_minutes=15, ot_min_minutes=30)
+    assert day.overtime_minutes == 45                       # 47 counted, rounded down to 45
+    assert DayRow(day=date(2026, 8, 12), tracked_minutes=480 + 20, expected_minutes=480, ot_min_minutes=30).overtime_minutes == 0
+
+    tenant, _ = tenants
+    saved = client.put("/api/v1/attendance/settings", headers=tenant.headers(), json={
+        "overtime_rate_mode": "flat", "overtime_flat_rate_paise": 25000, "overtime_derived_from": "ctc",
+        "overtime_mult_working_x100": 150, "overtime_mult_off_x100": 200, "overtime_mult_holiday_x100": 250,
+        "overtime_round_minutes": 15, "overtime_max_hours_month": 40,
+        "overtime_requires_approval": False, "overtime_pay_through_payroll": True})
+    assert saved.status_code == 200, saved.text
+    got = client.get("/api/v1/attendance/settings", headers=tenant.headers()).json()
+    assert (got["overtime_rate_mode"], got["overtime_flat_rate_paise"], got["overtime_derived_from"]) == ("flat", 25000, "ctc")
+    assert (got["overtime_mult_working_x100"], got["overtime_mult_holiday_x100"]) == (150, 250)
+    assert (got["overtime_round_minutes"], got["overtime_max_hours_month"]) == (15, 40)
+    assert got["overtime_requires_approval"] is False and got["overtime_pay_through_payroll"] is True
+    assert client.put("/api/v1/attendance/settings", headers=tenant.headers(), json={"overtime_rate_mode": "hourly"}).status_code == 422

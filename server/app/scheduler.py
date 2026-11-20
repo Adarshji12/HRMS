@@ -86,6 +86,12 @@ def _run_crm_reminders() -> object:
     return run_due_reminders()
 
 
+def _run_event_mail() -> object:
+    from app.services.eventmail import run_daily
+
+    return run_daily()
+
+
 def build_jobs() -> list[Job]:
     return [
         # Fifteen minutes: the agent-silence rule fires after 30, so a longer
@@ -122,6 +128,9 @@ def build_jobs() -> list[Job]:
         # The job is idempotent per reminder per day, so firing it twelve times
         # a day costs eleven no-ops rather than eleven duplicate sends.
         Job("crm_reminders", every_seconds=60 * 60, run=_run_crm_reminders, delay=360),
+        # Birthday and work-anniversary mails. Hourly so each company gets its own local date; the
+        # notification log makes a repeat on the same day a no-op.
+        Job("event_mail", every_seconds=60 * 60, run=_run_event_mail, delay=420),
     ]
 
 

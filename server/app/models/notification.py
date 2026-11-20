@@ -77,3 +77,34 @@ class NotificationPreference(UUIDMixin, TimestampMixin, Base):
     )
     kind: Mapped[str] = mapped_column(String(40), nullable=False)
     email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class NotificationRule(UUIDMixin, TimestampMixin, Base):
+    """A company's setting for one event mail: on or off, and optionally its own wording.
+
+    No row means the event's built-in default applies. A null subject or body means "use the
+    built-in wording".
+    """
+
+    __tablename__ = "notification_rules"
+    __table_args__ = (UniqueConstraint("org_id", "event", name="uq_notification_rules_event"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event: Mapped[str] = mapped_column(String(40), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    subject: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class NotificationOrgSettings(TimestampMixin, Base):
+    """The company-wide HR alerts that are not a per-event mail."""
+
+    __tablename__ = "notification_org_settings"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    probation_alert: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    document_alert: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

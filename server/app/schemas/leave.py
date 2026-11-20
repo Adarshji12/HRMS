@@ -57,6 +57,11 @@ class LeaveSettingsIn(BaseModel):
     #: 0 means **unlimited**, not "none" — see the column comment. Capped at 50
     #: to match the ceiling on OptionalHolidayOptInIn.holiday_ids.
     optional_holiday_quota: int = Field(default=0, ge=0, le=50)
+    # Policy flags. Left out, they are kept as they are.
+    carry_forward_enabled: bool | None = None
+    carry_forward_max_milli_days: int | None = Field(default=None, ge=0, le=365_000)
+    encash_enabled: bool | None = None
+    manager_before_hr: bool | None = None
 
 
 class LeaveSettingsOut(ORMModel):
@@ -78,6 +83,10 @@ class LeaveSettingsOut(ORMModel):
     #: Derived so the console does not reimplement the 0-means-unlimited rule
     #: and get it backwards.
     optional_holidays_are_unlimited: bool = True
+    carry_forward_enabled: bool = True
+    carry_forward_max_milli_days: int = 15000
+    encash_enabled: bool = False
+    manager_before_hr: bool = True
 
 
 # --------------------------------------------------------------------------- #
@@ -105,6 +114,12 @@ class LeaveTypeIn(BaseModel):
     #: the column comment: over-paying a settlement is the expensive mistake.
     is_encashable: bool = False
     is_active: bool = True
+    # Left out by older clients: then what is stored is kept.
+    color: str = Field(default="#0ea5e9", pattern=r"^#[0-9a-fA-F]{6}$")
+    offered_to: str = Field(default="all", pattern=r"^(all|male|female)$")
+    min_service_months: int = Field(default=0, ge=0, le=120)
+    proof_after_days: int = Field(default=0, ge=0, le=365)
+    max_per_month_milli_days: int = Field(default=0, ge=0, le=_MAX_QUANTITY)
 
     @model_validator(mode="after")
     def _accrual_rate_matches_type(self) -> "LeaveTypeIn":
@@ -136,6 +151,11 @@ class LeaveTypeOut(ORMModel):
     is_comp_off: bool
     is_encashable: bool
     is_active: bool
+    color: str = "#0ea5e9"
+    offered_to: str = "all"
+    min_service_months: int = 0
+    proof_after_days: int = 0
+    max_per_month_milli_days: int = 0
     #: Display convenience only — see the module docstring.
     accrual_rate_days: float = 0.0
 
@@ -244,6 +264,7 @@ class LeaveApplyIn(BaseModel):
     is_half_day: bool = False
     half_day_session: str | None = Field(default=None, pattern=r"^(first_half|second_half)$")
     reason: str | None = Field(default=None, max_length=2000)
+    contact_phone: str | None = Field(default=None, max_length=40)
 
     @model_validator(mode="after")
     def _range_and_half_day_agree(self) -> "LeaveApplyIn":
@@ -273,6 +294,7 @@ class LeaveApplicationOut(ORMModel):
     duration_milli_days: int
     duration_days: float = 0.0
     reason: str | None = None
+    contact_phone: str | None = None
     status: str
     applied_at: datetime
     reviewed_at: datetime | None = None

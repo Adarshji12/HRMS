@@ -2,6 +2,7 @@ import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/attendance.css'
 import HolidayMaster from '../../masters/HolidayMaster'
+import ShiftMaster from '../../masters/ShiftMaster'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { canAdminister, useAuth } from '../../../lib/auth'
@@ -12,7 +13,6 @@ import { Dialog, Field } from '../../crm/parts'
 import {
   addDays,
   hm,
-  orgToday,
   typedError,
   type AttendanceSettingsPayload,
   type Enforcement,
@@ -206,7 +206,7 @@ const ATTENDANCE_TABS: Array<{ key: AttendanceTab; label: string; icon: ReactNod
 
 /** `embedded` is how HR Settings shows it: under its own tabs, so the page heading is left out. */
 export default function AttendanceSettings({ embedded = false }: { embedded?: boolean }) {
-  const { user, organization } = useAuth()
+  const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const asked = params.get('sub') as AttendanceTab | null
   const sub: AttendanceTab = ATTENDANCE_TABS.some((t) => t.key === asked) ? asked! : 'methods'
@@ -216,7 +216,6 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
     setParams({ ...keep, sub: next }, { replace: true })
   }
   const isAdmin = canAdminister(user)
-  const today = orgToday(organization?.timezone)
 
   const settingsQ = useQuery<AttendanceSettingsPayload>('att-settings-admin', () =>
     api.get<AttendanceSettingsPayload>('/attendance/settings'),
@@ -224,13 +223,6 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
   const locationsQ = useQuery<OfficeLocation[]>('att-locations-admin', () =>
     api.get<OfficeLocation[]>('/attendance/locations'),
   )
-  const shiftsQ = useQuery<Shift[]>('att-shifts', () => api.get<Shift[]>('/attendance/shifts'))
-  const rotaQ = useQuery<ShiftAssignment[]>('att-rota', () =>
-    api.get<ShiftAssignment[]>('/attendance/shift-assignments'),
-  )
-  const employeesQ = useQuery<User[]>('att-employees', () => api.get<User[]>('/admin/employees'), {
-    enabled: isAdmin,
-  })
 
   /* The server refuses every write below for a non-admin. Hiding the whole
      surface rather than showing controls that always 403 — a visible button
@@ -246,7 +238,6 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
 
   const settings = settingsQ.data
   const locations = locationsQ.data ?? []
-  const shifts = shiftsQ.data ?? []
 
   return (
     <div>
@@ -282,35 +273,10 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
       )}
 
       {sub === 'shift' && (
-        <>
-        <Shifts
-          shifts={shifts}
-          loading={shiftsQ.loading}
-          error={shiftsQ.error}
-          onChanged={() => {
-            shiftsQ.reload()
-            rotaQ.reload()
-          }}
-        />
-
-        <Rota
-          rota={rotaQ.data}
-          loading={rotaQ.loading}
-          error={rotaQ.error}
-          shifts={shifts}
-          employees={employeesQ.data ?? []}
-          today={today}
-          onChanged={() => {
-            rotaQ.reload()
-            shiftsQ.reload()
-          }}
-        />
-
-        <Recompute today={today} />
-        </>
+        <ShiftMaster />
       )}
 
-      {sub === 'holiday' && <HolidayMaster />}
+      {sub === 'holiday' && <HolidayMaster readOnly />}
 
       {sub === 'overtime' && (
         <OvertimePolicy
@@ -344,6 +310,7 @@ interface AttendanceDevice {
   radius_m: number | null
   ip_required: boolean
   allowed_ips: string | null
+  protocol: string
   cooldown_s: number
   allowed_from_min: number
   allowed_until_min: number
@@ -448,7 +415,7 @@ function MethodsTab({
         <MethodCard
           icon={<IconCheck size={18} />}
           title="Biometric Attendance"
-          body="A fingerprint terminal at the entrance that records the punch."
+          body="A fingerprint machine posting punches to an ingest URL."
           enabled={form.biometric}
           onEnabled={(on) => set({ biometric: on })}
         >
@@ -529,7 +496,9 @@ function DeviceRegister({ kind, locations }: { kind: 'face' | 'biometric'; locat
     }
   }
 
-  const checks = (d: AttendanceDevice) => [d.location_required && 'Location', d.ip_required && 'IP address'].filter(Boolean).join(' + ') || 'None'
+  const checks = (d: AttendanceDevice) => (d.kind === 'biometric'
+    ? PROTOCOLS.find((p) => p.value === d.protocol)?.label ?? 'Generic'
+    : [d.location_required && 'Location', d.ip_required && 'IP address'].filter(Boolean).join(' + ') || 'None')
 
   return (
     <div>
@@ -542,7 +511,9 @@ function DeviceRegister({ kind, locations }: { kind: 'face' | 'biometric'; locat
           </>
         ) : (
           <>
-            A biometric device is a fingerprint terminal at the entrance — employees touch it and are recognised with no code typed.
+            Point the machine at the ingest URL below. It posts an employee code, a timestamp and in/out — a shape ZKTeco’s push SDK and
+            most competitors produce. There is no employee sync to run: the machine sends the code it read and the server resolves it, so
+            adding an employee here is enough.
           </>
         )}{' '}
         Punches from devices are <b>not received yet</b>: registering one here records what it is allowed to do, ready for when
@@ -564,7 +535,7 @@ function DeviceRegister({ kind, locations }: { kind: 'face' | 'biometric'; locat
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Branch</th><th>Checks</th><th>State</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+              <tr><th>Name</th><th>Branch</th><th>{kind === 'biometric' ? 'Make / protocol' : 'Checks'}</th><th>State</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
             </thead>
             <tbody>
               {rows.map((d) => (
@@ -597,6 +568,38 @@ function DeviceRegister({ kind, locations }: { kind: 'face' | 'biometric'; locat
     </div>
   )
 }
+
+/** The push formats a biometric machine can speak, with the body each one posts. */
+const PROTOCOLS: Array<{ value: string; label: string; about: string; sample: string }> = [
+  {
+    value: 'generic', label: 'Generic / any device',
+    about: 'Accepts the common field names, so most machines and any middleware you write yourself will work without choosing a brand.',
+    sample: `{ "punches": [
+    { "employeeId": "7", "timestamp": "2026-09-06 09:32:11", "direction": "in", "mode": "fingerprint" }
+  ] }`,
+  },
+  {
+    value: 'zkteco', label: 'ZKTeco (and ZK-compatible)',
+    about: 'ZKTeco machines and the many clones built on their SDK. Their push protocol names the person `pin` and the time `LogTime`; `VerifyCode` 1 is a fingerprint and 15 is a face.',
+    sample: `{ "AttLog": [
+    { "pin": "7", "LogTime": "2026-09-06 09:32:11", "Status": "0", "VerifyCode": "1" }
+  ] }`,
+  },
+  {
+    value: 'essl', label: 'eSSL',
+    about: 'eSSL push and their cloud relay. The person is `UserID` or `EmpCode`; `PunchState` carries in/out where the site has configured it.',
+    sample: `{ "Data": [
+    { "UserID": "7", "LogDate": "2026-09-06 09:32:11", "PunchState": "0", "DeviceType": "FP" }
+  ] }`,
+  },
+  {
+    value: 'realtime', label: 'Realtime / Matrix / Mantra',
+    about: 'The common Indian push format: `EmployeeCode` with `AttDateTime`. Matrix and Mantra machines and several rebadges share it.',
+    sample: `{ "Records": [
+    { "EmployeeCode": "EMP-0001", "AttDateTime": "2026-09-06 09:32:11", "InOutMode": "in" }
+  ] }`,
+  },
+]
 
 /** A switch with an ON / OFF chip beside its label, and what it means under it. */
 function VerifySwitch({
@@ -642,6 +645,7 @@ function DeviceDialog({
     radius_m: device?.radius_m === null || device?.radius_m === undefined ? '' : String(device.radius_m),
     ip_required: device?.ip_required ?? false,
     allowed_ips: device?.allowed_ips ?? '',
+    protocol: device?.protocol ?? 'generic',
     cooldown_s: String(device?.cooldown_s ?? 120),
     allowed_from_min: String(device?.allowed_from_min ?? 120),
     allowed_until_min: String(device?.allowed_until_min ?? 240),
@@ -672,13 +676,15 @@ function DeviceDialog({
     const lat = Number(form.lat)
     const lng = Number(form.lng)
     const radius = Number(form.radius_m)
-    if (form.location_required) {
+    // Only a face device checks where the punch came from; a biometric machine posts its own.
+    const verifies = kind === 'face'
+    if (verifies && form.location_required) {
       if (form.lat.trim() === '' || form.lng.trim() === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
         return setError('Location required needs a latitude and a longitude.')
       }
       if (!Number.isInteger(radius) || radius < 25 || radius > 20000) return setError('Radius is between 25 and 20,000 metres.')
     }
-    if (form.ip_required && form.allowed_ips.trim() === '') return setError('IP address required needs at least one allowed address.')
+    if (verifies && form.ip_required && form.allowed_ips.trim() === '') return setError('IP address required needs at least one allowed address.')
     if (![form.cooldown_s, form.allowed_from_min, form.allowed_until_min].every(whole)) return setError('Timing values are whole numbers, 0 or more.')
     setBusy(true)
     setError(null)
@@ -686,12 +692,13 @@ function DeviceDialog({
       kind,
       name: form.name.trim(),
       branch_id: form.branch_id || null,
-      location_required: form.location_required,
-      lat: form.location_required ? lat : null,
-      lng: form.location_required ? lng : null,
-      radius_m: form.location_required ? radius : null,
-      ip_required: form.ip_required,
-      allowed_ips: form.ip_required ? form.allowed_ips : null,
+      location_required: verifies && form.location_required,
+      lat: verifies && form.location_required ? lat : null,
+      lng: verifies && form.location_required ? lng : null,
+      radius_m: verifies && form.location_required ? radius : null,
+      ip_required: verifies && form.ip_required,
+      allowed_ips: verifies && form.ip_required ? form.allowed_ips : null,
+      protocol: kind === 'biometric' ? form.protocol : 'generic',
       cooldown_s: Number(form.cooldown_s),
       allowed_from_min: Number(form.allowed_from_min),
       allowed_until_min: Number(form.allowed_until_min),
@@ -743,13 +750,30 @@ function DeviceDialog({
           </select>
         </Field>
 
+        {kind === 'biometric' && (
+          <div className="crm-form-wide hs-verify">
+            <span className="hs-verify-title">Device type</span>
+            <Field label="Make / protocol">
+              <select value={form.protocol} onChange={(e) => set({ protocol: e.target.value })}>
+                {PROTOCOLS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </Field>
+            <p className="muted-sm hs-protocol-about">{PROTOCOLS.find((p) => p.value === form.protocol)?.about}</p>
+            <pre className="hs-protocol-sample">{PROTOCOLS.find((p) => p.value === form.protocol)?.sample}</pre>
+            <p className="muted-sm">
+              Not sure? Leave it on Generic — it accepts the common field names, and an unrecognised body falls back to it anyway.
+            </p>
+          </div>
+        )}
+
+        {kind === 'face' && (
         <div className="crm-form-wide hs-verify">
           <span className="hs-verify-title">Verification</span>
           <VerifySwitch label="Location Required" hint="The punch must be inside the radius below." on={form.location_required} onChange={(on) => set({ location_required: on })}>
             <div className="hs-verify-fields">
-              <Field label="Latitude"><input value={form.lat} inputMode="decimal" placeholder="18.520430" onChange={(e) => set({ lat: e.target.value })} /></Field>
-              <Field label="Longitude"><input value={form.lng} inputMode="decimal" placeholder="73.856744" onChange={(e) => set({ lng: e.target.value })} /></Field>
-              <Field label="Radius (m)" hint="100-200 suits most doors"><input value={form.radius_m} inputMode="numeric" onChange={(e) => set({ radius_m: e.target.value })} /></Field>
+              <Field label="Latitude"><input value={form.lat} type="number" data-spin step="any" placeholder="18.520430" onChange={(e) => set({ lat: e.target.value })} /></Field>
+              <Field label="Longitude"><input value={form.lng} type="number" data-spin step="any" placeholder="73.856744" onChange={(e) => set({ lng: e.target.value })} /></Field>
+              <Field label="Radius (m)" hint="100-200 suits most doors"><input value={form.radius_m} type="number" data-spin min={0} step={1} onChange={(e) => set({ radius_m: e.target.value })} /></Field>
             </div>
             <button type="button" className="btn hs-pin" onClick={pin} disabled={pinning}>
               <IconPin size={14} /> {pinning ? 'Finding you…' : 'Pin to where I am now'}
@@ -762,18 +786,19 @@ function DeviceDialog({
           </VerifySwitch>
           <p className={`hs-verify-note${form.location_required || form.ip_required ? ' is-on' : ''}`}>{note}</p>
         </div>
+        )}
 
         <details className="crm-form-wide hs-timing">
           <summary>Timing</summary>
           <div className="hs-verify-fields">
             <Field label="Cooldown (s)" hint="A second scan inside this is a duplicate">
-              <input value={form.cooldown_s} inputMode="numeric" onChange={(e) => set({ cooldown_s: e.target.value })} />
+              <input value={form.cooldown_s} type="number" data-spin min={0} step={1} onChange={(e) => set({ cooldown_s: e.target.value })} />
             </Field>
             <Field label="Allowed from (min before shift)">
-              <input value={form.allowed_from_min} inputMode="numeric" onChange={(e) => set({ allowed_from_min: e.target.value })} />
+              <input value={form.allowed_from_min} type="number" data-spin min={0} step={1} onChange={(e) => set({ allowed_from_min: e.target.value })} />
             </Field>
             <Field label="Allowed until (min after shift)">
-              <input value={form.allowed_until_min} inputMode="numeric" onChange={(e) => set({ allowed_until_min: e.target.value })} />
+              <input value={form.allowed_until_min} type="number" data-spin min={0} step={1} onChange={(e) => set({ allowed_until_min: e.target.value })} />
             </Field>
           </div>
         </details>
@@ -793,8 +818,10 @@ function DeviceDialog({
 
 /* --------------------------------------------------------------- overtime -- */
 
-/** What counts as overtime on a timesheet. The defaults are what timesheets did before
- *  there was a policy, so nothing changes for a company until somebody edits it. */
+/** The overtime policy: whether it is tracked, how an hour is priced, which hours count and
+ *  whether a manager signs them off. Timesheets apply what they can now (what counts, in what
+ *  steps, and whether day-off work counts); claims, approval and the payslip line follow when
+ *  those exist, and the panel says so rather than promising them. */
 function OvertimePolicy({
   settings, loading, error, onSaved,
 }: {
@@ -804,69 +831,140 @@ function OvertimePolicy({
   onSaved: () => void
 }) {
   const action = useAction(onSaved)
-  const [draft, setDraft] = useState<{ enabled: boolean; min: string; off: boolean } | null>(null)
+  const [draft, setDraft] = useState<OvertimeForm | null>(null)
   if (loading && !settings) return <Loading />
   if (error) return <ErrorNote>{error}</ErrorNote>
   if (!settings) return null
 
-  const saved = { enabled: settings.overtime_enabled ?? true, min: String(settings.overtime_min_minutes ?? 0), off: settings.overtime_on_off_days ?? true }
+  const saved = overtimeFormOf(settings)
   const form = draft ?? saved
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved)
-  const minutes = Number(form.min)
-  const minBad = form.min.trim() === '' || !Number.isInteger(minutes) || minutes < 0 || minutes > 480
-  const set = (patch: Partial<typeof form>) => setDraft({ ...form, ...patch })
+  const set = (patch: Partial<OvertimeForm>) => setDraft({ ...form, ...patch })
+
+  const whole = (v: string, max: number) => v.trim() !== '' && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= max
+  const mult = (v: string) => v.trim() !== '' && Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 10
+  const bad = {
+    after: !whole(form.after, 480), round: !whole(form.round, 120), cap: !whole(form.cap, 744),
+    working: !mult(form.working), off: !mult(form.off), holiday: !mult(form.holiday),
+    flat: form.mode === 'flat' && !(form.flat.trim() !== '' && Number(form.flat) >= 0),
+  }
+  const invalid = Object.values(bad).some(Boolean)
+
+  const inr = (n: number) => Math.round(n).toLocaleString('en-IN')
+  const workingDays = 26
+  const fullDay = 8
+  const basic = 30000
+  const hourly = form.mode === 'flat' ? Number(form.flat) || 0 : basic / (workingDays * fullDay)
+  const source = form.derived === 'ctc' ? 'monthly CTC' : 'basic salary'
+  const x = (v: string) => `${Number(v) || 0}×`
+  const rule = form.mode === 'flat'
+    ? `a flat ₹${inr(Number(form.flat) || 0)} an hour — ${x(form.working)} on a working day, ${x(form.off)} on a week off, ${x(form.holiday)} on a holiday.`
+    : `${source} ÷ (working days × full day) — ${x(form.working)} on a working day, ${x(form.off)} on a week off, ${x(form.holiday)} on a holiday.`
 
   return (
-    <Section title="Overtime" note="Read by timesheets, reports and the HR dashboard">
+    <Section title="Overtime" note="Saved now. Timesheets apply it; approval and payroll follow once those are built.">
       <Feedback failure={action.failure} notice={action.notice} />
-      <div className="card-body" style={{ display: 'grid', gap: 18, maxWidth: 560 }}>
-        <label className="setting" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <div className="hs-ot">
+        <label className="hs-ot-box">
           <input type="checkbox" checked={form.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
           <span>
-            <b>Count overtime</b>
-            <span className="muted-sm" style={{ display: 'block' }}>
-              Time worked beyond the expected day is reported as overtime. Switched off, timesheets report none.
+            <b>Track overtime</b>
+            <span className="muted-sm">
+              Hours past the shift end are recorded, priced and — once approved — paid through payroll. Off means nothing is recorded at all.
             </span>
           </span>
         </label>
 
-        <label className="setting">
-          Minimum overtime that counts (minutes)
-          <input
-            type="number" min={0} max={480} inputMode="numeric" value={form.min}
-            disabled={!form.enabled}
-            className={minBad ? 'is-bad' : ''}
-            onChange={(e) => set({ min: e.target.value })}
-          />
-          <span className="muted-sm">
-            Anything under this many minutes past the expected day is ignored. 0 counts every minute.
-          </span>
-        </label>
+        {form.enabled && (
+          <>
+            <div className="hs-ot-grid hs-ot-2">
+              <label className="setting">
+                Rate
+                <select value={form.mode} onChange={(e) => set({ mode: e.target.value as 'salary' | 'flat' })}>
+                  <option value="salary">Derived from salary</option>
+                  <option value="flat">A flat rate per hour</option>
+                </select>
+                <span className="muted-sm">Where an hour’s pay comes from.</span>
+              </label>
+              {form.mode === 'salary' ? (
+                <label className="setting">
+                  Derived from
+                  <select value={form.derived} onChange={(e) => set({ derived: e.target.value as 'basic' | 'ctc' })}>
+                    <option value="basic">Basic salary</option>
+                    <option value="ctc">Monthly CTC</option>
+                  </select>
+                  <span className="muted-sm">Divided by working days × full day hours.</span>
+                </label>
+              ) : (
+                <label className="setting">
+                  Rate per hour
+                  <input value={form.flat} type="number" data-spin min={0} step="any" className={bad.flat ? 'is-bad' : ''} onChange={(e) => set({ flat: e.target.value })} />
+                  <span className="muted-sm">Before the day-type multiplier.</span>
+                </label>
+              )}
+            </div>
 
-        <label className="setting" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <input type="checkbox" checked={form.off} disabled={!form.enabled} onChange={(e) => set({ off: e.target.checked })} />
-          <span>
-            <b>Work on a day off counts</b>
-            <span className="muted-sm" style={{ display: 'block' }}>
-              Hours worked on a weekly off or a holiday are counted whole as overtime.
-            </span>
-          </span>
-        </label>
+            <span className="hs-ot-heading">Multipliers</span>
+            <div className="hs-ot-grid hs-ot-3">
+              <label className="setting">Working day<input value={form.working} type="number" data-spin min={0} step="any" className={bad.working ? 'is-bad' : ''} onChange={(e) => set({ working: e.target.value })} /></label>
+              <label className="setting">Week off<input value={form.off} type="number" data-spin min={0} step="any" className={bad.off ? 'is-bad' : ''} onChange={(e) => set({ off: e.target.value })} /></label>
+              <label className="setting">Holiday<input value={form.holiday} type="number" data-spin min={0} step="any" className={bad.holiday ? 'is-bad' : ''} onChange={(e) => set({ holiday: e.target.value })} /></label>
+            </div>
+
+            <div className="hs-ot-grid hs-ot-3">
+              <label className="setting">
+                Counted after (minutes)
+                <input value={form.after} type="number" data-spin min={0} step={1} className={bad.after ? 'is-bad' : ''} onChange={(e) => set({ after: e.target.value })} />
+                <span className="muted-sm">Shorter runs earn nothing.</span>
+              </label>
+              <label className="setting">
+                Rounded down to (minutes)
+                <input value={form.round} type="number" data-spin min={0} step={1} className={bad.round ? 'is-bad' : ''} onChange={(e) => set({ round: e.target.value })} />
+              </label>
+              <label className="setting">
+                Maximum hours a month
+                <input value={form.cap} type="number" data-spin min={0} step={1} className={bad.cap ? 'is-bad' : ''} onChange={(e) => set({ cap: e.target.value })} />
+                <span className="muted-sm">0 means no cap.</span>
+              </label>
+            </div>
+
+            <label className="hs-ot-box">
+              <input type="checkbox" checked={form.approval} onChange={(e) => set({ approval: e.target.checked })} />
+              <span>
+                <b>A manager must approve overtime</b>
+                <span className="muted-sm">Off means every raised claim is approved the moment it appears — and paid.</span>
+              </span>
+            </label>
+            <label className="hs-ot-box">
+              <input type="checkbox" checked={form.payroll} onChange={(e) => set({ payroll: e.target.checked })} />
+              <span>
+                <b>Pay approved overtime through payroll</b>
+                <span className="muted-sm">Adds an Overtime line under Earnings on the payslip. Off records the hours without paying them here.</span>
+              </span>
+            </label>
+
+            <div className="hs-ot-rule">
+              <span className="hs-ot-rule-title">The rule, in words</span>
+              <p>
+                {rule} Counted after {Number(form.after) || 0} minutes{Number(form.round) > 0 ? `, rounded down to ${Number(form.round)}` : ''}.
+              </p>
+              <p>
+                <b>Worked example.</b>{' '}
+                {form.mode === 'flat'
+                  ? `At a flat ₹${inr(hourly)} an hour, an hour is ${inr(hourly * (Number(form.working) || 0))} on a working day and ${inr(hourly * (Number(form.off) || 0))} on a week off. Ten such hours add ${inr(10 * hourly * (Number(form.working) || 0))} to Gross Earnings.`
+                  : `On a ${inr(basic)} ${form.derived === 'ctc' ? 'monthly CTC' : 'basic'} with ${workingDays} working days and an ${fullDay}-hour day, an hour is about ${inr(hourly * (Number(form.working) || 0))} on a working day and ${inr(hourly * (Number(form.off) || 0))} on a week off. Ten such hours add ${inr(10 * hourly * (Number(form.working) || 0))} to Gross Earnings.`}
+              </p>
+            </div>
+          </>
+        )}
       </div>
       <div className="att-form-actions">
         <button
           className="btn btn-primary"
-          disabled={!dirty || minBad || action.busy}
+          disabled={!dirty || invalid || action.busy}
           onClick={() =>
             void action
-              .run(
-                () => api.put('/attendance/settings', {
-                  overtime_enabled: form.enabled,
-                  overtime_min_minutes: minutes,
-                  overtime_on_off_days: form.off,
-                }),
-                'Overtime policy saved.',
-              )
+              .run(() => api.put('/attendance/settings', overtimeBody(form)), 'Overtime policy saved.')
               .then((ok) => { if (ok) setDraft(null) })
           }
         >
@@ -876,6 +974,59 @@ function OvertimePolicy({
       </div>
     </Section>
   )
+}
+
+interface OvertimeForm {
+  enabled: boolean
+  mode: 'salary' | 'flat'
+  derived: 'basic' | 'ctc'
+  flat: string
+  working: string
+  off: string
+  holiday: string
+  after: string
+  round: string
+  cap: string
+  approval: boolean
+  payroll: boolean
+}
+
+const hundredths = (n: number | undefined, fallback: number) => String(((n ?? fallback) / 100))
+
+function overtimeFormOf(s: AttendanceSettingsPayload): OvertimeForm {
+  return {
+    enabled: s.overtime_enabled ?? true,
+    mode: (s.overtime_rate_mode as 'salary' | 'flat') ?? 'salary',
+    derived: (s.overtime_derived_from as 'basic' | 'ctc') ?? 'basic',
+    flat: String((s.overtime_flat_rate_paise ?? 0) / 100),
+    working: hundredths(s.overtime_mult_working_x100, 100),
+    off: hundredths(s.overtime_mult_off_x100, 200),
+    holiday: hundredths(s.overtime_mult_holiday_x100, 200),
+    after: String(s.overtime_min_minutes ?? 0),
+    round: String(s.overtime_round_minutes ?? 0),
+    cap: String(s.overtime_max_hours_month ?? 0),
+    approval: s.overtime_requires_approval ?? true,
+    payroll: s.overtime_pay_through_payroll ?? false,
+  }
+}
+
+function overtimeBody(f: OvertimeForm) {
+  return {
+    overtime_enabled: f.enabled,
+    overtime_rate_mode: f.mode,
+    overtime_derived_from: f.derived,
+    overtime_flat_rate_paise: Math.round((Number(f.flat) || 0) * 100),
+    overtime_mult_working_x100: Math.round((Number(f.working) || 0) * 100),
+    overtime_mult_off_x100: Math.round((Number(f.off) || 0) * 100),
+    overtime_mult_holiday_x100: Math.round((Number(f.holiday) || 0) * 100),
+    overtime_min_minutes: Number(f.after),
+    overtime_round_minutes: Number(f.round),
+    overtime_max_hours_month: Number(f.cap),
+    overtime_requires_approval: f.approval,
+    overtime_pay_through_payroll: f.payroll,
+    // Day-off work counts whenever a week off or a holiday earns anything.
+    overtime_on_off_days: Number(f.off) > 0 || Number(f.holiday) > 0,
+  }
 }
 
 /* --------------------------------------------------------------- helpers -- */
@@ -1500,7 +1651,8 @@ const BLANK_SHIFT: ShiftForm = {
   is_active: true,
 }
 
-function Shifts({
+/** Replaced on screen by the Shift Master; kept for its column and form settings. */
+export function Shifts({
   shifts,
   loading,
   error,
@@ -1767,7 +1919,8 @@ function Shifts({
 
 /* ------------------------------------------------------------------- rota -- */
 
-function Rota({
+/** Not on any screen now; kept so the roster can be put back as its own tab. */
+export function Rota({
   rota,
   loading,
   error,
@@ -1983,7 +2136,8 @@ function Rota({
 
 /* -------------------------------------------------------------- recompute -- */
 
-function Recompute({ today }: { today: string }) {
+/** Not on any screen now; kept for the same reason. */
+export function Recompute({ today }: { today: string }) {
   const [start, setStart] = useState(() => addDays(today, -7))
   const [end, setEnd] = useState(() => addDays(today, -1))
   const [result, setResult] = useState<string | null>(null)

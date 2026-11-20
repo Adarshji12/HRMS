@@ -1068,6 +1068,8 @@ input:focus::-webkit-calendar-picker-indicator { opacity: 1; }
 /* Short values do not need a 600px box. A three-digit retention setting in a
    full-width field reads as a broken layout, not a generous one. */
 input[type='number'] { max-width: 14ch; }
+/* A number field that replaced a plain text one keeps that field's full width, with the arrows. */
+input[type='number'][data-spin] { max-width: none; }
 input[type='time'] { max-width: 15ch; }
 
 input[type='search']::-webkit-search-cancel-button {

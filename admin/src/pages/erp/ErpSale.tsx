@@ -439,7 +439,7 @@ function FilterDialog({ value, onClose, onApply, series, customers, users, stati
           </select>
         </label>
         <label className="sl-fd-row"><span>Sale Above</span>
-          <input inputMode="decimal" value={f.above} placeholder="₹ amount" onChange={(e) => set('above', e.target.value.replace(/,/g, ''))} />
+          <input type="number" data-spin min={0} step="any" value={f.above} placeholder="₹ amount" onChange={(e) => set('above', e.target.value.replace(/,/g, ''))} />
         </label>
         {bad && <p className="sl-fd-err">Check the bill numbers (From is above To) and the amount.</p>}
         <button type="submit" hidden />

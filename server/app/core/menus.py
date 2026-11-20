@@ -68,7 +68,8 @@ def _m(key: str, label: str, group: str, writes: tuple[str, ...] = (), rights: t
 #: has Approvals but ticks only Costsheet opens the inbox with just that queue.
 APPROVAL_TABS: tuple[tuple[str, str], ...] = (
     ("regularization", "Attendance"), ("leave", "Leave"), ("timesheet", "Timesheet"),
-    ("expense", "Expense"), ("loan", "Loan"), ("performance", "Review"), ("costsheet", "Costsheet"),
+    ("expense", "Expense"), ("loan", "Loan"), ("performance", "Review"), ("incentive", "Incentive"),
+    ("costsheet", "Costsheet"),
 )
 
 
@@ -95,6 +96,8 @@ GROUPS: tuple[Group, ...] = (
        _m("/attendance", "My attendance", "hrms", ("/attendance/punch", "/regularization"), ("can_punch_anywhere",)),
        _m("/attendance/team", "Team attendance", "hrms",
           ("/attendance/recompute", "/attendance/shift-assignments"), ("can_approve_regularization",)),
+       _m("/tracking", "Employee tracking", "hrms"),
+       _m("/hrms/leave", "Leave desk", "hrms", ("/leave/carry-forward",)),
        _m("/leave", "My leave", "hrms", ("/leave/applications",)),
        _m("/leave/team", "Team leave", "hrms", ("/leave/balances",), ("can_approve_leave",)),
        _m("/salary", "My salary", "hrms"),
@@ -103,8 +106,9 @@ GROUPS: tuple[Group, ...] = (
        _m("/form16", "My Form 16", "hrms"),
        _m("/payroll/overview", "Payroll overview", "hrms"),
        _m("/payroll/runs", "Pay runs", "hrms", ("/payruns",), ("can_manage_payroll",)),
-       _m("/payroll", "Salary structures", "hrms", ("/payroll/structures", "/payroll/preview")),
-       _m("/payroll/components", "Pay components", "hrms", ("/payroll/components",)),
+       _m("/payroll/slips", "Salary slips", "hrms"),
+       _m("/payroll", "Employee Salaries", "hrms", ("/payroll/structures", "/payroll/preview")),
+       _m("/payroll/setup", "Salary setup", "hrms", ("/payroll/components", "/payroll/templates")),
        _m("/payroll/tax", "Tax declarations", "hrms"),
        _m("/payroll/year-end", "Year end & Form 16", "hrms", ("/form16",)),
        _m("/expenses", "My expenses", "hrms", ("/expenses",)),

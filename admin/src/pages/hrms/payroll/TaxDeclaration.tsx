@@ -298,7 +298,7 @@ function Comparison({
       <div className="pr-row">
         <label className="pr-field">
           <span className="pr-field-label">Annual salary</span>
-          <input value={income} inputMode="decimal" placeholder="1200000"
+          <input value={income} type="number" data-spin min={0} step="any" placeholder="1200000"
                  className={income && paise === null ? 'is-bad' : ''}
                  onChange={(e) => { setIncome(e.target.value); setEstimate(null) }} />
           <span className="pr-field-hint">
@@ -461,7 +461,7 @@ function AddClaim({
     amount: (
       <label className="pr-field">
         <span className="pr-field-label">Amount *</span>
-        <input value={amount} inputMode="decimal" placeholder="150000"
+        <input value={amount} type="number" data-spin min={0} step="any" placeholder="150000"
                className={amount && paise === null ? 'is-bad' : ''}
                onChange={(e) => setAmount(e.target.value)} />
       </label>

@@ -489,10 +489,10 @@ function Sanction({
   return (
     <>
       <input placeholder={`Sanction ${money(loan.principal)} — or less`}
-             value={amount} inputMode="decimal"
+             value={amount} type="number" data-spin min={0} step="any"
              onChange={(e) => setAmount(e.target.value)} />
       <input placeholder={`${loan.instalment_count} months`} value={count}
-             inputMode="numeric" onChange={(e) => setCount(e.target.value)} />
+             type="number" data-spin min={0} step={1} onChange={(e) => setCount(e.target.value)} />
       <input placeholder="Note — required to refuse" value={note}
              onChange={(e) => setNote(e.target.value)} />
       <button className="btn primary" disabled={busy}
@@ -604,12 +604,12 @@ function RequestForm({
       </select>
     ),
     amount: (
-      <input placeholder="Amount *" value={amount} inputMode="decimal"
+      <input placeholder="Amount *" value={amount} type="number" data-spin min={0} step="any"
              className={amount && paise === null ? 'is-bad' : ''}
              onChange={(e) => setAmount(e.target.value)} aria-label="Amount in rupees" />
     ),
     months: (
-      <input placeholder="Months *" value={count} inputMode="numeric"
+      <input placeholder="Months *" value={count} type="number" data-spin min={0} step={1}
              onChange={(e) => setCount(e.target.value)} aria-label="Instalments" />
     ),
     purpose: fm('purpose') !== 'hide' && (

@@ -360,7 +360,7 @@ export function RenewForm({
         </label>
         <label className="setting">
           Amount paid (₹)
-          <input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" placeholder="0.00" />
+          <input value={cost} onChange={(e) => setCost(e.target.value)} type="number" data-spin min={0} step="any" placeholder="0.00" />
         </label>
         <label className="setting">
           Reference / receipt no.

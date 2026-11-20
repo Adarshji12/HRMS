@@ -1427,7 +1427,7 @@ function PlanForm({
           <input
             value={amount}
             onChange={(event) => { setAmount(event.target.value); setAmountTyped(event.target.value !== '') }}
-            inputMode="decimal"
+            type="number" data-spin min={0} step="any"
             placeholder="0.00"
           />
         </Field>

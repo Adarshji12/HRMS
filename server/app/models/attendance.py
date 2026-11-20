@@ -228,6 +228,21 @@ class AttendanceSettings(TimestampMixin, Base):
     overtime_min_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     #: Whether work on a weekly off or holiday counts as overtime.
     overtime_on_off_days: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: salary (derived from pay) | flat (a fixed amount per hour)
+    overtime_rate_mode: Mapped[str] = mapped_column(String(8), default="salary", nullable=False)
+    #: basic | ctc — what the hourly rate is divided out of, when the rate is derived.
+    overtime_derived_from: Mapped[str] = mapped_column(String(8), default="basic", nullable=False)
+    overtime_flat_rate_paise: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Multipliers in hundredths (150 = 1.5x), so nothing is held as a float.
+    overtime_mult_working_x100: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    overtime_mult_off_x100: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
+    overtime_mult_holiday_x100: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
+    #: Overtime is counted in steps of this many minutes (rounded down). 0 = every minute.
+    overtime_round_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Hours a person can earn in a month. 0 = no cap.
+    overtime_max_hours_month: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    overtime_requires_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    overtime_pay_through_payroll: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # --- punch methods -------------------------------------------------------
     # Manual is the employee pressing Check In / Check Out, on the web or in the app. On by
@@ -299,7 +314,40 @@ class Shift(UUIDMixin, TimestampMixin, Base):
     # 22:00-22:00 one must not be told apart by a comparison that ties.
     is_night_shift: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    #: Minutes that make a full day (the half-day threshold is the other line).
+    full_day_minutes: Mapped[int] = mapped_column(Integer, default=480, nullable=False)
+    break_minutes: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    #: JSON: which weekdays are off and which occurrences of them, e.g. {"sun": "all",
+    #: "sat": "2,4"}. None means the shift has no pattern of its own and the work
+    #: schedule's weekly off applies.
+    week_offs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    color: Mapped[str] = mapped_column(String(9), default="#2563eb", nullable=False)
+    #: Given to each new employee when they are added.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def is_off_on(self, day) -> bool | None:
+        """Whether ``day`` is a week off under this shift's own pattern, or None when the
+        shift has no pattern (then the work schedule decides)."""
+        if not self.week_offs:
+            return None
+        import calendar
+        import json
+
+        try:
+            pattern = json.loads(self.week_offs)
+        except ValueError:
+            return None
+        rule = pattern.get(("mon", "tue", "wed", "thu", "fri", "sat", "sun")[day.weekday()])
+        if not rule:
+            return False
+        if rule == "all":
+            return True
+        nth = (day.day - 1) // 7 + 1
+        last = day.day + 7 > calendar.monthrange(day.year, day.month)[1]
+        wanted = {part.strip() for part in str(rule).split(",")}
+        return str(nth) in wanted or (last and "last" in wanted)
 
     @property
     def half_day_threshold_hours(self) -> float:
@@ -548,6 +596,8 @@ class AttendanceDevice(UUIDMixin, TimestampMixin, Base):
     allowed_ips: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Timing. A second scan inside the cooldown is a duplicate; a scan is accepted from
     # ``allowed_from_min`` before the shift starts to ``allowed_until_min`` after it ends.
+    #: generic | zkteco | essl | realtime — the push format a biometric machine speaks.
+    protocol: Mapped[str] = mapped_column(String(16), default="generic", nullable=False)
     cooldown_s: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     allowed_from_min: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     allowed_until_min: Mapped[int] = mapped_column(Integer, default=240, nullable=False)

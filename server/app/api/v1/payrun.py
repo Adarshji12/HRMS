@@ -117,6 +117,17 @@ def my_payslips(viewer: CurrentUser, db: DbSession) -> list[PayslipOut]:
     return [_payslip_out(row, names) for row in rows]
 
 
+@router.get("/payslips/of/{user_id}", response_model=list[PayslipOut])
+def payslips_of_employee(user_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> list[PayslipOut]:
+    """One employee's payslips across every month. For administrators who run payroll."""
+    try:
+        rows = svc.payslips_of(db, viewer, user_id)
+    except svc.PayRunError as error:
+        _fail(error)
+    names = _names(db, viewer.org_id, [user_id])
+    return [_payslip_out(row, names, with_lines=False) for row in rows]
+
+
 @router.get("/payslips/{payslip_id}", response_model=PayslipOut)
 def read_payslip(
     payslip_id: uuid.UUID, viewer: CurrentUser, db: DbSession

@@ -29,8 +29,11 @@ from app.schemas.chains import (
     ChainOut,
     ConditionOut,
     FieldOut,
+    FlowIn,
+    FlowOut,
     LevelOut,
     LevelsIn,
+    OverviewOut,
     PreviewIn,
     RuleOut,
     RulesIn,
@@ -82,6 +85,39 @@ def kinds() -> list[str]:
     could walk.
     """
     return [k for k, policy in workflow.POLICIES.items() if policy.decidable]
+
+
+@router.get("/overview", response_model=list[OverviewOut])
+def overview(admin: AdminUser, db: DbSession) -> list[OverviewOut]:
+    """Every request type with its switches and its company-wide chain: one call for the screen."""
+    names = _names(db, admin.org_id)
+    out = []
+    for kind, policy in workflow.POLICIES.items():
+        if not policy.decidable:
+            continue
+        flow = svc.flow_settings(db, admin.org_id, kind)
+        out.append(OverviewOut(
+            flow=FlowOut(kind=kind, is_enabled=flow.enabled, sequential=flow.sequential,
+                         reject_ends=flow.reject_ends, notify_approver=flow.notify_approver),
+            levels=[_level_out(row, names) for row in svc.levels_scoped(db, admin.org_id, kind, None)],
+        ))
+    return out
+
+
+@router.put("/flows/{kind}", response_model=FlowOut)
+def set_flow(kind: str, payload: FlowIn, admin: AdminUser, db: DbSession, request: Request) -> FlowOut:
+    """Switch a request type on or off, or change how its levels run."""
+    if kind not in workflow.POLICIES or not workflow.POLICIES[kind].decidable:
+        raise svc.ChainError("unknown_flow", f"There is no “{kind}” flow.", 404)
+    row = svc.set_flow(db, admin, kind, enabled=payload.is_enabled, sequential=payload.sequential,
+                       reject_ends=payload.reject_ends, notify_approver=payload.notify_approver)
+    from app.api.deps import audit
+
+    audit(db, org_id=admin.org_id, actor=admin, action="workflow.flow_set", request=request,
+          target_type="workflow_flows", target_id=kind, detail=payload.model_dump(exclude_none=True))
+    db.commit()
+    return FlowOut(kind=kind, is_enabled=row.is_enabled, sequential=row.sequential,
+                   reject_ends=row.reject_ends, notify_approver=row.notify_approver)
 
 
 @router.get("/levels/{kind}", response_model=list[LevelOut])

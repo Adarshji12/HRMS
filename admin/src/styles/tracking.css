@@ -1,0 +1,69 @@
+.tk-tabs { display: inline-flex; gap: 6px; padding: 5px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-1); }
+.tk-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font-weight: 600; cursor: pointer; }
+.tk-tab.is-on { background: color-mix(in srgb, var(--status-good, #0f9d8a) 14%, transparent); color: var(--status-good, #0f9d8a); }
+.tk-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.tk-card-head h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 600; }
+
+.tk-split { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+.tk-filter-body { display: grid; gap: 12px; padding: 20px; }
+.tk-label { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-muted); }
+.tk-label-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.tk-link { border: 0; background: none; color: var(--status-good, #0f9d8a); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.tk-select { width: 100%; height: 46px; border-radius: 12px; }
+.tk-date { display: grid; grid-template-columns: 40px 1fr 40px; gap: 8px; }
+.tk-step { height: 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); font-size: 20px; cursor: pointer; }
+.tk-step:disabled { opacity: .4; cursor: default; }
+.tk-day { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+.tk-day input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.tk-parts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tk-part { height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); cursor: pointer; }
+.tk-part.is-on { border-color: var(--status-good, #0f9d8a); background: color-mix(in srgb, var(--status-good, #0f9d8a) 12%, transparent); color: var(--status-good, #0f9d8a); font-weight: 600; }
+.tk-range { display: flex; align-items: center; gap: 8px; }
+.tk-range input { flex: 1; }
+.tk-empty { display: grid; place-items: center; gap: 8px; padding: 60px 20px; color: var(--text-muted); text-align: center; }
+.tk-empty p { margin: 0; }
+
+.tk-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tk-stat { display: grid; gap: 4px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); }
+.tk-stat b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.tk-stat span { font-size: 12.5px; color: var(--text-muted); }
+.tk-live { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.tk-map { position: relative; overflow: hidden; }
+.tk-overlay { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 500; padding: 6px 12px; border-radius: 8px; background: var(--surface-1); box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.tk-list { margin: 0; padding: 6px; list-style: none; max-height: 560px; overflow: auto; }
+.tk-list button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: none; text-align: left; cursor: pointer; }
+.tk-list button:hover { background: var(--surface-2); }
+.tk-who { display: grid; gap: 2px; }
+.tk-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong, #c8d0da); flex: none; }
+.tk-dot.is-on { background: var(--status-good, #0f9d8a); }
+
+.lm-map { width: 100%; z-index: 0; }
+.lm-pin-wrap { background: none; border: 0; }
+.lm-pin { display: block; width: 16px; height: 16px; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.lm-good, .lm-start { background: #0f9d8a; }
+.lm-warn, .lm-end { background: #e5484d; }
+.lm-muted { background: #8b95a1; }
+
+.ls-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; margin-bottom: 14px; }
+.ls-card p { margin: 2px 0 0; }
+
+@media (max-width: 900px) { .tk-split, .tk-live { grid-template-columns: minmax(0, 1fr); } .tk-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Type scale: kept small so the page matches the rest of the console. */
+.tk { font-size: 13px; }
+.tk .page-title { font-size: 22px; }
+.tk .page-sub { font-size: 13px; }
+.tk-tab { padding: 7px 14px; font-size: 13px; }
+.tk-card-head { padding: 14px 18px; }
+.tk-card-head h2 { font-size: 14px; }
+.tk-select, .tk-part, .tk-day, .tk-range input { font-size: 13px; }
+.tk-select { height: 40px; }
+.tk-step, .tk-day { height: 42px; }
+.tk-step { font-size: 16px; }
+.tk-part { height: 38px; }
+.tk-label { font-size: 10.5px; }
+.tk-link { font-size: 12px; }
+.tk-empty { font-size: 13px; }
+.tk-stat b { font-size: 18px; }
+.tk-stat span, .tk-who .muted-sm, .tk-list { font-size: 12.5px; }
+.tk-who b { font-size: 13px; }

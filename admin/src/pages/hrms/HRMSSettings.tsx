@@ -16,17 +16,17 @@ import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconBell, IconBriefcase, IconBuilding, IconCard, IconCheck, IconClock, IconGear, IconPin, IconReturn, IconSheet } from '../../components/Icons'
+import { IconBell, IconBriefcase, IconBuilding, IconCheck, IconClock, IconGear, IconPin, IconReturn, IconSheet } from '../../components/Icons'
 import DepartmentMaster from '../masters/DepartmentMaster'
 import DesignationMaster from '../masters/DesignationMaster'
 import BranchMaster from '../masters/BranchMaster'
 import LocationMaster from '../masters/LocationMaster'
 import AttendanceSettings from './attendance/AttendanceSettings'
-import LeaveSettings from './leave/LeaveSettings'
-import WorkflowSetup from './workflow/WorkflowSetup'
-import StatutorySettings from './payroll/StatutorySettings'
+import LeavePolicyTab from './leave/LeavePolicyTab'
+import ApprovalRules from './workflow/ApprovalRules'
+import PayrollTab from './payroll/PayrollTab'
 import ExpenseSettings from './expenses/ExpenseSettings'
-import NotificationSettings from '../NotificationSettings'
+import NotificationsTab from './NotificationsTab'
 
 export interface HrSettings {
   emp_code_prefix: string
@@ -50,7 +50,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: ReactNode; admin: boolean 
   { key: 'leave', label: 'Leave', icon: <IconReturn size={15} />, admin: true },
   { key: 'approvals', label: 'Approvals', icon: <IconCheck size={15} />, admin: true },
   { key: 'payroll', label: 'Payroll', icon: <IconSheet size={15} />, admin: true },
-  { key: 'expenses', label: 'Expenses', icon: <IconCard size={15} />, admin: true },
+//   { key: 'expenses', label: 'Expenses', icon: <IconCard size={15} />, admin: true },
   { key: 'notifications', label: 'Notifications', icon: <IconBell size={15} />, admin: false },
 ]
 
@@ -84,11 +84,11 @@ export default function HRMSSettings() {
         {tab === 'general' && <GeneralTab editable={admin} />}
         {tab === 'organisation' && <OrganisationTab />}
         {tab === 'attendance' && <AttendanceSettings embedded />}
-        {tab === 'leave' && <LeaveSettings />}
-        {tab === 'approvals' && <WorkflowSetup />}
-        {tab === 'payroll' && <StatutorySettings />}
+        {tab === 'leave' && <LeavePolicyTab />}
+        {tab === 'approvals' && <ApprovalRules />}
+        {tab === 'payroll' && <PayrollTab />}
         {tab === 'expenses' && <ExpenseSettings />}
-        {tab === 'notifications' && <NotificationSettings />}
+        {tab === 'notifications' && <NotificationsTab />}
       </div>
     </div>
   )

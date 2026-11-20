@@ -214,6 +214,15 @@ class LeaveSettings(TimestampMixin, Base):
         Integer, default=OPTIONAL_HOLIDAY_QUOTA_UNLIMITED, nullable=False
     )
 
+    # --- policy flags (Settings → Leave → Policy) -----------------------------
+    #: Whether unused leave carries into the next year, and the most that can. A type opts in
+    #: to carrying forward on its own form, and is given this maximum when it does.
+    carry_forward_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    carry_forward_max_milli_days: Mapped[int] = mapped_column(Integer, default=15000, nullable=False)
+    encash_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: The reporting manager approves before HR does.
+    manager_before_hr: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     @property
     def optional_holidays_are_unlimited(self) -> bool:
         return self.optional_holiday_quota == OPTIONAL_HOLIDAY_QUOTA_UNLIMITED
@@ -294,6 +303,16 @@ class LeaveType(UUIDMixin, TimestampMixin, Base):
     # a balance nobody meant to pay out is the expensive mistake — a settlement
     # that under-pays gets queried, one that over-pays gets banked.
     is_encashable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: The colour its calendar cell is drawn in.
+    color: Mapped[str] = mapped_column(String(9), default="#0ea5e9", nullable=False)
+    #: all | male | female — who the type is offered to, by the employee's recorded gender.
+    offered_to: Mapped[str] = mapped_column(String(8), default="all", nullable=False)
+    #: Months of service before leave of this type can be taken (0 = from day one).
+    min_service_months: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Applications longer than this many days need proof, e.g. a medical certificate (0 = never).
+    proof_after_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: The most that can be taken in one calendar month, in thousandths of a day (0 = no ceiling).
+    max_per_month_milli_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -463,6 +482,8 @@ class LeaveApplication(UUIDMixin, TimestampMixin, Base):
     duration_milli_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: A number to reach them on while away. Optional.
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # No standalone index on status: ix_leave_applications_org_status above
     # already leads with org_id and status, and a bare status index on a
     # four-value column is a scan with extra bookkeeping.

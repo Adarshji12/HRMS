@@ -14,9 +14,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
-from app.models import NotificationLog
-from app.services import mailconfig, notifications as notif
+from app.api.deps import AdminUser, CurrentUser, DbSession
+from app.models import NotificationLog, NotificationOrgSettings, NotificationRule, User
+from app.services import eventmail, mailconfig, notifications as notif
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -90,3 +90,95 @@ def read_history(
             for r in rows
         ]
     }
+
+
+# --------------------------------------------------------------------------- #
+# The company's email events (Settings -> Notifications)
+# --------------------------------------------------------------------------- #
+
+class RuleIn(BaseModel):
+    is_enabled: bool | None = None
+    #: An empty string puts the built-in wording back.
+    subject: str | None = None
+    body: str | None = None
+
+
+class AlertsIn(BaseModel):
+    probation_alert: bool
+    document_alert: bool
+
+
+@router.get("/rules")
+def read_rules(admin: AdminUser, db: DbSession) -> dict:
+    rows = {r.event: r for r in db.scalars(select(NotificationRule).where(NotificationRule.org_id == admin.org_id))}
+    events = []
+    for event in eventmail.EVENTS.values():
+        row = rows.get(event.key)
+        events.append({
+            "key": event.key, "label": event.label, "description": event.description,
+            "audience": event.audience, "schedule": event.schedule,
+            "is_enabled": row.is_enabled if row else event.default_on,
+            "subject": (row.subject if row and row.subject else event.subject),
+            "body": (row.body if row and row.body else event.body),
+            "default_subject": event.subject, "default_body": event.body,
+        })
+    settings = eventmail.org_settings(db, admin.org_id)
+    return {
+        "email_configured": mailconfig.resolve(db, admin.org_id).configured,
+        "placeholders": eventmail.PLACEHOLDERS,
+        "events": events,
+        "alerts": {"probation_alert": settings.probation_alert, "document_alert": settings.document_alert},
+    }
+
+
+@router.put("/rules/{event}")
+def write_rule(event: str, payload: RuleIn, admin: AdminUser, db: DbSession) -> dict:
+    if event not in eventmail.EVENTS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such notification")
+    default = eventmail.EVENTS[event]
+    row = db.scalar(select(NotificationRule).where(NotificationRule.org_id == admin.org_id, NotificationRule.event == event))
+    if row is None:
+        row = NotificationRule(org_id=admin.org_id, event=event, is_enabled=default.default_on)
+        db.add(row)
+    if payload.is_enabled is not None:
+        row.is_enabled = payload.is_enabled
+    # Wording equal to the built-in text is stored as "no override", so a later change to the
+    # built-in wording still reaches a company that never edited it.
+    if payload.subject is not None:
+        text = payload.subject.strip()
+        row.subject = None if not text or text == default.subject else text[:300]
+    if payload.body is not None:
+        text = payload.body.strip()
+        row.body = None if not text or text == default.body.strip() else text[:5000]
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/alerts")
+def write_alerts(payload: AlertsIn, admin: AdminUser, db: DbSession) -> dict:
+    row = db.get(NotificationOrgSettings, admin.org_id)
+    if row is None:
+        row = NotificationOrgSettings(org_id=admin.org_id)
+        db.add(row)
+    row.probation_alert = payload.probation_alert
+    row.document_alert = payload.document_alert
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/sent")
+def read_sent(admin: AdminUser, db: DbSession, limit: int = Query(default=50, ge=1, le=200)) -> dict:
+    """Everything the company's event mails have sent, newest first, failures included."""
+    labels = {k: e.label for k, e in eventmail.EVENTS.items()}
+    labels.update({spec.key: spec.label for spec in notif.SPECS.values()})
+    rows = db.execute(
+        select(NotificationLog, User.full_name)
+        .join(User, User.id == NotificationLog.user_id)
+        .where(NotificationLog.org_id == admin.org_id)
+        .order_by(NotificationLog.created_at.desc()).limit(limit)
+    ).all()
+    return {"items": [
+        {"event": r.kind, "label": labels.get(r.kind, r.kind), "to": name, "subject": r.subject,
+         "status": r.status, "error": r.error, "sent_at": (r.sent_at or r.created_at).isoformat()}
+        for r, name in rows
+    ]}

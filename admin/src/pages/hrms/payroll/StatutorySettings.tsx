@@ -396,7 +396,7 @@ function Rate({
   return (
     <label className="pr-field">
       <span className="pr-field-label">{label}</span>
-      <input placeholder="12" value={text} inputMode="decimal" className={bad ? 'is-bad' : ''}
+      <input placeholder="12" value={text} type="number" data-spin min={0} step="any" className={bad ? 'is-bad' : ''}
              onChange={(e) => {
                setText(e.target.value)
                const next = toBps(e.target.value)
@@ -422,7 +422,7 @@ function Amount({
   return (
     <label className="pr-field">
       <span className="pr-field-label">{label}</span>
-      <input placeholder="15000" value={text} inputMode="decimal"
+      <input placeholder="15000" value={text} type="number" data-spin min={0} step="any"
              onChange={(e) => {
                setText(e.target.value)
                const next = toPaise(e.target.value)
@@ -481,17 +481,17 @@ function Slabs({
       <div className="pr-row">
         <label className="pr-field">
           <span className="pr-field-label">From</span>
-          <input value={min} inputMode="decimal" placeholder="0"
+          <input value={min} type="number" data-spin min={0} step="any" placeholder="0"
                  onChange={(e) => setMin(e.target.value)} />
         </label>
         <label className="pr-field">
           <span className="pr-field-label">To</span>
-          <input value={max} inputMode="decimal" placeholder="blank = no limit"
+          <input value={max} type="number" data-spin min={0} step="any" placeholder="blank = no limit"
                  onChange={(e) => setMax(e.target.value)} />
         </label>
         <label className="pr-field">
           <span className="pr-field-label">Deduct</span>
-          <input value={amount} inputMode="decimal" placeholder="200"
+          <input value={amount} type="number" data-spin min={0} step="any" placeholder="200"
                  onChange={(e) => setAmount(e.target.value)} />
         </label>
         <label className="pr-field">
@@ -603,18 +603,18 @@ function Preview({
       <div className="pr-row">
         <label className="pr-field">
           <span className="pr-field-label">PF wages</span>
-          <input placeholder="15000" value={pfWage} inputMode="decimal"
+          <input placeholder="15000" value={pfWage} type="number" data-spin min={0} step="any"
                  onChange={(e) => setPfWage(e.target.value)} />
           <span className="pr-field-hint">Usually basic. Components you flagged.</span>
         </label>
         <label className="pr-field">
           <span className="pr-field-label">ESI wages</span>
-          <input placeholder="21000" value={esiWage} inputMode="decimal"
+          <input placeholder="21000" value={esiWage} type="number" data-spin min={0} step="any"
                  onChange={(e) => setEsiWage(e.target.value)} />
         </label>
         <label className="pr-field">
           <span className="pr-field-label">Salary gross</span>
-          <input placeholder="30000" value={gross} inputMode="decimal"
+          <input placeholder="30000" value={gross} type="number" data-spin min={0} step="any"
                  onChange={(e) => setGross(e.target.value)} />
           <span className="pr-field-hint">For the PT band. Excludes reimbursements.</span>
         </label>

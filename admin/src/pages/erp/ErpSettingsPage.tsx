@@ -36,13 +36,13 @@ export default function ErpSettingsPage() {
       <section className="card" style={{ padding: 20 }}>
         <div className="crm-form">
           <Field label="GRN over-receipt tolerance (%)" hint="0 = never accept more than was ordered">
-            <input placeholder="e.g. 5" disabled={!admin} inputMode="decimal" value={form.grn_over_receipt_pct} onChange={(e) => set('grn_over_receipt_pct', e.target.value)} />
+            <input placeholder="e.g. 5" disabled={!admin} type="number" data-spin min={0} step="any" value={form.grn_over_receipt_pct} onChange={(e) => set('grn_over_receipt_pct', e.target.value)} />
           </Field>
           <Field label="Default customer credit days">
-            <input placeholder="30" disabled={!admin} inputMode="numeric" value={String(form.default_credit_days)} onChange={(e) => set('default_credit_days', Number(e.target.value) || 0)} />
+            <input placeholder="30" disabled={!admin} type="number" data-spin min={0} step={1} value={String(form.default_credit_days)} onChange={(e) => set('default_credit_days', Number(e.target.value) || 0)} />
           </Field>
           <Field label="Block orders when an invoice is overdue by more than (days)" hint="0 turns the check off">
-            <input placeholder="60" disabled={!admin} inputMode="numeric" value={String(form.block_orders_overdue_days)} onChange={(e) => set('block_orders_overdue_days', Number(e.target.value) || 0)} />
+            <input placeholder="60" disabled={!admin} type="number" data-spin min={0} step={1} value={String(form.block_orders_overdue_days)} onChange={(e) => set('block_orders_overdue_days', Number(e.target.value) || 0)} />
           </Field>
           <label className="crm-check"><input disabled={!admin} type="checkbox" checked={form.allow_negative_stock} onChange={(e) => set('allow_negative_stock', e.target.checked)} /> Allow negative stock (not recommended)</label>
           <label className="crm-check"><input disabled={!admin} type="checkbox" checked={form.invoice_maker_checker} onChange={(e) => set('invoice_maker_checker', e.target.checked)} /> Invoices are posted by somebody other than whoever drafted them</label>

@@ -825,20 +825,20 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
     ),
     freight: fm('freight') !== 'hide' && (
       <label className="pof-f"><span className="pof-l">Freight charges</span>
-        <span className="pof-affix"><i>₹</i><input placeholder="0" inputMode="decimal" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
+        <span className="pof-affix"><i>₹</i><input placeholder="0" type="number" data-spin min={0} step="any" value={head.freight} onChange={(e) => set('freight', e.target.value)} /></span></label>
     ),
     other_charges: fm('other_charges') !== 'hide' && (
       <label className="pof-f"><span className="pof-l">Other charges</span>
-        <span className="pof-affix"><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
+        <span className="pof-affix"><i>₹</i><input type="number" data-spin min={0} step="any" value={head.other_charges} placeholder="Packing, loading…"
           onChange={(e) => set('other_charges', e.target.value)} /></span></label>
     ),
     ld_percent_per_week: fm('ld_percent_per_week') !== 'hide' && (
       <label className="pof-f"><span className="pof-l">LD % per week late</span>
-        <span className="pof-affix"><input placeholder="0.5" inputMode="decimal" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
+        <span className="pof-affix"><input placeholder="0.5" type="number" data-spin min={0} step="any" value={head.ld_percent_per_week} onChange={(e) => set('ld_percent_per_week', e.target.value)} /><i>%</i></span></label>
     ),
     ld_cap_percent: fm('ld_cap_percent') !== 'hide' && (
       <label className="pof-f"><span className="pof-l">LD cap</span>
-        <span className="pof-affix"><input placeholder="5" inputMode="decimal" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
+        <span className="pof-affix"><input placeholder="5" type="number" data-spin min={0} step="any" value={head.ld_cap_percent} onChange={(e) => set('ld_cap_percent', e.target.value)} /><i>%</i></span></label>
     ),
     notes: fm('notes') !== 'hide' && (
       <label className="pof-f"><span className="pof-l">Notes to vendor{star('notes')}</span>

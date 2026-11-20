@@ -196,7 +196,7 @@ function NewCategory({
     ),
     cap: fm('cap') !== 'hide' && (
       <input placeholder={rq('cap') ? 'Cap per item *' : 'Cap per item — blank for none'} value={cap}
-             inputMode="decimal" className={capInvalid ? 'is-bad' : ''}
+             type="number" data-spin min={0} step="any" className={capInvalid ? 'is-bad' : ''}
              onChange={(e) => setCap(e.target.value)} />
     ),
     receipt: fm('receipt') !== 'hide' && (

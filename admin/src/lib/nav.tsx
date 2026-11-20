@@ -20,6 +20,7 @@ import {
   IconStar,
   IconSheet,
   IconSitemap,
+  IconPin,
   IconUsers,
 } from '../components/Icons'
 import type { MenuRights } from './types'
@@ -202,8 +203,9 @@ export const NAV: NavGroup[] = [
          table, not an answer. */
       { to: '/payroll/overview', label: 'Overview', icon: IconGauge, section: 'Administration', adminOnly: true },
       { to: '/payroll/runs', label: 'Pay runs', icon: IconClock, section: 'Administration', adminOnly: true },
-      { to: '/payroll', label: 'Salary structures', icon: IconSheet, section: 'Administration', adminOnly: true, end: true },
-      { to: '/payroll/components', label: 'Pay components', icon: IconGear, section: 'Administration', adminOnly: true },
+      { to: '/payroll/slips', label: 'Salary slips', icon: IconSheet, section: 'Administration', adminOnly: true },
+      { to: '/payroll', label: 'Employee Salaries', icon: IconSheet, section: 'Administration', adminOnly: true, end: true },
+      { to: '/payroll/setup', label: 'Salary setup', icon: IconGear, section: 'Administration', adminOnly: true },
       { to: '/payroll/tax', label: 'Tax declarations', icon: IconCheck, section: 'Administration', adminOnly: true },
       { to: '/payroll/year-end', label: 'Year end & Form 16', icon: IconChart, section: 'Administration', adminOnly: true },
     ],
@@ -377,6 +379,8 @@ export const NAV: NavGroup[] = [
 export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/hrms/dashboard', label: 'HR Dashboard', icon: IconDashboard, end: true },
   { to: '/attendance', label: 'Attandance', icon: IconClock, end: true },
+  { to: '/tracking', label: 'Employee Tracking', icon: IconPin, end: true, teamOnly: true },
+  { to: '/hrms/leave', label: 'Leave', icon: IconReturn, end: true, teamOnly: true },
   { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },
   { to: '/salary', label: 'Payroll', icon: IconSheet, end: true },
   { to: '/expenses', label: 'Expense', icon: IconCard, end: true },

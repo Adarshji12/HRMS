@@ -23,6 +23,7 @@ from app.api.v1 import (
     hrsettings,
     incometax,
     leave,
+    leave_desk,
     letters,
     loans,
     meetings,
@@ -39,6 +40,8 @@ from app.api.v1 import (
     reports,
     signup,
     statutory,
+    incentives,
+    tracking,
     superadmin,
     timesheets,
 )
@@ -80,6 +83,7 @@ api_router.include_router(
     regularization.router, dependencies=[Depends(require_module("regularization"))]
 )
 api_router.include_router(leave.router, dependencies=[Depends(require_module("leave"))])
+api_router.include_router(leave_desk.router, dependencies=[Depends(require_module("leave"))])
 api_router.include_router(letters.router, dependencies=[Depends(require_module("letters"))])
 api_router.include_router(expenses.router, dependencies=[Depends(require_module("expenses"))])
 api_router.include_router(loans.router, dependencies=[Depends(require_module("loans"))])
@@ -89,6 +93,8 @@ api_router.include_router(payroll.router, dependencies=[Depends(require_module("
 # thousand lines.
 api_router.include_router(payrun.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(statutory.router, dependencies=[Depends(require_module("payroll"))])
+api_router.include_router(tracking.router)
+api_router.include_router(incentives.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(incometax.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(form16.router, dependencies=[Depends(require_module("payroll"))])
 api_router.include_router(payoutputs.router, dependencies=[Depends(require_module("payroll"))])

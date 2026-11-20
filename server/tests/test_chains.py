@@ -536,3 +536,124 @@ def test_a_leave_type_needing_no_approval_still_works(client, tenants):
         headers=acme.headers(acme.employee_token))
     assert applied.status_code in (200, 201), applied.text
     assert applied.json()["status"] == "approved"
+
+
+# --------------------------------------------------------------------------- #
+# The approval-rules switches: Mandatory, Auto skip, Final, and the flow's own
+# --------------------------------------------------------------------------- #
+
+
+def _flow(client, tenant, kind, **switches):
+    response = client.put(f"/api/v1/workflow/flows/{kind}", json=switches, headers=tenant.headers())
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_the_defaults_reproduce_the_old_behaviour(client, tenants):
+    acme, _ = tenants
+    rows = client.get("/api/v1/workflow/overview", headers=acme.headers()).json()
+    expense = next(r for r in rows if r["flow"]["kind"] == "expense")
+    assert expense["flow"] == {"kind": "expense", "is_enabled": True, "sequential": True,
+                               "reject_ends": True, "notify_approver": True}
+    _chain(client, acme, "expense", [{"reviewer_rule": "reporting_manager"}])
+    level = client.get("/api/v1/workflow/overview", headers=acme.headers()).json()
+    level = next(r for r in level if r["flow"]["kind"] == "expense")["levels"][0]
+    assert (level["is_mandatory"], level["auto_skip"], level["is_final"], level["is_active"]) == (True, False, False, True)
+
+
+def test_auto_skip_passes_over_a_level_with_nobody_assigned(client, tenants):
+    acme, _ = tenants
+    finance_id, finance_token = _person(acme, "Finance", can_approve_expenses=True)
+    # The employee reports to nobody, so the first level finds no one - and says to skip.
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager", "auto_skip": True},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    claim = _claim(client, acme)
+    steps = _steps(claim["id"])
+    assert steps[0].status == StepStatus.SKIPPED.value and "skipped" in (steps[0].note or "")
+    assert steps[1].status == StepStatus.PENDING.value
+    assert _review(client, acme, claim["id"], finance_token).json()["status"] == "approved"
+
+
+def test_a_chain_never_approves_because_every_level_skipped_itself(client, tenants):
+    acme, _ = tenants
+    _chain(client, acme, "expense", [{"reviewer_rule": "reporting_manager", "auto_skip": True}])
+    steps = _steps(_claim(client, acme)["id"])
+    assert steps[0].status == StepStatus.PENDING.value, "with nobody to ask, a level stays as an unassigned step"
+
+
+def test_a_final_level_finishes_the_request(client, tenants):
+    acme, _ = tenants
+    manager_id, manager_token = _person(acme, "Manager", can_approve_expenses=True)
+    finance_id, _ = _person(acme, "Finance", can_approve_expenses=True)
+    _reports_to(acme, manager_id)
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager", "is_final": True},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    claim = _claim(client, acme)
+    assert _review(client, acme, claim["id"], manager_token).json()["status"] == "approved"
+    steps = _steps(claim["id"])
+    assert steps[1].status == StepStatus.SKIPPED.value and "final approval" in (steps[1].note or "")
+
+
+def test_a_switched_off_flow_decides_in_one_step(client, tenants):
+    acme, _ = tenants
+    manager_id, manager_token = _person(acme, "Manager", can_approve_expenses=True)
+    finance_id, _ = _person(acme, "Finance", can_approve_expenses=True)
+    _reports_to(acme, manager_id)
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager"},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    _flow(client, acme, "expense", is_enabled=False)
+    claim = _claim(client, acme)
+    assert _steps(claim["id"]) == []
+    assert _review(client, acme, claim["id"], manager_token).json()["status"] == "approved"
+
+
+def test_a_parallel_flow_asks_every_level_at_once(client, tenants):
+    acme, _ = tenants
+    manager_id, manager_token = _person(acme, "Manager", can_approve_expenses=True)
+    finance_id, finance_token = _person(acme, "Finance", can_approve_expenses=True)
+    _reports_to(acme, manager_id)
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager"},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    _flow(client, acme, "expense", sequential=False)
+    claim = _claim(client, acme)
+    assert all(s.started_at is not None for s in _steps(claim["id"]))
+    # Either may go first.
+    assert _review(client, acme, claim["id"], finance_token).json()["status"] == "submitted"
+    assert _review(client, acme, claim["id"], manager_token).json()["status"] == "approved"
+
+
+def test_a_rejection_at_an_optional_level_need_not_end_the_request(client, tenants):
+    acme, _ = tenants
+    manager_id, manager_token = _person(acme, "Manager", can_approve_expenses=True)
+    finance_id, finance_token = _person(acme, "Finance", can_approve_expenses=True)
+    _reports_to(acme, manager_id)
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager", "is_mandatory": False},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    _flow(client, acme, "expense", reject_ends=False)
+    claim = _claim(client, acme)
+    assert _review(client, acme, claim["id"], manager_token, approve=False).json()["status"] == "submitted"
+    assert _review(client, acme, claim["id"], finance_token).json()["status"] == "approved"
+
+
+def test_a_mandatory_level_still_ends_the_request_when_it_rejects(client, tenants):
+    acme, _ = tenants
+    manager_id, manager_token = _person(acme, "Manager", can_approve_expenses=True)
+    finance_id, _ = _person(acme, "Finance", can_approve_expenses=True)
+    _reports_to(acme, manager_id)
+    _chain(client, acme, "expense", [
+        {"reviewer_rule": "reporting_manager"},
+        {"reviewer_rule": "named_user", "reviewer_user_id": str(finance_id)},
+    ])
+    _flow(client, acme, "expense", reject_ends=False)
+    claim = _claim(client, acme)
+    assert _review(client, acme, claim["id"], manager_token, approve=False).json()["status"] == "rejected"

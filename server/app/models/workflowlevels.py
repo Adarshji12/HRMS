@@ -241,6 +241,15 @@ class WorkflowLevel(UUIDMixin, TimestampMixin, Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    #: A level that must be passed. An optional level (not mandatory) is skipped when nobody is
+    #: assigned to it, and a rejection at it can leave the request going when the flow says a
+    #: rejection need not end it.
+    is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: When nobody is assigned to this level, skip it rather than show it as unassigned.
+    auto_skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Approving here finishes the request: the levels after it are skipped.
+    is_final: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     rule: Mapped["WorkflowRule | None"] = relationship(back_populates="levels")
 
 
@@ -317,6 +326,9 @@ class WorkflowStep(UUIDMixin, TimestampMixin, Base):
     escalate_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    #: Copied from the level, like the rule, so a record keeps the rules it was routed by.
+    is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_final: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     @property
     def status_enum(self) -> StepStatus:
@@ -328,3 +340,27 @@ class WorkflowStep(UUIDMixin, TimestampMixin, Base):
     @property
     def is_open(self) -> bool:
         return self.status_enum is StepStatus.PENDING
+
+
+class WorkflowFlow(UUIDMixin, TimestampMixin, Base):
+    """How one request type runs its chain: on or off, and the three switches.
+
+    A missing row means the defaults, which are what the engine always did: enabled, one level
+    at a time, a rejection ends the request, the approver is told.
+    """
+
+    __tablename__ = "workflow_flows"
+    __table_args__ = (UniqueConstraint("org_id", "kind", name="uq_workflow_flows_org_kind"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: Off means the configured levels are ignored and the request is decided in one step.
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: One level at a time. Off, every level is asked at once and any of them can act.
+    sequential: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: A rejection ends the request. Off, a rejection at an optional level does not.
+    reject_ends: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Tell the approver when a request reaches them.
+    notify_approver: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

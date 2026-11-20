@@ -140,6 +140,7 @@ function Text({
     <Field label={label} required={required || mode === 'mandatory'} hint={hint} error={shown(p, k)} wide={wide}>
       <input
         type={type}
+        data-spin={type === 'number' ? '' : undefined}
         disabled={disabled}
         value={p.d[k] as string}
         placeholder={placeholder}
@@ -455,11 +456,11 @@ export function JobStep(p: StepProps) {
           work_location: <Text p={p} k="work_location" label="Work location" placeholder="Mumbai HQ" />,
           grade: <Text p={p} k="grade" label="Grade / band" placeholder="L3" />,
           probation_months: (
-            <Text p={p} k="probation_months" label="Probation (months)" inputMode="numeric"
+            <Text p={p} k="probation_months" label="Probation (months)" type="number"
                   hint={probationEnd ? `Probation ends ${new Date(probationEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.` : '0 if they join confirmed.'} />
           ),
           notice_period_days: (
-            <Text p={p} k="notice_period_days" label="Notice period (days)" inputMode="numeric"
+            <Text p={p} k="notice_period_days" label="Notice period (days)" type="number"
                   hint="Used by full & final settlement to recover short notice." />
           ),
           bgv_status: <Choice p={p} k="bgv_status" label="Background verification" empty="Not started" options={BGV_STATUSES} />,
@@ -541,7 +542,7 @@ export function PayStep(p: StepProps) {
     gross_monthly: p.fm('gross_monthly') !== 'hide' && (
       <Field label="Monthly gross (₹)" error={shown(p, 'gross_monthly')} required={p.fm('gross_monthly') === 'mandatory'}
              hint={gross ? `${money(gross * 12)} a year.` : undefined}>
-        <input value={d.gross_monthly} inputMode="decimal" placeholder="50,000"
+        <input value={d.gross_monthly} type="number" data-spin min={0} step="any" placeholder="50,000"
                onChange={(e) => p.set({
                  gross_monthly: e.target.value,
                  // Pick every earning the first time a figure is typed —
@@ -563,7 +564,7 @@ export function PayStep(p: StepProps) {
       {can.payroll && earnings.length === 0 ? (
         <Locked>
           No pay components are defined yet, so a salary cannot be set here. Set them up in
-          Payroll → Pay components, then add this person’s salary from Payroll → Salary structures.
+          Payroll → Pay components, then add this person’s salary from Payroll → Employee Salaries.
         </Locked>
       ) : can.payroll ? (
         <section className="hire-section">
@@ -571,7 +572,7 @@ export function PayStep(p: StepProps) {
             <h3>Salary</h3>
             <p>{p.editing
               ? 'Leave blank to keep the current structure. A figure here adds a salary revision.'
-              : 'The joining salary structure. Leave blank to set it later in Payroll → Salary structures.'}</p>
+              : 'The joining salary structure. Leave blank to set it later in Payroll → Employee Salaries.'}</p>
           </header>
           <div className="hire-grid">
             {p.orderOf('pay-salary').map((key) => <Fragment key={key}>{salaryNodes[key]}</Fragment>)}

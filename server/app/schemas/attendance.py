@@ -106,6 +106,16 @@ class AttendanceSettingsIn(BaseModel):
     overtime_enabled: bool | None = None
     overtime_min_minutes: int | None = Field(default=None, ge=0, le=480)
     overtime_on_off_days: bool | None = None
+    overtime_rate_mode: str | None = Field(default=None, pattern=r"^(salary|flat)$")
+    overtime_derived_from: str | None = Field(default=None, pattern=r"^(basic|ctc)$")
+    overtime_flat_rate_paise: int | None = Field(default=None, ge=0, le=100_000_000)
+    overtime_mult_working_x100: int | None = Field(default=None, ge=0, le=1000)
+    overtime_mult_off_x100: int | None = Field(default=None, ge=0, le=1000)
+    overtime_mult_holiday_x100: int | None = Field(default=None, ge=0, le=1000)
+    overtime_round_minutes: int | None = Field(default=None, ge=0, le=120)
+    overtime_max_hours_month: int | None = Field(default=None, ge=0, le=744)
+    overtime_requires_approval: bool | None = None
+    overtime_pay_through_payroll: bool | None = None
 
     # Punch methods. None leaves them as they are.
     manual_enabled: bool | None = None
@@ -132,6 +142,16 @@ class AttendanceSettingsOut(ORMModel):
     overtime_enabled: bool = True
     overtime_min_minutes: int = 0
     overtime_on_off_days: bool = True
+    overtime_rate_mode: str = "salary"
+    overtime_derived_from: str = "basic"
+    overtime_flat_rate_paise: int = 0
+    overtime_mult_working_x100: int = 100
+    overtime_mult_off_x100: int = 200
+    overtime_mult_holiday_x100: int = 200
+    overtime_round_minutes: int = 0
+    overtime_max_hours_month: int = 0
+    overtime_requires_approval: bool = True
+    overtime_pay_through_payroll: bool = False
 
     manual_enabled: bool = True
     manual_web_enabled: bool = True
@@ -172,6 +192,7 @@ class DeviceIn(BaseModel):
     radius_m: int | None = Field(default=None, ge=25, le=20000)
     ip_required: bool = False
     allowed_ips: str | None = Field(default=None, max_length=4000)
+    protocol: str = Field(default="generic", pattern=r"^(generic|zkteco|essl|realtime)$")
     cooldown_s: int = Field(default=120, ge=0, le=3600)
     allowed_from_min: int = Field(default=120, ge=0, le=1440)
     allowed_until_min: int = Field(default=240, ge=0, le=1440)
@@ -216,6 +237,7 @@ class DeviceOut(ORMModel):
     radius_m: int | None = None
     ip_required: bool = False
     allowed_ips: str | None = None
+    protocol: str = "generic"
     cooldown_s: int = 120
     allowed_from_min: int = 120
     allowed_until_min: int = 240
@@ -234,6 +256,29 @@ class ShiftIn(BaseModel):
     half_day_threshold_minutes: int = Field(default=240, ge=30, le=720)
     is_night_shift: bool = False
     is_active: bool = True
+    # Left out by older clients: then the stored value is kept.
+    full_day_minutes: int = Field(default=480, ge=60, le=1440)
+    break_minutes: int = Field(default=60, ge=0, le=480)
+    #: {"sun": "all", "sat": "2,4"} — weekday: "all" or the occurrences (1-5, last).
+    week_offs: dict[str, str] | None = None
+    color: str = Field(default="#2563eb", pattern=r"^#[0-9a-fA-F]{6}$")
+    is_default: bool = False
+
+    @field_validator("week_offs")
+    @classmethod
+    def _a_real_pattern(cls, value):
+        if not value:
+            return None
+        days = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+        out: dict[str, str] = {}
+        for day, rule in value.items():
+            if day not in days:
+                raise ValueError(f"Not a weekday: {day}")
+            parts = [p.strip() for p in str(rule).split(",") if p.strip()]
+            if rule != "all" and (not parts or any(p not in {"1", "2", "3", "4", "5", "last"} for p in parts)):
+                raise ValueError(f"{day}: use all, or any of 1, 2, 3, 4, 5, last")
+            out[day] = "all" if rule == "all" else ",".join(parts)
+        return out
 
 
 class ShiftOut(ORMModel):
@@ -249,6 +294,12 @@ class ShiftOut(ORMModel):
     is_active: bool
     #: Clock span, wrapping midnight. From the model property.
     expected_minutes: int
+    full_day_minutes: int = 480
+    full_day_hours: float = 8
+    break_minutes: int = 60
+    week_offs: dict[str, str] | None = None
+    color: str = "#2563eb"
+    is_default: bool = False
     #: Derived, so the shift list needs no client-side join.
     assigned_count: int = 0
 

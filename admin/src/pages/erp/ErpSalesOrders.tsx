@@ -1020,7 +1020,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     customer_po_value: fm('customer_po_value') !== 'hide' && (
         <label className={`sb-f c3${poValueBad ? ' is-bad' : ''}`} title={poValueBad ? 'Enter an amount like 1250 or 1250.50' : 'Including tax'}>
           <span>PO value ₹{star('customer_po_value')}</span>
-          <input inputMode="decimal" value={head.customer_po_value} aria-label="PO value (incl. tax)" onChange={(e) => set('customer_po_value', e.target.value)} placeholder="Flags a mismatch" />
+          <input type="number" data-spin min={0} step="any" value={head.customer_po_value} aria-label="PO value (incl. tax)" onChange={(e) => set('customer_po_value', e.target.value)} placeholder="Flags a mismatch" />
         </label>
     ),
     reference: fm('reference') !== 'hide' && (
@@ -1072,13 +1072,13 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     ),
     freight: fm('freight') !== 'hide' && (
             <label className="pof-f"><span className="pof-l">Freight charges{star('freight')}</span>
-              <span className={`pof-affix${freightBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.freight} placeholder="0.00"
+              <span className={`pof-affix${freightBad ? ' is-bad' : ''}`}><i>₹</i><input type="number" data-spin min={0} step="any" value={head.freight} placeholder="0.00"
                 onChange={(e) => set('freight', e.target.value)} /></span>
               {freightBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
     ),
     other_charges: fm('other_charges') !== 'hide' && (
             <label className="pof-f"><span className="pof-l">Other charges{star('other_charges')}</span>
-              <span className={`pof-affix${otherBad ? ' is-bad' : ''}`}><i>₹</i><input inputMode="decimal" value={head.other_charges} placeholder="Packing, loading…"
+              <span className={`pof-affix${otherBad ? ' is-bad' : ''}`}><i>₹</i><input type="number" data-spin min={0} step="any" value={head.other_charges} placeholder="Packing, loading…"
                 onChange={(e) => set('other_charges', e.target.value)} /></span>
               {otherBad && <small className="pof-err">Enter an amount like 1250 or 1250.50</small>}</label>
     ),
@@ -1245,9 +1245,9 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
                     <input value={m.name} placeholder="e.g. 30% advance" maxLength={160} className={msBad(m) && !m.name.trim() ? 'is-bad' : ''}
                       onChange={(e) => upd({ name: e.target.value })} />
                     <select value={m.kind} onChange={(e) => upd({ kind: e.target.value })}>{MILESTONE_KINDS.map((k) => <option key={k} value={k}>{titleCase(k)}</option>)}</select>
-                    <input placeholder="0" inputMode="decimal" value={m.taxable_amount} className={msBad(m) && !(Number(m.taxable_amount) > 0 && moneyOk(m.taxable_amount)) ? 'is-bad' : ''}
+                    <input placeholder="0" type="number" data-spin min={0} step="any" value={m.taxable_amount} className={msBad(m) && !(Number(m.taxable_amount) > 0 && moneyOk(m.taxable_amount)) ? 'is-bad' : ''}
                       onChange={(e) => upd({ taxable_amount: e.target.value })} />
-                    <input placeholder="18" inputMode="decimal" value={m.gst_percent} className={msBad(m) && !(Number(m.gst_percent) >= 0 && Number(m.gst_percent) <= 28 && m.gst_percent.trim() !== '') ? 'is-bad' : ''}
+                    <input placeholder="18" type="number" data-spin min={0} step="any" value={m.gst_percent} className={msBad(m) && !(Number(m.gst_percent) >= 0 && Number(m.gst_percent) <= 28 && m.gst_percent.trim() !== '') ? 'is-bad' : ''}
                       onChange={(e) => upd({ gst_percent: e.target.value })} />
                     <input type="date" value={m.due_date} onChange={(e) => upd({ due_date: e.target.value })} />
                     <button type="button" className="crm-icon-btn crm-icon-danger" aria-label="Remove milestone" onClick={() => setMilestones(milestones.filter((_, j) => j !== i))}><IconTrash size={13} /></button>

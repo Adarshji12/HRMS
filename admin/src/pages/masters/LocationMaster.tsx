@@ -257,13 +257,13 @@ function LocationDialog({
           <span className="om-geofence-title">Geofence — used once attendance is switched on</span>
           <div className="om-geofence-grid">
             <Field label="Latitude">
-              <input value={form.lat} inputMode="decimal" placeholder="18.5204" onChange={(e) => set({ lat: e.target.value })} />
+              <input value={form.lat} type="number" data-spin step="any" placeholder="18.5204" onChange={(e) => set({ lat: e.target.value })} />
             </Field>
             <Field label="Longitude">
-              <input value={form.lng} inputMode="decimal" placeholder="73.8567" onChange={(e) => set({ lng: e.target.value })} />
+              <input value={form.lng} type="number" data-spin step="any" placeholder="73.8567" onChange={(e) => set({ lng: e.target.value })} />
             </Field>
             <Field label="Radius (m)">
-              <input value={form.radius_m} inputMode="numeric" onChange={(e) => set({ radius_m: e.target.value })} />
+              <input value={form.radius_m} type="number" data-spin min={0} step={1} onChange={(e) => set({ radius_m: e.target.value })} />
             </Field>
           </div>
         </div>

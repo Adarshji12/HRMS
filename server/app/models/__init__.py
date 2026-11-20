@@ -57,6 +57,7 @@ from app.models.workflowlevels import (
     MAX_LEVELS,
     ReviewerRule,
     StepStatus,
+    WorkflowFlow,
     WorkflowLevel,
     WorkflowRule,
     WorkflowStep,
@@ -140,6 +141,7 @@ from app.models.payroll import (
     SalaryStructure,
     SalaryStructureComponent,
 )
+from app.models.salary_template import SalaryTemplate
 from app.models.onboarding import (
     OnboardingCategory,
     OnboardingDocument,
@@ -213,12 +215,14 @@ from app.models.meetings import Meeting, MeetingInvitee, MeetingStatus
 # its thirty-odd classes are only used by the ERP services, which import them
 # from `app.models.erp` directly.
 from app.models import erp  # noqa: F401,E402
+from app.models.tracking import LocationPing
+from app.models.incentives import IncentiveStatus, SalesIncentive, SalesIncentiveSettings, SalesTarget
 from app.models.org_structure import Branch, Department, Designation, Team, WorkSchedule
 from app.models.organization import Organization, OrgSettings
 from app.models.plan import PlanRecord
 from app.models.mail import MailSettings
 from app.models.hrsettings import HrSettings
-from app.models.notification import NotificationLog, NotificationPreference
+from app.models.notification import NotificationLog, NotificationOrgSettings, NotificationPreference, NotificationRule
 from app.models.platform import PlatformAdmin
 from app.models.project import (
     Project,
@@ -241,6 +245,13 @@ from app.models.user import Role, User, UserStatus
 # make this file the place people look for seed content, which is not what it is
 # for, and the two modules disagreed about whether to do it.
 __all__ = [
+    "SalaryTemplate",
+    "IncentiveStatus",
+    "SalesIncentive",
+    "SalesIncentiveSettings",
+    "LocationPing",
+    "SalesTarget",
+    "WorkflowFlow",
     "AttendanceDevice",
     "Branch",
     "CrmAccess",
@@ -364,7 +375,9 @@ __all__ = [
     "MaritalStatus",
     "MatchType",
     "NotificationLog",
+    "NotificationOrgSettings",
     "NotificationPreference",
+    "NotificationRule",
     "OffboardingFnf",
     "OffboardingReason",
     "OffboardingRequest",

@@ -496,3 +496,44 @@
   .crm .om-geo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .crm .om-geofence-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Shift Master. */
+.crm .sm-dot { display: inline-block; width: 10px; height: 10px; margin-right: 10px; border-radius: 50%; vertical-align: middle; }
+.crm .sm-default { margin-left: 8px; font-size: 12px; color: var(--text-muted); }
+.crm .sm-offs { margin-left: 20px; }
+.crm .sm-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.crm .sm-row-3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; }
+.crm .sm-row-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.crm .sm-days { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.crm .sm-day, .crm .sm-pill {
+  padding: 8px 14px; border: 1px solid var(--crm-hair); border-radius: 10px; background: var(--surface-1);
+  font: inherit; font-size: 13.5px; color: var(--text-primary); cursor: pointer;
+}
+.crm .sm-day.is-on { color: var(--brand-ink); border-color: var(--brand); background: var(--brand-soft); font-weight: 600; }
+.crm .sm-occ { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 14px; border: 1px solid var(--crm-hair); border-radius: 12px; }
+.crm .sm-occ > b { min-width: 34px; }
+.crm .sm-pill { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.crm .sm-pill.is-on { color: #fff; border-color: var(--status-good, #0f9d8a); background: var(--status-good, #0f9d8a); font-weight: 600; }
+.crm .sm-sep { width: 1px; height: 18px; background: var(--crm-hair); }
+.crm .sm-summary { margin: 12px 0 2px; font-size: 13.5px; }
+.crm .sm-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.crm .sm-color { width: 56px; height: 30px; padding: 3px; border-radius: 8px; cursor: pointer; }
+@media (max-width: 640px) { .crm .sm-row-3, .crm .sm-row-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Leave Type Master and the Leave policy card. */
+.crm .dm-tile-green { color: var(--status-good, #0f9d8a); background: color-mix(in srgb, var(--status-good, #0f9d8a) 14%, transparent); }
+.crm .lt-badge {
+  display: inline-grid; place-items: center; width: 38px; height: 38px; margin-right: 12px; border-radius: 10px;
+  font-size: 12px; font-weight: 700; vertical-align: middle;
+}
+.crm .lt-names { display: inline-grid; vertical-align: middle; }
+.crm .lt-row-5 { display: grid; grid-template-columns: 1.4fr .7fr .9fr .9fr 1.2fr; gap: 14px; }
+.crm .lt-row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.crm .lt-checks {
+  display: grid; gap: 12px; padding: 16px 18px; border: 1px solid var(--crm-hair); border-radius: 12px; background: var(--crm-sunken);
+}
+.lp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lp-note { padding: 6px 10px; border-radius: 8px; font-size: 12.5px; color: var(--text-muted); background: var(--surface-2); }
+.lp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; }
+.lp-checks { display: grid; gap: 14px; margin-top: 20px; }
+@media (max-width: 720px) { .crm .lt-row-5, .crm .lt-row-3, .lp-grid { grid-template-columns: minmax(0, 1fr); } }

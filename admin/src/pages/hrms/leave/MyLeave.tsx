@@ -49,6 +49,12 @@ export interface LeaveType {
   is_encashable: boolean
   is_active: boolean
   accrual_rate_days: number
+  /** The calendar-cell colour, who the type is offered to, and when it is earned. */
+  color?: string
+  offered_to?: 'all' | 'male' | 'female'
+  min_service_months?: number
+  proof_after_days?: number
+  max_per_month_milli_days?: number
 }
 
 export interface LeaveBalance {
@@ -128,6 +134,12 @@ export interface LeaveSettingsOut {
   optional_holiday_quota: number
   is_configured: boolean
   optional_holidays_are_unlimited: boolean
+  /* Policy flags: whether unused leave carries over and how much, encashment, and whether
+     the reporting manager approves before HR. */
+  carry_forward_enabled?: boolean
+  carry_forward_max_milli_days?: number
+  encash_enabled?: boolean
+  manager_before_hr?: boolean
 }
 
 export interface CompOffCredit {

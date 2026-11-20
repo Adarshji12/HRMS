@@ -16,6 +16,7 @@ half the product. See :func:`punch_actor`.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, timedelta
 from typing import Annotated
@@ -544,6 +545,16 @@ def get_settings(viewer: CurrentUser, db: DbSession) -> AttendanceSettingsOut:
         overtime_enabled=row.overtime_enabled if row else True,
         overtime_min_minutes=row.overtime_min_minutes if row else 0,
         overtime_on_off_days=row.overtime_on_off_days if row else True,
+        overtime_rate_mode=row.overtime_rate_mode if row else "salary",
+        overtime_derived_from=row.overtime_derived_from if row else "basic",
+        overtime_flat_rate_paise=row.overtime_flat_rate_paise if row else 0,
+        overtime_mult_working_x100=row.overtime_mult_working_x100 if row else 100,
+        overtime_mult_off_x100=row.overtime_mult_off_x100 if row else 200,
+        overtime_mult_holiday_x100=row.overtime_mult_holiday_x100 if row else 200,
+        overtime_round_minutes=row.overtime_round_minutes if row else 0,
+        overtime_max_hours_month=row.overtime_max_hours_month if row else 0,
+        overtime_requires_approval=row.overtime_requires_approval if row else True,
+        overtime_pay_through_payroll=row.overtime_pay_through_payroll if row else False,
         manual_enabled=row.manual_enabled if row else True,
         manual_web_enabled=row.manual_web_enabled if row else True,
         manual_mobile_enabled=row.manual_mobile_enabled if row else True,
@@ -577,6 +588,16 @@ def put_settings(
             "overtime_enabled": payload.overtime_enabled,
             "overtime_min_minutes": payload.overtime_min_minutes,
             "overtime_on_off_days": payload.overtime_on_off_days,
+            "overtime_rate_mode": payload.overtime_rate_mode,
+            "overtime_derived_from": payload.overtime_derived_from,
+            "overtime_flat_rate_paise": payload.overtime_flat_rate_paise,
+            "overtime_mult_working_x100": payload.overtime_mult_working_x100,
+            "overtime_mult_off_x100": payload.overtime_mult_off_x100,
+            "overtime_mult_holiday_x100": payload.overtime_mult_holiday_x100,
+            "overtime_round_minutes": payload.overtime_round_minutes,
+            "overtime_max_hours_month": payload.overtime_max_hours_month,
+            "overtime_requires_approval": payload.overtime_requires_approval,
+            "overtime_pay_through_payroll": payload.overtime_pay_through_payroll,
         },
     )
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.settings_updated",
@@ -597,6 +618,16 @@ def put_settings(
         overtime_enabled=row.overtime_enabled,
         overtime_min_minutes=row.overtime_min_minutes,
         overtime_on_off_days=row.overtime_on_off_days,
+        overtime_rate_mode=row.overtime_rate_mode,
+        overtime_derived_from=row.overtime_derived_from,
+        overtime_flat_rate_paise=row.overtime_flat_rate_paise,
+        overtime_mult_working_x100=row.overtime_mult_working_x100,
+        overtime_mult_off_x100=row.overtime_mult_off_x100,
+        overtime_mult_holiday_x100=row.overtime_mult_holiday_x100,
+        overtime_round_minutes=row.overtime_round_minutes,
+        overtime_max_hours_month=row.overtime_max_hours_month,
+        overtime_requires_approval=row.overtime_requires_approval,
+        overtime_pay_through_payroll=row.overtime_pay_through_payroll,
         manual_enabled=row.manual_enabled, manual_web_enabled=row.manual_web_enabled,
         manual_mobile_enabled=row.manual_mobile_enabled, face_enabled=row.face_enabled,
         biometric_enabled=row.biometric_enabled,
@@ -684,6 +715,11 @@ def _shift_out(shift: Shift, assigned: dict[uuid.UUID, int]) -> ShiftOut:
         is_night_shift=shift.is_night_shift,
         is_active=shift.is_active,
         expected_minutes=shift.expected_minutes,
+        full_day_minutes=shift.full_day_minutes,
+        full_day_hours=shift.full_day_minutes / 60.0,
+        break_minutes=shift.break_minutes,
+        week_offs=json.loads(shift.week_offs) if shift.week_offs else None,
+        color=shift.color, is_default=shift.is_default,
         assigned_count=assigned.get(shift.id, 0),
     )
 
@@ -701,6 +737,12 @@ def _assigned_counts(db, org_id: uuid.UUID) -> dict[uuid.UUID, int]:
             .group_by(ShiftAssignment.shift_id)
         )
     }
+
+
+def _one_default_shift(db, org_id: uuid.UUID, keep: uuid.UUID) -> None:
+    """At most one shift is the default for new employees."""
+    for other in db.scalars(select(Shift).where(Shift.org_id == org_id, Shift.id != keep, Shift.is_default.is_(True))):
+        other.is_default = False
 
 
 @router.get("/shifts", response_model=list[ShiftOut])
@@ -725,9 +767,13 @@ def create_shift(
             status.HTTP_409_CONFLICT,
             detail={"reason": "duplicate_shift", "message": "A shift with that name exists."},
         )
-    shift = Shift(org_id=admin.org_id, **payload.model_dump(exclude={"name"}), name=name)
+    data = payload.model_dump(exclude={"name"})
+    data["week_offs"] = json.dumps(data["week_offs"]) if data["week_offs"] else None
+    shift = Shift(org_id=admin.org_id, **data, name=name)
     db.add(shift)
     db.flush()
+    if shift.is_default:
+        _one_default_shift(db, admin.org_id, shift.id)
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.shift_created",
           request=request, target_type="shift", target_id=str(shift.id),
           detail={"name": shift.name})
@@ -740,9 +786,18 @@ def update_shift(
     shift_id: uuid.UUID, payload: ShiftIn, admin: AdminUser, request: Request, db: DbSession
 ) -> ShiftOut:
     shift = _shift(db, admin.org_id, shift_id)
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    # A client that predates these fields does not send them: keep what is stored.
+    for kept in ("full_day_minutes", "break_minutes", "week_offs", "color", "is_default"):
+        if kept not in payload.model_fields_set:
+            data.pop(kept)
+    if "week_offs" in data:
+        data["week_offs"] = json.dumps(data["week_offs"]) if data["week_offs"] else None
+    for field, value in data.items():
         setattr(shift, field, value)
     shift.name = payload.name.strip()
+    if shift.is_default:
+        _one_default_shift(db, admin.org_id, shift.id)
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.shift_updated",
           request=request, target_type="shift", target_id=str(shift.id))
     db.commit()

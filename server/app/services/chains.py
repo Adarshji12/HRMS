@@ -63,6 +63,7 @@ from app.models.workflowlevels import (
     MAX_LEVELS,
     ReviewerRule,
     StepStatus,
+    WorkflowFlow,
     WorkflowLevel,
     WorkflowRule,
     WorkflowStep,
@@ -84,6 +85,41 @@ def _now() -> datetime:
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class FlowSettings:
+    """How one request type runs its chain. The defaults are what the engine always did."""
+
+    enabled: bool = True
+    sequential: bool = True
+    reject_ends: bool = True
+    notify_approver: bool = True
+
+
+def flow_settings(db: Session, org_id: uuid.UUID, kind: str) -> FlowSettings:
+    row = db.scalar(select(WorkflowFlow).where(WorkflowFlow.org_id == org_id, WorkflowFlow.kind == kind))
+    if row is None:
+        return FlowSettings()
+    return FlowSettings(row.is_enabled, row.sequential, row.reject_ends, row.notify_approver)
+
+
+def set_flow(
+    db: Session, viewer: User, kind: str, *, enabled: bool | None = None, sequential: bool | None = None,
+    reject_ends: bool | None = None, notify_approver: bool | None = None,
+) -> WorkflowFlow:
+    """Change a request type's switches. Left out means unchanged. In-flight requests keep the
+    steps they were routed with; what changes is how the next ones are routed and decided."""
+    row = db.scalar(select(WorkflowFlow).where(WorkflowFlow.org_id == viewer.org_id, WorkflowFlow.kind == kind))
+    if row is None:
+        row = WorkflowFlow(org_id=viewer.org_id, kind=kind)
+        db.add(row)
+    for column, value in (("is_enabled", enabled), ("sequential", sequential),
+                          ("reject_ends", reject_ends), ("notify_approver", notify_approver)):
+        if value is not None:
+            setattr(row, column, value)
+    db.flush()
+    return row
 
 
 def levels_for(
@@ -172,6 +208,10 @@ def set_levels(
             auto_forward_days=rung.auto_forward_days,
             escalate_after_days=rung.escalate_after_days,
             escalate_to_user_id=rung.escalate_to_user_id,
+            is_active=getattr(rung, "is_active", True),
+            is_mandatory=getattr(rung, "is_mandatory", True),
+            auto_skip=getattr(rung, "auto_skip", False),
+            is_final=getattr(rung, "is_final", False),
         )
         db.add(row)
         made.append(row)
@@ -312,6 +352,12 @@ def begin(
     if existing:
         return existing
 
+    flow = flow_settings(db, org_id, kind)
+    if not flow.enabled:
+        # Switched off: the configured levels are ignored and the request is decided in one step,
+        # exactly as a flow with no chain at all.
+        return []
+
     rungs, rule = resolve_chain(db, org_id, kind, subject, record)
     if not rungs:
         return []
@@ -323,13 +369,19 @@ def begin(
         # self-review rule would refuse it anyway, so it is recorded as skipped
         # rather than left to deadlock.
         skipped = reviewer_id is not None and reviewer_id == subject.id
+        # A level that finds nobody is skipped when it says so, or when it is optional. Otherwise
+        # it stays as an unassigned step somebody must see: silently skipping a gate is how a
+        # request gets approved through a level that was meant to exist.
+        nobody = reviewer_id is None and ReviewerRule(rung.reviewer_rule) is not ReviewerRule.CAPABILITY
+        unassigned_skip = nobody and (getattr(rung, "auto_skip", False) or not getattr(rung, "is_mandatory", True))
         step = WorkflowStep(
             org_id=org_id, kind=kind, record_id=record_id,
             subject_user_id=subject.id, level=rung.level,
             reviewer_rule=rung.reviewer_rule, reviewer_user_id=reviewer_id,
-            status=StepStatus.SKIPPED.value if skipped else StepStatus.PENDING.value,
+            status=StepStatus.SKIPPED.value if (skipped or unassigned_skip) else StepStatus.PENDING.value,
             note=(
                 "Resolved to the requester" if skipped
+                else "Nobody is assigned to this level, so it was skipped" if unassigned_skip
                 # Written on every rung rather than only the first: a step is
                 # read on its own in the approvals queue, and "which rule sent
                 # this to me" is the question the reviewer has.
@@ -338,14 +390,27 @@ def begin(
             auto_forward_days=rung.auto_forward_days,
             escalate_after_days=rung.escalate_after_days,
             escalate_to_user_id=rung.escalate_to_user_id,
+            is_mandatory=getattr(rung, "is_mandatory", True),
+            is_final=getattr(rung, "is_final", False),
         )
         db.add(step)
         made.append(step)
     db.flush()
 
-    first = next((s for s in made if s.is_open), None)
-    if first is not None:
-        first.started_at = _now()
+    # If skipping left nobody to ask, put the first level that was skipped for lack of a reviewer
+    # back as an unassigned step: a request must never be approved because every gate skipped itself.
+    if not any(s.is_open for s in made):
+        lonely = next((s for s in made if s.note and s.note.startswith("Nobody is assigned")), None)
+        if lonely is not None:
+            lonely.status = StepStatus.PENDING.value
+            lonely.note = "Nobody is assigned to any level - an administrator needs to look at this"
+
+    opened = [s for s in made if s.is_open]
+    if opened:
+        now = _now()
+        # One level at a time starts only the first; otherwise every open level is asked at once.
+        for step in (opened[:1] if flow.sequential else opened):
+            step.started_at = now
         db.flush()
     return made
 
@@ -390,14 +455,20 @@ def is_current_reviewer(db: Session, record_id: uuid.UUID, viewer: User) -> bool
     waiting. It grants nothing once the step is decided, nothing on other
     records, and nothing to the levels above or below.
     """
-    step = current_step(db, record_id)
-    if step is None:
+    steps = [s for s in steps_for(db, record_id) if s.is_open]
+    if not steps:
         return False
-    if step.reviewer_user_id is not None:
-        return step.reviewer_user_id == viewer.id
-    # A CAPABILITY rung names nobody: the flag is the gate, and the flow's own
-    # permission check has already applied it by the time this is asked.
-    return ReviewerRule(step.reviewer_rule) is ReviewerRule.CAPABILITY
+    # The levels that have been asked: one for a level-by-level chain, several for a parallel one.
+    asked = [s for s in steps if s.started_at is not None] or steps[:1]
+    for step in asked:
+        if step.reviewer_user_id is not None:
+            if step.reviewer_user_id == viewer.id:
+                return True
+        # A CAPABILITY rung names nobody: the flag is the gate, and the flow's own
+        # permission check has already applied it by the time this is asked.
+        elif ReviewerRule(step.reviewer_rule) is ReviewerRule.CAPABILITY:
+            return True
+    return False
 
 
 @dataclass(slots=True)
@@ -407,37 +478,50 @@ class Advance:
     ``final`` is the only thing the kernel acts on: it stamps the record when
     True and leaves it pending when False. The rest is for the response, so a
     reviewer is told "approved, now with Anita" rather than just "approved".
+
+    ``outcome`` is set only when the chain's result differs from the decision just made: an
+    optional level's rejection that did not end the request, after which the last open level
+    decided it. The kernel then stamps that result instead of the reviewer's own decision.
     """
 
     final: bool
     step: WorkflowStep | None = None
     next_step: WorkflowStep | None = None
     total: int = 0
+    outcome: bool | None = None
 
 
 def advance(
     db: Session, *, record_id: uuid.UUID, viewer: User, approve: bool,
     note: str | None, capability: str | None = None,
 ) -> Advance:
-    """Record one decision on the current rung.
+    """Record one decision on the chain.
 
-    **A rejection is terminal** at any level. Sending it back to level 1 for
-    another attempt is a resubmission, which is the requester's act and a
-    different endpoint — a chain that loops on rejection is one where nobody can
-    say whether a request was refused or is still going.
+    By default **a rejection is terminal** at any level. Sending it back to level 1 for another
+    attempt is a resubmission, which is the requester's act and a different endpoint — a chain
+    that loops on rejection is one where nobody can say whether a request was refused or is
+    still going. The flow's "a rejection ends it" switch can relax that for an optional level.
     """
     steps = steps_for(db, record_id)
     if not steps:
         # No chain on this record: an ordinary single-step approval.
         return Advance(final=True)
 
-    step = next((s for s in steps if s.is_open), None)
-    if step is None:
+    flow = flow_settings(db, steps[0].org_id, steps[0].kind)
+    open_steps = [s for s in steps if s.is_open]
+    if not open_steps:
         # Every rung is settled but the kernel was called again. Its own
         # already-decided guard is the right refusal here, so say nothing.
         return Advance(final=True, total=len(steps))
 
-    if not may_act(db, step, viewer, capability=capability):
+    if flow.sequential:
+        step = open_steps[0]
+        allowed = may_act(db, step, viewer, capability=capability)
+    else:
+        # Every open level has been asked: whoever may act on one of them decides it.
+        step = next((s for s in open_steps if may_act(db, s, viewer, capability=capability)), open_steps[0])
+        allowed = may_act(db, step, viewer, capability=capability)
+    if not allowed:
         raise ChainError(
             "not_your_step",
             f"This is waiting on level {step.level} of {len(steps)}, and that is "
@@ -452,14 +536,39 @@ def advance(
     db.flush()
 
     if not approve:
+        if flow.reject_ends or step.is_mandatory:
+            return Advance(final=True, step=step, total=len(steps))
+        # An optional level said no and the flow lets the request carry on.
+        remaining = [s for s in steps if s.is_open]
+        if not remaining:
+            approved_any = any(s.status == StepStatus.APPROVED.value for s in steps)
+            return Advance(final=True, step=step, total=len(steps), outcome=approved_any)
+        following = remaining[0]
+        if flow.sequential:
+            following.started_at = _now()
+            db.flush()
+        return Advance(final=False, step=step, next_step=following, total=len(steps))
+
+    if step.is_final:
+        # Approving here finishes the request: later levels are skipped. An earlier mandatory level
+        # that is still being asked (a parallel chain) must still say yes first.
+        blocking = [s for s in steps if s.is_open and s.level < step.level and s.is_mandatory]
+        if not blocking:
+            for other in steps:
+                if other.is_open:
+                    other.status = StepStatus.SKIPPED.value
+                    other.note = f"Closed by the final approval at level {step.level}"
+            db.flush()
+            return Advance(final=True, step=step, total=len(steps))
+
+    remaining = [s for s in steps if s.is_open]
+    if not remaining:
         return Advance(final=True, step=step, total=len(steps))
 
-    following = next((s for s in steps if s.level > step.level and s.is_open), None)
-    if following is None:
-        return Advance(final=True, step=step, total=len(steps))
-
-    following.started_at = _now()
-    db.flush()
+    following = next((s for s in remaining if s.level > step.level), remaining[0])
+    if flow.sequential:
+        following.started_at = _now()
+        db.flush()
     return Advance(final=False, step=step, next_step=following, total=len(steps))
 
 

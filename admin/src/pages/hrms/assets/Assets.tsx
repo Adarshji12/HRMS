@@ -942,7 +942,7 @@ function AssetForm({
         <input
           value={form.purchase_cost}
           onChange={(e) => set({ purchase_cost: e.target.value })}
-          inputMode="decimal"
+          type="number" data-spin min={0} step="any"
           placeholder="0.00"
         />
       </label>
@@ -988,7 +988,7 @@ function AssetForm({
         <input
           value={form.renewal_cost}
           onChange={(e) => set({ renewal_cost: e.target.value })}
-          inputMode="decimal"
+          type="number" data-spin min={0} step="any"
           placeholder="0.00"
         />
       </label>

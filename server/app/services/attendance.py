@@ -979,6 +979,13 @@ class DayContext:
         return self.default_schedule
 
     def is_weekly_off(self, user: User) -> bool:
+        # A shift with its own week-off pattern decides first; without one, the work
+        # schedule's weekly off applies as before.
+        shift = self.shifts.shift_for(user.id, self.day)
+        if shift is not None:
+            own = shift.is_off_on(self.day)
+            if own is not None:
+                return own
         schedule = self.schedule_for(user)
         if schedule is None:
             # No schedule anywhere in the org is a real state for a tenant that

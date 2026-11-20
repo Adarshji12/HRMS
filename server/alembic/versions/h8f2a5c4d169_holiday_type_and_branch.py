@@ -22,7 +22,7 @@ def upgrade() -> None:
         batch.add_column(sa.Column("holiday_type", sa.String(length=16), nullable=False, server_default="public"))
         batch.add_column(sa.Column("branch_id", sa.Uuid(), nullable=True))
         batch.create_foreign_key("fk_holidays_branch", "branches", ["branch_id"], ["id"], ondelete="SET NULL")
-    op.execute("UPDATE holidays SET holiday_type = 'optional' WHERE is_optional = 1 OR is_optional = true")
+    op.execute("UPDATE holidays SET holiday_type = 'optional' WHERE is_optional")
 
 
 def downgrade() -> None:

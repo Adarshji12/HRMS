@@ -1329,3 +1329,74 @@ def test_an_employee_cannot_decide_their_own_request(client, leave_org):
         headers=tenant.headers(tenant.employee_token),
     )
     assert refused.status_code == 403
+
+
+# ---------------------------------------------- who a type is offered to, and when --- #
+
+
+def _set_type(leave_org, **fields):
+    with SessionLocal() as db:
+        t = db.get(LeaveType, leave_org["leave_type_id"])
+        for k, v in fields.items():
+            setattr(t, k, v)
+        db.commit()
+
+
+def test_a_gender_specific_type_is_refused_to_the_other_gender(client, leave_org):
+    from app.models import EmployeeProfile
+
+    tenant = leave_org["tenant"]
+    _set_type(leave_org, offered_to="female")
+    with SessionLocal() as db:
+        db.add(EmployeeProfile(org_id=tenant.id, user_id=leave_org["staff_id"], gender="male"))
+        db.commit()
+    refused = _apply(client, tenant, leave_org, start=BASE_MONDAY, end=BASE_MONDAY)
+    assert refused.status_code == 403, refused.text
+    assert "female employees only" in str(refused.json())
+
+    with SessionLocal() as db:
+        profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == leave_org["staff_id"]))
+        profile.gender = "female"
+        db.commit()
+    assert _apply(client, tenant, leave_org, start=BASE_MONDAY, end=BASE_MONDAY).status_code == 201
+
+
+def test_a_type_with_a_service_requirement_waits_until_it_is_earned(client, leave_org):
+    tenant = leave_org["tenant"]
+    _set_type(leave_org, min_service_months=6)
+    with SessionLocal() as db:
+        db.get(User, leave_org["staff_id"]).joined_on = BASE_MONDAY - timedelta(days=30)
+        db.commit()
+    refused = _apply(client, tenant, leave_org, start=BASE_MONDAY, end=BASE_MONDAY)
+    assert refused.status_code == 409 and "months of service" in str(refused.json())
+    with SessionLocal() as db:
+        db.get(User, leave_org["staff_id"]).joined_on = BASE_MONDAY - timedelta(days=400)
+        db.commit()
+    assert _apply(client, tenant, leave_org, start=BASE_MONDAY, end=BASE_MONDAY).status_code == 201
+
+
+def test_leave_policy_flags_and_new_type_fields_round_trip(client, leave_org):
+    tenant = leave_org["tenant"]
+    base = client.get("/api/v1/leave/settings", headers=tenant.headers()).json()
+    assert (base["carry_forward_enabled"], base["carry_forward_max_milli_days"]) == (True, 15000)
+    assert (base["encash_enabled"], base["manager_before_hr"]) == (False, True)
+    saved = client.put("/api/v1/leave/settings", headers=tenant.headers(), json={
+        "leave_year_start_month": 4, "optional_holiday_quota": 0, "carry_forward_max_milli_days": 10000,
+        "encash_enabled": True, "manager_before_hr": False})
+    assert saved.status_code == 200, saved.text
+    got = client.get("/api/v1/leave/settings", headers=tenant.headers()).json()
+    assert got["carry_forward_max_milli_days"] == 10000 and got["encash_enabled"] is True and got["manager_before_hr"] is False
+
+    made = client.post("/api/v1/leave/types", headers=tenant.headers(), json={
+        "name": "Study Leave", "code": "ST", "accrual_type": "yearly", "accrual_rate_milli_days": 5000,
+        "offered_to": "male", "color": "#ff8800", "min_service_months": 3, "proof_after_days": 2})
+    assert made.status_code == 201, made.text
+    body = made.json()
+    assert (body["offered_to"], body["color"], body["min_service_months"], body["proof_after_days"]) == ("male", "#ff8800", 3, 2)
+    # An older client that does not send the new fields keeps them.
+    edited = client.put(f"/api/v1/leave/types/{body['id']}", headers=tenant.headers(), json={
+        "name": "Study Leave", "code": "ST", "accrual_type": "yearly", "accrual_rate_milli_days": 6000})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["offered_to"] == "male" and edited.json()["color"] == "#ff8800"
+    assert client.post("/api/v1/leave/types", headers=tenant.headers(), json={
+        "name": "X", "accrual_type": "none", "offered_to": "other"}).status_code == 422

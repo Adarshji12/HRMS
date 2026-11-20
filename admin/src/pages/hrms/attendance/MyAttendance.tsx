@@ -19,6 +19,7 @@ import {
   IconInfo,
   IconSignOut,
 } from '../../../components/Icons'
+import LocationSharing from '../../../components/LocationSharing'
 import WorkModePicker, { type WorkMode } from '../../../components/WorkModePicker'
 import { DayRegularization, MyRegularizations, type RegRequest } from './regularization'
 
@@ -113,6 +114,16 @@ export interface AttendanceSettingsPayload {
   overtime_enabled: boolean
   overtime_min_minutes: number
   overtime_on_off_days: boolean
+  overtime_rate_mode: string
+  overtime_derived_from: string
+  overtime_flat_rate_paise: number
+  overtime_mult_working_x100: number
+  overtime_mult_off_x100: number
+  overtime_mult_holiday_x100: number
+  overtime_round_minutes: number
+  overtime_max_hours_month: number
+  overtime_requires_approval: boolean
+  overtime_pay_through_payroll: boolean
   manual_enabled: boolean
   manual_web_enabled: boolean
   manual_mobile_enabled: boolean
@@ -519,6 +530,7 @@ export default function MyAttendance() {
 
   return (
     <div className="att2">
+      <LocationSharing />
       <PunchCard
         today={todayQ.data}
         loading={todayQ.loading}

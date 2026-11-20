@@ -28,10 +28,11 @@ from datetime import date
 from typing import NoReturn
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
-from app.models import SalaryStructure, SalaryStructureComponent, User
+from app.models import SalaryStructure, SalaryStructureComponent, SalaryTemplate, User
 from app.schemas.payroll import (
     ComponentIn,
     ComponentOut,
@@ -226,6 +227,100 @@ def uncovered(viewer: CurrentUser, db: DbSession) -> list[UncoveredOut]:
         )
         for row in rows
     ]
+
+
+class TemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = None
+    component_ids: list[uuid.UUID] = Field(default_factory=list)
+    is_active: bool = True
+    is_default: bool = False
+
+
+def _template_out(t: SalaryTemplate) -> dict:
+    return {"id": str(t.id), "name": t.name, "description": t.description, "is_active": t.is_active,
+            "is_default": t.is_default, "component_ids": list(t.component_ids or [])}
+
+
+def _managed(viewer) -> None:
+    try:
+        svc._require_manager(viewer)
+    except svc.PayrollError as error:
+        _fail(error)
+
+
+@router.get("/templates")
+def list_templates(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    _managed(viewer)
+    rows = db.scalars(select(SalaryTemplate).where(SalaryTemplate.org_id == viewer.org_id).order_by(SalaryTemplate.name))
+    return [_template_out(t) for t in rows]
+
+
+def _save_template(db, viewer, t: SalaryTemplate, payload: TemplateIn) -> dict:
+    clash = db.scalar(select(SalaryTemplate).where(
+        SalaryTemplate.org_id == viewer.org_id, SalaryTemplate.name == payload.name.strip(), SalaryTemplate.id != t.id))
+    if clash is not None:
+        raise HTTPException(409, "A structure with that name already exists.")
+    t.name = payload.name.strip()
+    t.description = (payload.description or "").strip() or None
+    t.component_ids = [str(c) for c in payload.component_ids]
+    t.is_active = payload.is_active
+    t.is_default = payload.is_default
+    if payload.is_default:
+        for other in db.scalars(select(SalaryTemplate).where(SalaryTemplate.org_id == viewer.org_id, SalaryTemplate.id != t.id)):
+            other.is_default = False
+    db.add(t)
+    db.commit()
+    return _template_out(t)
+
+
+@router.post("/templates", status_code=status.HTTP_201_CREATED)
+def create_template(payload: TemplateIn, viewer: CurrentUser, db: DbSession) -> dict:
+    _managed(viewer)
+    return _save_template(db, viewer, SalaryTemplate(org_id=viewer.org_id), payload)
+
+
+@router.put("/templates/{template_id}")
+def update_template(template_id: uuid.UUID, payload: TemplateIn, viewer: CurrentUser, db: DbSession) -> dict:
+    _managed(viewer)
+    t = db.get(SalaryTemplate, template_id)
+    if t is None or t.org_id != viewer.org_id:
+        raise HTTPException(404, "Not found")
+    return _save_template(db, viewer, t, payload)
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_template(template_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> None:
+    _managed(viewer)
+    t = db.get(SalaryTemplate, template_id)
+    if t is None or t.org_id != viewer.org_id:
+        raise HTTPException(404, "Not found")
+    db.delete(t)
+    db.commit()
+
+
+@router.get("/roster")
+def roster(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    """Every active employee with the salary in force today, for the Employee Salaries page.
+
+    Payroll managers only: this is the one place that lists pay for everybody.
+    """
+    try:
+        svc._require_manager(viewer)
+    except svc.PayrollError as error:
+        _fail(error)
+    people = list(db.scalars(
+        select(User).where(User.org_id == viewer.org_id, User.is_active.is_(True)).order_by(User.full_name)))
+    current = {
+        r.user_id: r for r in db.scalars(
+            select(SalaryStructure).where(SalaryStructure.org_id == viewer.org_id, SalaryStructure.effective_to.is_(None)))
+    }
+    return [{
+        "user_id": str(u.id), "full_name": u.full_name, "employee_code": u.employee_code,
+        "designation": (u.designation.name if u.designation else None), "department": u.department_name,
+        "gross_monthly": current[u.id].gross_monthly if u.id in current else None,
+        "effective_from": current[u.id].effective_from.isoformat() if u.id in current else None,
+    } for u in people]
 
 
 @router.get("/me", response_model=list[StructureOut])

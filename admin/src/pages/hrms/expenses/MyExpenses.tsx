@@ -475,7 +475,7 @@ function AddLine({
              onChange={(e) => setDescription(e.target.value)} aria-label="Description" />
       <input placeholder="Merchant" value={merchant}
              onChange={(e) => setMerchant(e.target.value)} aria-label="Merchant" />
-      <input placeholder="0.00" value={amount} inputMode="decimal"
+      <input placeholder="0.00" value={amount} type="number" data-spin min={0} step="any"
              className={amount && paise === null ? 'is-bad' : ''}
              onChange={(e) => setAmount(e.target.value)} aria-label="Amount in rupees" />
       <button className="btn primary" disabled={!ready || busy} onClick={add}>

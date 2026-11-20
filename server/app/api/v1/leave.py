@@ -158,6 +158,9 @@ def read_settings(viewer: CurrentUser, db: DbSession) -> LeaveSettingsOut:
         optional_holiday_quota=resolved.optional_holiday_quota,
         is_configured=resolved.is_configured,
         optional_holidays_are_unlimited=resolved.optional_holidays_are_unlimited,
+        carry_forward_enabled=resolved.carry_forward_enabled,
+        carry_forward_max_milli_days=resolved.carry_forward_max_milli_days,
+        encash_enabled=resolved.encash_enabled, manager_before_hr=resolved.manager_before_hr,
     )
 
 
@@ -172,6 +175,10 @@ def write_settings(
         db.add(row)
     row.leave_year_start_month = payload.leave_year_start_month
     row.optional_holiday_quota = payload.optional_holiday_quota
+    for flag in ("carry_forward_enabled", "carry_forward_max_milli_days", "encash_enabled", "manager_before_hr"):
+        value = getattr(payload, flag)
+        if value is not None:
+            setattr(row, flag, value)
     audit(
         db, org_id=viewer.org_id, actor=viewer, action="leave.settings_updated",
         request=request, target_type="leave_settings", target_id=str(viewer.org_id),
@@ -269,7 +276,12 @@ def update_type(
 ) -> LeaveTypeOut:
     leave_type = _leave_type(db, viewer.org_id, leave_type_id)
     _guard_comp_off_type(db, viewer.org_id, payload, current_id=leave_type.id)
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    # A client that predates the new fields does not send them: keep what is stored.
+    for kept in ("color", "offered_to", "min_service_months", "proof_after_days", "max_per_month_milli_days"):
+        if kept not in payload.model_fields_set:
+            data.pop(kept)
+    for field, value in data.items():
         setattr(leave_type, field, value)
     audit(
         db, org_id=viewer.org_id, actor=viewer, action="leave.type_updated",
@@ -762,6 +774,7 @@ def apply(
             is_half_day=payload.is_half_day,
             half_day_session=payload.half_day_session,
             reason=payload.reason,
+            contact_phone=payload.contact_phone,
         )
     except svc.LeaveError as error:
         db.rollback()

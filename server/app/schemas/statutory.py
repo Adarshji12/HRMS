@@ -19,6 +19,9 @@ from app.schemas.common import ORMModel
 
 
 class StatutoryConfigIn(BaseModel):
+    cycle_close_day: int = Field(default=31, ge=1, le=31)
+    salary_paid_day: int = Field(default=7, ge=1, le=28)
+    tds_enabled: bool = True
     pf_enabled: bool = False
     pf_employee_rate_bps: int = Field(default=1200, ge=0, le=10_000)
     pf_employer_rate_bps: int = Field(default=1200, ge=0, le=10_000)
@@ -78,6 +81,9 @@ class StatutoryConfigIn(BaseModel):
 class StatutoryConfigOut(ORMModel):
     id: uuid.UUID
     org_id: uuid.UUID
+    cycle_close_day: int = 31
+    salary_paid_day: int = 7
+    tds_enabled: bool = True
     pf_enabled: bool
     pf_employee_rate_bps: int
     pf_employer_rate_bps: int

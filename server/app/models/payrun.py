@@ -103,6 +103,8 @@ class LineSource(str, enum.Enum):
     EXPENSE = "expense"
     #: Entered by hand on this run — a bonus, an arrear, a correction.
     MANUAL = "manual"
+    #: An approved sales incentive, settled through payroll.
+    INCENTIVE = "incentive"
     # --- checkpoint 3, declared early ------------------------------------
     PF = "pf"
     ESI = "esi"

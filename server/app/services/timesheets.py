@@ -88,6 +88,8 @@ class DayRow:
     ot_enabled: bool = True
     ot_min_minutes: int = 0
     ot_on_off_days: bool = True
+    #: Minutes the counted overtime is rounded down to (0 = every minute).
+    ot_round_minutes: int = 0
     is_working_day: bool = True
     first_activity: datetime | None = None
     last_activity: datetime | None = None
@@ -96,6 +98,10 @@ class DayRow:
     def worked_minutes(self) -> int:
         return self.tracked_minutes + self.entered_minutes
 
+    def _rounded(self, minutes: int) -> int:
+        step = self.ot_round_minutes
+        return minutes - (minutes % step) if step > 0 else minutes
+
     @property
     def overtime_minutes(self) -> int:
         # Only on a day the employee was expected to work; a Saturday shift is
@@ -103,9 +109,9 @@ class DayRow:
         if not self.ot_enabled:
             return 0
         if not self.is_working_day:
-            return self.worked_minutes if self.ot_on_off_days else 0
+            return self._rounded(self.worked_minutes) if self.ot_on_off_days else 0
         extra = max(0, self.worked_minutes - self.expected_minutes)
-        return extra if extra >= self.ot_min_minutes else 0
+        return self._rounded(extra) if extra >= self.ot_min_minutes else 0
 
     @property
     def shortfall_minutes(self) -> int:
@@ -231,7 +237,8 @@ def build(
             is_working_day=is_working,
             ot_enabled=policy.overtime_enabled if policy else True,
             ot_min_minutes=policy.overtime_min_minutes if policy else 0,
-            ot_on_off_days=policy.overtime_on_off_days if policy else True,
+            ot_on_off_days=(policy.overtime_on_off_days and (policy.overtime_mult_off_x100 > 0 or policy.overtime_mult_holiday_x100 > 0)) if policy else True,
+            ot_round_minutes=policy.overtime_round_minutes if policy else 0,
             expected_minutes=(schedule.expected_minutes if schedule and is_working else 0)
             or (480 if is_working and schedule is None else 0),
         )

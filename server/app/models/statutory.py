@@ -80,6 +80,13 @@ class StatutoryConfig(UUIDMixin, TimestampMixin, Base):
     )
 
     # --- Provident Fund ------------------------------------------------------
+    #: Payroll cycle: the day the month's cycle closes (31 = the last day) and the day of the
+    #: following month that salary is paid. Recorded for the pay run and the payslip.
+    cycle_close_day: Mapped[int] = mapped_column(Integer, default=31, nullable=False)
+    salary_paid_day: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    #: Income tax is deducted from salary. On by default: it always was.
+    tds_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     pf_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: 12% employee, 12% employer, of which 8.33% goes to the pension scheme.
     pf_employee_rate_bps: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)

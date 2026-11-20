@@ -332,14 +332,14 @@ export function OpportunityForm({
         ),
     revenue: (
           <Field label="Expected revenue (₹)" required>
-          <input value={revenue} onChange={(e) => setRevenue(e.target.value)} inputMode="decimal"
+          <input value={revenue} onChange={(e) => setRevenue(e.target.value)} type="number" data-spin min={0} step="any"
                  placeholder="e.g. 250000" aria-invalid={showError(revenueBad)} />
         </Field>
         ),
     probability: (
           <Field label="Probability (%)" required>
           <input value={probability} onChange={(e) => setProbability(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
-                 inputMode="numeric" placeholder="e.g. 30" aria-invalid={showError(probabilityBad)} />
+                 type="number" data-spin min={0} step={1} placeholder="e.g. 30" aria-invalid={showError(probabilityBad)} />
         </Field>
         ),
     closing: (
@@ -361,7 +361,7 @@ export function OpportunityForm({
         ),
     rawcost: fm('rawcost') !== 'hide' && (
           <Field label="Raw cost (₹)" required={rq('rawcost')} hint={costBad ? <span className="lf-req">Enter a number.</span> : undefined}>
-          <input value={rawCost} onChange={(e) => setRawCost(e.target.value)} inputMode="decimal"
+          <input value={rawCost} onChange={(e) => setRawCost(e.target.value)} type="number" data-spin min={0} step="any"
                  placeholder="e.g. 200000" aria-invalid={costBad} />
         </Field>
         ),

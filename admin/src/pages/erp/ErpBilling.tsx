@@ -1353,7 +1353,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
                   </td>
                   {cessOn && (
                     <td className="sb-c-cess">
-                      <input inputMode="decimal" value={l.cess} placeholder={isFilled(l) ? '0' : ''} aria-label="Cess %"
+                      <input type="number" data-spin min={0} step="any" value={l.cess} placeholder={isFilled(l) ? '0' : ''} aria-label="Cess %"
                         onChange={(e) => setLine(l.key, { cess: money2(e.target.value, 300) })} />
                     </td>
                   )}
@@ -1393,14 +1393,14 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
             <div className="sb-dc">
               <div className="sb-dc-row">
                 <span className="sb-dc-label">Bill discount<small>Before GST</small></span>
-                <span className="sb-affix sb-affix-sm"><input inputMode="decimal" value={billDisc} placeholder="0" aria-label="Bill discount %"
+                <span className="sb-affix sb-affix-sm"><input type="number" data-spin min={0} step="any" value={billDisc} placeholder="0" aria-label="Bill discount %"
                   onChange={(e) => setBillDisc(money2(e.target.value, 100))} /><i>%</i></span>
-                <span className="sb-affix sb-affix-sm"><input inputMode="decimal" value={billDiscAmt} placeholder="0" aria-label="Bill discount ₹"
+                <span className="sb-affix sb-affix-sm"><input type="number" data-spin min={0} step="any" value={billDiscAmt} placeholder="0" aria-label="Bill discount ₹"
                   onChange={(e) => setBillDiscAmt(money2(e.target.value))} /><i>₹</i></span>
               </div>
               <div className="sb-dc-row">
                 <span className="sb-dc-label">Additional<small>Before GST</small></span>
-                <span className="sb-affix sb-affix-sm"><input inputMode="decimal" value={addlDisc} placeholder="0" aria-label="Additional discount ₹"
+                <span className="sb-affix sb-affix-sm"><input type="number" data-spin min={0} step="any" value={addlDisc} placeholder="0" aria-label="Additional discount ₹"
                   onChange={(e) => setAddlDisc(money2(e.target.value))} /><i>₹</i></span>
                 <input className={`sb-dc-reason${reasonMissing ? ' is-bad' : ''}`} value={discReason} maxLength={200}
                   placeholder={addlAmt > 0 ? 'Reason (required)' : 'Reason'} aria-label="Discount reason"
@@ -1435,7 +1435,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
                       <li key={c.key}>
                         <span className="sb-dc-name" title={c.name}>{c.name}
                           <small>{amt > 0 ? (g ? `+ GST ${rupees(r2(amt * g / 100))}` : 'No GST') : '—'}</small></span>
-                        <span className="sb-affix sb-affix-sm"><input inputMode="decimal" value={c.amount} placeholder="0" aria-label={`${c.name} amount`}
+                        <span className="sb-affix sb-affix-sm"><input type="number" data-spin min={0} step="any" value={c.amount} placeholder="0" aria-label={`${c.name} amount`}
                           onChange={(e) => setChargeList((cs) => cs.map((x) => (x.key === c.key ? { ...x, amount: money2(e.target.value) } : x)))} /><i>₹</i></span>
                         <select className="sb-dc-gst" value={c.gst} aria-label={`${c.name} GST`}
                           onChange={(e) => setChargeList((cs) => cs.map((x) => (x.key === c.key ? { ...x, gst: e.target.value } : x)))}>
@@ -2033,9 +2033,9 @@ function ReceiptForm({ inv, onClose, onDone }: { inv: Invoice; onClose: () => vo
         </div>
         <div className="rcp-grid">
           <label><span>Amount received <b className="rcp-req">*</b></span>
-            <span className="itf-affix"><i>₹</i><input placeholder="e.g. 25000" inputMode="decimal" value={form.amount} onChange={(e) => set('amount', e.target.value)} autoFocus /></span></label>
+            <span className="itf-affix"><i>₹</i><input placeholder="e.g. 25000" type="number" data-spin min={0} step="any" value={form.amount} onChange={(e) => set('amount', e.target.value)} autoFocus /></span></label>
           <label><span>TDS deducted</span>
-            <span className="itf-affix"><i>₹</i><input inputMode="decimal" value={form.tds_amount} placeholder="0" onChange={(e) => set('tds_amount', e.target.value)} /></span></label>
+            <span className="itf-affix"><i>₹</i><input type="number" data-spin min={0} step="any" value={form.tds_amount} placeholder="0" onChange={(e) => set('tds_amount', e.target.value)} /></span></label>
           <label><span>Received on</span>
             <input type="date" value={form.received_on} max={todayISO()} onChange={(e) => set('received_on', e.target.value)} /></label>
           <label><span>Reference / UTR / cheque no.</span>
