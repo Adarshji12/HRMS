@@ -111,7 +111,9 @@ export interface Vendor {
   email: string | null
   phone: string | null
   address: string | null
+  city: string | null
   state: string | null
+  pincode: string | null
   payment_terms_days: number
   advance_allowed: boolean
   is_msme: boolean
@@ -842,6 +844,7 @@ export const erp = {
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
   deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
   deleteItem: (id: string) => api.del(`${B}/items/${id}`),
+  deleteVendor: (id: string) => api.del(`${B}/vendors/${id}`),
 
   items: (p: { q?: string; active_only?: boolean; item_type?: string } = {}) => api.get<Item[]>(`${B}/items${qs(p)}`),
   saveItem: (body: Body, id?: string) =>

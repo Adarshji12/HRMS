@@ -3424,6 +3424,7 @@ table.itl tbody tr.is-off td { color: var(--text-muted); }
 .itx-switches .itf-switch { font-size: 13px; }
 
 .itx-main { display: grid; align-content: start; min-width: 0; }
+.itx-main > .lf-settings { margin: 0; padding: 16px 22px 0; }
 .itx-section { padding: 14px 22px 16px; }
 .itx-section + .itx-section { border-top: 1px solid var(--border); }
 .itx-title {

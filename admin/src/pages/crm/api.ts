@@ -693,6 +693,7 @@ export const crm = {
   followUps: (params: Record<string, string | undefined>) =>
     api.get<FollowUp[]>(`/crm/follow-ups${qs(params)}`),
   createFollowUp: (body: unknown) => api.post<FollowUp>('/crm/follow-ups', body),
+  updateFollowUp: (id: string, body: unknown) => api.patch<FollowUp>(`/crm/follow-ups/${id}`, body),
   completeFollowUp: (id: string, body: unknown) =>
     api.post<FollowUp>(`/crm/follow-ups/${id}/complete`, body),
   cancelFollowUp: (id: string) => api.del(`/crm/follow-ups/${id}`),

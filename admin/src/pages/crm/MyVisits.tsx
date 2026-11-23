@@ -745,7 +745,7 @@ function VisitForm({
       onClose={onClose}
       footer={
         <>
-          {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>}
+          {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>}
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
@@ -768,7 +768,7 @@ function VisitForm({
 
         {!visit && (
           <div className="crm-field crm-form-wide">
-            <span className="crm-field-label">Visit For *</span>
+            <span className="crm-field-label">Visit For <span className="lf-req">*</span></span>
             <div className="vs-for" role="radiogroup" aria-label="Visit for">
               {([
                 ['lead', 'Lead Visit', 'Before they are a customer'],
@@ -791,7 +791,7 @@ function VisitForm({
         )}
 
         <div className="crm-field crm-form-wide">
-          <span className="crm-field-label">{subjectWord === 'lead' ? 'Lead *' : 'Customer *'}</span>
+          <span className="crm-field-label">{subjectWord === 'lead' ? 'Lead' : 'Customer'} <span className="lf-req">*</span></span>
           {visit ? (
             <div className="crm-fact-value">
               <span className="crm-strong">{visit.customer_name}</span>

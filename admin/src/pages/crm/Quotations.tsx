@@ -12,7 +12,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/hrdash.css'
 import '../../styles/leads.css'
@@ -25,9 +25,12 @@ import {
   IconClose,
   IconFilter,
   IconClock,
+  IconCopy,
+  IconEdit,
   IconPlus,
   IconSearch,
   IconSheet,
+  IconTrash,
 } from '../../components/Icons'
 import {
   crm,
@@ -49,11 +52,8 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: 'expired', label: 'Expired' },
 ]
 
-/** Quotation in the menu opens a new quotation; the list is "All quotations",
- *  reached from the builder's button (?all). */
+/** Quotation in the menu opens the list; "New quotation" starts the builder. */
 export default function Quotations() {
-  const [params] = useSearchParams()
-  if (!params.has('all')) return <Navigate to="/crm/quotations/new" replace />
   return <QuotationList />
 }
 
@@ -280,15 +280,15 @@ function QuotationList() {
                         ))}
                         <td>
                           <div className="crm-row-actions">
-                            <Link className="link-btn" to={`/crm/quotations/${row.id}`}>
-                              Open
+                            <Link className="crm-icon-btn" to={`/crm/quotations/${row.id}`} title="Open" aria-label={`Open ${row.number}`}>
+                              <IconEdit size={14} />
                             </Link>
-                            <button className="link-btn" onClick={() => duplicate(row)}>
-                              Copy
+                            <button className="crm-icon-btn" onClick={() => duplicate(row)} title="Copy" aria-label={`Copy ${row.number}`}>
+                              <IconCopy size={14} />
                             </button>
                             {row.status === 'draft' && (
-                              <button className="link-btn" onClick={() => remove(row)}>
-                                Delete
+                              <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(row)} title="Delete" aria-label={`Delete ${row.number}`}>
+                                <IconTrash size={15} />
                               </button>
                             )}
                           </div>

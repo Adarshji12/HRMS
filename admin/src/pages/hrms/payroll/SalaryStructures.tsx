@@ -511,7 +511,7 @@ function NewRevision({
   const fieldNodes: Record<string, ReactNode> = {
     gross: (
       <label className="pr-field">
-        <span className="pr-field-label">Monthly gross *</span>
+        <span className="pr-field-label">Monthly gross <span className="lf-req">*</span></span>
         <input value={gross} type="number" data-spin min={0} step="any" placeholder="50000"
                className={gross && grossPaise === null ? 'is-bad' : ''}
                onChange={(e) => { setGross(e.target.value); setPreview(null) }} />
@@ -519,14 +519,14 @@ function NewRevision({
     ),
     effective: (
       <label className="pr-field">
-        <span className="pr-field-label">Effective from *</span>
+        <span className="pr-field-label">Effective from <span className="lf-req">*</span></span>
         <input type="date" value={effective}
                onChange={(e) => setEffective(e.target.value)} />
       </label>
     ),
     reason: fm('reason') !== 'hide' && (
       <label className="pr-field pr-field-wide">
-        <span className="pr-field-label">Reason{fm('reason') === 'mandatory' ? ' *' : ''}</span>
+        <span className="pr-field-label">Reason{fm('reason') === 'mandatory' ? <span className="lf-req"> *</span> : null}</span>
         <input value={reason} placeholder="Annual revision, promotion, correction"
                onChange={(e) => setReason(e.target.value)} />
       </label>
@@ -599,7 +599,7 @@ function NewRevision({
           Save revision
         </button>
         <span className="muted">
-          {missing ? 'Fill in the fields marked *. ' : ''}
+          {missing ? <>Fill in the fields marked <b className="lf-req">*</b>. </> : ''}
           Preview first — it is the server resolving these, so what you see is
           what gets stored.
         </span>

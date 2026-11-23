@@ -1861,6 +1861,9 @@ td.row-actions > * + * { margin-left: var(--space-2); }
 
 /* -------------------------------------------------------- command palette -- */
 
+.vw-refresh { padding-inline: 10px; }
+.vw-refresh.is-spinning svg { animation: refresh-spin 700ms linear; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .palette-layer { position: fixed; inset: 0; z-index: 90; }
 .palette-scrim {
   position: absolute; inset: 0;
@@ -1871,8 +1874,8 @@ td.row-actions > * + * { margin-left: var(--space-2); }
 /* Held above centre. A dialog centred in the viewport puts the input under the
    eye's resting line and the results below the fold on a laptop. */
 .palette {
-  position: absolute; left: 50%; top: 12vh;
-  transform: translateX(-50%);
+  position: absolute; left: 0; right: 0; top: 12vh;
+  margin: 0 auto;
   width: min(600px, calc(100vw - 28px));
   max-height: 74vh;
   display: flex; flex-direction: column;
@@ -2766,3 +2769,6 @@ select:not([multiple]):not([size]) {
   appearance: none;
   -webkit-appearance: none;
 }
+
+/* Mandatory-field asterisks are red everywhere, whatever the form's own styling says. */
+.lf-req, .pof-req, .rcp-req, .hire-req, .itx-req b, .ld i.lf-req { color: #dc2626 !important; font-weight: 700; font-style: normal; }

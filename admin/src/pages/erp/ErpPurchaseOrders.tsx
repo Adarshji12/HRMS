@@ -862,7 +862,7 @@ function PoForm({ po, onClose, onSaved, onShowAll }: {
         : datesBad || lineDatesBad ? 'A delivery date cannot be before the PO date'
           : quoteBad ? 'The vendor quotation cannot be dated in the future'
           : chargesBad ? 'Check the freight and other charges'
-            : missing ? 'Fill in the fields marked *'
+            : missing ? <>Fill in the fields marked <b className="lf-req">*</b></>
               : null
   const ready = !problem && !busy
 

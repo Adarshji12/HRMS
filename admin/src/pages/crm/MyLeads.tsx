@@ -21,7 +21,7 @@ import '../../styles/leads.css'
 import { download } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { blankDeal, dealFromOpportunity, dealBlocked, dealIncomplete, dealFilesTooBig, dealStarted, LeadDealFields, saveDeal, uploadDealFiles } from './LeadDealFields'
+import { blankDeal, dealFromOpportunity, dealBlocked, dealIncomplete, dealFilesTooBig, dealMandatoryMissing, dealStarted, LeadDealFields, saveDeal, uploadDealFiles } from './LeadDealFields'
 import {
   IconBriefcase,
   IconCheck,
@@ -113,6 +113,13 @@ const LEAD_COLUMNS: LeadColumn[] = [
   { key: 'city', label: 'City', initial: false, td: (l) => l.city_name ?? dash },
   { key: 'pincode', label: 'Pincode', initial: false, td: (l) => l.pincode ?? dash },
   { key: 'value', label: 'Expected revenue', initial: false, className: 'crm-nowrap', td: (l) => (l.value ? rupees(l.value) : dash) },
+  { key: 'whatsapp', label: 'WhatsApp', initial: false, className: 'crm-nowrap', td: (l) => l.whatsapp ?? dash },
+  { key: 'address', label: 'Address', initial: false, td: (l) => l.address ?? dash },
+  { key: 'notes', label: 'Notes', initial: false, td: (l) => l.notes ?? dash },
+  { key: 'lastcontact', label: 'Last contacted', initial: false, className: 'crm-nowrap', td: (l) => (l.last_contacted_at ? new Date(l.last_contacted_at).toLocaleDateString('en-IN') : dash) },
+  { key: 'lost', label: 'Lost reason', initial: false, td: (l) => l.lost_reason ?? dash },
+  { key: 'converted', label: 'Converted on', initial: false, className: 'crm-nowrap', td: (l) => (l.converted_at ? new Date(l.converted_at).toLocaleDateString('en-IN') : dash) },
+  { key: 'updated', label: 'Updated', initial: false, className: 'crm-nowrap', td: (l) => new Date(l.updated_at).toLocaleDateString('en-IN') },
   { key: 'created', label: 'Created', initial: false, className: 'crm-nowrap', td: (l) => new Date(l.created_at).toLocaleDateString('en-IN') },
 ]
 
@@ -122,6 +129,8 @@ const LEAD_SECTIONS: FieldSection[] = [
   { id: 'customer', label: 'Customer info' },
   { id: 'lead', label: 'Lead info' },
   { id: 'address', label: 'Address' },
+  { id: 'deal', label: 'Deal details' },
+  { id: 'opportunity', label: 'Opportunity' },
 ]
 const LEAD_FIELDS: FieldDef[] = [
   { key: 'name', label: 'Full name', section: 'customer', fixed: true },
@@ -137,6 +146,18 @@ const LEAD_FIELDS: FieldDef[] = [
   { key: 'city', label: 'City', section: 'address' },
   { key: 'pincode', label: 'Pincode', section: 'address' },
   { key: 'address', label: 'Address', section: 'address' },
+  { key: 'customer', label: 'Existing customer', section: 'deal' },
+  { key: 'tags', label: 'Tags', section: 'deal' },
+  { key: 'title', label: 'Opportunity name', section: 'opportunity' },
+  { key: 'value', label: 'Expected revenue', section: 'opportunity' },
+  { key: 'requirement', label: 'Requirement type', section: 'opportunity' },
+  { key: 'oem', label: 'OEM', section: 'opportunity' },
+  { key: 'raw_cost', label: 'Raw cost', section: 'opportunity' },
+  { key: 'team', label: 'Sales team', section: 'opportunity' },
+  { key: 'costsheet', label: 'Costsheet', section: 'opportunity' },
+  { key: 'quotation', label: 'Quotation', section: 'opportunity' },
+  { key: 'mail', label: 'Mail sent', section: 'opportunity', optionalOnly: true },
+  { key: 'notes', label: 'Internal notes', section: 'opportunity' },
 ]
 
 export default function MyLeads() {
@@ -994,28 +1015,30 @@ export function LeadForm({
   const needsRevenue = showDeal && (Boolean(dealRecord) || dealStarted(deal)) && dealRevenue === ''
   // Editing a lead: every field must have a value.
   // A field this person has hidden is not one they are asked to fill in.
+  const dealMand = showDeal ? dealMandatoryMissing(deal, fm, dealRecord) : { deal: false, opportunity: false }
+  const valueMissing = fm('value') === 'mandatory' && valueText === ''
   const editMissing = Boolean(lead) && (
     ['company', 'email', 'whatsapp', 'source', 'owner', 'industry', 'item', 'state', 'city', 'pincode', 'address']
       .some((k) => fm(k) !== 'hide' && emptyField[k])
-    || !statusId || valueText === '' || (showDeal && dealIncomplete(deal, dealRecord))
+    || !statusId || (fm('value') !== 'hide' && valueText === '') || (showDeal && dealIncomplete(deal, dealRecord, fm))
   )
-  const ready = !editMissing && !missingCustomer && !missingLead && !missingAddress && name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !mobileTaken && !mobileChecking && !whatsappBad && !emailBad && !pincodeBad && !valueBad
-    && (!showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal)))
+  const ready = !editMissing && !missingCustomer && !missingLead && !missingAddress && name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !mobileTaken && !mobileChecking && !whatsappBad && !emailBad && !pincodeBad && !valueBad && !dealMand.deal && !dealMand.opportunity && !valueMissing
+    && (!showDeal || (!dealBlocked(deal, fm('value') === 'hide' ? 'x' : dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal)))
 
   const formRef = useRef<HTMLFormElement>(null)
   // A new lead in the popup is filled in over steps; editing, and the inline
   // form on the lead page, stay on one page.
   const stepped = !lead && !inline
   const [step, setStep] = useState(0)
-  const dealOk = !showDeal || (!dealBlocked(deal, dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal))
+  const dealOk = !showDeal || (!dealBlocked(deal, fm('value') === 'hide' ? 'x' : dealRevenue, Boolean(dealRecord)) && !dealFilesTooBig(deal))
   // Expected revenue is entered on the next step, so the deal step must not wait for it.
   const dealStepOk = !showDeal || (!dealBlocked(deal, 'x', Boolean(dealRecord)) && !dealFilesTooBig(deal))
   const stepOk = [
     name.trim() !== '' && mobile.trim() !== '' && !mobileBad && !mobileTaken && !mobileChecking && !whatsappBad && !emailBad && !missingCustomer,
     !missingLead,
     !pincodeBad && !missingAddress,
-    dealStepOk,
-    dealOk && !valueBad,
+    dealStepOk && !dealMand.deal,
+    dealOk && !valueBad && !dealMand.opportunity && !valueMissing,
   ]
   const lastStep = showDeal ? 4 : 2
   const stepNames = ['Customer info', 'Lead info', 'Address', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
@@ -1034,7 +1057,7 @@ export function LeadForm({
       : mobileTaken ? 'This mobile number is already a lead'
         : mobileChecking ? 'Checking the mobile number…'
       : customerBad ? 'Check the contact details'
-        : missingCustomer || missingLead || missingAddress ? 'Fill in the fields marked *'
+        : missingCustomer || missingLead || missingAddress ? <>Fill in the fields marked <b className="lf-req">*</b></>
         : pincodeBad ? 'Check the address'
           : valueBad ? 'Check the expected revenue'
           : needsRevenue ? 'Add the expected revenue for the deal'
@@ -1045,7 +1068,7 @@ export function LeadForm({
      without an opportunity has no such section, so it stays with the address. */
   const revenueField = (
     <LfField label="Expected revenue"
-             required={needsRevenue || Boolean(lead)}
+             required={needsRevenue || Boolean(lead) || fm('value') === 'mandatory'}
              error={touched.value && valueBad ? 'Enter an amount like 150000 or 150000.50.' : needsRevenue ? 'Needed once deal details are filled in.' : undefined}
              hint={revenue > 0 ? `₹${revenue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Optional — leave it blank rather than guessing.'}>
       <LfInput prefix="₹" bad={touched.value && valueBad}>
@@ -1056,9 +1079,9 @@ export function LeadForm({
   )
 
   const stepBlocker = !stepOk[step]
-    ? step === 0 ? (name.trim() === '' || mobile === '' ? 'Add the full name and mobile number' : mobileTaken ? 'This mobile number is already a lead' : mobileChecking ? 'Checking the mobile number…' : missingCustomer ? 'Fill in the fields marked *' : 'Check the contact details')
-      : step === 1 ? 'Fill in the fields marked *'
-      : step === 2 ? (missingAddress ? 'Fill in the fields marked *' : 'Check the address') : step === 3 ? 'Complete the deal details' : valueBad ? 'Check the expected revenue' : 'Complete the opportunity details'
+    ? step === 0 ? (name.trim() === '' || mobile === '' ? 'Add the full name and mobile number' : mobileTaken ? 'This mobile number is already a lead' : mobileChecking ? 'Checking the mobile number…' : missingCustomer ? <>Fill in the fields marked <b className="lf-req">*</b></> : 'Check the contact details')
+      : step === 1 ? <>Fill in the fields marked <b className="lf-req">*</b></>
+      : step === 2 ? (missingAddress ? <>Fill in the fields marked <b className="lf-req">*</b></> : 'Check the address') : step === 3 ? 'Complete the deal details' : valueBad ? 'Check the expected revenue' : 'Complete the opportunity details'
     : null
   const footer = stepped ? (
     <>
@@ -1259,7 +1282,7 @@ export function LeadForm({
 
         {(!stepped || step === 2) && <LfSection icon={<IconPin size={16} />} title="Address" note="Where they are.">
           {fieldsOf('address')}
-          {!showDeal && revenueField}
+          {!showDeal && fm('value') !== 'hide' && revenueField}
           
           
           
@@ -1267,7 +1290,7 @@ export function LeadForm({
         </LfSection>}
 
         {showDeal && (!stepped || step >= 3) && (
-          <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord} leading={revenueField}
+          <LeadDealFields deal={deal} onChange={setDeal} revenue={valueBad ? '' : dealRevenue} saved={dealRecord} leading={fm('value') === 'hide' ? null : revenueField} fm={fm}
                           part={stepped ? (step === 3 ? 'deal' : 'opportunity') : 'both'} all={Boolean(lead)} />
         )}
       </form>

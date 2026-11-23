@@ -92,12 +92,7 @@ const CUSTOMER_COLUMNS: CustomerColumn[] = [
       </span>
     </button>
   ) },
-  { key: 'mobile', label: 'Mobile', className: 'crm-nowrap', td: (r) => (
-    <>
-      <WhatsAppButton mobile={r.whatsapp ?? r.mobile} />
-      {r.mobile}
-    </>
-  ) },
+  { key: 'mobile', label: 'Mobile', className: 'crm-nowrap', td: (r) => r.mobile },
   { key: 'item', label: 'Item', td: (r) => (
     r.primary_plan ? (
       <>
@@ -999,6 +994,35 @@ function CustomerForm({
   const ready = name.trim() !== '' && mobile.trim() !== '' && !missing
     && !mobileBad && !whatsappBad && !emailBad && !gstinBad && !pincodeBad
 
+  /* A new customer is filled in over steps, as a new lead is. Editing, and the
+     full-page editor, stay on one page. */
+  const stepped = !customer && !page
+  const [step, setStep] = useState(0)
+  const miss = (keys: string[]) => keys.some((k) => fm(k) === 'mandatory' && emptyField[k])
+  const stepOk = [
+    name.trim() !== '' && !miss(['company', 'code', 'type']),
+    mobile.trim() !== '' && !mobileBad && !whatsappBad && !emailBad && !miss(['email', 'whatsapp']),
+    !gstinBad && !miss(['industry', 'source', 'manager', 'gstin']),
+    !pincodeBad && !miss(['country', 'state', 'city', 'pincode', 'address']),
+    !miss(['notes']),
+  ]
+  const stepNames = ['Customer', 'Contact', 'Business & tax', 'Address', 'Notes']
+  const lastStep = stepNames.length - 1
+  const goNext = () => {
+    if (!stepOk[step]) {
+      setTouched((t) => ({ ...t, mobile: true, email: true, whatsapp: true, gstin: true, pincode: true }))
+      return
+    }
+    setStep((n) => Math.min(n + 1, lastStep))
+  }
+  const stepBlocker = !stepOk[step]
+    ? step === 0 ? (name.trim() === '' ? 'Add the customer name' : <>Fill in the fields marked <b className="lf-req">*</b></>)
+      : step === 1 ? (mobile.trim() === '' ? 'Add the mobile number' : mobileBad || whatsappBad || emailBad ? 'Check the contact details' : <>Fill in the fields marked <b className="lf-req">*</b></>)
+        : step === 3 && pincodeBad ? 'Check the pincode'
+          : step === 2 && gstinBad ? 'Check the GSTIN'
+            : <>Fill in the fields marked <b className="lf-req">*</b></>
+    : null
+
   /* Every field of the form as an element, so the order a person arranged in
      Settings can place them. A hidden field is nothing at all. */
   const fieldNodes: Record<string, ReactNode> = {
@@ -1166,46 +1190,65 @@ function CustomerForm({
 
   const form = (
       <form className="lf" id="crm-customer-form" noValidate
-            onSubmit={(event) => { event.preventDefault(); if (ready && !busy) save() }}>
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (stepped && step < lastStep) { goNext(); return }
+              if (ready && !busy) save()
+            }}>
         {error && <ErrorNote>{error}</ErrorNote>}
         <div className="lf-settings">
           <FieldSettings defs={CUSTOMER_FIELDS} sections={CUSTOMER_SECTIONS} modes={fields.modes} order={fields.order}
                          onSave={fields.save} onReset={fields.reset} />
         </div>
-        <LfSection icon={<IconBuilding size={16} />} title="Customer" note="Who the account is, and where it stands.">
+        {stepped && (
+          <ol className="lf-steps" aria-label="Customer steps">
+            {stepNames.map((label, i) => (
+              <li key={label} className={i === step ? 'is-current' : i < step ? 'is-done' : ''}
+                  aria-current={i === step ? 'step' : undefined}>
+                <button type="button" disabled={i > step && !stepOk.slice(0, i).every(Boolean)}
+                        onClick={() => setStep(i)}>
+                  <span className="lf-step-dot">{i < step ? <IconCheck size={12} /> : i + 1}</span>
+                  <span className="lf-step-label">{label}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {(!stepped || step === 0) && <LfSection icon={<IconBuilding size={16} />} title="Customer" note="Who the account is, and where it stands.">
           {fieldsOf('customer')}
           
           
           
           
           
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconPhone size={16} />} title="Contact" note="How the desk and the account manager reach them.">
+        {(!stepped || step === 1) && <LfSection icon={<IconPhone size={16} />} title="Contact" note="How the desk and the account manager reach them.">
           {fieldsOf('contact')}
           
           
           
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconSheet size={16} />} title="Business & tax" note="Classification, ownership and GST for their quotations.">
+        {(!stepped || step === 2) && <LfSection icon={<IconSheet size={16} />} title="Business & tax" note="Classification, ownership and GST for their quotations.">
           {fieldsOf('business')}
           
           
           
           
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconPin size={16} />} title="Address" note="Billing address, and where visits are planned.">
+        {(!stepped || step === 3) && <LfSection icon={<IconPin size={16} />} title="Address" note="Billing address, and where visits are planned.">
           {fieldsOf('address')}
           
           
           
           
           
-        </LfSection>
+        </LfSection>}
 
-        <LfSection icon={<IconSheet size={16} />} title="Notes" note="Anything the team should know about this account.">
+        {(!stepped || step === 4) && <LfSection icon={<IconSheet size={16} />} title="Notes" note="Anything the team should know about this account.">
           {customer && (
             <LfField label={customer.converted_from_lead_id ? 'Conversion date' : 'Customer since'}>
               <input value={new Date(customer.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
@@ -1214,7 +1257,7 @@ function CustomerForm({
           )}
           
           {fieldsOf('notes')}
-        </LfSection>
+        </LfSection>}
         {extras && !page && <div className="lf-extras">{extras}</div>}
       </form>
   )
@@ -1264,7 +1307,7 @@ function CustomerForm({
 
         <footer className="cup-foot">
           {missing
-            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>
             : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
           {error && <span className="error">{error}</span>}
           <span className="crm-push" />
@@ -1284,10 +1327,28 @@ function CustomerForm({
         ? <><span className="crm-code">{customer.code}</span> · {customer.mobile}</>
         : 'Products and services are added next, once the customer is saved.'}
       onClose={onClose}
-      footer={
+      footer={stepped ? (
+        <>
+          {stepBlocker
+            ? <span className="lf-foot-note lf-foot-link">{stepBlocker}</span>
+            : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
+          {step === 0
+            ? <button className="btn" type="button" onClick={onClose}>Cancel</button>
+            : <button className="btn" type="button" onClick={() => setStep((n) => n - 1)}>Back</button>}
+          {step < lastStep ? (
+            <button key="next" className="btn btn-primary lf-save" type="button" onClick={goNext} disabled={!stepOk[step]}>
+              Next
+            </button>
+          ) : (
+            <button key="save" className="btn btn-primary lf-save" type="submit" form="crm-customer-form" disabled={busy || !ready}>
+              <IconCheck size={15} /> {busy ? 'Saving…' : 'Save customer'}
+            </button>
+          )}
+        </>
+      ) : (
         <>
           {missing
-            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>
             : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
           <button className="btn" type="button" onClick={onClose}>
             Cancel
@@ -1296,7 +1357,7 @@ function CustomerForm({
             <IconCheck size={15} /> {busy ? 'Saving…' : customer ? 'Save changes' : 'Save customer'}
           </button>
         </>
-      }
+      )}
     >
       {form}
     </Dialog>

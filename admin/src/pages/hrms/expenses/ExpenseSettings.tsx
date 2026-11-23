@@ -225,7 +225,7 @@ function NewCategory({
       <p className="muted">
         Leave the cap blank for no ceiling. Zero is refused — a category capped at
         zero would refuse every claim in it.
-        {missing && ' Fill in the fields marked *.'}
+        {missing && <> Fill in the fields marked <b className="lf-req">*</b>.</>}
       </p>
     </section>
   )

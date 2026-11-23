@@ -708,7 +708,7 @@ function InitiateForm({
   const [busy, setBusy] = useState(false)
   const fields = useFieldModes('offboarding-exit-form', EXIT_FIELDS)
   const fm = fields.mode
-  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const star = (key: string) => (fm(key) === 'mandatory' ? <span className="lf-req"> *</span> : null)
   const emptyField: Record<string, boolean> = {
     reason: !reason,
     last_day: !lastDay,
@@ -833,7 +833,7 @@ function InitiateForm({
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
-        {missing && <span className="offboard-muted">Fill in the fields marked *.</span>}
+        {missing && <span className="offboard-muted">Fill in the fields marked <b className="lf-req">*</b>.</span>}
       </div>
     </form>
   )

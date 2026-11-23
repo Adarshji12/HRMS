@@ -112,12 +112,59 @@ class VendorIn(_In):
     email: str | None = None
     phone: str | None = None
     address: str | None = None
+    city: str | None = Field(default=None, max_length=120)
     state: str | None = None
+    pincode: str | None = None
     payment_terms_days: int = Field(default=30, ge=0, le=365)
     advance_allowed: bool = False
     is_msme: bool = False
     msme_number: str | None = None
     agreement_expiry: date | None = None
+
+    @field_validator("contact_name")
+    @classmethod
+    def _contact_len(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if len(v) > 60:
+            raise ValueError("Contact person must be 60 characters or fewer.")
+        return v or None
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        digits = re.sub(r"[\s\-()]", "", v)
+        if digits.startswith("+91"):
+            digits = digits[3:]
+        elif digits.startswith("91") and len(digits) == 12:
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) == 11:
+            digits = digits[1:]
+        if not re.fullmatch(r"[6-9]\d{9}", digits):
+            raise ValueError("Enter a valid 10-digit mobile number.")
+        return digits
+
+    @field_validator("email")
+    @classmethod
+    def _email_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", v):
+            raise ValueError("Enter a valid email address.")
+        return v
+
+    @field_validator("pincode")
+    @classmethod
+    def _pin_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"\d{6}", v):
+            raise ValueError("PIN code must be 6 digits.")
+        return v
 
 
 class VendorStatusIn(_In):

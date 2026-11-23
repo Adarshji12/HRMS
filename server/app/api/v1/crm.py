@@ -645,6 +645,13 @@ def create_follow_up(payload: S.FollowUpIn, viewer: CurrentUser, db: DbSession) 
     return svc.create_follow_up(db, viewer, payload)
 
 
+@router.patch("/follow-ups/{follow_up_id}", response_model=S.FollowUpOut)
+def update_follow_up(
+    follow_up_id: uuid.UUID, payload: S.FollowUpEdit, viewer: CurrentUser, db: DbSession
+) -> S.FollowUpOut:
+    return svc.update_follow_up(db, viewer, follow_up_id, payload)
+
+
 @router.post("/follow-ups/{follow_up_id}/complete", response_model=S.FollowUpOut)
 def complete_follow_up(
     follow_up_id: uuid.UUID, payload: S.FollowUpComplete, viewer: CurrentUser, db: DbSession

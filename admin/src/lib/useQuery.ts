@@ -75,6 +75,14 @@ export function useQuery<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled])
 
+  // The topbar refresh button asks every mounted query on the page to refetch.
+  useEffect(() => {
+    if (!enabled) return
+    const again = () => void run()
+    window.addEventListener('app:refresh', again)
+    return () => window.removeEventListener('app:refresh', again)
+  }, [enabled, run])
+
   useEffect(() => {
     if (!enabled || !pollMs) return
     const id = window.setInterval(() => void run(), pollMs)

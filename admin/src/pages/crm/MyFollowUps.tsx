@@ -12,7 +12,7 @@
  */
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
 import '../../styles/followups.css'
@@ -21,7 +21,7 @@ import '../../styles/hrdash.css'
 import { useQuery } from '../../lib/useQuery'
 import { relativeTime } from '../../lib/format'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { IconAlert, IconBuilding, IconCalendar, IconCheck, IconClock, IconPlus, IconSearch, IconSheet, IconSliders, IconTrash, IconUpload, IconUser } from '../../components/Icons'
+import { IconAlert, IconBuilding, IconCalendar, IconCheck, IconClock, IconClose, IconEdit, IconPlus, IconSearch, IconSheet, IconSliders, IconTrash, IconUpload, IconUser } from '../../components/Icons'
 import { ExportButton } from '../../components/ExportButton'
 import {
   crm,
@@ -129,6 +129,7 @@ const FOLLOW_UP_FIELDS: FieldDef[] = [
 ]
 
 export default function MyFollowUps() {
+  const navigate = useNavigate()
   const columns = useColumns('follow-ups', FOLLOW_UP_COLUMNS)
   const [params] = useSearchParams()
   const [window, setWindow] = useState<Window>((params.get('window') ?? '') as Window)
@@ -144,6 +145,7 @@ export default function MyFollowUps() {
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [completing, setCompleting] = useState<FollowUp | null>(null)
+  const [editing, setEditing] = useState<FollowUp | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   // One set of filters for the table and the export, so the file is the screen.
@@ -296,6 +298,14 @@ export default function MyFollowUps() {
             {showFilters && (
               /* Each change applies at once, so there is no Apply to forget. */
               <div className="ml-pop fu-pop" role="dialog" aria-label="Filter follow-ups">
+                <label className="ml-pop-field ml-pop-wide">
+                  <span>Contact</span>
+                  <select value={kind} onChange={(event) => setKind(event.target.value as Kind)}>
+                    <option value="">Leads and customers</option>
+                    <option value="lead">Leads only</option>
+                    <option value="customer">Customers only</option>
+                  </select>
+                </label>
                 <label className="ml-pop-field">
                   <span>Status</span>
                   <select
@@ -316,14 +326,6 @@ export default function MyFollowUps() {
                 <label className="ml-pop-field">
                   <span>Owner</span>
                   <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Any owner" />
-                </label>
-                <label className="ml-pop-field">
-                  <span>Contact</span>
-                  <select value={kind} onChange={(event) => setKind(event.target.value as Kind)}>
-                    <option value="">Leads and customers</option>
-                    <option value="lead">Leads only</option>
-                    <option value="customer">Customers only</option>
-                  </select>
                 </label>
                 <div className="ml-pop-dates">
                   <label className="ml-pop-field">
@@ -422,23 +424,32 @@ export default function MyFollowUps() {
                   </thead>
                   <tbody>
                     {list.map((row) => (
-                      <tr key={row.id} className={row.status === 'pending' && row.is_overdue ? 'fu-row-late' : undefined}>
+                      <tr key={row.id}
+                          className={`${row.status === 'pending' && row.is_overdue ? 'fu-row-late' : ''}${row.lead_id ? ' fu-row-link' : ''}`.trim() || undefined}
+                          onClick={row.lead_id ? () => navigate(`/crm/leads/${row.lead_id}`) : undefined}>
                         {(columns.visible as FollowUpColumn[]).map((col) => (
                           <td key={col.key} className={col.className}>{col.td(row)}</td>
                         ))}
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="crm-row-actions">
+                            {row.status === 'pending' && (
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => setCompleting(row)}
+                              >
+                                Complete
+                              </button>
+                            )}
                             <WhatsAppButton mobile={row.subject_mobile} />
                             {row.status === 'pending' && (
                               <>
-                                <button
-                                  className="btn btn-sm btn-primary"
-                                  onClick={() => setCompleting(row)}
-                                >
-                                  Complete
+                                <button className="crm-icon-btn" onClick={() => setEditing(row)} title="Edit"
+                                        aria-label={`Edit follow-up for ${row.subject_name ?? 'contact'}`}>
+                                  <IconEdit size={14} />
                                 </button>
-                                <button className="link-btn" onClick={() => cancel(row)}>
-                                  Cancel
+                                <button className="crm-icon-btn" onClick={() => cancel(row)} title="Cancel"
+                                        aria-label={`Cancel follow-up for ${row.subject_name ?? 'contact'}`}>
+                                  <IconClose size={14} />
                                 </button>
                               </>
                             )}
@@ -487,6 +498,17 @@ export default function MyFollowUps() {
         />
       )}
 
+      {editing && (
+        <AddFollowUpDialog
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null)
+            reloadAll()
+          }}
+        />
+      )}
+
       {completing && (
         <CompleteDialog
           followUp={completing}
@@ -522,7 +544,7 @@ function Due({ iso, overdue }: { iso: string; overdue: boolean }) {
 
 /** Book a follow-up against a lead or a customer from this page, without
  *  opening the record first. */
-function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function AddFollowUpDialog({ onClose, onDone, existing }: { onClose: () => void; onDone: () => void; existing?: FollowUp }) {
   const fields = useFieldModes('follow-up-form', FOLLOW_UP_FIELDS)
   const fm = fields.mode
   const rq = (key: string) => fm(key) === 'mandatory'
@@ -530,21 +552,22 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
   const [lead, setLead] = useState<Lead | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [due, setDue] = useState(() => {
+    if (existing) return isoToLocalInput(existing.due_at)
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     tomorrow.setHours(10, 0, 0, 0)
     return isoToLocalInput(tomorrow.toISOString())
   })
-  const [ownerId, setOwnerId] = useState('')
-  const [purpose, setPurpose] = useState('')
-  const [notes, setNotes] = useState('')
+  const [ownerId, setOwnerId] = useState(existing?.owner_id ?? '')
+  const [purpose, setPurpose] = useState(existing?.purpose ?? '')
+  const [notes, setNotes] = useState(existing?.notes ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const picked = kind === 'lead' ? lead : customer
 
   async function save() {
-    if (!picked) {
+    if (!picked && !existing) {
       setError(`Choose the ${kind} this follow-up is for.`)
       return
     }
@@ -567,14 +590,21 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     setBusy(true)
     setError(null)
     try {
-      await crm.createFollowUp({
-        lead_id: kind === 'lead' ? picked.id : null,
-        customer_id: kind === 'customer' ? picked.id : null,
-        due_at: localToISO(due),
-        owner_id: ownerId || null,
-        purpose: purpose.trim() || null,
-        notes: notes.trim() || null,
-      })
+      if (existing) {
+        await crm.updateFollowUp(existing.id, {
+          due_at: localToISO(due), owner_id: ownerId || null,
+          purpose: purpose.trim() || null, notes: notes.trim() || null,
+        })
+      } else if (picked) {
+        await crm.createFollowUp({
+          lead_id: kind === 'lead' ? picked.id : null,
+          customer_id: kind === 'customer' ? picked.id : null,
+          due_at: localToISO(due),
+          owner_id: ownerId || null,
+          purpose: purpose.trim() || null,
+          notes: notes.trim() || null,
+        })
+      }
       onDone()
     } catch (err) {
       setError(crmError(err, 'That follow-up could not be added'))
@@ -611,7 +641,8 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
 
   return (
     <Dialog
-      title="Add follow-up"
+      title={existing ? 'Edit follow-up' : 'Add follow-up'}
+      subtitle={existing ? `${existing.subject_name ?? 'Contact'} · ${existing.subject_kind === 'customer' ? 'Customer' : 'Lead'}` : undefined}
       onClose={onClose}
       footer={
         <>
@@ -619,7 +650,7 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
             Cancel
           </button>
           <button className="btn btn-primary" onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : 'Add follow-up'}
+            {busy ? 'Saving…' : existing ? 'Save changes' : 'Add follow-up'}
           </button>
         </>
       }
@@ -634,7 +665,7 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
             <ErrorNote>{error}</ErrorNote>
           </div>
         )}
-        <div className="crm-field crm-form-wide">
+        {!existing && <div className="crm-field crm-form-wide">
           <span className="crm-field-label">Follow-up for<span className="lf-req"> *</span></span>
           <div className="fu-for" role="radiogroup" aria-label="Follow-up for">
             {(['lead', 'customer'] as const).map((option) => (
@@ -651,15 +682,15 @@ function AddFollowUpDialog({ onClose, onDone }: { onClose: () => void; onDone: (
               </button>
             ))}
           </div>
-        </div>
-        <div className="crm-field crm-form-wide">
+        </div>}
+        {!existing && <div className="crm-field crm-form-wide">
           <span className="crm-field-label">{kind === 'lead' ? 'Lead' : 'Customer'}<span className="lf-req"> *</span></span>
           {kind === 'lead' ? (
             <LeadPicker value={lead} onPick={(l) => { setLead(l); if (l?.owner_id) setOwnerId(l.owner_id) }} autoFocus />
           ) : (
             <CustomerPicker value={customer} onPick={(c) => { setCustomer(c); if (c?.manager_id) setOwnerId(c.manager_id) }} autoFocus />
           )}
-        </div>
+        </div>}
         {fieldsOf('details')}
         
         

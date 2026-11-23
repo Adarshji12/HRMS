@@ -775,6 +775,15 @@ class FollowUpIn(CrmBase):
     notes: str | None = None
 
 
+class FollowUpEdit(CrmBase):
+    """What can change on a follow-up already booked. Who it is for cannot."""
+
+    due_at: datetime
+    owner_id: uuid.UUID | None = None
+    purpose: str | None = Field(default=None, max_length=300)
+    notes: str | None = None
+
+
 class FollowUpImportRow(CrmBase):
     """One CSV row. The contact is named the way a sheet names it — a Lead ID,
     a customer code or a mobile number — never by an internal id."""

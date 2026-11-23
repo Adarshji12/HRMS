@@ -420,7 +420,7 @@ export function OpportunityForm({
       footer={
         <>
           {touched && missing
-            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked *</span>
+            ? <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>
             : <span className="lf-foot-note"><span className="lf-req">*</span> Required fields</span>}
           {savedId && (
             <button className="btn btn-danger" type="button" onClick={remove} disabled={saving}>

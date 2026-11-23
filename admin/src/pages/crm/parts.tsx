@@ -341,6 +341,11 @@ export function Drawer({
 
 /* ------------------------------------------------------------------ fields --- */
 
+/** A label written as "Name *" gets a red asterisk, same as `required`. */
+export function StarLabel({ text }: { text: string }) {
+  return text.endsWith(' *') ? <>{text.slice(0, -2)} <span className="lf-req">*</span></> : <>{text}</>
+}
+
 export function Field({
   label,
   hint,
@@ -361,7 +366,7 @@ export function Field({
   return (
     <label className={`crm-field${wide ? ' crm-form-wide' : ''}`}>
       <span className="crm-field-label">
-        {label}
+        <StarLabel text={label} />
         {required && <span className="lf-req"> *</span>}
         {aside && <span className="crm-field-aside">{aside}</span>}
       </span>
@@ -785,7 +790,7 @@ export function LfField({ label, required, hint, error, wide, aside, className, 
   return (
     <div className={`lf-field${wide ? ' is-wide' : ''}${error ? ' is-bad' : ''}${className ? ` ${className}` : ''}`}>
       <div className="lf-label-row">
-        <span className="lf-label">{label}{required && <span className="lf-req"> *</span>}</span>
+        <span className="lf-label"><StarLabel text={label} />{required && <span className="lf-req"> *</span>}</span>
         {aside}
       </div>
       {children}

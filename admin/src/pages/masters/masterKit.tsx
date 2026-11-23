@@ -650,7 +650,11 @@ function MasterForm({
     for (const field of list.fields) {
       const value = values[field.key]
       if (field.kind === 'number') {
-        body[field.key] = value === '' || value === null ? null : Number(value)
+        const blank = value === '' || value === null || value === undefined
+        // A blank optional number is left out so the server's default applies
+        // (Order -> 0); sending null is refused as "isn't valid".
+        if (!blank) body[field.key] = Number(value)
+        else if (field.required || fm(field.key) === 'mandatory') body[field.key] = null
       } else if (field.kind === 'check') {
         body[field.key] = Boolean(value)
       } else if (field.kind === 'states') {

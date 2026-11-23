@@ -869,7 +869,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
                   : poValueBad ? 'Enter the customer PO value as an amount'
                     : milestonesBad ? 'Each billing milestone needs a name, an amount above 0 and GST of 0–28 %'
                       : msOver ? 'Billing milestones add up to more than the order value'
-                        : missing ? 'Fill in the fields marked *'
+                        : missing ? <>Fill in the fields marked <b className="lf-req">*</b></>
                         : null
   const ready = !problem && !busy
   const overdue = customer && Number(customer.overdue) > 0

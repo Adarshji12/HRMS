@@ -631,7 +631,7 @@ function RequestForm({
           {busy ? 'Sending…' : 'Request'}
         </button>
       </div>
-      {missing && <p className="muted">Fill in the fields marked *.</p>}
+      {missing && <p className="muted">Fill in the fields marked <b className="lf-req">*</b>.</p>}
       {ready && (
         <p className="muted">
           Roughly {money(Math.round((paise as number) / months))} a month for{' '}

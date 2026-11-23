@@ -394,7 +394,7 @@ function RaiseTicket({
   const linked = sourceModule !== null && sourceRef !== null
   const fields = useFieldModes('helpdesk-raise-form', RAISE_FIELDS)
   const fm = fields.mode
-  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const star = (key: string) => (fm(key) === 'mandatory' ? <span className="lf-req"> *</span> : null)
   const missing = (fm('category') === 'mandatory' && !form.category_id)
 
   async function submit(event: FormEvent) {
@@ -520,7 +520,7 @@ function RaiseTicket({
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
-        {missing && <span className="hd-when">Fill in the fields marked *.</span>}
+        {missing && <span className="hd-when">Fill in the fields marked <b className="lf-req">*</b>.</span>}
       </div>
     </form>
   )

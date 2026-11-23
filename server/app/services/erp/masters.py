@@ -294,6 +294,33 @@ def get_vendor(db: Session, viewer: User, vendor_id: uuid.UUID) -> dict:
     return _vendor_out(db, get_owned(db, ErpVendor, viewer.org_id, vendor_id, "vendor"))
 
 
+def delete_vendor(db: Session, viewer: User, vendor_id: uuid.UUID, request: Request | None = None) -> None:
+    """Remove a vendor nothing has used yet.
+
+    Orders, RFQs, quotes and receipts all point at the vendor, so a vendor with
+    any history refuses the delete — suspending or blacklisting it is how to
+    retire one. Only the vendor's own bank rows go with it."""
+    require(viewer, "can_manage_erp_masters")
+    row = get_owned(db, ErpVendor, viewer.org_id, vendor_id, "vendor")
+    for table in ErpVendor.metadata.tables.values():
+        if table.name == ErpVendorBank.__tablename__:
+            continue
+        for fk in table.foreign_keys:
+            if fk.column.table.name != ErpVendor.__tablename__:
+                continue
+            used = db.execute(select(func.count()).select_from(table).where(fk.parent == row.id)).scalar()
+            if used:
+                raise ErpError(
+                    "vendor_in_use",
+                    f"{row.legal_name} already has orders, RFQs or other records, so it cannot be deleted. "
+                    "Suspend it instead.",
+                    409,
+                )
+    record_audit(db, viewer, "vendor.deleted", row, request=request, detail={"code": row.code})
+    db.delete(row)
+    db.commit()
+
+
 def _check_tax_ids(payload: S.VendorIn | S.CustomerAccountIn) -> None:
     if payload.gstin:
         payload.gstin = payload.gstin.strip().upper()

@@ -20,6 +20,7 @@ import {
   type FieldDef, type FieldSection,
 } from '../../components/ViewSettings'
 import { cells, heads, type Col } from './listColumns'
+import ImportExport, { type IoColumn } from '../../components/ImportExport'
 
 /** A state picked from the State Master. Stored by name, as the vendor record keeps it;
  *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
@@ -112,6 +113,49 @@ const ITEM_BLANK = {
   image: null as string | null, barcode: '',
 }
 
+const cleanNum = (v: string, label: string, fallback = '0') => {
+  const t = (v ?? '').replace(/[,₹\s]/g, '')
+  if (!t) return fallback
+  if (!/^\d+(\.\d+)?$/.test(t)) throw new Error(`${label} must be a number`)
+  return t
+}
+const pick = (v: string, label: string, allowed: string[], fallback: string) => {
+  const t = (v ?? '').trim().toLowerCase().replace(/[\s/-]+/g, '_')
+  if (!t) return fallback
+  if (!allowed.includes(t)) throw new Error(`${label} must be one of: ${allowed.join(', ')}`)
+  return t
+}
+const ITEM_IO: IoColumn<Item>[] = [
+  { key: 'code', label: 'Reference / SKU', required: true, sample: 'CAM-4MP-01', get: (i) => i.code },
+  { key: 'name', label: 'Item name', required: true, sample: '4MP Dome Camera', get: (i) => i.name },
+  { key: 'item_type', label: 'Type', sample: 'goods', get: (i) => i.item_type },
+  { key: 'category', label: 'Category', sample: 'Cameras', get: (i) => i.category },
+  { key: 'uom', label: 'Unit', sample: 'Nos', get: (i) => i.uom },
+  { key: 'hsn_sac', label: 'HSN / SAC', sample: '8525', get: (i) => i.hsn_sac },
+  { key: 'gst_percent', label: 'Sales GST %', sample: '18', get: (i) => i.gst_percent },
+  { key: 'purchase_gst_percent', label: 'Purchase GST %', sample: '18', get: (i) => i.purchase_gst_percent },
+  { key: 'sale_price', label: 'Sale price', sample: '4500', get: (i) => i.sale_price },
+  { key: 'standard_cost', label: 'Cost', sample: '3200', get: (i) => i.standard_cost },
+  { key: 'make', label: 'Make', sample: '', get: (i) => i.make },
+  { key: 'model', label: 'Model', sample: '', get: (i) => i.model },
+  { key: 'part_number', label: 'Part number', sample: '', get: (i) => i.part_number },
+  { key: 'barcode', label: 'Barcode', sample: '', get: (i) => i.barcode },
+  { key: 'description', label: 'Description', sample: '', get: (i) => i.description },
+  { key: 'status', label: 'Status', sample: 'active', get: (i) => (i.is_active ? 'active' : 'inactive') },
+]
+const buildItem = (r: Record<string, string>) => ({
+  ...ITEM_BLANK,
+  code: r.code.toUpperCase(), name: r.name,
+  item_type: pick(r.item_type, 'Type', ['goods', 'service'], 'goods'),
+  category: r.category ?? '', uom: r.uom || 'Nos', hsn_sac: r.hsn_sac ?? '',
+  gst_percent: cleanNum(r.gst_percent, 'Sales GST %', '18'),
+  purchase_gst_percent: cleanNum(r.purchase_gst_percent, 'Purchase GST %', cleanNum(r.gst_percent, 'Sales GST %', '18')),
+  sale_price: cleanNum(r.sale_price, 'Sale price'), standard_cost: cleanNum(r.standard_cost, 'Cost'),
+  make: r.make ?? '', model: r.model ?? '', part_number: r.part_number ?? '', barcode: r.barcode ?? '',
+  description: r.description ?? '',
+  is_active: pick(r.status, 'Status', ['active', 'inactive'], 'active') === 'active',
+})
+
 type ItemColumn = Col<Item>
 const ITEM_COLUMNS: ItemColumn[] = [
   { key: 'item', label: 'Item', locked: true, thClass: 'itl-c-item', className: 'itl-c-item', td: (i) => (
@@ -177,6 +221,8 @@ function Items() {
         </select>
         {list.data && <span className="itl-count">{rows.length} of {list.data.length} items</span>}
         <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ImportExport name="items" columns={ITEM_IO} rows={rows} canImport={manage} build={buildItem}
+            save={(b) => erp.saveItem(b)} onDone={() => list.reload()} />
           <ColumnSettings defs={ITEM_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
             onSave={columns.save} onReset={columns.reset} />
           {manage && (
@@ -455,7 +501,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
       <>
         <span className="itx-req"><b>*</b> Required</span>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked *</span>}
+        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
         <span className="crm-push" />
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !ready || missing}
@@ -630,6 +676,21 @@ const WAREHOUSE_COLUMNS: WarehouseColumn[] = [
   { key: 'status', label: 'Status', initial: false, td: (w) => <ErpState value={w.is_active ? 'active' : 'inactive'} /> },
 ]
 
+const WAREHOUSE_IO: IoColumn<Warehouse>[] = [
+  { key: 'code', label: 'Code', sample: 'WH-01', get: (w) => w.code },
+  { key: 'name', label: 'Name', required: true, sample: 'Main warehouse', get: (w) => w.name },
+  { key: 'kind', label: 'Kind', sample: 'warehouse', get: (w) => w.kind },
+  { key: 'address', label: 'Address', sample: '', get: (w) => w.address },
+  { key: 'state', label: 'State', sample: 'Maharashtra', get: (w) => w.state },
+  { key: 'status', label: 'Status', sample: 'active', get: (w) => (w.is_active ? 'active' : 'inactive') },
+]
+const buildWarehouse = (r: Record<string, string>) => ({
+  code: r.code ? r.code.toUpperCase() : null, name: r.name, description: '',
+  kind: pick(r.kind, 'Kind', ['warehouse', 'hub', 'branch', 'site', 'engineer'], 'warehouse'),
+  address: r.address ?? '', state: r.state ?? '', custodian_id: null,
+  is_active: pick(r.status, 'Status', ['active', 'inactive'], 'active') === 'active',
+})
+
 function Warehouses() {
   const columns = useColumns('erp-warehouses', WAREHOUSE_COLUMNS)
   const { can } = useAccess()
@@ -645,6 +706,8 @@ function Warehouses() {
     <>
       <div className="crm-bar">
         <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ImportExport name="warehouses" columns={WAREHOUSE_IO} rows={list.data ?? []} canImport={manage} build={buildWarehouse}
+            save={(b) => erp.saveWarehouse(b)} onDone={() => list.reload()} />
           <ColumnSettings defs={WAREHOUSE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
             onSave={columns.save} onReset={columns.reset} />
           {manage && <button className="btn btn-primary" onClick={() => setEditing('new')}><IconPlus size={15} /> New warehouse</button>}
@@ -720,7 +783,7 @@ function WarehouseForm({ wh, onClose, onSaved }: { wh: Warehouse | null; onClose
     <Dialog title={wh ? `Edit warehouse · ${wh.code}` : 'New warehouse'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked *</span>}
+        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !form.name.trim() || missing}
           onClick={() => void run(async () => { await erp.saveWarehouse(form, wh?.id); onSaved() })}>
@@ -744,7 +807,7 @@ function WarehouseForm({ wh, onClose, onSaved }: { wh: Warehouse | null; onClose
 
 const VENDOR_BLANK = {
   legal_name: '', vendor_type: 'distributor', category: '', gstin: '', pan: '', contact_name: '', email: '',
-  phone: '', address: '', state: '', payment_terms_days: 30, advance_allowed: false, is_msme: false,
+  phone: '', address: '', city: '', state: '', pincode: '', payment_terms_days: 30, advance_allowed: false, is_msme: false,
   msme_number: '', agreement_expiry: '',
 }
 
@@ -819,6 +882,11 @@ function Vendors() {
   const list = useQuery('erp-vendors-all', () => erp.vendors({}))
   const [open, setOpen] = useState<Vendor | null>(null)
   const [creating, setCreating] = useState(false)
+  const removing = useRun(() => list.reload())
+  function remove(v: Vendor) {
+    if (!window.confirm(`Delete the vendor “${v.legal_name}”? This cannot be undone.`)) return
+    void removing.run(() => erp.deleteVendor(v.id), 'That vendor could not be deleted')
+  }
   const all = list.data ?? []
   const needle = q.trim().toLowerCase()
   const inView = (v: Vendor, w: VendorView) =>
@@ -839,6 +907,7 @@ function Vendors() {
   ]
   return (
     <>
+      {removing.error && <div style={{ marginBottom: 10 }}><ErrorNote>{removing.error}</ErrorNote></div>}
       <div className="vdl-kpis">
         {cards.map(([key, label, value, sub]) => (
           <button key={label} type="button" className={`vdl-kpi is-${key || 'all'}${view === key && (key || !filtered) ? ' is-on' : ''}`}
@@ -862,6 +931,8 @@ function Vendors() {
         {filtered && <button type="button" className="btn btn-sm" onClick={() => { setQ(''); setStatus(''); setType(''); setView('') }}>Clear</button>}
         {list.data && <span className="itl-count">{rows.length} of {all.length} vendors</span>}
         <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ImportExport name="vendors" columns={VENDOR_IO} rows={rows} canImport={manage} build={buildVendor}
+            save={(b) => erp.saveVendor(b)} onDone={() => list.reload()} />
           <ColumnSettings defs={VENDOR_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
             onSave={columns.save} onReset={columns.reset} />
           {manage && <button className="btn btn-primary" onClick={() => setCreating(true)}><IconPlus size={15} /> New vendor</button>}
@@ -886,6 +957,10 @@ function Vendors() {
                 <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                   <div className="crm-row-actions itl-actions">
                     <button className="crm-icon-btn" onClick={() => setOpen(v)} title="Open" aria-label={`Open ${v.legal_name}`}><IconSheet size={14} /></button>
+                    {manage && (
+                      <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(v)} disabled={removing.busy}
+                        title="Delete" aria-label={`Delete ${v.legal_name}`}><IconTrash size={14} /></button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -918,15 +993,44 @@ const VENDOR_FIELDS: FieldDef[] = [
   { key: 'category', label: 'Category', section: 'company' },
   { key: 'gstin', label: 'GSTIN', section: 'company' },
   { key: 'pan', label: 'PAN', section: 'company' },
-  { key: 'state', label: 'State', section: 'company' },
   { key: 'agreement_expiry', label: 'Agreement expiry', section: 'company' },
   { key: 'contact_name', label: 'Contact person', section: 'contact' },
   { key: 'phone', label: 'Phone', section: 'contact' },
   { key: 'email', label: 'Email', section: 'contact' },
-  { key: 'address', label: 'Address', section: 'contact' },
+  { key: 'address', label: 'Street address', section: 'contact' },
+  { key: 'state', label: 'State', section: 'contact' },
+  { key: 'city', label: 'City', section: 'contact' },
+  { key: 'pincode', label: 'PIN code', section: 'contact' },
   { key: 'payment_terms_days', label: 'Payment terms', section: 'terms', optionalOnly: true },
   { key: 'msme_number', label: 'Udyam number (MSME vendors)', section: 'terms' },
 ]
+
+const VENDOR_IO: IoColumn<Vendor>[] = [
+  { key: 'legal_name', label: 'Legal name', required: true, sample: 'Acme Traders Pvt Ltd', get: (v) => v.legal_name },
+  { key: 'vendor_type', label: 'Vendor type', sample: 'distributor', get: (v) => v.vendor_type },
+  { key: 'category', label: 'Category', sample: '', get: (v) => v.category },
+  { key: 'gstin', label: 'GSTIN', sample: '27AAAAA0000A1Z5', get: (v) => v.gstin },
+  { key: 'pan', label: 'PAN', sample: 'AAAAA0000A', get: (v) => v.pan },
+  { key: 'contact_name', label: 'Contact person', sample: 'Rohit Mehta', get: (v) => v.contact_name },
+  { key: 'phone', label: 'Phone', sample: '9845012345', get: (v) => v.phone },
+  { key: 'email', label: 'Email', sample: 'accounts@vendor.com', get: (v) => v.email },
+  { key: 'address', label: 'Street address', sample: '', get: (v) => v.address },
+  { key: 'city', label: 'City', sample: 'Pune', get: (v) => v.city },
+  { key: 'state', label: 'State', sample: 'Maharashtra', get: (v) => v.state },
+  { key: 'pincode', label: 'PIN code', sample: '411001', get: (v) => v.pincode },
+  { key: 'payment_terms_days', label: 'Payment terms (days)', sample: '30', get: (v) => v.payment_terms_days },
+  { key: 'status', label: 'Status', get: (v) => v.status },
+]
+const buildVendor = (r: Record<string, string>) => ({
+  ...VENDOR_BLANK,
+  legal_name: r.legal_name,
+  vendor_type: pick(r.vendor_type, 'Vendor type', ['oem', 'distributor', 'service_partner', 'transporter', 'other'], 'distributor'),
+  category: r.category ?? '', gstin: (r.gstin ?? '').toUpperCase(), pan: (r.pan ?? '').toUpperCase(),
+  contact_name: r.contact_name ?? '', phone: r.phone ?? '', email: r.email ?? '',
+  address: r.address ?? '', city: r.city ?? '', state: r.state ?? '', pincode: r.pincode ?? '',
+  payment_terms_days: Number(cleanNum(r.payment_terms_days, 'Payment terms', '30').split('.')[0]),
+  agreement_expiry: null,
+})
 
 function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClose: () => void; onSaved: (v: Vendor) => void }) {
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(
@@ -956,9 +1060,19 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
     phone: !value('phone').trim(),
     email: !value('email').trim(),
     address: !value('address').trim(),
+    city: !value('city').trim(),
+    pincode: !value('pincode').trim(),
     msme_number: Boolean(form.is_msme) && !value('msme_number').trim(),
   }
   const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
+  /* Shown under the field once it has something typed; an empty optional field is fine. */
+  const phoneDigits = value('phone').replace(/[\s\-()]/g, '').replace(/^(\+91|0)/, '')
+  const problems: Record<string, string> = {}
+  if (value('phone').trim() && !/^[6-9]\d{9}$/.test(phoneDigits)) problems.phone = 'Enter a valid 10-digit mobile number.'
+  if (value('email').trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(value('email').trim())) problems.email = 'Enter a valid email address, like name@company.com.'
+  if (value('pincode').trim() && !/^\d{6}$/.test(value('pincode').trim())) problems.pincode = 'PIN code must be 6 digits.'
+  const invalid = Object.keys(problems).length > 0
+  const err = (k: string) => problems[k] ? <span style={{ color: '#dc2626' }}>{problems[k]}</span> : undefined
   const fieldNodes: Record<string, ReactNode> = {
     legal_name: (
       <Field label="Legal name *" wide>
@@ -999,6 +1113,17 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
         <StateSelect value={value('state')} onChange={(v) => set('state', v)} />
       </Field>
     ),
+    city: fm('city') !== 'hide' && (
+      <Field label="City" required={rq('city')}>
+        <input value={value('city')} onChange={(e) => set('city', e.target.value)} placeholder="e.g. Pune" maxLength={120} />
+      </Field>
+    ),
+    pincode: fm('pincode') !== 'hide' && (
+      <Field label="PIN code" required={rq('pincode')} hint={err('pincode')}>
+        <input value={value('pincode')} inputMode="numeric" maxLength={6} placeholder="6 digits"
+          onChange={(e) => set('pincode', e.target.value.replace(/\D/g, ''))} />
+      </Field>
+    ),
     agreement_expiry: fm('agreement_expiry') !== 'hide' && (
       <Field label="Agreement expiry" required={rq('agreement_expiry')}>
         <input type="date" value={value('agreement_expiry')} onChange={(e) => set('agreement_expiry', e.target.value)} />
@@ -1006,23 +1131,24 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
     ),
     contact_name: fm('contact_name') !== 'hide' && (
       <Field label="Contact person" required={rq('contact_name')}>
-        <input value={value('contact_name')} onChange={(e) => set('contact_name', e.target.value)} placeholder="Full name" />
+        <input value={value('contact_name')} onChange={(e) => set('contact_name', e.target.value)} placeholder="Full name" maxLength={60} />
       </Field>
     ),
     phone: fm('phone') !== 'hide' && (
-      <Field label="Phone" required={rq('phone')}>
-        <input type="tel" inputMode="tel" value={value('phone')} onChange={(e) => set('phone', e.target.value)} placeholder="+91 98765 43210" />
+      <Field label="Phone" required={rq('phone')} hint={err('phone')}>
+        <input type="tel" inputMode="tel" value={value('phone')} maxLength={16}
+          onChange={(e) => set('phone', e.target.value.replace(/[^\d+\s\-()]/g, ''))} placeholder="+91 98765 43210" />
       </Field>
     ),
     email: fm('email') !== 'hide' && (
-      <Field label="Email" wide required={rq('email')}>
-        <input type="email" value={value('email')} onChange={(e) => set('email', e.target.value)} placeholder="accounts@vendor.com" />
+      <Field label="Email" wide required={rq('email')} hint={err('email')}>
+        <input type="text" inputMode="email" value={value('email')} onChange={(e) => set('email', e.target.value)} placeholder="accounts@vendor.com" />
       </Field>
     ),
     address: fm('address') !== 'hide' && (
       <div className="itf-full">
-        <Field label="Address" required={rq('address')}>
-          <input value={value('address')} onChange={(e) => set('address', e.target.value)} placeholder="Street, city, PIN code" />
+        <Field label="Street address" required={rq('address')}>
+          <input value={value('address')} onChange={(e) => set('address', e.target.value)} placeholder="House / building, street, area" />
         </Field>
       </div>
     ),
@@ -1049,9 +1175,9 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
     <Dialog wide title={vendor ? `Edit vendor · ${vendor.code}` : 'New vendor'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked *</span>}
+        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
         <button className="btn crm-push" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={busy || !String(form.legal_name).trim() || missing}
+        <button className="btn btn-primary" disabled={busy || !String(form.legal_name).trim() || missing || invalid}
           onClick={() => void run(async () => onSaved(await erp.saveVendor(body, vendor?.id)))}>
           {busy ? 'Saving…' : vendor ? 'Save changes' : 'Save vendor'}
         </button>
@@ -1415,7 +1541,7 @@ function CustomerDrawer({ customer, onClose, onChanged }: { customer: CustomerAc
     <Drawer title={customer.customer_name} meta={customer.customer_code} onClose={onClose} footer={
       <div className="crm-row-actions">
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked *</span>}
+        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
         {can('can_approve_billing') && (
           <button className="btn" onClick={() => setHolding(true)}>{a?.credit_hold ? 'Release hold' : 'Place on credit hold'}</button>
         )}

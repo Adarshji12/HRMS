@@ -451,7 +451,7 @@ function RequisitionForm({ req, onClose, onSaved }: { req: Requisition | null; o
     <Dialog wide title={req ? `Edit ${req.number}` : 'New requisition'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked *</span>}
+        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !title.trim() || missing} onClick={() => void run(async () => onSaved(await erp.saveRequisition({
           title, purpose, required_by: requiredBy || null, warehouse_id: warehouseId || null,

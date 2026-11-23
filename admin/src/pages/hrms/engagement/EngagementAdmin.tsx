@@ -292,7 +292,7 @@ function NewPost({
     ),
     expires_on: fm('expires_on') !== 'hide' && (
       <label className="eg-field">
-        <span className="eg-label">Expires{fm('expires_on') === 'mandatory' ? ' *' : ' (optional)'}</span>
+        <span className="eg-label">Expires{fm('expires_on') === 'mandatory' ? <><span className="lf-req"> *</span></> : ' (optional)'}</span>
         <input type="date" value={form.expires_on}
                onChange={(e) => setForm({ ...form, expires_on: e.target.value })} />
         <span className="muted">
@@ -333,7 +333,7 @@ function NewPost({
           Save as draft
         </button>
         <span className="muted">
-          {missing ? 'Fill in the fields marked *. ' : ''}Nobody sees it until you publish.
+          {missing ? <>Fill in the fields marked <b className="lf-req">*</b>. </> : ''}Nobody sees it until you publish.
         </span>
       </div>
     </section>

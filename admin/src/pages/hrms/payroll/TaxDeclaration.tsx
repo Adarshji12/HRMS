@@ -447,7 +447,7 @@ function AddClaim({
   const fieldNodes: Record<string, ReactNode> = {
     section: (
       <label className="pr-field">
-        <span className="pr-field-label">Section *</span>
+        <span className="pr-field-label">Section <span className="lf-req">*</span></span>
         <select value={section} onChange={(e) => setSection(e.target.value)}>
           {SECTIONS.map((option) => (
             <option key={option.section} value={option.section}>
@@ -460,7 +460,7 @@ function AddClaim({
     ),
     amount: (
       <label className="pr-field">
-        <span className="pr-field-label">Amount *</span>
+        <span className="pr-field-label">Amount <span className="lf-req">*</span></span>
         <input value={amount} type="number" data-spin min={0} step="any" placeholder="150000"
                className={amount && paise === null ? 'is-bad' : ''}
                onChange={(e) => setAmount(e.target.value)} />
@@ -468,7 +468,7 @@ function AddClaim({
     ),
     proof: fm('proof') !== 'hide' && (
       <label className="pr-field">
-        <span className="pr-field-label">Proof{fm('proof') === 'mandatory' ? ' *' : ''}</span>
+        <span className="pr-field-label">Proof{fm('proof') === 'mandatory' ? <span className="lf-req"> *</span> : null}</span>
         <select value={documentId} onChange={(e) => setDocumentId(e.target.value)}>
           <option value="">Attach later</option>
           {(docsQ.data ?? []).map((doc) => (

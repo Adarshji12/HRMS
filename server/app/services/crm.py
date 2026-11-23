@@ -1584,6 +1584,38 @@ def create_follow_up(db: Session, viewer: User, payload: S.FollowUpIn) -> S.Foll
     return _follow_up_out(row)
 
 
+def update_follow_up(
+    db: Session, viewer: User, follow_up_id: uuid.UUID, payload: S.FollowUpEdit
+) -> S.FollowUpOut:
+    """Change when a pending follow-up is due, who owns it, or what it says."""
+    row = db.get(CrmFollowUp, follow_up_id)
+    if row is None or row.org_id != viewer.org_id:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Follow-up not found")
+    scope = visible_owner_ids(db, viewer)
+    if scope is not None and row.owner_id is not None and row.owner_id not in scope:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Follow-up not found")
+    if row.status != FollowUpStatus.PENDING.value:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={"reason": "not_pending", "message": "Only a pending follow-up can be edited."},
+        )
+    moved = row.due_at != payload.due_at
+    row.due_at = payload.due_at
+    if payload.owner_id:
+        row.owner_id = payload.owner_id
+    row.purpose = payload.purpose
+    row.notes = payload.notes
+    db.flush()
+    if row.lead_id:
+        lead = db.get(CrmLead, row.lead_id)
+        if lead is not None and moved:
+            _log(db, lead, viewer, "followup", f"Follow-up moved to {payload.due_at:%d %b %Y %H:%M}")
+        _resync_next_follow_up(db, row.lead_id)
+    db.commit()
+    db.refresh(row)
+    return _follow_up_out(row)
+
+
 def _follow_up_subject(db: Session, org_id: uuid.UUID, contact: str) -> tuple[str, uuid.UUID] | None:
     """A Lead ID, customer code or mobile, to the record it names.
 

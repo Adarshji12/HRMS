@@ -1494,7 +1494,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
           </p>
           {!companyState && <p className="sb-warn">Company state is not set — GST is treated as intra-state. Set it in Settings → Company.</p>}
           {posMissing && <p className="error sb-error">Enter the place of supply — GST depends on it.</p>}
-          {missing && <p className="error sb-error">Fill in the fields marked *</p>}
+          {missing && <p className="error sb-error">Fill in the fields marked <b className="lf-req">*</b></p>}
           {cessBad && <p className="error sb-error">A cess rate cannot be above 300%.</p>}
           {error && <p className="error sb-error">{error}</p>}
           {!transportOk && <p className="error sb-error">Check the vehicle / e-way bill number in More details.</p>}

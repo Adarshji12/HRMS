@@ -175,11 +175,11 @@ function NewCycle({
   const fields = useFieldModes('review-cycle-form', CYCLE_FIELDS)
   const fm = fields.mode
 
-  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const star = (key: string) => (fm(key) === 'mandatory' ? <span className="lf-req"> *</span> : null)
   const fieldNodes: Record<string, ReactNode> = {
     name: (
       <label className="perf-field">
-        <span className="perf-field-label">Name *</span>
+        <span className="perf-field-label">Name <span className="lf-req">*</span></span>
         <input
           value={form.name}
           placeholder="FY2025-26 Annual"
@@ -189,7 +189,7 @@ function NewCycle({
     ),
     period_start: (
       <label className="perf-field">
-        <span className="perf-field-label">Period from *</span>
+        <span className="perf-field-label">Period from <span className="lf-req">*</span></span>
         <input type="date" value={form.period_start}
                onChange={(e) => setForm({ ...form, period_start: e.target.value })} />
         <span className="perf-field-hint">
@@ -199,7 +199,7 @@ function NewCycle({
     ),
     period_end: (
       <label className="perf-field">
-        <span className="perf-field-label">to *</span>
+        <span className="perf-field-label">to <span className="lf-req">*</span></span>
         <input type="date" value={form.period_end}
                onChange={(e) => setForm({ ...form, period_end: e.target.value })} />
       </label>

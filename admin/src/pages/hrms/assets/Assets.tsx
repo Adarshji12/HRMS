@@ -741,7 +741,7 @@ function AssetForm({
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
   const fields = useFieldModes('asset-form', ASSET_FIELDS)
   const fm = fields.mode
-  const star = (key: string) => (fm(key) === 'mandatory' ? ' *' : '')
+  const star = (key: string) => (fm(key) === 'mandatory' ? <span className="lf-req"> *</span> : null)
   const emptyField: Record<string, boolean> = {
     name: !form.name.trim(),
     brand: !form.brand.trim(),
@@ -827,7 +827,7 @@ function AssetForm({
   const fieldNodes: Record<string, ReactNode> = {
     asset_tag: (
       <label className="setting">
-        Asset tag / ID *
+        Asset tag / ID <span className="lf-req"> *</span>
         <input
           value={form.asset_tag}
           onChange={(e) => set({ asset_tag: e.target.value })}
@@ -961,7 +961,7 @@ function AssetForm({
     ),
     renewal_date: tracksRenewal && (
       <label className="setting">
-        Next renewal date *
+        Next renewal date <span className="lf-req"> *</span>
         <input
           type="date"
           value={form.renewal_date}
@@ -1088,7 +1088,7 @@ function AssetForm({
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
-        {missing && <span className="as-muted">Fill in the fields marked *.</span>}
+        {missing && <span className="as-muted">Fill in the fields marked <b className="lf-req">*</b>.</span>}
       </div>
     </form>
   )

@@ -153,6 +153,11 @@ def update_vendor(vendor_id: uuid.UUID, payload: S.VendorIn, viewer: CurrentUser
     return masters.save_vendor(db, viewer, payload, vendor_id, request=request)
 
 
+@router.delete("/vendors/{vendor_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_vendor(vendor_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    masters.delete_vendor(db, viewer, vendor_id, request=request)
+
+
 @router.post("/vendors/{vendor_id}/submit")
 def submit_vendor(vendor_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
     return masters.submit_vendor(db, viewer, vendor_id, request=request)

@@ -182,7 +182,22 @@ export function ColumnSettings({
     setDragging(null)
   }
 
+  const [spinning, setSpinning] = useState(false)
+  function refresh() {
+    window.dispatchEvent(new Event('app:refresh'))
+    setSpinning(true)
+    window.setTimeout(() => setSpinning(false), 700)
+  }
+
   return (
+    <>
+    <button type="button" className={`btn vw-btn vw-refresh${spinning ? ' is-spinning' : ''}`} onClick={refresh}
+            aria-label="Refresh" title="Refresh">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+           strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4" />
+      </svg>
+    </button>
     <div className="vw-wrap" ref={ref}>
       <button type="button" className={`btn vw-btn${open ? ' is-open' : ''}`} aria-haspopup="dialog" aria-expanded={open}
               onClick={openPopover}>
@@ -225,6 +240,7 @@ export function ColumnSettings({
           </div>
       </>)}
     </div>
+    </>
   )
 }
 

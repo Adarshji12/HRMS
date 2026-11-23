@@ -495,7 +495,7 @@ function OpenMonth({
       <div className="pr-row">
         {fm('pay_date') !== 'hide' && (
           <label className="pr-field">
-            <span className="pr-field-label">Pay date{fm('pay_date') === 'mandatory' ? ' *' : ''}</span>
+            <span className="pr-field-label">Pay date{fm('pay_date') === 'mandatory' ? <span className="lf-req"> *</span> : null}</span>
             <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
             <span className="pr-field-hint">
               When salaries are credited — often the 1st of the next month. Can be set later.
@@ -505,7 +505,7 @@ function OpenMonth({
         <button className="btn btn-primary" disabled={busy || missing} onClick={create}>
           {busy ? 'Opening…' : `Open ${label}`}
         </button>
-        {missing && <span className="muted">Fill in the fields marked *.</span>}
+        {missing && <span className="muted">Fill in the fields marked <b className="lf-req">*</b>.</span>}
       </div>
     </section>
   )

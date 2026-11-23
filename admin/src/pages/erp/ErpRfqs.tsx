@@ -509,7 +509,7 @@ function RfqForm({ rfq, onClose, onSaved }: { rfq: Rfq | null; onClose: () => vo
   const fieldsOf = (section: string) =>
     fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
   const block = !head.title.trim() ? 'Give the RFQ a title' : !used.length ? 'Add at least one item' : lineBad ? 'Every item needs a quantity above 0'
-    : dueBad ? 'Quotes cannot be due before the RFQ date' : needBad ? 'The goods cannot be needed before the RFQ date' : !picked.length ? 'Pick at least one vendor' : missing ? 'Fill in the fields marked *' : null
+    : dueBad ? 'Quotes cannot be due before the RFQ date' : needBad ? 'The goods cannot be needed before the RFQ date' : !picked.length ? 'Pick at least one vendor' : missing ? <>Fill in the fields marked <b className="lf-req">*</b></> : null
   const shownVendors = (vendors.data ?? []).filter((v) => !vq.trim() || `${v.legal_name} ${v.code} ${v.category ?? ''}`.toLowerCase().includes(vq.trim().toLowerCase()))
   const vendorName = (id: string) => (vendors.data ?? []).find((v) => v.id === id)?.legal_name ?? rfq?.vendors.find((v) => v.vendor_id === id)?.legal_name ?? 'Vendor'
 
