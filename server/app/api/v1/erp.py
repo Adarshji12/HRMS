@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas import erp as S
-from app.services.erp import billing, masters, purchase, reports, sales, stock
+from app.services.erp import billing, ledgers, masters, purchase, reports, sales, stock
 from app.services.erp.common import capabilities, get_settings, record_audit, require, row_dict
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -130,6 +130,68 @@ def update_item(row_id: uuid.UUID, payload: S.ItemIn, viewer: CurrentUser, db: D
 @router.delete("/items/{row_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_item(row_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
     masters.delete_item(db, viewer, row_id, request=request)
+
+
+@router.get("/account-groups")
+def list_account_groups(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    return ledgers.list_account_groups(db, viewer)
+
+
+@router.post("/account-groups", status_code=status.HTTP_201_CREATED)
+def create_account_group(payload: S.AccountGroupIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return ledgers.create_account_group(db, viewer, payload, request=request)
+
+
+@router.delete("/account-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_account_group(group_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    ledgers.delete_account_group(db, viewer, group_id, request=request)
+
+
+@router.get("/accounts")
+def account_tree(viewer: CurrentUser, db: DbSession, archived: bool = False) -> dict:
+    return ledgers.account_tree(db, viewer, archived=archived)
+
+
+@router.patch("/account-groups/{group_id}")
+def update_account_group(group_id: uuid.UUID, payload: S.AccountGroupEdit, viewer: CurrentUser, db: DbSession,
+                         request: Request) -> dict:
+    return ledgers.update_account_group(db, viewer, group_id, payload, request=request)
+
+
+@router.post("/account-groups/{group_id}/archive", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def archive_account_group(group_id: uuid.UUID, payload: S.ArchiveIn, viewer: CurrentUser, db: DbSession,
+                          request: Request) -> None:
+    ledgers.archive_account_group(db, viewer, group_id, payload.archived, request=request)
+
+
+@router.post("/ledgers/{ledger_id}/archive")
+def archive_ledger(ledger_id: uuid.UUID, payload: S.ArchiveIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return ledgers.set_ledger_active(db, viewer, ledger_id, not payload.archived, request=request)
+
+
+@router.get("/ledgers")
+def list_ledgers(viewer: CurrentUser, db: DbSession, q: str | None = None, active: bool | None = None) -> list[dict]:
+    return ledgers.list_ledgers(db, viewer, q=q, active=active)
+
+
+@router.get("/ledgers/{ledger_id}")
+def get_ledger(ledger_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
+    return ledgers.get_ledger(db, viewer, ledger_id)
+
+
+@router.post("/ledgers", status_code=status.HTTP_201_CREATED)
+def create_ledger(payload: S.LedgerIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return ledgers.save_ledger(db, viewer, payload, request=request)
+
+
+@router.put("/ledgers/{ledger_id}")
+def update_ledger(ledger_id: uuid.UUID, payload: S.LedgerIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return ledgers.save_ledger(db, viewer, payload, ledger_id, request=request)
+
+
+@router.delete("/ledgers/{ledger_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_ledger(ledger_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    ledgers.delete_ledger(db, viewer, ledger_id, request=request)
 
 
 @router.get("/vendors")

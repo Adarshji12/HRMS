@@ -2772,3 +2772,13 @@ select:not([multiple]):not([size]) {
 
 /* Mandatory-field asterisks are red everywhere, whatever the form's own styling says. */
 .lf-req, .pof-req, .rcp-req, .hire-req, .itx-req b, .ld i.lf-req { color: #dc2626 !important; font-weight: 700; font-style: normal; }
+
+/* A searchable text box backed by a <datalist> looks like the selects: the same chevron, and no browser triangle. */
+input.is-combo {
+  padding-right: 30px;
+  background-image: var(--caret);
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 12px 8px;
+}
+input.is-combo::-webkit-calendar-picker-indicator { opacity: 0; width: 28px; margin-right: -6px; cursor: pointer; }

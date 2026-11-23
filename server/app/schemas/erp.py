@@ -720,3 +720,126 @@ class ReceiptCorrectionIn(_In):
     remove_proof: bool = False
 
     _proof = field_validator("proof")(classmethod(lambda cls, v: _proof_ok(v)))
+
+
+# --------------------------------------------------------------------------- #
+# Ledgers
+# --------------------------------------------------------------------------- #
+
+_GSTIN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
+_PAN = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+
+
+def _mobile(v: str | None, label: str) -> str | None:
+    v = (v or "").strip()
+    if not v:
+        return None
+    digits = re.sub(r"[\s\-()]", "", v)
+    if digits.startswith("+91"):
+        digits = digits[3:]
+    if not re.fullmatch(r"[6-9]\d{9}", digits):
+        raise ValueError(f"{label} must be a valid 10-digit mobile number.")
+    return digits
+
+
+class LedgerIn(_In):
+    code: str | None = Field(default=None, max_length=24)
+    name: str = Field(min_length=1, max_length=200)
+    account_group: str = Field(min_length=1, max_length=80)
+    station: str | None = Field(default=None, max_length=120)
+    mail_to: str | None = Field(default=None, max_length=200)
+    address1: str | None = Field(default=None, max_length=200)
+    address2: str | None = Field(default=None, max_length=200)
+    address3: str | None = Field(default=None, max_length=200)
+    country: str | None = Field(default=None, max_length=80)
+    state: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    pincode: str | None = None
+    category: str | None = Field(default=None, max_length=80)
+    balancing_method: Literal["bill_by_bill", "on_account"] = "bill_by_bill"
+    opening_balance: Decimal = Field(default=Decimal("0"), ge=0)
+    opening_type: Literal["dr", "cr"] = "dr"
+    credit_days: int = Field(default=0, ge=0, le=999)
+    credit_limit: Decimal | None = Field(default=None, ge=0)
+    mobile: str | None = None
+    whatsapp: str | None = None
+    mobile1: str | None = None
+    ledger_type: Literal["unregistered", "registered", "composition", "consumer", "overseas"] = "unregistered"
+    gstin: str | None = None
+    pan: str | None = None
+    contact_person: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=80)
+    email: str | None = None
+    dob: date | None = None
+    anniversary: date | None = None
+    website: str | None = Field(default=None, max_length=200)
+    bank_holder: str | None = Field(default=None, max_length=160)
+    bank_name: str | None = Field(default=None, max_length=160)
+    bank_account: str | None = Field(default=None, max_length=40)
+    ifsc: str | None = Field(default=None, max_length=16)
+    bank_branch: str | None = Field(default=None, max_length=160)
+    bill_at: Literal["sale_bill_setting", "mrp", "retail", "wholesale", "special"] = "sale_bill_setting"
+    salesman: str | None = Field(default=None, max_length=120)
+    area_route: str | None = Field(default=None, max_length=120)
+    notes: str | None = None
+    is_active: bool = True
+
+    @field_validator("mobile", "whatsapp", "mobile1")
+    @classmethod
+    def _phones(cls, v: str | None, info) -> str | None:
+        return _mobile(v, {"mobile": "Mobile no.", "whatsapp": "WhatsApp no.", "mobile1": "Mobile no. 1"}[info.field_name])
+
+    @field_validator("email")
+    @classmethod
+    def _email_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", v):
+            raise ValueError("Enter a valid email address.")
+        return v
+
+    @field_validator("pincode")
+    @classmethod
+    def _pin_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"\d{6}", v):
+            raise ValueError("PIN code must be 6 digits.")
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def _gstin_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip().upper()
+        if not v:
+            return None
+        if not _GSTIN.match(v):
+            raise ValueError(f"\u201c{v}\u201d is not a valid GSTIN.")
+        return v
+
+    @field_validator("pan")
+    @classmethod
+    def _pan_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip().upper()
+        if not v:
+            return None
+        if not _PAN.match(v):
+            raise ValueError(f"\u201c{v}\u201d is not a valid PAN.")
+        return v
+
+
+class AccountGroupIn(_In):
+    name: str = Field(min_length=1, max_length=80)
+    parent_id: uuid.UUID
+    code: str | None = Field(default=None, max_length=16)
+
+
+class AccountGroupEdit(_In):
+    name: str = Field(min_length=1, max_length=80)
+    code: str | None = Field(default=None, max_length=16)
+
+
+class ArchiveIn(_In):
+    archived: bool

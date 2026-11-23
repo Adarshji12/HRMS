@@ -173,14 +173,23 @@ class CityOut(MasterOut):
     country_id: uuid.UUID | None = None
     district_id: uuid.UUID | None = None
     district_name: str | None = None
+    pincode: str | None = None
 
 
 class CityIn(NamedIn):
     name: str = Field(min_length=1, max_length=120)
     state_id: uuid.UUID
     district_id: uuid.UUID | None = None
+    pincode: str | None = None
 
-    _blank = field_validator("district_id", mode="before")(_blank_to_none)
+    _blank = field_validator("district_id", "pincode", mode="before")(_blank_to_none)
+
+    @field_validator("pincode")
+    @classmethod
+    def _pin_ok(cls, v: str | None) -> str | None:
+        if v and not v.strip().isdigit() or v and len(v.strip()) != 6:
+            raise ValueError("PIN code must be 6 digits.")
+        return v.strip() if v else None
 
 
 class DispositionOut(MasterOut):

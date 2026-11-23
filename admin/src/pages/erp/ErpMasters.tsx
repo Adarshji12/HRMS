@@ -21,6 +21,8 @@ import {
 } from '../../components/ViewSettings'
 import { cells, heads, type Col } from './listColumns'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
+import Ledgers from './ErpLedgers'
+import Accounts from './ErpAccounts'
 
 /** A state picked from the State Master. Stored by name, as the vendor record keeps it;
  *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
@@ -38,11 +40,12 @@ function StateSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-type Tab = 'items' | 'warehouses' | 'vendors' | 'customers'
+type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'items', label: 'Items' }, { key: 'warehouses', label: 'Warehouses' },
   { key: 'vendors', label: 'Vendors' }, { key: 'customers', label: 'Customer accounts' },
+  { key: 'ledgers', label: 'Ledger' }, { key: 'accounts', label: 'List of accounts' },
 ]
 
 /* Opened from the ERP rail (/erp/masters): all four lists as tabs. Opened from
@@ -78,6 +81,8 @@ export default function ErpMasters() {
           {tab === 'warehouses' && <Warehouses />}
           {tab === 'vendors' && <Vendors />}
           {tab === 'customers' && <Customers />}
+          {tab === 'ledgers' && <Ledgers />}
+          {tab === 'accounts' && <Accounts />}
         </div>
       ) : (
         <ErpPage
@@ -89,6 +94,8 @@ export default function ErpMasters() {
           {tab === 'warehouses' && <Warehouses />}
           {tab === 'vendors' && <Vendors />}
           {tab === 'customers' && <Customers />}
+          {tab === 'ledgers' && <Ledgers />}
+          {tab === 'accounts' && <Accounts />}
         </ErpPage>
       )}
     </>

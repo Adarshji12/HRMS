@@ -181,6 +181,7 @@ export const LISTS: ListDef[] = [
       { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Mumbai' },
       { key: 'state_id', label: 'State', kind: 'parent', parentKind: 'states' },
       { key: 'district_id', label: 'District (optional)', kind: 'parent', parentKind: 'districts', dependsOn: 'state_id' },
+      { key: 'pincode', label: 'PIN code', kind: 'text', placeholder: '6 digits' },
     ],
     parent: { kind: 'states', label: 'State', field: 'state_id' },
   },
@@ -888,6 +889,8 @@ export const MASTER_GROUPS: MasterGroup[] = [
       { label: 'Warehouses', to: '/masters/erp/warehouses' },
       { label: 'Vendors', to: '/masters/erp/vendors' },
       { label: 'Customer accounts', to: '/masters/erp/customers' },
+      { label: 'Ledger', to: '/masters/erp/ledgers' },
+      { label: 'List of accounts', to: '/masters/erp/accounts' },
     ],
   },
   {

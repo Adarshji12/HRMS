@@ -50,6 +50,81 @@ export interface Warehouse {
   is_active: boolean
 }
 
+export interface AccountNode {
+  id: string
+  name: string
+  code: string | null
+  parent_id: string | null
+  depth: number
+  is_system: boolean
+  is_archived: boolean
+  /** Signed: debit positive, credit negative, rolled up from everything beneath. */
+  balance: string
+  accounts: number
+}
+
+export interface AccountTree {
+  groups: AccountNode[]
+  ledgers: Array<{ id: string; name: string; code: string; group_id: string | null; balance: string; is_active: boolean; account_group: string }>
+  totals: Record<string, { balance: string; accounts: number }>
+}
+
+export interface AccountGroup {
+  id: string
+  name: string
+  code?: string | null
+  parent_id: string | null
+  /** 0 for a top heading (Assets), one more for each level down. */
+  depth: number
+  is_system: boolean
+}
+
+export interface Ledger {
+  id: string
+  code: string
+  name: string
+  account_group: string
+  station: string | null
+  mail_to: string | null
+  address1: string | null
+  address2: string | null
+  address3: string | null
+  country: string | null
+  state: string | null
+  city: string | null
+  pincode: string | null
+  category: string | null
+  balancing_method: 'bill_by_bill' | 'on_account'
+  opening_balance: string
+  opening_type: 'dr' | 'cr'
+  credit_days: number
+  credit_limit: string | null
+  mobile: string | null
+  whatsapp: string | null
+  mobile1: string | null
+  ledger_type: 'unregistered' | 'registered' | 'composition' | 'consumer' | 'overseas'
+  gstin: string | null
+  pan: string | null
+  contact_person: string | null
+  designation: string | null
+  email: string | null
+  dob: string | null
+  anniversary: string | null
+  website: string | null
+  bank_holder: string | null
+  bank_name: string | null
+  bank_account: string | null
+  ifsc: string | null
+  bank_branch: string | null
+  bill_at: 'sale_bill_setting' | 'mrp' | 'retail' | 'wholesale' | 'special'
+  salesman: string | null
+  area_route: string | null
+  notes: string | null
+  is_active: boolean
+  balance: string
+  balance_type: 'dr' | 'cr'
+}
+
 export interface Item {
   id: string
   code: string
@@ -844,6 +919,18 @@ export const erp = {
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
   deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
   deleteItem: (id: string) => api.del(`${B}/items/${id}`),
+  accountTree: (archived = false) => api.get<AccountTree>(`${B}/accounts${archived ? '?archived=true' : ''}`),
+  updateAccountGroup: (id: string, body: Body) => api.patch<{ id: string; name: string; code: string | null }>(`${B}/account-groups/${id}`, body),
+  archiveAccountGroup: (id: string, archived: boolean) => api.post(`${B}/account-groups/${id}/archive`, { archived }),
+  deleteAccountGroup: (id: string) => api.del(`${B}/account-groups/${id}`),
+  archiveLedger: (id: string, archived: boolean) => api.post<Ledger>(`${B}/ledgers/${id}/archive`, { archived }),
+  ledger: (id: string) => api.get<Ledger>(`${B}/ledgers/${id}`),
+  accountGroups: () => api.get<AccountGroup[]>(`${B}/account-groups`),
+  addAccountGroup: (body: Body) => api.post<AccountGroup>(`${B}/account-groups`, body),
+  ledgers: (p: { q?: string } = {}) => api.get<Ledger[]>(`${B}/ledgers${qs(p)}`),
+  saveLedger: (body: Body, id?: string) =>
+    id ? api.put<Ledger>(`${B}/ledgers/${id}`, body) : api.post<Ledger>(`${B}/ledgers`, body),
+  deleteLedger: (id: string) => api.del(`${B}/ledgers/${id}`),
   deleteVendor: (id: string) => api.del(`${B}/vendors/${id}`),
 
   items: (p: { q?: string; active_only?: boolean; item_type?: string } = {}) => api.get<Item[]>(`${B}/items${qs(p)}`),

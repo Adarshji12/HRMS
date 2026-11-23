@@ -402,6 +402,8 @@ class CrmCity(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("crm_districts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: The town's usual PIN code; fills the PIN on a ledger or lead that picks it.
+    pincode: Mapped[str | None] = mapped_column(String(12), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     state: Mapped["CrmState"] = relationship(back_populates="cities")

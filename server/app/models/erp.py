@@ -1608,3 +1608,84 @@ class ErpReceipt(UUIDMixin, TimestampMixin, Base):
     proof_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     #: Every later correction of the details: [{at, by, by_name, reason, changes}].
     corrections: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class ErpLedger(UUIDMixin, TimestampMixin, Base):
+    """A party's own account: a customer, supplier or any other ledger.
+
+    Opening balance is the figure at the start of trading, signed by
+    ``opening_type`` (``dr`` — they owe you, ``cr`` — you owe them). Nothing
+    posts to it yet; the balance shown is the opening balance.
+    """
+
+    __tablename__ = "erp_ledgers"
+    __table_args__ = (UniqueConstraint("org_id", "code", name="uq_erp_ledgers_org_code"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    code: Mapped[str] = mapped_column(String(24), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    account_group: Mapped[str] = mapped_column(String(80), nullable=False)
+    station: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    mail_to: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address1: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address2: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address3: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pincode: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    #: bill_by_bill | on_account
+    balancing_method: Mapped[str] = mapped_column(String(16), default="bill_by_bill", nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
+    #: dr | cr
+    opening_type: Mapped[str] = mapped_column(String(2), default="dr", nullable=False)
+    credit_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    mobile: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    whatsapp: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    mobile1: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    ledger_type: Mapped[str] = mapped_column(String(20), default="unregistered", nullable=False)
+    gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pan: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    contact_person: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dob: Mapped[date | None] = mapped_column(Date, nullable=True)
+    anniversary: Mapped[date | None] = mapped_column(Date, nullable=True)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    bank_holder: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    bank_account: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    ifsc: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    bank_branch: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    bill_at: Mapped[str] = mapped_column(String(24), default="sale_bill_setting", nullable=False)
+    salesman: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    area_route: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = _user_fk()
+
+
+class ErpAccountGroup(UUIDMixin, TimestampMixin, Base):
+    """A heading ledgers sit under. It holds no postings itself.
+
+    The standard tree (Assets, Liabilities, Equity, Income, Expenses and what
+    hangs off them) is seeded for each company the first time the list is read.
+    Those rows are ``is_system`` and cannot be deleted; a group a person adds
+    can, while nothing sits under it and no ledger uses it.
+    """
+
+    __tablename__ = "erp_account_groups"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_erp_account_groups_org_name"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("erp_account_groups.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: 1000, 1100, 1110 … the place in the chart; editable, unique per company.
+    code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
