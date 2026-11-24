@@ -434,13 +434,13 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     station: (
       <Field label="Station" required hint="Town or city, from the geography master">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-          <input className="is-combo" value={f.station} maxLength={120} list="ledger-towns" placeholder="Search town…" autoComplete="off"
-                 onChange={(e) => pickTown(e.target.value)} />
-          <datalist id="ledger-towns">
-            {(towns.data ?? []).filter((t) => t.is_active !== false).map((t) => (
-              <option key={t.id} value={t.name}>{[t.district_name, t.state_name].filter(Boolean).join(', ')}</option>
-            ))}
-          </datalist>
+          <TreeSelect value={f.station} onChange={pickTown} placeholder="Search town…" searchPlaceholder="Search towns…"
+                      options={[
+                        ...(towns.data ?? []).filter((t) => t.is_active !== false)
+                          .map((t) => ({ key: t.name, label: t.name, sub: [t.district_name, t.state_name].filter(Boolean).join(', ') })),
+                        // A station already on the ledger that is not on the list still has to show.
+                        ...(f.station && !(towns.data ?? []).some((t) => t.name === f.station) ? [{ key: f.station, label: f.station }] : []),
+                      ]} />
           <button type="button" className="btn vw-refresh" title="Add a town" aria-label="Add a town" onClick={() => setAddingTown(true)}>
             <IconPlus size={14} />
           </button>
@@ -449,7 +449,7 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     mail_to: fm('mail_to') !== 'hide' && (
       <div style={wide}><Field label="Mail to" required={rq('mail_to')} hint="Name to print on letters and documents, if not the ledger name">
-        <input value={f.mail_to} maxLength={200} onChange={(e) => set('mail_to', e.target.value)} />
+        <input value={f.mail_to} maxLength={200} placeholder="Name to print, if not the ledger name" onChange={(e) => set('mail_to', e.target.value)} />
       </Field></div>
     ),
     address: fm('address') !== 'hide' && (
@@ -463,7 +463,7 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     country: fm('country') !== 'hide' && (
       <Field label="Country" required={rq('country')}>
-        <input value={f.country} maxLength={80} onChange={(e) => set('country', e.target.value)} />
+        <input value={f.country} maxLength={80} placeholder="India" onChange={(e) => set('country', e.target.value)} />
       </Field>
     ),
     state: (
@@ -477,12 +477,12 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     city: fm('city') !== 'hide' && (
       <Field label="City" required={rq('city')}>
-        <input value={f.city} maxLength={120} onChange={(e) => set('city', e.target.value)} />
+        <input value={f.city} maxLength={120} placeholder="e.g. Jaipur" onChange={(e) => set('city', e.target.value)} />
       </Field>
     ),
     pincode: fm('pincode') !== 'hide' && (
       <Field label="PIN code" required={rq('pincode')} hint={err('pincode')}>
-        <input value={f.pincode} maxLength={6} inputMode="numeric" onChange={(e) => set('pincode', e.target.value.replace(/\D/g, ''))} />
+        <input value={f.pincode} maxLength={6} inputMode="numeric" placeholder="6-digit PIN code" onChange={(e) => set('pincode', e.target.value.replace(/\D/g, ''))} />
       </Field>
     ),
     category: fm('category') !== 'hide' && (
@@ -512,7 +512,7 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     credit_days: fm('credit_days') !== 'hide' && (
       <Field label="Credit days" required={rq('credit_days')}>
-        <input value={f.credit_days} inputMode="numeric" onChange={(e) => set('credit_days', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+        <input value={f.credit_days} inputMode="numeric" placeholder="0" onChange={(e) => set('credit_days', e.target.value.replace(/\D/g, '').slice(0, 3))} />
       </Field>
     ),
     credit_limit: fm('credit_limit') !== 'hide' && (
@@ -537,7 +537,7 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     mobile1: fm('mobile1') !== 'hide' && (
       <Field label="Mobile no. 1" required={rq('mobile1')} hint={err('mobile1')}>
-        <input value={f.mobile1} inputMode="tel" maxLength={16} onChange={phone('mobile1')} />
+        <input value={f.mobile1} inputMode="tel" maxLength={16} placeholder="Another number" onChange={phone('mobile1')} />
       </Field>
     ),
 
@@ -550,23 +550,23 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
     gstin: fm('gstin') !== 'hide' && (
       <Field label="GSTIN" required={rq('gstin')} hint={err('gstin') ?? 'Leave empty if unregistered'}>
-        <input value={f.gstin} maxLength={15} onChange={(e) => set('gstin', e.target.value.toUpperCase())} />
+        <input value={f.gstin} maxLength={15} placeholder="27AAAAA0000A1Z5" onChange={(e) => set('gstin', e.target.value.toUpperCase())} />
       </Field>
     ),
     pan: fm('pan') !== 'hide' && (
       <Field label="PAN" required={rq('pan')} hint={err('pan')}>
-        <input value={f.pan} maxLength={10} onChange={(e) => set('pan', e.target.value.toUpperCase())} />
+        <input value={f.pan} maxLength={10} placeholder="AAAAA0000A" onChange={(e) => set('pan', e.target.value.toUpperCase())} />
       </Field>
     ),
 
     contact_person: fm('contact_person') !== 'hide' && (
-      <Field label="Contact person" required={rq('contact_person')}><input value={f.contact_person} maxLength={60} onChange={(e) => set('contact_person', e.target.value)} /></Field>
+      <Field label="Contact person" required={rq('contact_person')}><input value={f.contact_person} maxLength={60} placeholder="Full name" onChange={(e) => set('contact_person', e.target.value)} /></Field>
     ),
     designation: fm('designation') !== 'hide' && (
       <Field label="Designation" required={rq('designation')}><input value={f.designation} maxLength={80} onChange={(e) => set('designation', e.target.value)} placeholder="Proprietor" /></Field>
     ),
     email: fm('email') !== 'hide' && (
-      <Field label="Email" required={rq('email')} hint={err('email')}><input value={text('email')} onChange={(e) => set('email', e.target.value)} inputMode="email" /></Field>
+      <Field label="Email" required={rq('email')} hint={err('email')}><input value={text('email')} onChange={(e) => set('email', e.target.value)} inputMode="email" placeholder="accounts@example.com" /></Field>
     ),
     dob: fm('dob') !== 'hide' && (
       <Field label="Date of birth" required={rq('dob')} hint="For birthday wishes"><input type="date" value={f.dob} onChange={(e) => set('dob', e.target.value)} /></Field>
@@ -579,19 +579,19 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     ),
 
     bank_holder: fm('bank_holder') !== 'hide' && (
-      <Field label="Account holder name" required={rq('bank_holder')}><input value={f.bank_holder} maxLength={160} onChange={(e) => set('bank_holder', e.target.value)} /></Field>
+      <Field label="Account holder name" required={rq('bank_holder')}><input value={f.bank_holder} maxLength={160} placeholder="Name on the account" onChange={(e) => set('bank_holder', e.target.value)} /></Field>
     ),
     bank_name: fm('bank_name') !== 'hide' && (
-      <Field label="Bank name" required={rq('bank_name')}><input value={f.bank_name} maxLength={160} onChange={(e) => set('bank_name', e.target.value)} /></Field>
+      <Field label="Bank name" required={rq('bank_name')}><input value={f.bank_name} maxLength={160} placeholder="e.g. State Bank of India" onChange={(e) => set('bank_name', e.target.value)} /></Field>
     ),
     bank_account: fm('bank_account') !== 'hide' && (
-      <Field label="Account no." required={rq('bank_account')}><input value={f.bank_account} maxLength={40} inputMode="numeric" onChange={(e) => set('bank_account', e.target.value.replace(/\D/g, ''))} /></Field>
+      <Field label="Account no." required={rq('bank_account')}><input value={f.bank_account} maxLength={40} inputMode="numeric" placeholder="Account number" onChange={(e) => set('bank_account', e.target.value.replace(/\D/g, ''))} /></Field>
     ),
     ifsc: fm('ifsc') !== 'hide' && (
-      <Field label="IFSC" required={rq('ifsc')} hint={err('ifsc')}><input value={f.ifsc} maxLength={11} onChange={(e) => set('ifsc', e.target.value.toUpperCase())} /></Field>
+      <Field label="IFSC" required={rq('ifsc')} hint={err('ifsc')}><input value={f.ifsc} maxLength={11} placeholder="SBIN0001234" onChange={(e) => set('ifsc', e.target.value.toUpperCase())} /></Field>
     ),
     bank_branch: fm('bank_branch') !== 'hide' && (
-      <Field label="Branch" required={rq('bank_branch')}><input value={f.bank_branch} maxLength={160} onChange={(e) => set('bank_branch', e.target.value)} /></Field>
+      <Field label="Branch" required={rq('bank_branch')}><input value={f.bank_branch} maxLength={160} placeholder="Branch name" onChange={(e) => set('bank_branch', e.target.value)} /></Field>
     ),
 
     bill_at: fm('bill_at') !== 'hide' && (
@@ -616,10 +616,10 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
       </Field>
     ),
     area_route: fm('area_route') !== 'hide' && (
-      <Field label="Area / Route" required={rq('area_route')}><input value={f.area_route} maxLength={120} onChange={(e) => set('area_route', e.target.value)} /></Field>
+      <Field label="Area / Route" required={rq('area_route')}><input value={f.area_route} maxLength={120} placeholder="e.g. Sanganer, Tonk Road" onChange={(e) => set('area_route', e.target.value)} /></Field>
     ),
     notes: fm('notes') !== 'hide' && (
-      <div style={wide}><Field label="Notes" required={rq('notes')}><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field></div>
+      <div style={wide}><Field label="Notes" required={rq('notes')}><textarea rows={2} value={f.notes} placeholder="Anything to remember about this party" onChange={(e) => set('notes', e.target.value)} /></Field></div>
     ),
   }
   const fieldsOf = (section: string) =>

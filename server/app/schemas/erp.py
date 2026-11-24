@@ -932,3 +932,20 @@ class BillSeriesIn(_In):
     user_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
     is_default: bool = False
     is_active: bool = True
+
+
+class StationIn(_In):
+    name: str = Field(min_length=1, max_length=120)
+    state_id: uuid.UUID
+    district_id: uuid.UUID | None = None
+    pincode: str | None = None
+
+    @field_validator("pincode")
+    @classmethod
+    def _pin_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"\d{6}", v):
+            raise ValueError("PIN code must be 6 digits.")
+        return v

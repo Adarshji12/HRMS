@@ -29,6 +29,7 @@ import Walkins from './ErpWalkins'
 import Lookups from './ErpLookups'
 import Companies from './ErpCompanies'
 import BillSeriesPage from './ErpBillSeries'
+import Stations from './ErpStations'
 
 /** A state picked from the State Master. Stored by name, as the vendor record keeps it;
  *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
@@ -46,7 +47,7 @@ function StateSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies'
+type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies' | 'stations'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'items', label: 'Items' }, { key: 'warehouses', label: 'Warehouses' },
@@ -55,7 +56,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'salesmen', label: 'Salesman' }, { key: 'walkins', label: 'Walk-in customers' },
   { key: 'subcategories', label: 'Sub categories' }, { key: 'units', label: 'Units' }, { key: 'hsn', label: 'HSN / SAC' },
   { key: 'racks', label: 'Racks' }, { key: 'billseries', label: 'Bill series' },
-  { key: 'companies', label: 'Companies' },
+  { key: 'companies', label: 'Companies' }, { key: 'stations', label: 'Stations' },
 ]
 
 /* Opened from the ERP rail (/erp/masters): all four lists as tabs. Opened from
@@ -80,6 +81,7 @@ export default function ErpMasters() {
         <MasterTrail crumbs={[
           { label: 'Master', to: '/masters' },
           { label: ['ledgers', 'accounts', 'salesmen', 'walkins'].includes(only.key) ? 'Ledger Master'
+              : only.key === 'stations' ? 'Geography'
               : ['items', 'warehouses', 'subcategories', 'units', 'hsn', 'racks', 'billseries', 'companies'].includes(only.key) ? 'Inventory Masters' : 'ERP Master', to: '/masters' },
           { label: only.label },
         ]} />
@@ -102,6 +104,7 @@ export default function ErpMasters() {
           {tab === 'racks' && <Lookups kind="rack" />}
           {tab === 'billseries' && <BillSeriesPage />}
           {tab === 'companies' && <Companies />}
+          {tab === 'stations' && <Stations />}
         </div>
       ) : (
         <ErpPage
@@ -123,6 +126,7 @@ export default function ErpMasters() {
           {tab === 'racks' && <Lookups kind="rack" />}
           {tab === 'billseries' && <BillSeriesPage />}
           {tab === 'companies' && <Companies />}
+          {tab === 'stations' && <Stations />}
         </ErpPage>
       )}
     </>

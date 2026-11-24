@@ -10,9 +10,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 export type TreeOption =
   | { header: string }
-  | { key: string; label: string; depth?: number; bold?: boolean }
+  | { key: string; label: string; depth?: number; bold?: boolean; /** A second, quieter line under the label. */ sub?: string }
 
-export default function TreeSelect({ value, options, onChange, placeholder = 'Choose', searchPlaceholder = 'Search…', disabled, autoFocus }: {
+export default function TreeSelect({ value, options, onChange, placeholder = 'Choose', searchPlaceholder = 'Search…', disabled, autoFocus, maxRows = 200 }: {
   /** The `key` of the chosen option. */
   value: string
   options: TreeOption[]
@@ -21,6 +21,8 @@ export default function TreeSelect({ value, options, onChange, placeholder = 'Ch
   searchPlaceholder?: string
   disabled?: boolean
   autoFocus?: boolean
+  /** A long list shows this many rows until the person types, so thousands of towns do not all draw at once. */
+  maxRows?: number
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -43,8 +45,10 @@ export default function TreeSelect({ value, options, onChange, placeholder = 'Ch
   const shown = useMemo(() => {
     if (!needle) return options
     // While searching, show only the matches — a heading with nothing under it is noise.
-    return options.filter((o) => 'key' in o && o.label.toLowerCase().includes(needle))
+    return options.filter((o) => 'key' in o && `${o.label} ${o.sub ?? ''}`.toLowerCase().includes(needle))
   }, [options, needle])
+  const clipped = shown.length > maxRows
+  const rows = clipped ? shown.slice(0, maxRows) : shown
 
   return (
     <div ref={box} style={{ position: 'relative' }}>
@@ -68,7 +72,7 @@ export default function TreeSelect({ value, options, onChange, placeholder = 'Ch
                  style={{ margin: 8, width: 'auto', height: 34, fontSize: 13 }} />
           <div style={{ overflowY: 'auto', padding: '0 6px 6px' }}>
             {shown.length === 0 && <p className="muted-sm" style={{ margin: 10 }}>Nothing matches.</p>}
-            {shown.map((o, i) => 'header' in o ? (
+            {rows.map((o, i) => 'header' in o ? (
               <div key={`h${i}`} style={{ padding: '10px 10px 4px', fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 {o.header}
               </div>
@@ -83,8 +87,10 @@ export default function TreeSelect({ value, options, onChange, placeholder = 'Ch
                       onMouseEnter={(e) => { if (o.key !== value) e.currentTarget.style.background = 'var(--surface-2)' }}
                       onMouseLeave={(e) => { if (o.key !== value) e.currentTarget.style.background = 'transparent' }}>
                 {o.label}
+                {o.sub && <span style={{ display: 'block', fontWeight: 400, fontSize: 11.5, color: 'var(--text-muted)' }}>{o.sub}</span>}
               </button>
             ))}
+            {clipped && <p className="muted-sm" style={{ margin: '8px 10px' }}>Showing the first {maxRows} of {shown.length} — type to narrow the list.</p>}
           </div>
         </div>
       )}

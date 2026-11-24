@@ -53,6 +53,21 @@ export interface Warehouse {
   racks?: number
 }
 
+export interface Station {
+  id: string
+  name: string
+  state_id: string
+  state_name: string | null
+  district_id: string | null
+  district_name: string | null
+  pincode: string | null
+  is_active: boolean
+  /** How many ledgers are at this station. */
+  ledgers: number
+  /** standard = came with the India list, custom = added by the company. */
+  source: 'standard' | 'custom'
+}
+
 export interface BillSeries {
   id: string
   transaction: string
@@ -992,6 +1007,10 @@ export const erp = {
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
   deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
   deleteItem: (id: string) => api.del(`${B}/items/${id}`),
+  stations: () => api.get<Station[]>(`${B}/stations`),
+  saveStation: (body: Body, id?: string) =>
+    id ? api.put<Station>(`${B}/stations/${id}`, body) : api.post<Station>(`${B}/stations`, body),
+  deleteStation: (id: string) => api.del(`${B}/stations/${id}`),
   billSeries: () => api.get<BillSeriesData>(`${B}/bill-series`),
   saveBillSeries: (body: Body, id?: string) =>
     id ? api.put<BillSeries>(`${B}/bill-series/${id}`, body) : api.post<BillSeries>(`${B}/bill-series`, body),

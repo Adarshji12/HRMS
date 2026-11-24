@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas import erp as S
-from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stock, walkins
+from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stations, stock, walkins
 from app.services.erp.common import capabilities, get_settings, record_audit, require, row_dict
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -145,6 +145,26 @@ def create_account_group(payload: S.AccountGroupIn, viewer: CurrentUser, db: DbS
 @router.delete("/account-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_account_group(group_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
     ledgers.delete_account_group(db, viewer, group_id, request=request)
+
+
+@router.get("/stations")
+def list_stations(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    return stations.list_stations(db, viewer)
+
+
+@router.post("/stations", status_code=status.HTTP_201_CREATED)
+def create_station(payload: S.StationIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return stations.save_station(db, viewer, payload, request=request)
+
+
+@router.put("/stations/{station_id}")
+def update_station(station_id: uuid.UUID, payload: S.StationIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return stations.save_station(db, viewer, payload, station_id, request=request)
+
+
+@router.delete("/stations/{station_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_station(station_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    stations.delete_station(db, viewer, station_id, request=request)
 
 
 @router.get("/bill-series")

@@ -874,6 +874,8 @@ export const MASTER_GROUPS: MasterGroup[] = [
     title: 'Geography',
     description: 'Where leads and customers are — and, through the state, which GST applies.',
     kinds: ['countries', 'states', 'districts', 'cities'],
+    links: [{ label: 'Stations', to: '/masters/erp/stations' }],
+    rowOrder: ['countries', 'states', 'districts', 'cities', '/masters/erp/stations'],
   },
   {
     key: 'lead',
