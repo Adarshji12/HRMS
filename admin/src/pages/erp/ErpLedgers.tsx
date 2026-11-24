@@ -8,11 +8,13 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
+import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import { crm } from '../crm/api'
+import TreeSelect from '../../components/TreeSelect'
 import { Dialog, Field, useAccess, useRun } from './parts'
 
-const indent = (depth: number) => '\u00a0\u00a0\u00a0\u00a0'.repeat(depth)
-import { erp, rupees, type AccountGroup, type Ledger } from './api'
+import { erp, rupees, type AccountGroup, type Ledger, type Salesman } from './api'
+import { SalesmanForm } from './ErpSalesmen'
 
 /** The first list in the Account group dropdown: who the ledger is a party to. */
 export const PARTY_GROUPS: Array<[string, string]> = [
@@ -177,7 +179,15 @@ export default function Ledgers() {
   const [picked, setPicked] = useState<string | null>(null)
   const list = useQuery(`erp-ledgers-${q}`, () => erp.ledgers({ q: q.trim() || undefined }))
   const removing = useRun(() => list.reload())
-  const rows = list.data ?? []
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
+  const [groupF, setGroupF] = useState('')
+  const [typeF, setTypeF] = useState('')
+  const [stateF, setStateF] = useState('')
+  const all = list.data ?? []
+  const extra = (status !== 'all' ? 1 : 0) + (groupF ? 1 : 0) + (typeF ? 1 : 0) + (stateF ? 1 : 0)
+  const rows = all.filter((l) =>
+    (status === 'all' || (status === 'active') === l.is_active) && (!groupF || l.account_group === groupF)
+    && (!typeF || l.ledger_type === typeF) && (!stateF || l.state === stateF))
   const current = rows.find((l) => l.id === picked) ?? rows[0]
 
   function remove(l: Ledger) {
@@ -192,6 +202,31 @@ export default function Ledgers() {
           <IconSearch size={15} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, code, station, mobile, GSTIN" aria-label="Search ledgers" />
         </div>
+        <FilterPopup count={extra} onReset={() => { setStatus('all'); setGroupF(''); setTypeF(''); setStateF('') }}>
+          <FilterField label="Status">
+            <select value={status} onChange={(e) => setStatus(e.target.value as 'all' | 'active' | 'inactive')}>
+              <option value="all">All</option><option value="active">Active</option><option value="inactive">Inactive</option>
+            </select>
+          </FilterField>
+          <FilterField label="Account group">
+            <select value={groupF} onChange={(e) => setGroupF(e.target.value)}>
+              <option value="">Any</option>
+              {[...new Set(all.map((l) => l.account_group))].sort().map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </FilterField>
+          <FilterField label="Ledger type">
+            <select value={typeF} onChange={(e) => setTypeF(e.target.value)}>
+              <option value="">Any</option>
+              {LEDGER_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </FilterField>
+          <FilterField label="State">
+            <select value={stateF} onChange={(e) => setStateF(e.target.value)}>
+              <option value="">Any</option>
+              {[...new Set(all.map((l) => l.state).filter((x): x is string => !!x))].sort().map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
+          </FilterField>
+        </FilterPopup>
         {list.data && <span className="itl-count">Total no. of ledgers: {rows.length}</span>}
         <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ImportExport name="ledgers" columns={IO} rows={rows} canImport={manage} build={buildFromRow}
@@ -300,6 +335,8 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
   const [addingGroup, setAddingGroup] = useState(false)
   const groups = useQuery<AccountGroup[]>('erp-account-groups', () => erp.accountGroups())
   const [addingTown, setAddingTown] = useState(false)
+  const [addingMan, setAddingMan] = useState(false)
+  const men = useQuery<Salesman[]>('erp-ledger-salesmen', () => erp.salesmen({ active: true }))
   const towns = useQuery<Town[]>('erp-ledger-towns', () => crm.masters<Town>('cities'))
   const [f, setF] = useState<Form>(() => {
     if (!ledger) return initialGroup ? { ...BLANK, account_group: initialGroup } : BLANK
@@ -379,19 +416,14 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     account_group: (
       <Field label="Account group" required hint={f.account_group.startsWith('Sundry') ? 'Each party keeps its own account under this group' : undefined}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-          <select value={f.account_group} onChange={(e) => set('account_group', e.target.value)}>
-            <optgroup label="Party — customer or supplier">
-              {PARTY_GROUPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </optgroup>
-            <optgroup label="Account groups">
-              {groupRows.map((g) => <option key={g.id} value={g.name}>{indent(g.depth)}{g.name}</option>)}
-            </optgroup>
-            {strays.length > 0 && (
-              <optgroup label="Other">
-                {strays.map((g) => <option key={g} value={g}>{g}</option>)}
-              </optgroup>
-            )}
-          </select>
+          <TreeSelect value={f.account_group} onChange={(v) => set('account_group', v)} searchPlaceholder="Search account groups…"
+                      options={[
+                        { header: 'Party — customer or supplier' },
+                        ...PARTY_GROUPS.map(([v, l]) => ({ key: v, label: l, bold: true })),
+                        { header: 'Account groups' },
+                        ...groupRows.map((g) => ({ key: g.name, label: g.name, depth: g.depth, bold: g.depth < 2 })),
+                        ...(strays.length ? [{ header: 'Other' }, ...strays.map((g) => ({ key: g, label: g }))] : []),
+                      ]} />
           <button type="button" className="btn vw-refresh" title="Add an account group" aria-label="Add an account group"
                   onClick={() => setAddingGroup(true)}>
             <IconPlus size={14} />
@@ -570,7 +602,18 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
       </Field>
     ),
     salesman: fm('salesman') !== 'hide' && (
-      <Field label="Salesman" required={rq('salesman')} hint="Starts every new sale bill for this party"><input value={f.salesman} maxLength={120} onChange={(e) => set('salesman', e.target.value)} /></Field>
+      <Field label="Salesman" required={rq('salesman')} hint="Starts every new sale bill for this party">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+          <select value={f.salesman} onChange={(e) => set('salesman', e.target.value)}>
+            <option value="">— None —</option>
+            {f.salesman && !(men.data ?? []).some((m) => m.name === f.salesman) && <option value={f.salesman}>{f.salesman}</option>}
+            {(men.data ?? []).map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
+          </select>
+          <button type="button" className="btn vw-refresh" title="Add a salesman" aria-label="Add a salesman" onClick={() => setAddingMan(true)}>
+            <IconPlus size={14} />
+          </button>
+        </div>
+      </Field>
     ),
     area_route: fm('area_route') !== 'hide' && (
       <Field label="Area / Route" required={rq('area_route')}><input value={f.area_route} maxLength={120} onChange={(e) => set('area_route', e.target.value)} /></Field>
@@ -628,6 +671,10 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
         )}
         {shownTab && <div style={grid('1fr 1fr 1fr')}>{fieldsOf(shownTab)}</div>}
       </div>
+      {addingMan && (
+        <SalesmanForm salesman={null} onClose={() => setAddingMan(false)}
+                      onSaved={(m) => { setAddingMan(false); men.reload(); set('salesman', m.name); if (m.area_beat && !f.area_route) set('area_route', m.area_beat) }} />
+      )}
       {addingTown && (
         <NewTownDialog onClose={() => setAddingTown(false)}
                        onAdded={(t) => { setAddingTown(false); towns.reload(); setF((cur) => ({ ...cur, station: t.name, city: t.name, state: t.state_name ?? cur.state, pincode: t.pincode ?? cur.pincode })) }} />
@@ -665,7 +712,7 @@ function NewTownDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (t:
                 <IconPlus size={14} /> {busy ? 'Adding…' : 'Add Town'}
               </button>
             </>}>
-      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px', overflowY: 'auto', minHeight: 0, flex: 1, alignContent: 'start' }}>
         <Field label="State" required>
           <select value={stateId} autoFocus onChange={(e) => { setStateId(e.target.value); setDistrictId('') }}>
             <option value="">Choose state</option>
@@ -704,15 +751,13 @@ export function NewGroupDialog({ groups, initialParent, onClose, onAdded }: { gr
                 <IconPlus size={14} /> {busy ? 'Adding…' : 'Add Group'}
               </button>
             </>}>
-      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px', overflowY: 'auto', minHeight: 0, flex: 1, alignContent: 'start' }}>
         <Field label="Group name" required>
           <input value={name} maxLength={80} autoFocus placeholder="Branch Expenses" onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Under" required hint="The group it rolls up into">
-          <select value={parent} onChange={(e) => setParent(e.target.value)}>
-            <option value="">Choose a group</option>
-            {groups.map((g) => <option key={g.id} value={g.id}>{indent(g.depth)}{g.name}</option>)}
-          </select>
+          <TreeSelect value={parent} onChange={setParent} placeholder="Choose a group" searchPlaceholder="Search account groups…"
+                      options={groups.map((g) => ({ key: g.id, label: g.name, depth: g.depth, bold: g.depth < 2 }))} />
         </Field>
       </div>
     </Dialog>

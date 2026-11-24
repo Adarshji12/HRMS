@@ -6,6 +6,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconChevronDown, IconChevronRight, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
+import TreeSelect from '../../components/TreeSelect'
 import { Dialog, Field, useAccess, useRun } from './parts'
 import { erp, rupees, type AccountNode, type AccountTree, type Ledger } from './api'
 import { LedgerForm } from './ErpLedgers'
@@ -230,7 +231,7 @@ function EditGroupDialog({ group, onClose, onSaved }: { group: AccountNode; onCl
                 {busy ? 'Saving…' : 'Save'}
               </button>
             </>}>
-      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px', overflowY: 'auto', minHeight: 0, flex: 1, alignContent: 'start' }}>
         <Field label="Group name" required><input value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} /></Field>
         <Field label="Code" hint="Its place in the chart, like 1100"><input value={code} maxLength={16} inputMode="numeric" onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} /></Field>
       </div>
@@ -293,13 +294,11 @@ function NewAccountDialog({ groups, ledgers, group, onClose, onDone }: {
               <button className="btn crm-push" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" disabled={busy || !under || !name.trim()} onClick={add}>{busy ? 'Adding…' : 'Add account'}</button>
             </>}>
-      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gap: 14, padding: '8px 24px 20px', overflowY: 'auto', minHeight: 0, flex: 1, alignContent: 'start' }}>
         {!group && (
           <Field label="Under" required>
-            <select value={underId} autoFocus onChange={(e) => setUnderId(e.target.value)}>
-              <option value="">Choose a group</option>
-              {groups.filter((g) => !g.is_archived).map((g) => <option key={g.id} value={g.id}>{'\u00a0\u00a0\u00a0\u00a0'.repeat(g.depth)}{g.name}</option>)}
-            </select>
+            <TreeSelect value={underId} onChange={setUnderId} placeholder="Choose a group" searchPlaceholder="Search account groups…" autoFocus
+                        options={groups.filter((g) => !g.is_archived).map((g) => ({ key: g.id, label: g.name, depth: g.depth, bold: g.depth < 2 }))} />
           </Field>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 14 }}>

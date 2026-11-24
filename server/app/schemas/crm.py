@@ -288,13 +288,63 @@ class ItemCategoryIn(NamedIn):
     sort_order: int = Field(default=0, ge=0, le=999)
 
 
+class CompanyContact(BaseModel):
+    name: str | None = None
+    mobile: str | None = None
+    email: str | None = None
+
+
 class ItemCompanyOut(MasterOut):
     sort_order: int = 0
+    short_name: str | None = None
+    contacts: list[CompanyContact] | None = None
+    min_margin_pct: Decimal | None = None
+    expiry_receive_days: int | None = None
+    dump_days: int | None = None
+    website: str | None = None
+    notes: str | None = None
 
 
 class ItemCompanyIn(NamedIn):
     name: str = Field(min_length=1, max_length=80)
     sort_order: int = Field(default=0, ge=0, le=999)
+    short_name: str | None = Field(default=None, max_length=20)
+    contacts: list[CompanyContact] = Field(default_factory=list, max_length=10)
+    min_margin_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    expiry_receive_days: int | None = Field(default=None, ge=0, le=3650)
+    dump_days: int | None = Field(default=None, ge=0, le=3650)
+    website: str | None = Field(default=None, max_length=200)
+    notes: str | None = None
+
+    @field_validator("short_name", "website", mode="before")
+    @classmethod
+    def _blank_text(cls, v):
+        v = (v or "").strip() if isinstance(v, str) or v is None else v
+        return v or None
+
+    @field_validator("contacts")
+    @classmethod
+    def _contacts_ok(cls, rows: list[CompanyContact]) -> list[CompanyContact]:
+        import re
+
+        clean: list[CompanyContact] = []
+        for c in rows:
+            name = (c.name or "").strip() or None
+            mobile = (c.mobile or "").strip() or None
+            email = (c.email or "").strip() or None
+            if not (name or mobile or email):
+                continue  # an empty row is just an unused line on the form
+            if mobile:
+                digits = re.sub(r"[\s\-()]", "", mobile)
+                if digits.startswith("+91"):
+                    digits = digits[3:]
+                if not re.fullmatch(r"[6-9]\d{9}", digits):
+                    raise ValueError("A contact's mobile must be a valid 10-digit number.")
+                mobile = digits
+            if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", email):
+                raise ValueError("A contact's email is not valid.")
+            clean.append(CompanyContact(name=name, mobile=mobile, email=email))
+        return clean
 
 
 class ContactDesignationOut(MasterOut):

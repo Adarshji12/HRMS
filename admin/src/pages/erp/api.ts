@@ -48,6 +48,79 @@ export interface Warehouse {
   custodian_id: string | null
   custodian_name: string | null
   is_active: boolean
+  is_default?: boolean
+  /** How many racks are made inside it. */
+  racks?: number
+}
+
+export interface BillSeries {
+  id: string
+  transaction: string
+  name: string
+  used_for: string | null
+  prefix: string
+  suffix: string
+  digits: number
+  restart: 'never' | 'april' | 'january'
+  next_number: number
+  issued: number
+  applicable_from: string | null
+  print_title: string | null
+  default_groups: string[]
+  billing_type: 'company' | 'retail' | 'wholesale'
+  print_layout: string | null
+  paper: string
+  user_ids: string[]
+  is_default: boolean
+  is_active: boolean
+}
+
+export interface BillSeriesData {
+  transactions: Array<{ key: string; label: string; group: 'sales' | 'purchase' | 'others' }>
+  series: BillSeries[]
+}
+
+export interface Lookup {
+  id: string
+  kind: string
+  name: string
+  description: string | null
+  parent_name: string | null
+  data: Record<string, unknown>
+  is_active: boolean
+  /** For units and HSN codes: how many items use it. */
+  items?: number
+}
+
+export interface Walkin {
+  id: string
+  name: string
+  mobile: string | null
+  whatsapp: string | null
+  email: string | null
+  dob: string | null
+  anniversary: string | null
+  remark: string | null
+  is_active: boolean
+  created_at: string
+  bills: number
+  total_bought: string
+  last_bill: string | null
+}
+
+export interface Salesman {
+  id: string
+  code: string
+  name: string
+  mobile: string | null
+  email: string | null
+  area_beat: string | null
+  commission_pct: string
+  monthly_target: string | null
+  allow_login: boolean
+  is_active: boolean
+  /** How many ledgers name this salesman. */
+  ledgers: number
 }
 
 export interface AccountNode {
@@ -919,6 +992,22 @@ export const erp = {
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
   deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
   deleteItem: (id: string) => api.del(`${B}/items/${id}`),
+  billSeries: () => api.get<BillSeriesData>(`${B}/bill-series`),
+  saveBillSeries: (body: Body, id?: string) =>
+    id ? api.put<BillSeries>(`${B}/bill-series/${id}`, body) : api.post<BillSeries>(`${B}/bill-series`, body),
+  deleteBillSeries: (id: string) => api.del(`${B}/bill-series/${id}`),
+  lookups: (kind: string, p: { q?: string; active?: boolean } = {}) => api.get<Lookup[]>(`${B}/lookups/${kind}${qs(p)}`),
+  saveLookup: (kind: string, body: Body, id?: string) =>
+    id ? api.put<Lookup>(`${B}/lookups/${kind}/${id}`, body) : api.post<Lookup>(`${B}/lookups/${kind}`, body),
+  deleteLookup: (kind: string, id: string) => api.del(`${B}/lookups/${kind}/${id}`),
+  walkins: (p: { q?: string; active?: boolean } = {}) => api.get<Walkin[]>(`${B}/walkin-customers${qs(p)}`),
+  saveWalkin: (body: Body, id?: string) =>
+    id ? api.put<Walkin>(`${B}/walkin-customers/${id}`, body) : api.post<Walkin>(`${B}/walkin-customers`, body),
+  deleteWalkin: (id: string) => api.del(`${B}/walkin-customers/${id}`),
+  salesmen: (p: { q?: string; active?: boolean } = {}) => api.get<Salesman[]>(`${B}/salesmen${qs(p)}`),
+  saveSalesman: (body: Body, id?: string) =>
+    id ? api.put<Salesman>(`${B}/salesmen/${id}`, body) : api.post<Salesman>(`${B}/salesmen`, body),
+  deleteSalesman: (id: string) => api.del(`${B}/salesmen/${id}`),
   accountTree: (archived = false) => api.get<AccountTree>(`${B}/accounts${archived ? '?archived=true' : ''}`),
   updateAccountGroup: (id: string, body: Body) => api.patch<{ id: string; name: string; code: string | null }>(`${B}/account-groups/${id}`, body),
   archiveAccountGroup: (id: string, archived: boolean) => api.post(`${B}/account-groups/${id}/archive`, { archived }),

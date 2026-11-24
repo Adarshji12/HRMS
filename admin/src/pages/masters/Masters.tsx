@@ -35,6 +35,8 @@ const GROUP_ICON: Record<string, ReactNode> = {
   service: <IconLifebuoy size={18} />,
   organisation: <IconBuilding size={18} />,
   erp: <IconFolder size={18} />,
+  ledger: <IconUsers size={18} />,
+  inventory: <IconFolder size={18} />,
 }
 
 /* A row is either a CRM master list (opened here) or a link to a screen that
@@ -44,13 +46,17 @@ interface Row { key: string; label: string; to: string; kind?: string }
 function rowsOf(group: MasterGroup): Row[] {
   // Linked screens first: on the ERP card, Item Categories follows the four
   // ERP lists rather than leading them.
-  return [
+  const rows: Row[] = [
     ...(group.links ?? []).map((link) => ({ key: link.to, label: link.label, to: link.to })),
     ...group.kinds.flatMap((kind) => {
       const list = byKind.get(kind)
       return list ? [{ key: kind, label: shortLabel(list), to: `/masters/${kind}`, kind }] : []
     }),
   ]
+  const order = group.rowOrder
+  if (!order) return rows
+  const at = (r: Row) => { const i = order.indexOf(r.key); return i < 0 ? order.length : i }
+  return [...rows].sort((a, b) => at(a) - at(b))
 }
 
 const ON_MENU = MASTER_GROUPS.filter((g) => !g.path)
@@ -133,6 +139,7 @@ function MasterCount({ kind }: { kind: string }) {
 /** One master list, with its card's other lists as tiles above it. */
 export function MasterListPage() {
   const { kind = '' } = useParams()
+  if (kind === 'item-companies') return <Navigate to="/masters/erp/companies" replace />
   const group = MASTER_GROUPS.find((entry) => entry.kinds.includes(kind))
   if (!group || !byKind.has(kind)) return <Navigate to="/masters" replace />
   // Sales and Product have their own pages; old links land there.

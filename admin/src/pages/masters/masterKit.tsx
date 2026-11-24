@@ -860,6 +860,8 @@ export interface MasterGroup {
   kinds: string[]
   /** Masters that have their own screens elsewhere, linked rather than copied. */
   links?: Array<{ label: string; to: string }>
+  /** The order the card's rows read in, by a link's `to` or a list's kind. Anything not named follows. */
+  rowOrder?: string[]
   /** Set when the family has its own page and sidebar link instead of a card
       on the Master menu. Its lists open at `<path>/<kind>`. */
   path?: string
@@ -882,15 +884,43 @@ export const MASTER_GROUPS: MasterGroup[] = [
   {
     key: 'erp',
     title: 'ERP Master',
-    description: 'Items, warehouses, vendors and customer accounts for purchase, stock and billing.',
-    kinds: ['item-categories', 'item-companies'],
+    description: 'Vendors and customer accounts for purchase and billing.',
+    kinds: [],
     links: [
-      { label: 'Items', to: '/masters/erp/items' },
-      { label: 'Warehouses', to: '/masters/erp/warehouses' },
       { label: 'Vendors', to: '/masters/erp/vendors' },
       { label: 'Customer accounts', to: '/masters/erp/customers' },
+    ],
+  },
+  {
+    key: 'inventory',
+    title: 'Inventory Masters',
+    description: 'Items and the lists an item is described from: companies, categories, units, tax codes, stores and racks.',
+    kinds: ['item-categories'],
+    links: [
+      { label: 'Items', to: '/masters/erp/items' },
+      { label: 'Companies', to: '/masters/erp/companies' },
+      { label: 'Sub Categories', to: '/masters/erp/subcategories' },
+      { label: 'Units', to: '/masters/erp/units' },
+      { label: 'HSN / SAC', to: '/masters/erp/hsn' },
+      { label: 'Stores', to: '/masters/erp/warehouses' },
+      { label: 'Racks', to: '/masters/erp/racks' },
+      { label: 'Bill Series', to: '/masters/erp/billseries' },
+    ],
+    rowOrder: [
+      '/masters/erp/items', '/masters/erp/companies', 'item-categories', '/masters/erp/subcategories', '/masters/erp/units',
+      '/masters/erp/hsn', '/masters/erp/warehouses', '/masters/erp/racks', '/masters/erp/billseries',
+    ],
+  },
+  {
+    key: 'ledger',
+    title: 'Ledger Master',
+    description: 'Ledgers, the chart of accounts they sit in, salesmen and walk-in customers.',
+    kinds: [],
+    links: [
       { label: 'Ledger', to: '/masters/erp/ledgers' },
       { label: 'List of accounts', to: '/masters/erp/accounts' },
+      { label: 'Salesman', to: '/masters/erp/salesmen' },
+      { label: 'Walk-in customers', to: '/masters/erp/walkins' },
     ],
   },
   {

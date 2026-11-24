@@ -551,6 +551,16 @@ class CrmItemCompany(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    short_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    #: [{"name", "mobile", "email"}, ...] -- the people to reach at the company.
+    contacts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    #: The least margin a sale of this company's items should keep.
+    min_margin_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    #: Days before expiry the company takes expired stock back / stock goes to dump.
+    expiry_receive_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dump_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CrmContactDesignation(UUIDMixin, TimestampMixin, Base):

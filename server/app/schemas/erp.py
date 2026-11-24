@@ -48,6 +48,7 @@ class WarehouseIn(_In):
     state: str | None = None
     custodian_id: uuid.UUID | None = None
     is_active: bool = True
+    is_default: bool = False
 
 
 class ItemIn(_In):
@@ -843,3 +844,91 @@ class AccountGroupEdit(_In):
 
 class ArchiveIn(_In):
     archived: bool
+
+
+class SalesmanIn(_In):
+    code: str | None = Field(default=None, max_length=24)
+    name: str = Field(min_length=1, max_length=120)
+    mobile: str | None = None
+    email: str | None = None
+    area_beat: str | None = Field(default=None, max_length=160)
+    commission_pct: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    monthly_target: Decimal | None = Field(default=None, ge=0)
+    allow_login: bool = False
+    is_active: bool = True
+
+    @field_validator("mobile")
+    @classmethod
+    def _mobile_ok(cls, v: str | None) -> str | None:
+        return _mobile(v, "Mobile")
+
+    @field_validator("email")
+    @classmethod
+    def _email_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", v):
+            raise ValueError("Enter a valid email address.")
+        return v
+
+
+class WalkinIn(_In):
+    name: str = Field(min_length=1, max_length=160)
+    mobile: str | None = None
+    whatsapp: str | None = None
+    email: str | None = None
+    dob: date | None = None
+    anniversary: date | None = None
+    remark: str | None = Field(default=None, max_length=2000)
+    is_active: bool = True
+
+    @field_validator("mobile", "whatsapp")
+    @classmethod
+    def _phones(cls, v: str | None, info) -> str | None:
+        return _mobile(v, "Mobile" if info.field_name == "mobile" else "WhatsApp")
+
+    @field_validator("email")
+    @classmethod
+    def _email_ok(cls, v: str | None) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", v):
+            raise ValueError("Enter a valid email address.")
+        return v
+
+    @field_validator("dob")
+    @classmethod
+    def _dob_past(cls, v: date | None) -> date | None:
+        if v and v > date.today():
+            raise ValueError("Date of birth cannot be in the future.")
+        return v
+
+
+class LookupIn(_In):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=240)
+    parent_name: str | None = Field(default=None, max_length=120)
+    data: dict = Field(default_factory=dict)
+    is_active: bool = True
+
+
+class BillSeriesIn(_In):
+    transaction: str = Field(min_length=1, max_length=24)
+    name: str = Field(min_length=1, max_length=120)
+    used_for: str | None = Field(default=None, max_length=200)
+    prefix: str = Field(default="", max_length=20)
+    suffix: str = Field(default="", max_length=20)
+    digits: int = Field(default=4, ge=1, le=8)
+    restart: Literal["never", "april", "january"] = "april"
+    next_number: int = Field(default=1, ge=1, le=99_999_999)
+    applicable_from: date | None = None
+    print_title: str | None = Field(default=None, max_length=120)
+    default_groups: list[str] = Field(default_factory=list, max_length=40)
+    billing_type: Literal["company", "retail", "wholesale"] = "company"
+    print_layout: str | None = Field(default=None, max_length=40)
+    paper: Literal["saved", "a4_portrait", "a4_landscape", "a5_portrait", "half_page", "thermal_3", "thermal_2"] = "saved"
+    user_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+    is_default: bool = False
+    is_active: bool = True

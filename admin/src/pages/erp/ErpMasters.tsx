@@ -21,8 +21,14 @@ import {
 } from '../../components/ViewSettings'
 import { cells, heads, type Col } from './listColumns'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
+import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import Ledgers from './ErpLedgers'
 import Accounts from './ErpAccounts'
+import Salesmen from './ErpSalesmen'
+import Walkins from './ErpWalkins'
+import Lookups from './ErpLookups'
+import Companies from './ErpCompanies'
+import BillSeriesPage from './ErpBillSeries'
 
 /** A state picked from the State Master. Stored by name, as the vendor record keeps it;
  *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
@@ -40,12 +46,16 @@ function StateSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts'
+type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'items', label: 'Items' }, { key: 'warehouses', label: 'Warehouses' },
   { key: 'vendors', label: 'Vendors' }, { key: 'customers', label: 'Customer accounts' },
   { key: 'ledgers', label: 'Ledger' }, { key: 'accounts', label: 'List of accounts' },
+  { key: 'salesmen', label: 'Salesman' }, { key: 'walkins', label: 'Walk-in customers' },
+  { key: 'subcategories', label: 'Sub categories' }, { key: 'units', label: 'Units' }, { key: 'hsn', label: 'HSN / SAC' },
+  { key: 'racks', label: 'Racks' }, { key: 'billseries', label: 'Bill series' },
+  { key: 'companies', label: 'Companies' },
 ]
 
 /* Opened from the ERP rail (/erp/masters): all four lists as tabs. Opened from
@@ -69,7 +79,8 @@ export default function ErpMasters() {
       {only && (
         <MasterTrail crumbs={[
           { label: 'Master', to: '/masters' },
-          { label: 'ERP Master', to: '/masters' },
+          { label: ['ledgers', 'accounts', 'salesmen', 'walkins'].includes(only.key) ? 'Ledger Master'
+              : ['items', 'warehouses', 'subcategories', 'units', 'hsn', 'racks', 'billseries', 'companies'].includes(only.key) ? 'Inventory Masters' : 'ERP Master', to: '/masters' },
           { label: only.label },
         ]} />
       )}
@@ -83,6 +94,14 @@ export default function ErpMasters() {
           {tab === 'customers' && <Customers />}
           {tab === 'ledgers' && <Ledgers />}
           {tab === 'accounts' && <Accounts />}
+          {tab === 'salesmen' && <Salesmen />}
+          {tab === 'walkins' && <Walkins />}
+          {tab === 'subcategories' && <Lookups kind="subcategory" />}
+          {tab === 'units' && <Lookups kind="unit" />}
+          {tab === 'hsn' && <Lookups kind="hsn" />}
+          {tab === 'racks' && <Lookups kind="rack" />}
+          {tab === 'billseries' && <BillSeriesPage />}
+          {tab === 'companies' && <Companies />}
         </div>
       ) : (
         <ErpPage
@@ -96,6 +115,14 @@ export default function ErpMasters() {
           {tab === 'customers' && <Customers />}
           {tab === 'ledgers' && <Ledgers />}
           {tab === 'accounts' && <Accounts />}
+          {tab === 'salesmen' && <Salesmen />}
+          {tab === 'walkins' && <Walkins />}
+          {tab === 'subcategories' && <Lookups kind="subcategory" />}
+          {tab === 'units' && <Lookups kind="unit" />}
+          {tab === 'hsn' && <Lookups kind="hsn" />}
+          {tab === 'racks' && <Lookups kind="rack" />}
+          {tab === 'billseries' && <BillSeriesPage />}
+          {tab === 'companies' && <Companies />}
         </ErpPage>
       )}
     </>
@@ -673,28 +700,28 @@ const KIND_LABEL: Record<string, string> = {
   warehouse: 'Warehouse', hub: 'Hub', branch: 'Branch', site: 'Project site', engineer: 'Engineer kit',
 }
 const WAREHOUSE_COLUMNS: WarehouseColumn[] = [
-  { key: 'name', label: 'Name', locked: true, thStyle: { width: '32%' }, td: (w) => <b>{w.name}</b> },
-  { key: 'description', label: 'Description', td: (w) => w.description || <span className="crm-muted">—</span> },
-  { key: 'code', label: 'Code', initial: false, td: (w) => <span className="crm-code">{w.code}</span> },
+  { key: 'name', label: 'Store', locked: true, thStyle: { width: '28%' }, td: (w) => <b>{w.name}</b> },
+  { key: 'code', label: 'Code', td: (w) => <span className="crm-code">{w.code}</span> },
+  { key: 'address', label: 'Address', td: (w) => w.address || <span className="crm-muted">—</span> },
+  { key: 'default', label: 'Default', td: (w) => (w.is_default ? <b>Default</b> : <span className="crm-muted">—</span>) },
+  { key: 'racks', label: 'Racks', td: (w) => String(w.racks ?? 0) },
+  { key: 'description', label: 'Description', initial: false, td: (w) => w.description || <span className="crm-muted">—</span> },
   { key: 'kind', label: 'Kind', initial: false, td: (w) => KIND_LABEL[w.kind] ?? w.kind },
-  { key: 'address', label: 'Address', initial: false, td: (w) => w.address || <span className="crm-muted">—</span> },
   { key: 'state', label: 'State', initial: false, td: (w) => w.state || <span className="crm-muted">—</span> },
   { key: 'custodian', label: 'Custodian', initial: false, td: (w) => w.custodian_name || <span className="crm-muted">—</span> },
   { key: 'status', label: 'Status', initial: false, td: (w) => <ErpState value={w.is_active ? 'active' : 'inactive'} /> },
 ]
 
 const WAREHOUSE_IO: IoColumn<Warehouse>[] = [
+  { key: 'name', label: 'Store name', required: true, sample: 'Main Store', get: (w) => w.name },
   { key: 'code', label: 'Code', sample: 'WH-01', get: (w) => w.code },
-  { key: 'name', label: 'Name', required: true, sample: 'Main warehouse', get: (w) => w.name },
-  { key: 'kind', label: 'Kind', sample: 'warehouse', get: (w) => w.kind },
   { key: 'address', label: 'Address', sample: '', get: (w) => w.address },
-  { key: 'state', label: 'State', sample: 'Maharashtra', get: (w) => w.state },
+  { key: 'default', label: 'Default', sample: 'no', get: (w) => (w.is_default ? 'yes' : 'no') },
   { key: 'status', label: 'Status', sample: 'active', get: (w) => (w.is_active ? 'active' : 'inactive') },
 ]
 const buildWarehouse = (r: Record<string, string>) => ({
-  code: r.code ? r.code.toUpperCase() : null, name: r.name, description: '',
-  kind: pick(r.kind, 'Kind', ['warehouse', 'hub', 'branch', 'site', 'engineer'], 'warehouse'),
-  address: r.address ?? '', state: r.state ?? '', custodian_id: null,
+  code: r.code ? r.code.toUpperCase() : null, name: r.name, address: r.address ?? '',
+  is_default: pick(r.default, 'Default', ['yes', 'no'], 'no') === 'yes',
   is_active: pick(r.status, 'Status', ['active', 'inactive'], 'active') === 'active',
 })
 
@@ -703,47 +730,72 @@ function Warehouses() {
   const { can } = useAccess()
   const list = useQuery('erp-warehouses', () => erp.warehouses())
   const [editing, setEditing] = useState<Warehouse | 'new' | null>(null)
+  const [q, setQ] = useState('')
+  const [show, setShow] = useState<'active' | 'inactive' | 'all'>('active')
+  const [defaultF, setDefaultF] = useState('')
   const manage = can('can_manage_erp_masters')
   const removing = useRun(() => list.reload())
   function remove(w: Warehouse) {
-    if (!window.confirm(`Delete the warehouse “${w.name}”? This cannot be undone.`)) return
-    void removing.run(() => erp.deleteWarehouse(w.id), 'That warehouse could not be deleted')
+    if (!window.confirm(`Delete the store “${w.name}”? This cannot be undone.`)) return
+    void removing.run(() => erp.deleteWarehouse(w.id), 'That store could not be deleted')
   }
+  const needle = q.trim().toLowerCase()
+  const rows = (list.data ?? []).filter((w) =>
+    (show === 'all' || (show === 'active') === w.is_active) && (!defaultF || (defaultF === 'yes') === !!w.is_default)
+    && (!needle || [w.name, w.code, w.address].some((x) => x && x.toLowerCase().includes(needle))))
+  const extra = (show !== 'active' ? 1 : 0) + (defaultF ? 1 : 0)
   return (
     <>
-      <div className="crm-bar">
-        <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <ImportExport name="warehouses" columns={WAREHOUSE_IO} rows={list.data ?? []} canImport={manage} build={buildWarehouse}
-            save={(b) => erp.saveWarehouse(b)} onDone={() => list.reload()} />
-          <ColumnSettings defs={WAREHOUSE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
-            onSave={columns.save} onReset={columns.reset} />
-          {manage && <button className="btn btn-primary" onClick={() => setEditing('new')}><IconPlus size={15} /> New warehouse</button>}
+      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
+          <div>
+            <h2 className="card-title" style={{ margin: 0 }}>Stores</h2>
+            <p className="muted-sm" style={{ margin: '2px 0 0' }}>Shops, godowns and cold rooms where stock is kept. Racks are made inside a store.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <ImportExport name="stores" columns={WAREHOUSE_IO} rows={rows} canImport={manage} build={buildWarehouse}
+              save={(b) => erp.saveWarehouse(b)} onDone={() => list.reload()} />
+            <ColumnSettings defs={WAREHOUSE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
+              onSave={columns.save} onReset={columns.reset} />
+            {manage && <button className="btn btn-primary" onClick={() => setEditing('new')}><IconPlus size={15} /> New store</button>}
+          </div>
         </div>
-      </div>
-      {removing.error && <div style={{ marginBottom: 10 }}><ErrorNote>{removing.error}</ErrorNote></div>}
-      <section className="card wh-card">
-        {!list.data ? <Loading /> : list.data.length === 0 ? (
-          <EmptyState icon={<IconBuilding size={22} />} title="No warehouses yet" body="Warehouses, hubs, branches, project sites and engineer kits all hold stock." />
+        <div className="crm-bar itl-bar" style={{ borderTop: '1px solid var(--border)' }}>
+          <div className="crm-search">
+            <IconSearch size={15} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search stores" aria-label="Search stores" />
+          </div>
+          <FilterPopup count={extra} onReset={() => { setShow('active'); setDefaultF('') }}>
+            <FilterField label="Status">
+              <select value={show} onChange={(e) => setShow(e.target.value as typeof show)}>
+                <option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option>
+              </select>
+            </FilterField>
+            <FilterField label="Default store">
+              <select value={defaultF} onChange={(e) => setDefaultF(e.target.value)}>
+                <option value="">Any</option><option value="yes">The default</option><option value="no">Not the default</option>
+              </select>
+            </FilterField>
+          </FilterPopup>
+        </div>
+        {removing.error && <div style={{ margin: 10 }}><ErrorNote>{removing.error}</ErrorNote></div>}
+        {!list.data ? <Loading /> : rows.length === 0 ? (
+          <EmptyState icon={<IconBuilding size={22} />} title={needle || extra ? 'Nothing matches' : 'No stores yet'}
+            body={needle || extra ? 'Change the search or the filters.' : 'Add the shops, godowns and cold rooms where stock is kept.'} />
         ) : (
-          <div className="table-wrap"><table>
+          <div className="table-wrap"><table className="itl">
             <thead><tr>
               {heads<Warehouse>(columns.visible)}
-              {manage && <th className="wh-actions-head">Actions</th>}
+              {manage && <th className="itl-c-act">Actions</th>}
             </tr></thead>
-            <tbody>{list.data.map((w) => (
-              <tr key={w.id}>
+            <tbody>{rows.map((w) => (
+              <tr key={w.id} className={w.is_active ? '' : 'is-off'}>
                 {cells<Warehouse>(columns.visible, w)}
                 {manage && (
-                  <td>
-                    <div className="crm-row-actions wh-actions">
-                      <button className="crm-icon-btn" onClick={() => setEditing(w)}
-                        title="Edit" aria-label={`Edit ${w.name}`}>
-                        <IconEdit size={15} />
-                      </button>
-                      <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(w)}
-                        disabled={removing.busy} title="Delete" aria-label={`Delete ${w.name}`}>
-                        <IconTrash size={15} />
-                      </button>
+                  <td className="itl-c-act">
+                    <div className="crm-row-actions itl-actions">
+                      <button className="crm-icon-btn" onClick={() => setEditing(w)} title="Edit" aria-label={`Edit ${w.name}`}><IconEdit size={15} /></button>
+                      <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(w)} disabled={removing.busy} title="Delete" aria-label={`Delete ${w.name}`}><IconTrash size={15} /></button>
                     </div>
                   </td>
                 )}
@@ -757,44 +809,61 @@ function Warehouses() {
   )
 }
 
-const WAREHOUSE_SECTIONS: FieldSection[] = [{ id: 'main', label: 'Warehouse' }]
+const WAREHOUSE_SECTIONS: FieldSection[] = [{ id: 'main', label: 'Store' }]
 const WAREHOUSE_FIELDS: FieldDef[] = [
-  { key: 'name', label: 'Name', section: 'main', fixed: true },
-  { key: 'description', label: 'Description', section: 'main' },
+  { key: 'name', label: 'Store name', section: 'main', fixed: true },
+  { key: 'code', label: 'Code', section: 'main', optionalOnly: true },
+  { key: 'address', label: 'Address', section: 'main' },
+  { key: 'default', label: 'Default store', section: 'main', optionalOnly: true },
 ]
 
 function WarehouseForm({ wh, onClose, onSaved }: { wh: Warehouse | null; onClose: () => void; onSaved: () => void }) {
-  /* Name and description only. The code is numbered by the server, and an
-     edit sends just these two so kind, address and state stay as they are. */
-  const [form, setForm] = useState({ name: wh?.name ?? '', description: wh?.description ?? '' })
+  /* An edit sends only these, so the kind, state and description set elsewhere stay as they are. */
+  const [form, setForm] = useState({
+    name: wh?.name ?? '', code: wh?.code ?? '', address: wh?.address ?? '', is_default: Boolean(wh?.is_default), is_active: wh?.is_active ?? true,
+  })
   const { busy, error, run } = useRun()
   const fields = useFieldModes('erp-warehouse-form', WAREHOUSE_FIELDS)
   const fm = fields.mode
   const rq = (key: string) => fm(key) === 'mandatory'
-  const missing = rq('description') && !form.description.trim()
+  const missing = rq('address') && !form.address.trim()
   const fieldNodes: Record<string, ReactNode> = {
     name: (
-      <Field label="Name *">
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="e.g. Main Warehouse, Pune" maxLength={160} autoFocus />
+      <Field label="Store name" required>
+        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Main Store" maxLength={160} autoFocus />
       </Field>
     ),
-    description: fm('description') !== 'hide' && (
-      <Field label="Description" required={rq('description')}>
-        <textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="Location, purpose or notes (optional)" />
+    code: fm('code') !== 'hide' && (
+      <Field label="Code">
+        <input value={form.code} maxLength={24} placeholder="Made from the name if left blank"
+          onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} />
       </Field>
+    ),
+    address: fm('address') !== 'hide' && (
+      <Field label="Address" required={rq('address')}>
+        <textarea rows={3} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+      </Field>
+    ),
+    default: fm('default') !== 'hide' && (
+      <label className="crm-check">
+        <input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />
+        <span>Default store — stock lands here unless a bill says otherwise</span>
+      </label>
     ),
   }
   return (
-    <Dialog title={wh ? `Edit warehouse · ${wh.code}` : 'New warehouse'} onClose={onClose} footer={
+    <Dialog title={wh ? `Edit store · ${wh.code}` : 'New store'} subtitle={wh ? undefined : 'Add a store to the list'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
-        <button className="btn" onClick={onClose}>Cancel</button>
+        {!error && (missing || !form.name.trim()) && <span className="lf-foot-note lf-foot-link">Store name required</span>}
+        <button className="btn crm-push" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !form.name.trim() || missing}
-          onClick={() => void run(async () => { await erp.saveWarehouse(form, wh?.id); onSaved() })}>
-          {busy ? 'Saving…' : wh ? 'Save changes' : 'Save warehouse'}
+          onClick={() => void run(async () => {
+            await erp.saveWarehouse({ name: form.name.trim(), code: form.code.trim() || null, address: form.address.trim() || null,
+              is_default: form.is_default, is_active: form.is_active }, wh?.id)
+            onSaved()
+          })}>
+          {busy ? 'Saving…' : wh ? 'Save changes' : 'Add store'}
         </button>
       </>
     }>
@@ -806,6 +875,7 @@ function WarehouseForm({ wh, onClose, onSaved }: { wh: Warehouse | null; onClose
         <div className="itf-grid itf-grid-1">
           {fields.orderOf('main').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
         </div>
+        {wh && <label className="crm-check" style={{ marginTop: 10 }}><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> <span>Active</span></label>}
       </div>
     </Dialog>
   )

@@ -327,6 +327,8 @@ class ErpWarehouse(UUIDMixin, TimestampMixin, Base):
     #: For an engineer's trunk stock.
     custodian_id: Mapped[uuid.UUID | None] = _user_fk()
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Where stock lands unless a bill says otherwise. At most one per company.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class ErpItem(UUIDMixin, TimestampMixin, Base):
@@ -1689,3 +1691,105 @@ class ErpAccountGroup(UUIDMixin, TimestampMixin, Base):
     #: 1000, 1100, 1110 … the place in the chart; editable, unique per company.
     code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class ErpSalesman(UUIDMixin, TimestampMixin, Base):
+    """Who sells for the company: area or beat, commission and a monthly target.
+
+    A ledger names its salesman by text, so renaming one renames it on the
+    ledgers too. ``allow_login`` records that the person may be given a login;
+    nothing creates the login yet.
+    """
+
+    __tablename__ = "erp_salesmen"
+    __table_args__ = (UniqueConstraint("org_id", "code", name="uq_erp_salesmen_org_code"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    code: Mapped[str] = mapped_column(String(24), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    mobile: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    area_beat: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    #: On sales before GST, net of returns.
+    commission_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    monthly_target: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    allow_login: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ErpWalkinCustomer(UUIDMixin, TimestampMixin, Base):
+    """A cash customer who is not given a ledger of their own: name, a way to reach them, and
+    the dates worth a greeting. Sale bills will name them once billing is linked."""
+
+    __tablename__ = "erp_walkin_customers"
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    mobile: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    whatsapp: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dob: Mapped[date | None] = mapped_column(Date, nullable=True)
+    anniversary: Mapped[date | None] = mapped_column(Date, nullable=True)
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = _user_fk()
+
+
+class ErpLookup(UUIDMixin, TimestampMixin, Base):
+    """The small inventory lists: sub categories, units, HSN / SAC codes, racks, bill series.
+
+    One table for all of them: each is a name, an optional description, an optional parent
+    (the category or store it belongs under, by name) and a few kind-specific values in
+    ``data``. Items name their unit, HSN and rack by text, so these are what the item form
+    picks from.
+    """
+
+    __tablename__ = "erp_lookups"
+    __table_args__ = (UniqueConstraint("org_id", "kind", "name", name="uq_erp_lookups_org_kind_name"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    #: subcategory | unit | hsn | rack | billseries
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    parent_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ErpBillSeries(UUIDMixin, TimestampMixin, Base):
+    """A numbering series for one kind of document: Retail and Wholesale, counter and online.
+
+    The number a document takes is ``prefix`` + the year (if it restarts) + the running
+    number padded to ``digits`` + ``suffix``. Each transaction always has one default series;
+    a party's account group can name the series its documents start on. ``issued`` counts the
+    numbers handed out, and ``next_number`` only moves forward so a number is never reissued.
+    """
+
+    __tablename__ = "erp_bill_series"
+    __table_args__ = (UniqueConstraint("org_id", "transaction", "name", name="uq_erp_bill_series_org_txn_name"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    transaction: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    used_for: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prefix: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    suffix: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    digits: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    #: never | april | january
+    restart: Mapped[str] = mapped_column(String(8), default="april", nullable=False)
+    next_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    issued: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    applicable_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    print_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Account groups whose parties' documents start on this series.
+    default_groups: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    #: company | retail | wholesale -- which rate a bill on this series starts with.
+    billing_type: Mapped[str] = mapped_column(String(10), default="company", nullable=False)
+    print_layout: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: saved | a4_portrait | a4_landscape | a5_portrait | half_page | thermal_3 | thermal_2
+    paper: Mapped[str] = mapped_column(String(16), default="saved", nullable=False)
+    #: People who may bill on this series; empty means everybody.
+    user_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

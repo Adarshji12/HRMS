@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas import erp as S
-from app.services.erp import billing, ledgers, masters, purchase, reports, sales, stock
+from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stock, walkins
 from app.services.erp.common import capabilities, get_settings, record_audit, require, row_dict
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -145,6 +145,86 @@ def create_account_group(payload: S.AccountGroupIn, viewer: CurrentUser, db: DbS
 @router.delete("/account-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_account_group(group_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
     ledgers.delete_account_group(db, viewer, group_id, request=request)
+
+
+@router.get("/bill-series")
+def list_bill_series(viewer: CurrentUser, db: DbSession) -> dict:
+    return {"transactions": bill_series.transactions(), "series": bill_series.list_series(db, viewer)}
+
+
+@router.post("/bill-series", status_code=status.HTTP_201_CREATED)
+def create_bill_series(payload: S.BillSeriesIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return bill_series.save_series(db, viewer, payload, request=request)
+
+
+@router.put("/bill-series/{series_id}")
+def update_bill_series(series_id: uuid.UUID, payload: S.BillSeriesIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return bill_series.save_series(db, viewer, payload, series_id, request=request)
+
+
+@router.delete("/bill-series/{series_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_bill_series(series_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    bill_series.delete_series(db, viewer, series_id, request=request)
+
+
+@router.get("/lookups/{kind}")
+def list_lookups(kind: str, viewer: CurrentUser, db: DbSession, q: str | None = None, active: bool | None = None) -> list[dict]:
+    return lookups.list_lookups(db, viewer, kind, q=q, active=active)
+
+
+@router.post("/lookups/{kind}", status_code=status.HTTP_201_CREATED)
+def create_lookup(kind: str, payload: S.LookupIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return lookups.save_lookup(db, viewer, kind, payload, request=request)
+
+
+@router.put("/lookups/{kind}/{row_id}")
+def update_lookup(kind: str, row_id: uuid.UUID, payload: S.LookupIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return lookups.save_lookup(db, viewer, kind, payload, row_id, request=request)
+
+
+@router.delete("/lookups/{kind}/{row_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_lookup(kind: str, row_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    lookups.delete_lookup(db, viewer, kind, row_id, request=request)
+
+
+@router.get("/walkin-customers")
+def list_walkins(viewer: CurrentUser, db: DbSession, q: str | None = None, active: bool | None = None) -> list[dict]:
+    return walkins.list_walkins(db, viewer, q=q, active=active)
+
+
+@router.post("/walkin-customers", status_code=status.HTTP_201_CREATED)
+def create_walkin(payload: S.WalkinIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return walkins.save_walkin(db, viewer, payload, request=request)
+
+
+@router.put("/walkin-customers/{walkin_id}")
+def update_walkin(walkin_id: uuid.UUID, payload: S.WalkinIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return walkins.save_walkin(db, viewer, payload, walkin_id, request=request)
+
+
+@router.delete("/walkin-customers/{walkin_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_walkin(walkin_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    walkins.delete_walkin(db, viewer, walkin_id, request=request)
+
+
+@router.get("/salesmen")
+def list_salesmen(viewer: CurrentUser, db: DbSession, q: str | None = None, active: bool | None = None) -> list[dict]:
+    return salesmen.list_salesmen(db, viewer, q=q, active=active)
+
+
+@router.post("/salesmen", status_code=status.HTTP_201_CREATED)
+def create_salesman(payload: S.SalesmanIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return salesmen.save_salesman(db, viewer, payload, request=request)
+
+
+@router.put("/salesmen/{salesman_id}")
+def update_salesman(salesman_id: uuid.UUID, payload: S.SalesmanIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return salesmen.save_salesman(db, viewer, payload, salesman_id, request=request)
+
+
+@router.delete("/salesmen/{salesman_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_salesman(salesman_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
+    salesmen.delete_salesman(db, viewer, salesman_id, request=request)
 
 
 @router.get("/accounts")

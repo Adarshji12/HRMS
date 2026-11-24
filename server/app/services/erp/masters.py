@@ -22,6 +22,7 @@ from app.models.erp import (
     ErpCustomerAccount,
     ErpCustomerSite,
     ErpItem,
+    ErpLookup,
     ErpPurchaseOrder,
     ErpStockBalance,
     ErpVendor,
@@ -70,7 +71,11 @@ def list_warehouses(db: Session, viewer: User, *, active_only: bool = False) -> 
         stmt = stmt.where(ErpWarehouse.is_active.is_(True))
     rows = list(db.scalars(stmt.order_by(ErpWarehouse.name)))
     names = user_names(db, viewer.org_id, [r.custodian_id for r in rows])
-    return [{**row_dict(r), "custodian_name": names.get(r.custodian_id)} for r in rows]
+    # Racks are made inside a store and name it by text.
+    racks = {n.lower(): c for n, c in db.execute(
+        select(ErpLookup.parent_name, func.count()).where(ErpLookup.org_id == viewer.org_id, ErpLookup.kind == "rack")
+        .group_by(ErpLookup.parent_name)).all() if n}
+    return [{**row_dict(r), "custodian_name": names.get(r.custodian_id), "racks": racks.get(r.name.lower(), 0)} for r in rows]
 
 
 def save_warehouse(
@@ -82,6 +87,7 @@ def save_warehouse(
         get_owned(db, ErpWarehouse, viewer.org_id, row_id, "warehouse")
         if row_id else ErpWarehouse(org_id=viewer.org_id)
     )
+    renamed_from = row.name if row_id and "name" in payload.model_fields_set and row.name != payload.name else None
     # Only what was sent: the form asks for a name and a description, and an
     # edit must not reset the kind, address or state set elsewhere.
     for field, value in payload.model_dump(exclude_unset=True).items():
@@ -94,6 +100,15 @@ def save_warehouse(
         row.code = next_number(db, viewer.org_id, "WH", date.today()).replace("/", "-")
     db.add(row)
     db.flush()
+    if row.is_default:
+        # One default store: choosing this one clears the others.
+        for other in db.scalars(select(ErpWarehouse).where(
+                ErpWarehouse.org_id == viewer.org_id, ErpWarehouse.id != row.id, ErpWarehouse.is_default.is_(True))):
+            other.is_default = False
+    if renamed_from:
+        for rack in db.scalars(select(ErpLookup).where(
+                ErpLookup.org_id == viewer.org_id, ErpLookup.kind == "rack", ErpLookup.parent_name == renamed_from)):
+            rack.parent_name = row.name
     record_audit(db, viewer, "warehouse.saved", row, request=request, detail={"code": row.code})
     _commit_unique(db, f"Warehouse code “{row.code}” is already used.")
     return row_dict(row)
@@ -110,6 +125,9 @@ def delete_warehouse(
     retire a warehouse with history."""
     require(viewer, "can_manage_erp_masters")
     row = get_owned(db, ErpWarehouse, viewer.org_id, row_id, "warehouse")
+    if db.scalar(select(func.count()).select_from(ErpLookup).where(
+            ErpLookup.org_id == viewer.org_id, ErpLookup.kind == "rack", ErpLookup.parent_name == row.name)):
+        raise ErpError("warehouse_has_racks", f"“{row.name}” has racks in it. Delete or move them first.", 409)
     for table in ErpWarehouse.metadata.tables.values():
         for fk in table.foreign_keys:
             if fk.column.table.name != ErpWarehouse.__tablename__:
