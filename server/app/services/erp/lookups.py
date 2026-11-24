@@ -99,9 +99,9 @@ def _seed_units(db: Session, org_id: uuid.UUID) -> None:
 
 def _item_counts(db: Session, org_id: uuid.UUID, kind: str) -> dict[str, int]:
     """How many items carry each unit or HSN, by the text the item stores."""
-    if kind not in ("unit", "hsn"):
+    if kind not in ("unit", "hsn", "rack"):
         return {}
-    col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac
+    col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac if kind == "hsn" else ErpItem.rack
     return {k: n for k, n in db.execute(select(col, func.count()).where(ErpItem.org_id == org_id).group_by(col)).all() if k}
 
 
@@ -153,14 +153,16 @@ def save_lookup(
     row.parent_name = (payload.parent_name or "").strip() or None
     row.data = _clean(kind, payload, name)
     row.is_active = payload.is_active
-    if renamed_from and kind in ("unit", "hsn"):
-        # An item names its unit and HSN by text, so it follows the rename.
-        col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac
+    if renamed_from and kind in ("unit", "hsn", "rack"):
+        # An item names its unit, HSN and rack by text, so it follows the rename.
+        col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac if kind == "hsn" else ErpItem.rack
         for it in db.scalars(select(ErpItem).where(ErpItem.org_id == viewer.org_id, col == renamed_from)):
             if kind == "unit":
                 it.uom = name
-            else:
+            elif kind == "hsn":
                 it.hsn_sac = name
+            else:
+                it.rack = name
     db.add(row)
     db.flush()
     record_audit(db, viewer, f"{kind}.saved", row, request=request, detail={"name": name})
@@ -173,8 +175,8 @@ def delete_lookup(db: Session, viewer: User, kind: str, row_id: uuid.UUID, reque
     _check_kind(kind)
     require(viewer, "can_manage_erp_masters")
     row = get_owned(db, ErpLookup, viewer.org_id, row_id, LABEL[kind])
-    if kind in ("unit", "hsn"):
-        col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac
+    if kind in ("unit", "hsn", "rack"):
+        col = ErpItem.uom if kind == "unit" else ErpItem.hsn_sac if kind == "hsn" else ErpItem.rack
         if db.scalar(select(func.count()).select_from(ErpItem).where(ErpItem.org_id == viewer.org_id, col == row.name)):
             raise ErpError("in_use", f"Items use \u201c{row.name}\u201d, so it cannot be deleted. Mark it inactive instead.", 409)
     record_audit(db, viewer, f"{kind}.deleted", row, request=request, detail={"name": row.name})

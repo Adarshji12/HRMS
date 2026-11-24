@@ -300,6 +300,25 @@ def archive_account_group(
     db.commit()
 
 
+def save_openings(db: Session, viewer: User, payload: S.OpeningsIn, request: Request | None = None) -> dict:
+    """Set the opening balance of many ledgers at once, from the Ledger Openings grid."""
+    require(viewer, "can_manage_erp_masters")
+    wanted = {r.id: r for r in payload.rows}
+    rows = list(db.scalars(select(ErpLedger).where(ErpLedger.org_id == viewer.org_id, ErpLedger.id.in_(list(wanted)))))
+    if len(rows) != len(wanted):
+        raise ErpError("bad_ledger", "One of the ledgers is not in this company.", 422)
+    changed = 0
+    for row in rows:
+        r = wanted[row.id]
+        if row.opening_balance != r.opening_balance or row.opening_type != r.opening_type:
+            row.opening_balance, row.opening_type = r.opening_balance, r.opening_type
+            changed += 1
+    if changed:
+        record_audit(db, viewer, "ledger.openings_set", rows[0], request=request, detail={"ledgers": changed})
+    db.commit()
+    return {"updated": changed}
+
+
 def set_ledger_active(db: Session, viewer: User, ledger_id: uuid.UUID, active: bool, request: Request | None = None) -> dict:
     require(viewer, "can_manage_erp_masters")
     row = get_owned(db, ErpLedger, viewer.org_id, ledger_id, "ledger")

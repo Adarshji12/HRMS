@@ -372,6 +372,8 @@ class ErpItem(UUIDMixin, TimestampMixin, Base):
     #: A small picture as a data URL, resized in the browser before upload.
     image: Mapped[str | None] = mapped_column(Text, nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The rack the item sits on, by name (racks are made inside a store). Set in bulk under Update Master.
+    rack: Mapped[str | None] = mapped_column(String(120), nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: Offered on sales documents / on purchase documents.
@@ -1793,3 +1795,79 @@ class ErpBillSeries(UUIDMixin, TimestampMixin, Base):
     user_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ErpOpeningLot(UUIDMixin, TimestampMixin, Base):
+    """One lot of opening stock: what an item held in a store when trading started.
+
+    A plain item has a single lot; an item sold by batch (secondary stock) has one per
+    batch, each with its own barcode, MRP, purchase rate and up to three sale rates.
+    The stock ledger carries the total; the lots carry the detail.
+    """
+
+    __tablename__ = "erp_opening_lots"
+    __table_args__ = (UniqueConstraint("org_id", "item_id", "warehouse_id", "lot_no", name="uq_erp_opening_lots_lot"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("erp_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("erp_warehouses.id", ondelete="CASCADE"), nullable=False, index=True)
+    lot_no: Mapped[str] = mapped_column(String(40), nullable=False)
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mrp: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    pur_rate: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    rate_a: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    rate_b: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    rate_c: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+
+
+class ErpSaleBill(UUIDMixin, TimestampMixin, Base):
+    """A sale bill raised against a ledger or a walk-in customer, with its item lines.
+
+    Saved with totals; it does not yet move stock or post to the ledger's balance.
+    """
+
+    __tablename__ = "erp_sale_bills"
+    __table_args__ = (UniqueConstraint("org_id", "number", name="uq_erp_sale_bills_org_number"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    number: Mapped[str] = mapped_column(String(32), nullable=False)
+    bill_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    #: credit | cash
+    bill_type: Mapped[str] = mapped_column(String(8), default="credit", nullable=False)
+    ledger_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("erp_ledgers.id", ondelete="SET NULL"), nullable=True, index=True)
+    walkin_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("erp_walkin_customers.id", ondelete="SET NULL"), nullable=True, index=True)
+    party_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: bill | quotation. A quotation is an estimate: nothing moves from it.
+    doc_type: Mapped[str] = mapped_column(String(12), default="bill", nullable=False, index=True)
+    valid_till: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="open", nullable=False)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    sub_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    discount_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    tax_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    grand_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = _user_fk()
+
+
+class ErpSaleBillLine(UUIDMixin, Base):
+    __tablename__ = "erp_sale_bill_lines"
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    bill_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("erp_sale_bills.id", ondelete="CASCADE"), nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("erp_items.id", ondelete="SET NULL"), nullable=True)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    lot_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    free_qty: Mapped[Decimal] = mapped_column(QTY, default=ZERO, nullable=False)
+    uom: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    mrp: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    gst_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=ZERO, nullable=False)
+    taxable: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    tax: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)

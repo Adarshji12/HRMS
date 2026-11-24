@@ -44,9 +44,10 @@ from app.models.erp import (
     InvoiceStatus,
     MilestoneStatus,
     SalesOrderStatus,
+    ErpWalkinCustomer,
 )
 from app.schemas import erp as S
-from app.services.erp import masters
+from app.services.erp import masters, walkins
 from app.services.erp.common import (
     ZERO,
     ErpError,
@@ -344,7 +345,15 @@ def save_manual(db: Session, viewer: User, payload: S.InvoiceIn, invoice_id: uui
                 request: Request | None = None) -> dict:
     require(viewer, "can_manage_billing")
     so = get_owned(db, ErpSalesOrder, viewer.org_id, payload.sales_order_id, "sales order") if payload.sales_order_id else None
-    if so is not None and so.customer_id != payload.customer_id:
+    walkin_name = None
+    customer_id = payload.customer_id
+    if customer_id is None:
+        if not (payload.walkin_id or payload.walkin_bill):
+            raise ErpError("party_required", "Choose the party.", 422)
+        if payload.walkin_id:
+            walkin_name = get_owned(db, ErpWalkinCustomer, viewer.org_id, payload.walkin_id, "walk-in customer").name
+        customer_id = walkins.billing_customer(db, viewer.org_id).id
+    if so is not None and so.customer_id != customer_id:
         raise ErpError("wrong_customer", "That order belongs to a different customer.")
     if invoice_id:
         inv = get_owned(db, ErpInvoice, viewer.org_id, invoice_id, "invoice")
@@ -352,8 +361,10 @@ def save_manual(db: Session, viewer: User, payload: S.InvoiceIn, invoice_id: uui
             raise ErpError("not_editable", "Only a draft service or proforma invoice is edited.", 409)
         db.delete(inv)
         db.flush()
-    inv = _new_invoice(db, viewer, kind=payload.kind, customer_id=payload.customer_id,
+    inv = _new_invoice(db, viewer, kind=payload.kind, customer_id=customer_id,
                        invoice_date=payload.invoice_date, place_of_supply=payload.place_of_supply, sales_order=so)
+    if walkin_name:
+        inv.customer_name = walkin_name
     inv.notes = payload.notes
     if payload.due_date is not None:
         if payload.due_date < inv.invoice_date:

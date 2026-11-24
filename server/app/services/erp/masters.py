@@ -114,6 +114,26 @@ def save_warehouse(
     return row_dict(row)
 
 
+def assign_rack(db: Session, viewer: User, payload: S.RackAssignIn, request: Request | None = None) -> dict:
+    """Put many items on a rack, or take them off racks, in one go (Update Master > Rack Update)."""
+    require(viewer, "can_manage_erp_masters")
+    rack = (payload.rack or "").strip() or None
+    if rack and not db.scalar(select(ErpLookup).where(
+            ErpLookup.org_id == viewer.org_id, ErpLookup.kind == "rack", func.lower(ErpLookup.name) == rack.lower())):
+        raise ErpError("bad_rack", "That rack is not on the Racks list.", 422)
+    if rack:
+        rack = db.scalar(select(ErpLookup.name).where(
+            ErpLookup.org_id == viewer.org_id, ErpLookup.kind == "rack", func.lower(ErpLookup.name) == rack.lower()))
+    items = list(db.scalars(select(ErpItem).where(ErpItem.org_id == viewer.org_id, ErpItem.id.in_(payload.item_ids))))
+    if len(items) != len(set(payload.item_ids)):
+        raise ErpError("bad_item", "One of the items is not in this company.", 422)
+    for it in items:
+        it.rack = rack
+    record_audit(db, viewer, "item.rack_set", items[0], request=request, detail={"rack": rack, "items": len(items)})
+    db.commit()
+    return {"updated": len(items), "rack": rack}
+
+
 def delete_warehouse(
     db: Session, viewer: User, row_id: uuid.UUID, request: Request | None = None,
 ) -> None:

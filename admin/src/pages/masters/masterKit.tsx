@@ -926,6 +926,18 @@ export const MASTER_GROUPS: MasterGroup[] = [
     ],
   },
   {
+    key: 'update',
+    title: 'Update Master',
+    description: 'Set many records at once: ledger openings, stock openings, racks and barcode labels.',
+    kinds: [],
+    links: [
+      { label: 'Ledger Openings', to: '/masters/erp/ledger-openings' },
+      { label: 'Stock Openings', to: '/masters/erp/stock-openings' },
+      { label: 'Rack Update', to: '/masters/erp/rack-update' },
+      { label: 'Print Barcode', to: '/masters/erp/print-barcode' },
+    ],
+  },
+  {
     key: 'sales',
     title: 'Sales Master',
     description: 'What the opportunity pipeline, forecast and win/loss analysis stand on.',

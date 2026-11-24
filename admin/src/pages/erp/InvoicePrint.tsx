@@ -12,7 +12,8 @@ import { createPortal } from 'react-dom'
 import '../../styles/invoice-print.css'
 import { fetchImage } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
-import { IconClose, IconDownload, IconPrinter } from '../../components/Icons'
+import { IconClose, IconDownload, IconPrinter, IconSliders } from '../../components/Icons'
+import { COLOURS, PAPERS, PrintSettingsDrawer, loadPrint, savePrint, type PrintSettings } from './printSettings'
 import { crm } from '../crm/api'
 import { qtyText, rupees, type Invoice } from './api'
 
@@ -88,11 +89,18 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
   const logo = useImage('logo', s?.has_logo, s?.images_version)
   const stamp = useImage('stamp', s?.has_stamp, s?.images_version)
   const [making, setMaking] = useState(false)
+  const [ps, setPs] = useState(loadPrint)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const paper = PAPERS.find((x) => x.key === ps.paper) ?? PAPERS[0]
   const [pdfError, setPdfError] = useState<string | null>(null)
   const fileName = pdfFileName(inv)
 
   /** Print: the browser's dialog. The page title becomes the suggested file
    *  name when "Save as PDF" is picked there. */
+  function doPrint() {
+    if (remember) savePrint(ps)
+    print()
+  }
   function print() {
     const before = document.title
     document.title = fileName.replace(/\.pdf$/, '')
@@ -115,14 +123,18 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
       setMaking(false)
     }
   }
-  const [copy, setCopy] = useState<(typeof COPIES)[number]>(COPIES[0])
+  const [copyMode, setCopyMode] = useState<'orig' | 'dup' | 'tri' | 'all'>('orig')
+  const [noLabel, setNoLabel] = useState(false)
+  const [remember, setRemember] = useState(false)
+  const labels: string[] = copyMode === 'all' ? [...COPIES] : [COPIES[{ orig: 0, dup: 1, tri: 2 }[copyMode]]]
+  const copy = labels[0] as (typeof COPIES)[number]
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !settingsOpen && onClose()
     document.addEventListener('keydown', onKey)
     document.body.classList.add('ip-open')
     return () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('ip-open') }
-  }, [onClose])
+  }, [onClose, settingsOpen])
 
   const inter = inv.is_interstate
   const tax = Number(inv.tax_total)
@@ -140,6 +152,7 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
   const cess = Number(inv.cess_total ?? 0)
   const discounted = inv.lines.some((l) => Number(l.discount_percent ?? 0) || Number(l.discount_amount ?? 0)
     || Number(l.discount2_percent ?? 0) || Number(l.discount2_amount ?? 0))
+  const showDisc = ps.discount && discounted
   const bank = inv.recipient_bank ?? (s?.bank_enabled && s.account_number
     ? { bank_name: s.bank_name ?? '', account_name: s.account_name, account_number: s.account_number, ifsc: s.ifsc, branch: s.branch, upi_id: s.upi_enabled ? s.upi_id : null }
     : null)
@@ -156,42 +169,78 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
      the browser has no reason to shrink it. */
   return createPortal(
     <div className="ip-backdrop" role="dialog" aria-modal="true" aria-label="Print invoice">
-      <div className="ip-bar">
-        <b>{TITLE[inv.kind] ?? 'Invoice'} {inv.number ?? '(draft)'}</b>
-        <select value={copy} onChange={(e) => setCopy(e.target.value as typeof copy)} aria-label="Copy">
-          {COPIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <span className="ip-gap" />
-        {pdfError && <span className="error">{pdfError}</span>}
-        <button className="btn" onClick={print}><IconPrinter size={15} /> Print</button>
-        <button className="btn btn-primary" disabled={making} onClick={() => void downloadPdf()}>
-          <IconDownload size={15} /> {making ? 'Preparing PDF…' : 'Download PDF'}
-        </button>
-        <button className="btn" onClick={onClose}><IconClose size={15} /> Close</button>
-      </div>
-      <div className="ip-scroll">
-        <article className="ip-sheet" style={s?.accent_color ? { ['--ip-accent' as string]: s.accent_color } : undefined}>
+      <div className="pp" onKeyDown={(e) => { if (e.key === 'Enter' && !settingsOpen && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).tagName !== 'SELECT') { e.preventDefault(); doPrint() } }}>
+        <aside className="pp-side">
+          {settingsOpen && <PrintSettingsDrawer value={ps} onChange={setPs} onClose={() => setSettingsOpen(false)} />}
+          <div className="pp-title"><h3>Print {inv.kind === 'credit_note' ? 'Credit Note' : 'Sale Invoice'}</h3><span>{inv.number ?? '(draft)'} · {inv.customer_name}</span></div>
+          <div className="pp-scroll">
+            <h5>Template · 40</h5>
+            <div className="pp-tpl"><select aria-label="Template" value="classic" onChange={() => undefined}><option value="classic">Classic GST (default)</option></select>
+              <button type="button" className="btn btn-sm" disabled title="More templates are not built yet">Browse</button></div>
+            <h5>Paper</h5>
+            <div className="pp-papers">{PAPERS.map((p) => (
+              <button key={p.key} type="button" className={ps.paper === p.key ? 'is-on' : ''} onClick={() => setPs({ ...ps, paper: p.key })}>
+                {p.label}{p.note && <small>{p.note}</small>}</button>))}</div>
+            <h5>Copy</h5>
+            <div className="pp-seg">{([['orig', 'Original'], ['dup', 'Duplicate'], ['tri', 'Triplicate'], ['all', 'All 3 copies']] as const).map(([k, l]) => (
+              <button key={k} type="button" className={copyMode === k ? 'is-on' : ''} onClick={() => setCopyMode(k)}>{l}</button>))}
+              <button type="button" className={`pp-nolabel${noLabel ? ' is-on' : ''}`} onClick={() => setNoLabel((v) => !v)}>No label</button></div>
+            <h5>Colour</h5>
+            <div className="ps-swatches">{COLOURS.map((c) => <button key={c} type="button" aria-label={c} className={ps.accent === c ? 'is-on' : ''} style={{ background: c }} onClick={() => setPs({ ...ps, accent: c })} />)}</div>
+            <h5>On this print</h5>
+            <div className="pp-checks">
+              {([['bank', 'Bank details', bank ? '' : 'not set'], ['hsnSummary', 'HSN tax summary', ''], ['words', 'Amount in words', ''], ['received', 'Received & balance', ''], ['terms', 'Terms & conditions', '']] as const).map(([k, l, h]) => (
+                <label key={k}><input type="checkbox" checked={ps[k]} onChange={(e) => setPs({ ...ps, [k]: e.target.checked } as PrintSettings)} /> {l}{h && <small> · {h}</small>}</label>))}
+              <label className="is-off"><input type="checkbox" disabled /> UPI payment QR<small> · not set</small></label>
+            </div>
+          </div>
+          <div className="pp-foot">
+            <label className="pp-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Use these for every sale invoice</label>
+            <div className="pp-actions">
+              <button type="button" className="btn btn-sm pp-link" onClick={() => setSettingsOpen((o) => !o)}><IconSliders size={14} /> All settings</button>
+              <button type="button" className="btn" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={doPrint}><IconPrinter size={15} /> Print <kbd>Enter</kbd></button>
+            </div>
+          </div>
+        </aside>
+        <div className="pp-main">
+          <div className="pp-top">
+            <b>{paper.dims}</b><span className="ip-gap" />
+            {pdfError && <span className="error">{pdfError}</span>}
+            <span className="muted-sm">For a PDF, choose “Save as PDF” in the print window</span>
+            <button type="button" className="btn btn-sm" disabled={making} onClick={() => void downloadPdf()}><IconDownload size={14} /> {making ? 'Preparing…' : 'PDF'}</button>
+            <button type="button" className="btn btn-sm" onClick={onClose} aria-label="Close"><IconClose size={14} /></button>
+          </div>
+          <style>{`@media print { @page { size: ${paper.size}; } }`}</style>
+          <div className="ip-scroll">
+            {labels.map((label) => (
+        <article key={label} className="ip-sheet" style={{
+          ['--ip-accent' as string]: ps.accent !== '#192A60' ? ps.accent : s?.accent_color || ps.accent,
+          fontFamily: ps.font === 'arial' ? 'Arial, sans-serif' : ps.font === 'georgia' ? 'Georgia, serif' : undefined,
+          border: ps.border ? undefined : 'none',
+          width: paper.width, ...(paper.key === 't3' || paper.key === 't2' ? { minHeight: 0, padding: '4mm' } : {}),
+        }}>
           {inv.status === 'draft' && <div className="ip-watermark">DRAFT</div>}
           {inv.status === 'cancelled' && <div className="ip-watermark">CANCELLED</div>}
 
           <header className="ip-head">
             <div className="ip-org">
-              {logo && <img className="ip-logo" src={logo} alt="" />}
+              {ps.logo && logo && <img className="ip-logo" src={logo} alt="" />}
               <div>
                 <div className="ip-org-name">{company}</div>
                 {s?.tagline && <div className="ip-org-line ip-tagline">{s.tagline}</div>}
-                {s?.address && <div className="ip-org-line ip-pre">{s.address}</div>}
-                <div className="ip-org-line">
+                {ps.address && s?.address && <div className="ip-org-line ip-pre">{s.address}</div>}
+                {ps.contact && <div className="ip-org-line">
                   {[s?.phone && `Ph: ${s.phone}`, s?.email, s?.website].filter(Boolean).join(' · ')}
-                </div>
+                </div>}
                 <div className="ip-org-line">
-                  {[s?.gstin && `GSTIN: ${s.gstin}`, s?.pan && `PAN: ${s.pan}`, s?.cin && `CIN: ${s.cin}`].filter(Boolean).join(' · ')}
+                  {[ps.gstin && s?.gstin && `GSTIN: ${s.gstin}`, ps.pan && s?.pan && `PAN: ${s.pan}`, ps.gstin && s?.cin && `CIN: ${s.cin}`].filter(Boolean).join(' · ')}
                 </div>
               </div>
             </div>
             <div className="ip-title">
-              <h1>{TITLE[inv.kind] ?? 'Invoice'}</h1>
-              <span className="ip-copy">{copy}</span>
+              <h1>{ps.title.trim() || (TITLE[inv.kind] ?? 'Invoice')}</h1>
+              {!noLabel && <span className="ip-copy">{label}</span>}
             </div>
           </header>
 
@@ -199,8 +248,8 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
             <dl>
               <div><dt>Invoice no.</dt><dd className="ip-strong">{inv.number ?? 'Draft — not numbered'}</dd></div>
               <div><dt>Invoice date</dt><dd>{longDate(inv.invoice_date)}</dd></div>
-              <div><dt>Due date</dt><dd>{longDate(inv.due_date)}</dd></div>
-              <div><dt>Place of supply</dt><dd>{inv.place_of_supply || '—'}</dd></div>
+              {ps.dueDate && <div><dt>Due date</dt><dd>{longDate(inv.due_date)}</dd></div>}
+              {ps.supply && <div><dt>Place of supply</dt><dd>{inv.place_of_supply || '—'}</dd></div>}
             </dl>
             <dl>
               {inv.order_number && <div><dt>Sales order</dt><dd>{inv.order_number}</dd></div>}
@@ -213,7 +262,7 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
             </dl>
           </section>
 
-          {(inv.dispatch_doc_number || inv.transporter_name || inv.vehicle_number || inv.eway_bill_number || inv.lr_number) && (
+          {ps.transport && (inv.dispatch_doc_number || inv.transporter_name || inv.vehicle_number || inv.eway_bill_number || inv.lr_number) && (
             <section className="ip-transport">
               {inv.dispatch_doc_number && <div><span>Dispatch doc. no.</span><b>{inv.dispatch_doc_number}</b></div>}
               {inv.transporter_name && <div><span>Transporter</span><b>{inv.transporter_name}</b></div>}
@@ -227,30 +276,30 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
               <h4>Bill to</h4>
               <b>{inv.customer_name}</b>
               {inv.billing_address && <p className="ip-pre">{inv.billing_address}</p>}
-              <p>GSTIN: {inv.gstin || 'Unregistered'}</p>
+              {ps.custGstin && <p>GSTIN: {inv.gstin || 'Unregistered'}</p>}
               {inv.place_of_supply && <p>State: {inv.place_of_supply}</p>}
             </div>
-            <div>
+            {ps.shipTo && <div>
               <h4>Ship to</h4>
               <b>{inv.customer_name}</b>
               <p className="ip-pre">{inv.shipping_address || inv.billing_address || '—'}</p>
-            </div>
+            </div>}
           </section>
 
           <table className="ip-lines ip-paged">
             <colgroup>
-              <col style={{ width: '5%' }} /><col /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} />
-              <col style={{ width: '9%' }} />{discounted && <col style={{ width: '7%' }} />}<col style={{ width: '10%' }} />
-              <col style={{ width: '6%' }} />{inter ? <col style={{ width: '9%' }} /> : <><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /></>}
+              <col style={{ width: '5%' }} /><col />{ps.hsn && <col style={{ width: '10%' }} />}<col style={{ width: '8%' }} />
+              <col style={{ width: '9%' }} />{showDisc && <col style={{ width: '7%' }} />}<col style={{ width: '10%' }} />
+              {ps.taxCols && <col style={{ width: '6%' }} />}{ps.taxCols && (inter ? <col style={{ width: '9%' }} /> : <><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /></>)}
               <col style={{ width: '11%' }} />
             </colgroup>
             <thead>
               <tr>
-                <th>#</th><th className="ip-desc">Item &amp; description</th><th>HSN/SAC</th>
+                <th>#</th><th className="ip-desc">Item &amp; description</th>{ps.hsn && <th>HSN/SAC</th>}
                 <th className="ip-num">Qty</th><th className="ip-num">Rate</th>
-                {discounted && <th className="ip-num">Disc.</th>}
-                <th className="ip-num">Taxable</th><th className="ip-num">GST</th>
-                {inter ? <th className="ip-num">IGST</th> : <><th className="ip-num">CGST</th><th className="ip-num">SGST</th></>}
+                {showDisc && <th className="ip-num">Disc.</th>}
+                <th className="ip-num">Taxable</th>{ps.taxCols && <th className="ip-num">GST</th>}
+                {ps.taxCols && (inter ? <th className="ip-num">IGST</th> : <><th className="ip-num">CGST</th><th className="ip-num">SGST</th></>)}
                 <th className="ip-num">Amount</th>
               </tr>
             </thead>
@@ -261,14 +310,14 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
                 return (
                   <tr key={l.id}>
                     <td>{i + 1}</td>
-                    <td className="ip-desc">{l.description}{l.item_code && <small> ({l.item_code})</small>}</td>
-                    <td>{l.hsn_sac || '—'}</td>
+                    <td className="ip-desc">{l.description}{ps.itemCode && l.item_code && <small> ({l.item_code})</small>}</td>
+                    {ps.hsn && <td>{l.hsn_sac || '—'}</td>}
                     <td className="ip-num">{qtyText(l.quantity)} {l.uom}{Number(l.free_qty ?? 0) > 0 && <small><br />+{qtyText(l.free_qty!)} free</small>}</td>
                     <td className="ip-num">{num(l.rate)}</td>
-                    {discounted && <td className="ip-num">{discText(l)}</td>}
+                    {showDisc && <td className="ip-num">{discText(l)}</td>}
                     <td className="ip-num">{num(l.taxable_value)}</td>
-                    <td className="ip-num">{Number(l.gst_percent ?? 0)}%</td>
-                    {inter ? <td className="ip-num">{num(t)}</td> : <><td className="ip-num">{num(half)}</td><td className="ip-num">{num(t - half)}</td></>}
+                    {ps.taxCols && <td className="ip-num">{Number(l.gst_percent ?? 0)}%</td>}
+                    {ps.taxCols && (inter ? <td className="ip-num">{num(t)}</td> : <><td className="ip-num">{num(half)}</td><td className="ip-num">{num(t - half)}</td></>)}
                     <td className="ip-num ip-strong">{num(l.amount)}</td>
                   </tr>
                 )
@@ -278,7 +327,7 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
 
           <section className="ip-sums">
             <div className="ip-left">
-              <table className="ip-hsn">
+              {ps.hsnSummary && <table className="ip-hsn">
                 <thead>
                   <tr><th>HSN/SAC</th><th className="ip-num">Taxable</th><th className="ip-num">Rate</th>
                     {inter ? <th className="ip-num">IGST</th> : <><th className="ip-num">CGST</th><th className="ip-num">SGST</th></>}
@@ -298,9 +347,9 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
                     )
                   })}
                 </tbody>
-              </table>
-              <p className="ip-words"><b>Amount in words:</b> {amountInWords(Number(inv.grand_total))}</p>
-              {tax + cess > 0 && <p className="ip-words"><b>Tax in words:</b> {amountInWords(tax + cess)}</p>}
+              </table>}
+              {ps.words && <p className="ip-words"><b>Amount in words:</b> {amountInWords(Number(inv.grand_total))}</p>}
+              {ps.words && tax + cess > 0 && <p className="ip-words"><b>Tax in words:</b> {amountInWords(tax + cess)}</p>}
             </div>
             <dl className="ip-totals">
               {(Number(inv.bill_discount_percent ?? 0) > 0 || Number(inv.bill_discount_amount ?? 0) > 0) && (
@@ -318,14 +367,14 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
               <div><dt>Total GST</dt><dd>{num(tax + cess)}</dd></div>
               {Number(inv.round_off ?? 0) !== 0 && <div><dt>Round off</dt><dd>{Number(inv.round_off) > 0 ? '+' : '−'} {num(Math.abs(Number(inv.round_off)))}</dd></div>}
               <div className="ip-grand"><dt>Total</dt><dd>{rupees(inv.grand_total)}</dd></div>
-              {Number(inv.amount_received) > 0 && <div><dt>Received</dt><dd>{num(inv.amount_received)}</dd></div>}
-              {inv.status === 'posted' && Number(inv.amount_received) > 0 && <div className="ip-due"><dt>Balance due</dt><dd>{rupees(inv.outstanding)}</dd></div>}
+              {ps.received && Number(inv.amount_received) > 0 && <div><dt>Received</dt><dd>{num(inv.amount_received)}</dd></div>}
+              {ps.received && inv.status === 'posted' && Number(inv.amount_received) > 0 && <div className="ip-due"><dt>Balance due</dt><dd>{rupees(inv.outstanding)}</dd></div>}
             </dl>
           </section>
 
           <section className="ip-foot">
             <div className="ip-foot-left">
-              {bank && (
+              {ps.bank && bank && (
                 <div className="ip-bank">
                   <h4>Bank details</h4>
                   <p>{bank.bank_name}{bank.branch ? `, ${bank.branch}` : ''}</p>
@@ -334,17 +383,21 @@ export default function InvoicePrint({ inv, onClose }: { inv: Invoice; onClose: 
                   {bank.upi_id && <p>UPI: {bank.upi_id}</p>}
                 </div>
               )}
-              {inv.notes && <div><h4>Notes</h4><p className="ip-pre">{inv.notes}</p></div>}
-              {(inv.terms || s?.footer) && <div><h4>Terms &amp; conditions</h4><p className="ip-pre">{inv.terms || s?.footer}</p></div>}
+              {ps.notes && inv.notes && <div><h4>Notes</h4><p className="ip-pre">{inv.notes}</p></div>}
+              {ps.terms && (inv.terms || s?.footer) && <div><h4>Terms &amp; conditions</h4><p className="ip-pre">{inv.terms || s?.footer}</p></div>}
             </div>
             <div className="ip-sign">
               <div>For <b>{company}</b></div>
               <div className="ip-stamp">{stamp && <img src={stamp} alt="" />}</div>
-              <div className="ip-sign-line">{s?.signatory || 'Authorised signatory'}</div>
+              {ps.signatory && <div className="ip-sign-line">{ps.signLabel.trim() || s?.signatory || 'Authorised signatory'}</div>}
+              {ps.receiver && <div className="ip-sign-line" style={{ marginTop: 18 }}>Receiver&apos;s signature</div>}
             </div>
           </section>
-          <footer className="ip-note">This is a computer-generated invoice.</footer>
+          {ps.computerLine && <footer className="ip-note">This is a computer-generated invoice.</footer>}
         </article>
+            ))}
+          </div>
+        </div>
       </div>
     </div>,
     document.body,

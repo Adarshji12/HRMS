@@ -14,26 +14,32 @@ import { IconChevronRight, IconHome, IconMenu, IconSearch } from './Icons'
    Master › Geography › State. Names come from masterKit, the same source
    the Master cards are drawn from, so the two cannot disagree. */
 const byKind = new Map(LISTS.map((list) => [list.kind, list]))
-const ERP_LISTS: Record<string, string> = {
-  items: 'Items', warehouses: 'Warehouses', vendors: 'Vendors', customers: 'Customer accounts',
-}
+interface Crumb { label: string; to?: string }
 
-function masterTrail(path: string): string[] | null {
+/** Where a card's crumb leads: its first list, since a card has no page of its own. */
+const groupHome = (g: (typeof MASTER_GROUPS)[number]): string =>
+  g.links?.[0]?.to ?? (g.path ? `${g.path}/${g.kinds[0]}` : `/masters/${g.kinds[0]}`)
+
+function masterTrail(path: string): Crumb[] | null {
   const parts = path.split('/').filter(Boolean)
+  const master: Crumb = { label: 'Master', to: '/masters' }
+  const crumbs = (g: (typeof MASTER_GROUPS)[number] | undefined, leaf?: string): Crumb[] =>
+    [master, ...(g ? [{ label: g.title, to: groupHome(g) }] : []), ...(leaf ? [{ label: leaf }] : [])]
   if (parts[0] === 'masters') {
-    if (parts.length === 1) return ['Master']
-    if (parts[1] === 'erp') return ['Master', 'ERP Master', ERP_LISTS[parts[2]] ?? 'Lists']
+    if (parts.length === 1) return [{ label: 'Master' }]
+    // A linked screen: the card that lists it and the label it has there.
+    const link = MASTER_GROUPS.flatMap((g) => (g.links ?? []).map((l) => ({ g, l }))).find(({ l }) => l.to === path.replace(/\/$/, ''))
+    if (link) return crumbs(link.g, link.l.label)
     const kind = parts[1]
-    const group = MASTER_GROUPS.find((g) => g.kinds.includes(kind))
     const list = byKind.get(kind)
-    return ['Master', ...(group ? [group.title] : []), ...(list ? [shortLabel(list)] : [])]
+    return crumbs(MASTER_GROUPS.find((g) => g.kinds.includes(kind)), list ? shortLabel(list) : undefined)
   }
-  if (parts[0] === 'departments') return ['Master', 'Organisation Master', 'Department']
-  if (parts[0] === 'designations') return ['Master', 'Organisation Master', 'Designation']
+  const org = MASTER_GROUPS.flatMap((g) => (g.links ?? []).map((l) => ({ g, l }))).find(({ l }) => l.to === `/${parts[0]}`)
+  if (org) return crumbs(org.g, org.l.label)
   const own = MASTER_GROUPS.find((g) => g.path && path.startsWith(g.path))
   if (own) {
     const list = byKind.get(parts[1] ?? own.kinds[0])
-    return ['Master', own.title, ...(list ? [shortLabel(list)] : [])]
+    return crumbs(own, list ? shortLabel(list) : undefined)
   }
   return null
 }
@@ -145,16 +151,16 @@ export default function Topbar({
           )}
           {here ? (
             <span className="crumb crumb-here" aria-current="page">{here.item.label}</span>
-          ) : (masterTrail(location.pathname) ?? []).map((label, i, all) => (
+          ) : (masterTrail(location.pathname) ?? []).map((crumb, i, all) => (
             i < all.length - 1 ? (
-              <span key={label} className="crumb-step">
-                {i === 0
-                  ? <Link className="crumb crumb-muted crumb-link" to="/masters">{label}</Link>
-                  : <span className="crumb crumb-muted">{label}</span>}
+              <span key={crumb.label} className="crumb-step">
+                {crumb.to
+                  ? <Link className="crumb crumb-muted crumb-link" to={crumb.to}>{crumb.label}</Link>
+                  : <span className="crumb crumb-muted">{crumb.label}</span>}
                 <IconChevronRight size={14} />
               </span>
             ) : (
-              <span key={label} className="crumb crumb-here" aria-current="page">{label}</span>
+              <span key={crumb.label} className="crumb crumb-here" aria-current="page">{crumb.label}</span>
             )
           ))}
         </nav>

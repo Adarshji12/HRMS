@@ -37,6 +37,29 @@ export interface ChainStep {
   note: string | null
 }
 
+export interface SaleBillLine {
+  id: string; line_no: number; item_id: string | null; description: string; lot_no: string | null; quantity: string; free_qty: string
+  uom: string | null; mrp: string; rate: string; discount_percent: string; discount_amount: string; gst_percent: string
+  taxable: string; tax: string; amount: string
+}
+export interface SaleBill {
+  id: string; number: string; bill_date: string; bill_type: 'credit' | 'cash'; ledger_id: string | null; walkin_id: string | null
+  party_name: string; warehouse_id: string | null; warehouse_name: string | null
+  sub_total: string; discount_total: string; tax_total: string; grand_total: string; notes: string | null; created_at: string
+  doc_type?: string; valid_till?: string | null; status?: string; station?: string | null; mobile?: string | null
+  lines?: SaleBillLine[]
+}
+
+export interface StockOpeningRow {
+  item_id: string; code: string; name: string; make: string | null; category: string | null; uom: string
+  quantity: string; rate: string; value: string; lot_count: number
+}
+export interface OpeningLot {
+  id: string; lot_no: string; barcode: string | null; quantity: string
+  mrp: string; pur_rate: string; rate_a: string; rate_b: string; rate_c: string; value: string
+}
+export type OpeningLotIn = Partial<Omit<OpeningLot, 'id' | 'value'>>
+
 export interface Warehouse {
   id: string
   code: string
@@ -239,6 +262,8 @@ export interface Item {
   crm_product_id: string | null
   image: string | null
   barcode: string | null
+  /** The rack it sits on, by name. */
+  rack?: string | null
   tags: string[] | null
   is_favorite: boolean
   can_be_sold: boolean
@@ -1007,6 +1032,17 @@ export const erp = {
     id ? api.put<Warehouse>(`${B}/warehouses/${id}`, body) : api.post<Warehouse>(`${B}/warehouses`, body),
   deleteWarehouse: (id: string) => api.del(`${B}/warehouses/${id}`),
   deleteItem: (id: string) => api.del(`${B}/items/${id}`),
+  saveOpenings: (rows: Array<{ id: string; opening_balance: string; opening_type: 'dr' | 'cr' }>) =>
+    api.put<{ updated: number }>(`${B}/ledger-openings`, { rows }),
+  assignRack: (rack: string | null, item_ids: string[]) => api.post<{ updated: number; rack: string | null }>(`${B}/items/rack`, { rack, item_ids }),
+  stockOpenings: (p: { warehouse_id: string; q?: string; company?: string; category?: string; with_stock?: boolean }) =>
+    api.get<StockOpeningRow[]>(`${B}/stock-openings${qs(p)}`),
+  openingLots: (itemId: string, warehouse_id: string) => api.get<OpeningLot[]>(`${B}/stock-openings/${itemId}${qs({ warehouse_id })}`),
+  saveOpeningLots: (itemId: string, warehouse_id: string, lots: OpeningLotIn[]) =>
+    api.put<{ item_id: string; quantity: string; lots: OpeningLot[] }>(`${B}/stock-openings/${itemId}`, { warehouse_id, lots }),
+  saleBills: (p: { q?: string; doc_type?: string } = {}) => api.get<SaleBill[]>(`${B}/sale-bills${qs(p)}`),
+  saleBill: (id: string) => api.get<SaleBill>(`${B}/sale-bills/${id}`),
+  createSaleBill: (body: Body) => api.post<SaleBill>(`${B}/sale-bills`, body),
   stations: () => api.get<Station[]>(`${B}/stations`),
   saveStation: (body: Body, id?: string) =>
     id ? api.put<Station>(`${B}/stations/${id}`, body) : api.post<Station>(`${B}/stations`, body),

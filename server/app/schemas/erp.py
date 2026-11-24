@@ -594,7 +594,10 @@ class InvoiceIn(_In):
     are raised *from* a dispatch or a milestone, never typed."""
 
     kind: Literal["service", "proforma"] = "service"
-    customer_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    #: A walk-in sale names no customer record: a saved walk-in, or just "walk-in".
+    walkin_id: uuid.UUID | None = None
+    walkin_bill: bool = False
     sales_order_id: uuid.UUID | None = None
     invoice_date: date | None = None
     #: Left out, the customer's credit days from the invoice date.
@@ -949,3 +952,63 @@ class StationIn(_In):
         if not re.fullmatch(r"\d{6}", v):
             raise ValueError("PIN code must be 6 digits.")
         return v
+
+
+class OpeningRowIn(_In):
+    id: uuid.UUID
+    opening_balance: Decimal = Field(default=Decimal("0"), ge=0)
+    opening_type: Literal["dr", "cr"] = "dr"
+
+
+class OpeningsIn(_In):
+    rows: list[OpeningRowIn] = Field(min_length=1, max_length=1000)
+
+
+class RackAssignIn(_In):
+    #: The rack's name, or null to take the items off their racks.
+    rack: str | None = Field(default=None, max_length=120)
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
+
+
+class OpeningLotIn(_In):
+    lot_no: str | None = Field(default=None, max_length=40)
+    barcode: str | None = Field(default=None, max_length=64)
+    mrp: Decimal = Field(default=Decimal("0"), ge=0)
+    quantity: Decimal = Field(default=Decimal("0"), ge=0)
+    pur_rate: Decimal = Field(default=Decimal("0"), ge=0)
+    rate_a: Decimal = Field(default=Decimal("0"), ge=0)
+    rate_b: Decimal = Field(default=Decimal("0"), ge=0)
+    rate_c: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class OpeningStockIn(_In):
+    warehouse_id: uuid.UUID
+    lots: list[OpeningLotIn] = Field(max_length=200)
+
+
+class SaleBillLineIn(_In):
+    item_id: uuid.UUID | None = None
+    description: str = Field(min_length=1, max_length=300)
+    lot_no: str | None = Field(default=None, max_length=40)
+    quantity: Decimal = Field(gt=0)
+    free_qty: Decimal = Field(default=Decimal("0"), ge=0)
+    uom: str | None = Field(default=None, max_length=16)
+    mrp: Decimal = Field(default=Decimal("0"), ge=0)
+    rate: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    gst_percent: Decimal = Field(default=Decimal("0"), ge=0, le=40)
+
+
+class SaleBillIn(_In):
+    bill_date: date | None = None
+    doc_type: Literal["bill", "quotation"] = "bill"
+    valid_till: date | None = None
+    bill_type: Literal["credit", "cash"] = "credit"
+    ledger_id: uuid.UUID | None = None
+    walkin_id: uuid.UUID | None = None
+    #: A walk-in sale with no customer details taken.
+    walkin_bill: bool = False
+    warehouse_id: uuid.UUID | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+    lines: list[SaleBillLineIn] = Field(min_length=1, max_length=200)

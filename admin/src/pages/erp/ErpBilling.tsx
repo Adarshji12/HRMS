@@ -11,7 +11,9 @@ import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconCard, IconCheck, IconClose, IconDownload, IconEdit, IconFolder, IconPlus, IconPrinter, IconSearch, IconSheet, IconSliders, IconTrash, IconUser } from '../../components/Icons'
-import { erp, erpError, qtyText, rupees, type CustomerAccount, type Invoice, type InvoiceReceipt, type Item } from './api'
+import { erp, erpError, qtyText, rupees, type CustomerAccount, type Invoice, type InvoiceReceipt, type Item, type Walkin } from './api'
+import { PartyPicker, WalkinDetails } from './ErpSaleBill'
+import AskBox from './AskBox'
 import { todayISO } from '../crm/api'
 import { downloadCsv, downloadXlsx } from '../../lib/sheet'
 import { CrmPage, OwnerSelect } from '../crm/parts'
@@ -203,9 +205,9 @@ const BILL_FIELDS: FieldDef[] = [
   { key: 'invoice_date', label: 'Date', section: 'head' },
   { key: 'bill_no', label: 'Bill no. (assigned automatically)', section: 'head', optionalOnly: true },
   { key: 'bill_type', label: 'Type (credit / cash)', section: 'head' },
-  { key: 'salesperson_id', label: 'Salesman', section: 'head' },
-  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head' },
-  { key: 'due_date', label: 'Due', section: 'head' },
+  { key: 'salesperson_id', label: 'Salesman', section: 'head', initial: 'hide' },
+  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head', initial: 'hide' },
+  { key: 'due_date', label: 'Due', section: 'head', initial: 'hide' },
   { key: 'billing_address', label: 'Billing address', section: 'more' },
   { key: 'shipping_address', label: 'Shipping address', section: 'more', optionalOnly: true },
   { key: 'delivery_date', label: 'Delivery date', section: 'more' },
@@ -828,6 +830,11 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const editing = Boolean(invoice && !copy)
   const [kind, setKind] = useState<'service' | 'proforma'>(seed?.kind ?? 'service')
   const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
+  // A walk-in sale has no customer record: the party is "walk-in", with details taken at the counter.
+  const [walkinMode, setWalkinMode] = useState(false)
+  const [walkin, setWalkin] = useState<Walkin | null>(null)
+  const [askWalkin, setAskWalkin] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [invoiceDate, setInvoiceDate] = useState(seed?.invoiceDate ?? todayISO())
   const [billType, setBillType] = useState<'credit' | 'cash'>(seed?.billType ?? 'credit')
   const [salespersonId, setSalespersonId] = useState(seed ? seed.salespersonId : user?.id ?? '')
@@ -867,7 +874,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const transportOk = (fm('vehicle_number') === 'hide' || vehicleOk(transport.vehicle_number)) && (fm('eway_bill_number') === 'hide' || ewayOk(transport.eway_bill_number))
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState(false)
-  const customerRef = useRef<HTMLSelectElement>(null)
+  const customerRef = useRef<HTMLButtonElement>(null)
   const itemRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const { busy, error, run } = useRun()
   const nextNo = useQuery(`erp-inv-next-${kind}-${invoiceDate}`, () => erp.nextInvoiceNumber(kind, invoiceDate))
@@ -945,7 +952,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   }
   const missing = Object.keys(emptyField).some((k) => fm(k) === 'mandatory' && emptyField[k])
   const dueBad = fm('due_date') !== 'hide' && due < invoiceDate
-  const ready = Boolean(customerId) && filled.length > 0 && !dueBad && transportOk && discOk && !posMissing && !cessBad && !missing
+  const ready = (Boolean(customerId) || walkinMode) && filled.length > 0 && !dueBad && transportOk && discOk && !posMissing && !cessBad && !missing
 
   const active = rows.find((l) => l.key === activeKey) ?? null
   const activeItem = active?.item_id ? (items.data ?? []).find((i) => i.id === active.item_id) ?? null : null
@@ -969,7 +976,8 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
       cess_percent: !charge && cessOn ? l.cess || '0' : '0',
     })
     return {
-      kind, customer_id: customerId, invoice_date: invoiceDate, due_date: due,
+      kind, customer_id: walkinMode ? null : customerId, walkin_id: walkinMode ? walkin?.id ?? null : null, walkin_bill: walkinMode,
+      invoice_date: invoiceDate, due_date: due,
       place_of_supply: placeOfSupply || null, billing_address: billingAddress || null,
       shipping_address: shippingAddress, notes: notes || null, terms: termsText || null,
       salesperson_id: salespersonId || null, delivery_date: deliveryDate || null,
@@ -990,10 +998,20 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   // Editing a draft saves over it; anything else is a new bill.
   const target = editing ? invoice!.id : undefined
   const saveDraft = () => void run(async () => onSaved(await erp.saveInvoice(payload(), target)))
-  const saveBill = () => void run(async () => {
+  // Save bill asks first ("Save the Bill?" with the net amount and profit), saves, then
+  // asks whether to print before the form closes.
+  const [confirming, setConfirming] = useState(false)
+  const [savedBill, setSavedBill] = useState<Invoice | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const saveBill = () => setConfirming(true)
+  const doSave = () => void run(async () => {
     const saved = await erp.saveInvoice(payload(), target)
-    onSaved(await erp.postInvoice(saved.id))
+    setConfirming(false)
+    setSavedBill(await erp.postInvoice(saved.id))
   })
+  // Profit: what the lines sell for after discount, less the items' standard cost.
+  const costOf = new Map((items.data ?? []).map((i) => [i.id, Number(i.standard_cost || 0)]))
+  const profit = r2(filled.reduce((n, l, i) => n + itemMath[i].taxable - (costOf.get(l.item_id) ?? 0) * (Number(l.quantity || 0) + Number(l.free || 0)), 0))
 
   // F3 → party, F2 → item of the current row, Ctrl+S / F10 → save bill,
   // Alt+D → delete the current row.
@@ -1010,7 +1028,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
         const row = k.rows.find((r) => r.key === k.activeKey)
         if (row && isFilled(row)) k.removeLine(row.key)
       } else if (e.key === 'F3') {
-        e.preventDefault(); customerRef.current?.focus()
+        e.preventDefault(); customerRef.current?.click()
       } else if (e.key === 'F2') {
         e.preventDefault()
         const key = k.activeKey ?? k.rows[k.rows.length - 1].key
@@ -1075,14 +1093,23 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
 
   const headNodes: Record<string, ReactNode> = {
     customer: (
+      <>
         <label className="sb-f sb-f-name">
           <span>Name <kbd>F3</kbd></span>
-          <select ref={customerRef} value={customerId} aria-label="Party"
-            onChange={(e) => { setCustomerId(e.target.value); setPlace(null); setBilling(null); setShipTo('same') }}>
-            <option value="">Select party…</option>
-            {(customers.data ?? []).map((c) => <option key={c.customer_id} value={c.customer_id}>{partyLabel(c)}</option>)}
-          </select>
+          <button type="button" ref={customerRef} className="sb-party" aria-label="Party" onClick={() => setPickerOpen(true)}
+            style={{ textAlign: 'left', width: '100%', font: 'inherit', background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }}>
+            {walkinMode ? (walkin ? `Walk-in · ${walkin.name}${walkin.mobile ? ` · ${walkin.mobile}` : ''}` : 'Walk-in Customer')
+            : customer ? partyLabel(customer) : <span className="muted-sm">Select party…</span>}
+          </button>
         </label>
+        {pickerOpen && <PartyPicker customers={customers.data ?? []} onClose={() => setPickerOpen(false)} onPick={(p) => {
+          setPickerOpen(false); setPlace(null); setBilling(null); setShipTo('same')
+          if (p.kind === 'walkin') { setCustomerId(''); setWalkinMode(true); setAskWalkin(true) }
+          else if (p.kind === 'customer') { setWalkinMode(false); setWalkin(null); setCustomerId(p.customer.customer_id) }
+        }} />}
+        {askWalkin && <WalkinDetails current={walkin} onClose={() => { setAskWalkin(false); if (!walkin) setWalkinMode(false) }}
+          onDone={(w) => { setWalkin(w); setAskWalkin(false) }} />}
+      </>
     ),
     invoice_date: fm('invoice_date') !== 'hide' && (
         <label className="sb-f sb-f-date">
@@ -1512,6 +1539,16 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
       {/* Preview is the print layout itself — what the customer will get —
           marked DRAFT until the bill is saved. */}
       {previewing && <InvoicePrint inv={draft} onClose={() => setPreviewing(false)} />}
+      {confirming && (
+        <AskBox title="Save the Bill?" busy={busy} error={error} yes="Yes, Save" onYes={doSave} onNo={() => setConfirming(false)}>
+          <div className="sb-ask-row"><span>Net Amount</span><b>{rupees(net)}</b></div>
+          <div className="sb-ask-row"><span>Profit</span><b>{rupees(profit)}</b></div>
+        </AskBox>
+      )}
+      {savedBill && !printing && (
+        <AskBox title={`Bill ${savedBill.number ?? ''} saved`} sub={`${rupees(savedBill.grand_total)} · Print it now?`} yes="Yes" onYes={() => setPrinting(true)} onNo={() => onSaved(savedBill)} />
+      )}
+      {savedBill && printing && <InvoicePrint inv={savedBill} onClose={() => onSaved(savedBill)} />}
     </div>
   )
 

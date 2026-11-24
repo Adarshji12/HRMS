@@ -462,3 +462,13 @@
   .sb-f.sb-f-name { grid-column: 1 / -1 !important; }
   .sb-foot { grid-template-columns: 1fr 1fr !important; }
 }
+
+/* Save-the-bill and print-it-now boxes */
+.sb-ask-back { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
+.sb-ask { width: min(440px, 92vw); background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,.3); overflow: hidden; }
+.sb-ask-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 18px; background: var(--brand, #1d4ed8); color: #fff; }
+.sb-ask-head small { flex-basis: 100%; opacity: .9; }
+.sb-ask-body { display: grid; gap: 10px; padding: 16px 18px 6px; }
+.sb-ask-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 10px; background: var(--brand-soft, #eff6ff); color: var(--brand, #1d4ed8); font-size: 15px; }
+.sb-ask-row b { font-size: 20px; }
+.sb-ask-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; }

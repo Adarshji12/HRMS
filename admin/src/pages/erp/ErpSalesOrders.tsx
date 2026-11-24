@@ -17,6 +17,8 @@ import {
 import { crm, todayISO } from '../crm/api'
 import { CrmPage, OwnerSelect } from '../crm/parts'
 import { DATE_RANGES, rangeDates, type DateRange } from './ErpBilling'
+import { PartyPicker } from './ErpSaleBill'
+import AskBox from './AskBox'
 import { blankPoLine, PO_UNITS, PoSummary, priceLine, type PoLine } from './ErpPurchaseOrders'
 import DispatchChallan from './DispatchChallan'
 import SalesOrderPrint, { DELIVERY_MODES, downloadSalesOrderPdf, FREIGHT_TERMS, salesOrderPdfBase64 } from './SalesOrderPrint'
@@ -104,33 +106,33 @@ const SO_SECTIONS: FieldSection[] = [
 // customer is the one thing the server insists on.
 const SO_FIELDS: FieldDef[] = [
   { key: 'customer', label: 'Customer', section: 'head', fixed: true },
-  { key: 'site_id', label: 'Site', section: 'head' },
+  { key: 'site_id', label: 'Site', section: 'head', initial: 'hide' },
   { key: 'so_number', label: 'SO no. (assigned automatically)', section: 'head', optionalOnly: true },
   { key: 'order_date', label: 'Date', section: 'head', initial: 'mandatory' },
-  { key: 'order_type', label: 'Type', section: 'head' },
-  { key: 'salesperson_id', label: 'Salesperson', section: 'head' },
-  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head', initial: 'mandatory' },
-  { key: 'payment', label: 'Payment terms', section: 'head', initial: 'mandatory' },
+  { key: 'order_type', label: 'Type', section: 'head', initial: 'hide' },
+  { key: 'salesperson_id', label: 'Salesperson', section: 'head', initial: 'hide' },
+  { key: 'place_of_supply', label: 'Supply (place of supply)', section: 'head', initial: 'hide' },
+  { key: 'payment', label: 'Payment terms', section: 'head', initial: 'hide' },
   { key: 'required_by', label: 'Delivery date', section: 'head' },
   { key: 'customer_po_number', label: 'Customer PO', section: 'head' },
-  { key: 'customer_po_date', label: 'PO date', section: 'head' },
-  { key: 'customer_po_value', label: 'PO value', section: 'head' },
-  { key: 'reference', label: 'Reference', section: 'head' },
-  { key: 'status', label: 'Status (shown only)', section: 'head', optionalOnly: true },
-  { key: 'delivery_mode', label: 'Delivery mode', section: 'dispatch' },
-  { key: 'transporter_name', label: 'Transporter', section: 'dispatch' },
-  { key: 'delivery_terms', label: 'Delivery terms', section: 'dispatch' },
-  { key: 'freight_terms', label: 'Freight terms', section: 'dispatch' },
-  { key: 'freight', label: 'Freight charges', section: 'dispatch' },
-  { key: 'other_charges', label: 'Other charges', section: 'dispatch' },
-  { key: 'charges_gst', label: 'GST on charges', section: 'dispatch', optionalOnly: true },
-  { key: 'billing_address', label: 'Billing address', section: 'address' },
-  { key: 'ship_to', label: 'Ship to', section: 'address', optionalOnly: true },
-  { key: 'delivery_instructions', label: 'Delivery instructions', section: 'address' },
+  { key: 'customer_po_date', label: 'PO date', section: 'head', initial: 'hide' },
+  { key: 'customer_po_value', label: 'PO value', section: 'head', initial: 'hide' },
+  { key: 'reference', label: 'Reference', section: 'head', initial: 'hide' },
+  { key: 'status', label: 'Status (shown only)', section: 'head', initial: 'hide', optionalOnly: true },
+  { key: 'delivery_mode', label: 'Delivery mode', section: 'dispatch', initial: 'hide' },
+  { key: 'transporter_name', label: 'Transporter', section: 'dispatch', initial: 'hide' },
+  { key: 'delivery_terms', label: 'Delivery terms', section: 'dispatch', initial: 'hide' },
+  { key: 'freight_terms', label: 'Freight terms', section: 'dispatch', initial: 'hide' },
+  { key: 'freight', label: 'Freight charges', section: 'dispatch', initial: 'hide' },
+  { key: 'other_charges', label: 'Other charges', section: 'dispatch', initial: 'hide' },
+  { key: 'charges_gst', label: 'GST on charges', section: 'dispatch', initial: 'hide', optionalOnly: true },
+  { key: 'billing_address', label: 'Billing address', section: 'address', initial: 'hide' },
+  { key: 'ship_to', label: 'Ship to', section: 'address', initial: 'hide', optionalOnly: true },
+  { key: 'delivery_instructions', label: 'Delivery instructions', section: 'address', initial: 'hide' },
   { key: 'notes', label: 'Notes to customer', section: 'notes' },
-  { key: 'terms', label: 'Terms & conditions', section: 'notes' },
-  { key: 'internal_notes', label: 'Internal notes', section: 'notes' },
-  { key: 'deviation_note', label: 'Deviation note (when it differs from the quotation / PO)', section: 'notes' },
+  { key: 'terms', label: 'Terms & conditions', section: 'notes', initial: 'hide' },
+  { key: 'internal_notes', label: 'Internal notes', section: 'notes', initial: 'hide' },
+  { key: 'deviation_note', label: 'Deviation note (when it differs from the quotation / PO)', section: 'notes', initial: 'hide' },
 ]
 
 /** Page numbers around the current one, with the ends always reachable. */
@@ -760,6 +762,10 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
   /* Set once the server has the order. A later step failing (an attachment, the
      submit) must not make the next click create a second order. */
   const [stored, setStored] = useState<SalesOrder | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [confirming, setConfirming] = useState<null | 'draft' | 'submit'>(null)
+  const [askNext, setAskNext] = useState<{ order: SalesOrder; submitted: boolean } | null>(null)
   const next = useQuery(`erp-so-next-${head.order_date}`, () => erp.nextSoNumber(head.order_date || todayISO()))
   const { busy, error, run } = useRun()
   const set = (k: keyof typeof head, v: string) => setHead((h) => ({ ...h, [k]: v }))
@@ -787,12 +793,6 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     setShipSite('')
     if (!so) setPay(acc && acc.credit_days > 0 ? { ...parsePay(''), kind: `net${acc.credit_days}` in NET_DAYS ? `net${acc.credit_days}` : 'custom', custom: `Net ${acc.credit_days} days` } : parsePay(''))
   }
-  const customerOptions: PickOption[] = all.map((c) => ({
-    value: c.customer_id, label: c.customer_name,
-    hint: [c.customer_code, c.contact_name, c.mobile, c.account?.gstin ?? c.crm_gstin, c.account?.billing_state && titleCase(c.account.billing_state)]
-      .filter(Boolean).join(' · '),
-    tag: c.account?.credit_hold ? 'Credit hold' : undefined,
-  }))
   const filled = lines.filter((l) => l.item_id || l.description.trim())
   const linesBad = filled.some((l) => !(Number(l.quantity) > 0) || Number(l.rate) < 0 || !(Number(l.discount_percent || 0) <= 100))
   const datesBad = fm('required_by') !== 'hide' && Boolean(head.required_by && head.order_date && head.required_by < head.order_date)
@@ -928,7 +928,8 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
           throw new Error(`${draft.number} is saved as a draft but was not submitted: ${erpError(err, 'the submit failed')}`)
         }
       }
-      onSaved(saved, submit)
+      if (so) onSaved(saved, submit)
+      else setAskNext({ order: saved, submitted: submit })
     }, submit ? 'The order could not be submitted' : 'The order could not be saved')
   }
 
@@ -936,8 +937,16 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     customer: (
         <div className={`sb-f ${sites.length > 0 && fm('site_id') !== 'hide' ? 'c4' : 'c6'} sof-cust`}>
           <span>Customer <b className="pof-req">*</b></span>
-          <SearchSelect label="Customer" value={head.customer_id} onChange={pickCustomer} options={customerOptions}
-            placeholder="Search customer by name, code or GSTIN" empty="No customer matches — add one in CRM › My customers" />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+            <button type="button" onClick={() => setPickerOpen(true)}
+              style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 0, background: 'transparent', boxShadow: 'none', padding: 0, height: 'auto', font: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {customer ? customer.customer_name : <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Select party… (F3)</span>}
+            </button>
+            <button type="button" disabled={!customer} onClick={() => setDetailsOpen(true)}
+              style={{ border: 0, borderLeft: '1px solid var(--border)', background: 'transparent', boxShadow: 'none', padding: '0 0 0 10px', height: 'auto', font: 'inherit', fontSize: 12.5, fontWeight: 600, color: customer ? 'var(--brand)' : 'var(--text-muted)', cursor: customer ? 'pointer' : 'default' }}>
+              Bill details
+            </button>
+          </div>
         </div>
     ),
     site_id: fm('site_id') !== 'hide' && sites.length > 0 && (
@@ -1145,7 +1154,7 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
     fields.orderOf(section).map((key) => <Fragment key={key}>{panelNodes[key]}</Fragment>)
 
   return (
-    <div className="sb sb-page sof">
+    <div className="sb sb-page sof" onKeyDown={(e) => { if (e.key === 'F3') { e.preventDefault(); setPickerOpen(true) } }}>
       <div className="sb-bar">
         <span className="sb-bar-icon" aria-hidden><IconSheet size={17} /></span>
         <div className="sb-bar-text">
@@ -1316,9 +1325,30 @@ function SalesOrderPage({ so, onClose, onSaved, onShowAll }: {
         {problem ? <span className="sof-hint">{problem}</span> : <span className="sof-ok">Ready to save</span>}
         <span className="crm-push" />
         <button className="btn" disabled={busy} onClick={onClose}>{so ? 'Cancel' : 'Clear'}</button>
-        <button className="btn" disabled={!ready} onClick={() => save()}>{busy ? 'Saving…' : 'Save as draft'}</button>
-        <button className="btn btn-primary" disabled={!ready} onClick={() => save(true)}><IconCheck size={14} /> Submit for approval</button>
+        <button className="btn" disabled={!ready} onClick={() => setConfirming('draft')}>{busy ? 'Saving…' : 'Save as draft'}</button>
+        <button className="btn btn-primary" disabled={!ready} onClick={() => setConfirming('submit')}><IconCheck size={14} /> Submit for approval</button>
       </footer>
+      {pickerOpen && <PartyPicker noWalkin customers={all} onClose={() => setPickerOpen(false)}
+        onPick={(p) => { setPickerOpen(false); if (p.kind === 'customer') pickCustomer(p.customer.customer_id) }} />}
+      {detailsOpen && (
+        <Dialog title="Bill Details" subtitle={customer?.customer_name} onClose={() => setDetailsOpen(false)}
+                footer={<button className="btn btn-primary" onClick={() => setDetailsOpen(false)}>Done</button>}>
+          <div style={{ display: 'grid', gap: 10, padding: '4px 2px' }}>
+            <Field label="Party order no."><input value={head.customer_po_number} placeholder="The customer's order number" onChange={(e) => set('customer_po_number', e.target.value)} /></Field>
+            <Field label="Order date"><input type="date" value={head.customer_po_date} onChange={(e) => set('customer_po_date', e.target.value)} /></Field>
+            <Field label="Delivery date"><input type="date" value={head.required_by} min={head.order_date} onChange={(e) => set('required_by', e.target.value)} /></Field>
+            <Field label="Bill remark"><input value={head.notes} placeholder="Optional" onChange={(e) => set('notes', e.target.value)} /></Field>
+          </div>
+        </Dialog>
+      )}
+      {confirming && (
+        <AskBox title="Save this sale order?" sub={`Total ${rupees(Math.round(total * 100) / 100)}`} yes="Yes" busy={busy} error={error}
+          onYes={() => { const submit = confirming === 'submit'; setConfirming(null); save(submit) }} onNo={() => setConfirming(null)} />
+      )}
+      {askNext && (
+        <AskBox title={`Sale Order ${askNext.order.number} saved`} sub={`${rupees(askNext.order.grand_total)} · Enter the next one? (N opens this one)`} yes="Yes"
+          onYes={onClose} onNo={() => onSaved(askNext.order, askNext.submitted)} />
+      )}
     </div>
   )
 }

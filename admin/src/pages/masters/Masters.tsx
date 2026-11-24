@@ -24,6 +24,8 @@ import {
   IconBuilding, IconChevronRight, IconFolder, IconGlobe, IconLifebuoy, IconSearch, IconUsers,
 } from '../../components/Icons'
 import { crm } from '../crm/api'
+import { api } from '../../lib/api'
+import { erp } from '../erp/api'
 import { LISTS, MASTER_GROUPS, shortLabel, type MasterGroup } from './masterKit'
 import MasterHub from './MasterHub'
 
@@ -37,6 +39,7 @@ const GROUP_ICON: Record<string, ReactNode> = {
   erp: <IconFolder size={18} />,
   ledger: <IconUsers size={18} />,
   inventory: <IconFolder size={18} />,
+  update: <IconFolder size={18} />,
 }
 
 /* A row is either a CRM master list (opened here) or a link to a screen that
@@ -115,6 +118,7 @@ export default function Masters() {
                       <span className="mst-row-dot" aria-hidden />
                       <span className="mh-row-label">{row.label}</span>
                       {row.kind && <MasterCount kind={row.kind} />}
+                      {!row.kind && LINK_COUNTS[row.to] && <LinkCount to={row.to} />}
                       <IconChevronRight size={15} />
                     </Link>
                   </li>
@@ -134,6 +138,37 @@ function MasterCount({ kind }: { kind: string }) {
   if (!rows.data) return <span className="mh-row-count" />
   const n = rows.data.length
   return <span className={`mh-row-count${n === 0 ? ' is-empty' : ''}`}>{n === 0 ? 'Empty' : n}</span>
+}
+
+/** How to count the entries behind a linked screen; screens that act rather than list have no count. */
+const lookup = (kind: string) => () => erp.lookups(kind).then((r) => r.length)
+const LINK_COUNTS: Record<string, () => Promise<number>> = {
+  '/masters/erp/stations': () => erp.stations().then((r) => r.length),
+  '/masters/erp/vendors': () => erp.vendors().then((r) => r.length),
+  '/masters/erp/customers': () => erp.customers().then((r) => r.length),
+  '/masters/erp/items': () => erp.items().then((r) => r.length),
+  '/masters/erp/companies': () => crm.masters('item-companies').then((r) => r.length),
+  '/masters/erp/subcategories': lookup('subcategory'),
+  '/masters/erp/units': lookup('unit'),
+  '/masters/erp/hsn': lookup('hsn'),
+  '/masters/erp/racks': lookup('rack'),
+  '/masters/erp/warehouses': () => erp.warehouses().then((r) => r.length),
+  '/masters/erp/billseries': () => erp.billSeries().then((r) => r.series.length),
+  '/masters/erp/ledgers': () => erp.ledgers().then((r) => r.length),
+  '/masters/erp/accounts': () => erp.accountTree().then((r) => r.ledgers.length),
+  '/masters/erp/salesmen': () => erp.salesmen().then((r) => r.length),
+  '/masters/erp/walkins': () => erp.walkins().then((r) => r.length),
+  '/departments': () => api.get<unknown[]>('/org/departments').then((r) => r.length),
+  '/designations': () => api.get<unknown[]>('/org/designations').then((r) => r.length),
+  '/branches': () => api.get<unknown[]>('/org/branches').then((r) => r.length),
+  '/locations': () => api.get<unknown[]>('/attendance/locations').then((r) => r.length),
+  '/holidays': () => api.get<unknown[]>('/leave/holidays?include_inactive=true').then((r) => r.length),
+}
+
+function LinkCount({ to }: { to: string }) {
+  const rows = useQuery(`master-link-count-${to}`, LINK_COUNTS[to])
+  if (rows.data === undefined) return <span className="mh-row-count" />
+  return <span className={`mh-row-count${rows.data === 0 ? ' is-empty' : ''}`}>{rows.data === 0 ? 'Empty' : rows.data}</span>
 }
 
 /** One master list, with its card's other lists as tiles above it. */

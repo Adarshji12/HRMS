@@ -30,6 +30,7 @@ import Lookups from './ErpLookups'
 import Companies from './ErpCompanies'
 import BillSeriesPage from './ErpBillSeries'
 import Stations from './ErpStations'
+import { LedgerOpenings, PrintBarcode, RackUpdate, StockOpenings } from './ErpUpdateMaster'
 
 /** A state picked from the State Master. Stored by name, as the vendor record keeps it;
  *  a name typed earlier that is not in the master stays selectable so nothing is lost. */
@@ -47,7 +48,7 @@ function StateSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies' | 'stations'
+type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies' | 'stations' | 'ledger-openings' | 'stock-openings' | 'rack-update' | 'print-barcode'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'items', label: 'Items' }, { key: 'warehouses', label: 'Warehouses' },
@@ -57,6 +58,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'subcategories', label: 'Sub categories' }, { key: 'units', label: 'Units' }, { key: 'hsn', label: 'HSN / SAC' },
   { key: 'racks', label: 'Racks' }, { key: 'billseries', label: 'Bill series' },
   { key: 'companies', label: 'Companies' }, { key: 'stations', label: 'Stations' },
+  { key: 'ledger-openings', label: 'Ledger openings' }, { key: 'stock-openings', label: 'Stock openings' }, { key: 'rack-update', label: 'Rack update' }, { key: 'print-barcode', label: 'Print barcode' },
 ]
 
 /* Opened from the ERP rail (/erp/masters): all four lists as tabs. Opened from
@@ -82,6 +84,7 @@ export default function ErpMasters() {
           { label: 'Master', to: '/masters' },
           { label: ['ledgers', 'accounts', 'salesmen', 'walkins'].includes(only.key) ? 'Ledger Master'
               : only.key === 'stations' ? 'Geography'
+              : ['ledger-openings', 'stock-openings', 'rack-update', 'print-barcode'].includes(only.key) ? 'Update Master'
               : ['items', 'warehouses', 'subcategories', 'units', 'hsn', 'racks', 'billseries', 'companies'].includes(only.key) ? 'Inventory Masters' : 'ERP Master', to: '/masters' },
           { label: only.label },
         ]} />
@@ -105,6 +108,10 @@ export default function ErpMasters() {
           {tab === 'billseries' && <BillSeriesPage />}
           {tab === 'companies' && <Companies />}
           {tab === 'stations' && <Stations />}
+          {tab === 'ledger-openings' && <LedgerOpenings />}
+          {tab === 'rack-update' && <RackUpdate />}
+          {tab === 'print-barcode' && <PrintBarcode />}
+          {tab === 'stock-openings' && <StockOpenings />}
         </div>
       ) : (
         <ErpPage
@@ -127,6 +134,10 @@ export default function ErpMasters() {
           {tab === 'billseries' && <BillSeriesPage />}
           {tab === 'companies' && <Companies />}
           {tab === 'stations' && <Stations />}
+          {tab === 'ledger-openings' && <LedgerOpenings />}
+          {tab === 'rack-update' && <RackUpdate />}
+          {tab === 'print-barcode' && <PrintBarcode />}
+          {tab === 'stock-openings' && <StockOpenings />}
         </ErpPage>
       )}
     </>

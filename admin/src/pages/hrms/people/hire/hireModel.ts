@@ -203,8 +203,8 @@ export function draftFromEmployee(user: User, profile: EmployeeProfile | null, s
     ...splitName(user.full_name),
     email: user.email,
     phone: v(user.phone),
-    employee_code: v(user.employee_code),
-    joined_on: v(user.joined_on),
+    employee_code: v(user.employee_code) || v(pr?.employee_code),
+    joined_on: v(user.joined_on) || v(pr?.joined_on),
     status,
     is_active: user.is_active,
     timezone: v(user.timezone),
@@ -300,7 +300,20 @@ export const STEPS: StepDef[] = [
 export type Errors = Partial<Record<string, string>>
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PHONE = /^\+?[0-9\s-]{7,16}$/
+/** A mobile number: ten digits starting 6–9 (with or without +91), or an international +number. */
+function phoneOk(raw: string): boolean {
+  const s = raw.replace(/[\s-]/g, '')
+  if (!/^\+?\d+$/.test(s)) return false
+  if (s.startsWith('+91')) return /^[6-9]\d{9}$/.test(s.slice(3))
+  if (s.startsWith('+')) return /^\+\d{8,15}$/.test(s)
+  if (s.length === 12 && s.startsWith('91')) return /^[6-9]\d{9}$/.test(s.slice(2))
+  return /^[6-9]\d{9}$/.test(s)
+}
+const PHONE_MSG = 'Enter a valid 10-digit mobile number.'
+/** India's PIN is six digits and never starts with 0; other countries keep the loose rule. */
+const pinOk = (pin: string, country: string) =>
+  !country || country.toUpperCase() === 'IN' ? /^[1-9][0-9]{5}$/.test(pin.trim()) : PIN.test(pin.trim())
+const PIN_MSG = 'Enter a valid 6-digit PIN code.'
 const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/
 const AADHAAR = /^[0-9]{12}$/
@@ -317,7 +330,7 @@ export function validate(d: HireDraft): Record<StepId, Errors> {
   if (!d.first_name.trim()) e.basic.first_name = 'First name is required.'
   if (!d.email.trim()) e.basic.email = 'Work email is required.'
   else if (!EMAIL.test(d.email.trim())) e.basic.email = 'That is not a valid email address.'
-  if (d.phone && !PHONE.test(d.phone.trim())) e.basic.phone = 'Use digits, spaces or dashes — 7 to 16.'
+  if (d.phone && !phoneOk(d.phone.trim())) e.basic.phone = PHONE_MSG
   if (!d.joined_on) e.basic.joined_on = 'Joining date is required.'
 
   if (d.date_of_birth) {
@@ -330,17 +343,17 @@ export function validate(d: HireDraft): Record<StepId, Errors> {
     e.personal.personal_email = 'That is not a valid email address.'
   if (d.personal_email && d.personal_email.trim().toLowerCase() === d.email.trim().toLowerCase())
     e.personal.personal_email = 'Use a personal address — the work one stops working when they leave.'
-  if (d.alternate_phone && !PHONE.test(d.alternate_phone.trim()))
-    e.personal.alternate_phone = 'Use digits, spaces or dashes — 7 to 16.'
-  if (d.emergency_phone && !PHONE.test(d.emergency_phone.trim()))
-    e.personal.emergency_phone = 'Use digits, spaces or dashes — 7 to 16.'
+  if (d.alternate_phone && !phoneOk(d.alternate_phone.trim()))
+    e.personal.alternate_phone = PHONE_MSG
+  if (d.emergency_phone && !phoneOk(d.emergency_phone.trim()))
+    e.personal.emergency_phone = PHONE_MSG
   if (d.emergency_phone && !d.emergency_name.trim())
     e.personal.emergency_name = 'Whose number is it?'
 
-  if (d.current_postal_code && !PIN.test(d.current_postal_code.trim()))
-    e.address.current_postal_code = 'Not a postal code.'
-  if (!d.permanent_same && d.permanent_postal_code && !PIN.test(d.permanent_postal_code.trim()))
-    e.address.permanent_postal_code = 'Not a postal code.'
+  if (d.current_postal_code && !pinOk(d.current_postal_code, d.current_country))
+    e.address.current_postal_code = PIN_MSG
+  if (!d.permanent_same && d.permanent_postal_code && !pinOk(d.permanent_postal_code, d.permanent_country))
+    e.address.permanent_postal_code = PIN_MSG
   for (const key of ['current_country', 'permanent_country'] as const) {
     if (d[key] && !/^[A-Za-z]{2}$/.test(d[key])) e.address[key] = 'Two-letter country code, e.g. IN.'
   }

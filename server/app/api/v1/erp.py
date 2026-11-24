@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas import erp as S
-from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stations, stock, walkins
+from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stations, sale_bills, stock, stock_openings, walkins
 from app.services.erp.common import capabilities, get_settings, record_audit, require, row_dict
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -207,6 +207,37 @@ def delete_lookup(kind: str, row_id: uuid.UUID, viewer: CurrentUser, db: DbSessi
     lookups.delete_lookup(db, viewer, kind, row_id, request=request)
 
 
+@router.get("/stock-openings")
+def list_stock_openings(viewer: CurrentUser, db: DbSession, warehouse_id: uuid.UUID, q: str | None = None,
+                        company: str | None = None, category: str | None = None, with_stock: bool = False) -> list[dict]:
+    return stock_openings.list_openings(db, viewer, warehouse_id, q=q, company=company, category=category, with_stock=with_stock)
+
+
+@router.get("/stock-openings/{item_id}")
+def get_stock_opening_lots(item_id: uuid.UUID, warehouse_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> list[dict]:
+    return stock_openings.get_lots(db, viewer, item_id, warehouse_id)
+
+
+@router.put("/stock-openings/{item_id}")
+def save_stock_opening_lots(item_id: uuid.UUID, payload: S.OpeningStockIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return stock_openings.save_lots(db, viewer, item_id, payload, request=request)
+
+
+@router.get("/sale-bills")
+def list_sale_bills(viewer: CurrentUser, db: DbSession, q: str | None = None, date_from: date | None = None, date_to: date | None = None, doc_type: str = "bill") -> list[dict]:
+    return sale_bills.list_bills(db, viewer, q=q, date_from=date_from, date_to=date_to, doc_type=doc_type)
+
+
+@router.post("/sale-bills", status_code=status.HTTP_201_CREATED)
+def create_sale_bill(payload: S.SaleBillIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return sale_bills.create_bill(db, viewer, payload, request=request)
+
+
+@router.get("/sale-bills/{bill_id}")
+def get_sale_bill(bill_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
+    return sale_bills.get_bill(db, viewer, bill_id)
+
+
 @router.get("/walkin-customers")
 def list_walkins(viewer: CurrentUser, db: DbSession, q: str | None = None, active: bool | None = None) -> list[dict]:
     return walkins.list_walkins(db, viewer, q=q, active=active)
@@ -245,6 +276,16 @@ def update_salesman(salesman_id: uuid.UUID, payload: S.SalesmanIn, viewer: Curre
 @router.delete("/salesmen/{salesman_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_salesman(salesman_id: uuid.UUID, viewer: CurrentUser, db: DbSession, request: Request) -> None:
     salesmen.delete_salesman(db, viewer, salesman_id, request=request)
+
+
+@router.put("/ledger-openings")
+def set_ledger_openings(payload: S.OpeningsIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return ledgers.save_openings(db, viewer, payload, request=request)
+
+
+@router.post("/items/rack")
+def assign_item_rack(payload: S.RackAssignIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return masters.assign_rack(db, viewer, payload, request=request)
 
 
 @router.get("/accounts")

@@ -38,6 +38,7 @@ import ErpRequisitions from './pages/erp/ErpRequisitions'
 import ErpRfqs from './pages/erp/ErpRfqs'
 import ErpPurchaseOrders from './pages/erp/ErpPurchaseOrders'
 import ErpInventory from './pages/erp/ErpInventory'
+import { ErpQuotation } from './pages/erp/ErpSaleBill'
 import ErpSalesOrders from './pages/erp/ErpSalesOrders'
 import ErpBilling from './pages/erp/ErpBilling'
 import ErpSale from './pages/erp/ErpSale'
@@ -706,6 +707,7 @@ function Shell() {
           <Route path="/erp/rfqs" element={<ErpRfqs />} />
           <Route path="/erp/purchase-orders" element={<ErpPurchaseOrders />} />
           <Route path="/erp/inventory" element={<ErpInventory key={location.search} />} />
+          <Route path="/erp/quotation" element={<ErpQuotation />} />
           <Route path="/erp/sales-orders" element={<ErpSalesOrders />} />
           <Route path="/erp/invoices" element={<ErpSale />} />
           <Route path="/erp/billing" element={<ErpBilling key={location.search} />} />

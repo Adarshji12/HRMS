@@ -12,7 +12,8 @@ import { money, toPaise } from '../../../../lib/format'
 import { useQuery } from '../../../../lib/useQuery'
 import { crm, type CityRow, type Country, type StateRow } from '../../../crm/api'
 import type { FieldMode } from '../../../../components/ViewSettings'
-import type { Department, Designation, PayComponent, Team, User, WorkSchedule } from '../../../../lib/types'
+import { download } from '../../../../lib/api'
+import type { Department, Designation, EmployeeDocument, PayComponent, SalaryStructure, Team, User, WorkSchedule } from '../../../../lib/types'
 import type { OrgRole } from '../../roles/Roles'
 import type { Asset } from '../../assets/assetLib'
 import {
@@ -69,6 +70,13 @@ export interface StepProps {
   editing?: boolean
   /** Masked statutory values already held, when editing. */
   onFile?: OnFile
+  /** What the edit started from (editing only). */
+  original?: HireDraft | null
+  /** Documents already on the employee's record (editing only). */
+  savedDocs?: EmployeeDocument[]
+  removeSavedDoc?: (id: string) => Promise<void>
+  /** The salary structure in force now (editing only). */
+  currentSalary?: SalaryStructure | null
   /** How this person has set each field: shown, mandatory or hidden (Settings). */
   fm: (key: string) => FieldMode
   /** The fields of one part of a step, in the order they were arranged. */
@@ -134,10 +142,12 @@ function Text({
   inputMode?: 'numeric' | 'decimal' | 'email' | 'tel'
   disabled?: boolean
 }) {
+  const [left, setLeft] = useState(false)
   const mode = p.fm(k as string)
   if (mode === 'hide') return null
+  const err = p.touched || left ? p.errors[k as string] : undefined
   return (
-    <Field label={label} required={required || mode === 'mandatory'} hint={hint} error={shown(p, k)} wide={wide}>
+    <Field label={label} required={required || mode === 'mandatory'} hint={hint} error={err} wide={wide}>
       <input
         type={type}
         data-spin={type === 'number' ? '' : undefined}
@@ -146,7 +156,8 @@ function Text({
         placeholder={placeholder}
         maxLength={maxLength}
         inputMode={inputMode}
-        aria-invalid={!!shown(p, k)}
+        aria-invalid={!!err}
+        onBlur={() => setLeft(true)}
         onChange={(e) => p.set({ [k]: upper ? e.target.value.toUpperCase() : e.target.value } as Partial<HireDraft>)}
       />
     </Field>
@@ -237,12 +248,12 @@ export function BasicStep(p: StepProps) {
                 placeholder="name@company.com" disabled={p.editing}
                 hint={p.editing ? 'Their sign-in — it cannot be changed here.' : 'Their sign-in, and where notifications go.'} />
         ),
-        phone: <Text p={p} k="phone" label="Mobile number" inputMode="tel" placeholder="+91 98765 43210" />,
+        phone: <Text p={p} k="phone" label="Mobile number" inputMode="tel" maxLength={16} placeholder="+91 98765 43210" />,
       }} />
       <Part p={p} id="basic-joining" title="Joining" nodes={{
         employee_code: (
-          <Text p={p} k="employee_code" label="Employee ID"
-                hint={p.editing ? undefined : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
+          <Text p={p} k="employee_code" label="Employee ID" disabled={p.editing && Boolean(p.original?.employee_code)}
+                hint={p.editing ? (p.original?.employee_code ? 'Issued when they were added — it cannot be changed.' : 'No ID was issued yet — you can set one now. Once saved it cannot be changed.') : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
         ),
         joined_on: <Text p={p} k="joined_on" label="Date of joining" type="date" />,
         status: (
@@ -574,6 +585,11 @@ export function PayStep(p: StepProps) {
               ? 'Leave blank to keep the current structure. A figure here adds a salary revision.'
               : 'The joining salary structure. Leave blank to set it later in Payroll → Employee Salaries.'}</p>
           </header>
+          {p.editing && p.currentSalary && (
+            <p className="hire-hint" style={{ margin: '0 0 8px' }}>
+              In force now: <b>{money(p.currentSalary.gross_monthly)}</b> a month, since {p.currentSalary.effective_from}. Change the figure to add a revision.
+            </p>
+          )}
           <div className="hire-grid">
             {p.orderOf('pay-salary').map((key) => <Fragment key={key}>{salaryNodes[key]}</Fragment>)}
           </div>
@@ -747,9 +763,28 @@ export function DocumentsStep(p: StepProps) {
           </button>
         ))}
       </div>
+      {p.editing && (
+        <div className="hire-docs" style={{ marginBottom: 12 }}>
+          <h4 style={{ margin: '4px 0 6px', fontSize: 13 }}>On record ({(p.savedDocs ?? []).length})</h4>
+          {(p.savedDocs ?? []).length === 0 && <p className="hire-hint">Nothing uploaded yet.</p>}
+          {(p.savedDocs ?? []).map((doc) => (
+            <div className="hire-doc" key={doc.id}>
+              <span><b>{DOC_TYPES.find((x) => x.value === doc.doc_type)?.label ?? doc.doc_type}</b>{doc.title ? ` — ${doc.title}` : ''}</span>
+              <span className="hire-hint">{doc.file_name ?? ''}{doc.file_size ? ` · ${Math.max(1, Math.round(doc.file_size / 1024))} KB` : ''}</span>
+              <span className="hire-hint">{doc.expires_on ? `Expires ${doc.expires_on}` : doc.issued_on ? `Issued ${doc.issued_on}` : ''}</span>
+              <span className="hire-hint">{doc.is_verified ? 'Verified' : 'Unverified'}</span>
+              <button type="button" className="btn btn-sm" onClick={() => void download(`/people/documents/${doc.id}/file`, doc.file_name || doc.doc_type)}>View</button>
+              {p.removeSavedDoc && (
+                <button type="button" className="btn btn-sm btn-ghost"
+                        onClick={() => { if (window.confirm('Delete this document from the employee’s record?')) void p.removeSavedDoc!(doc.id) }}>Delete</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {docs.length === 0 ? (
         <div className="hire-dropzone">
-          <p>No documents added. Use a shortcut above, or</p>
+          <p>{p.editing ? 'No new document to upload. Use a shortcut above, or' : 'No documents added. Use a shortcut above, or'}</p>
           <button type="button" className="btn" onClick={() => add('other')}>Add a document</button>
         </div>
       ) : (

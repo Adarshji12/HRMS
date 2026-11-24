@@ -20,7 +20,7 @@ import { api } from '../../../../lib/api'
 import { useAuth, isOwner } from '../../../../lib/auth'
 import { toPaise } from '../../../../lib/format'
 import { useQuery } from '../../../../lib/useQuery'
-import type { Department, Designation, EmployeeProfile, PayComponent, Team, User, WorkSchedule } from '../../../../lib/types'
+import type { Department, Designation, EmployeeDocument, EmployeeProfile, PayComponent, SalaryStructure, Team, User, WorkSchedule } from '../../../../lib/types'
 import type { OrgRole } from '../../roles/Roles'
 import type { Asset } from '../../assets/assetLib'
 import type { HrSettings } from '../../HRMSSettings'
@@ -58,6 +58,8 @@ interface Task {
 interface EditSource {
   profile: EmployeeProfile | null
   shiftId: string
+  docs: EmployeeDocument[]
+  structure: SalaryStructure | null
 }
 
 /**
@@ -120,17 +122,26 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
 
   const source = useQuery<EditSource | null>(`hire-edit-${editId ?? ''}`, async () => {
     if (!editId) return null
-    const [profile, shifts] = await Promise.all([
+    const [profile, shifts, docs, structures] = await Promise.all([
       can.people ? api.get<EmployeeProfile>(`/people/${editId}`).catch(() => null) : Promise.resolve(null),
       soft(api.get<Array<{ shift_id: string }>>(`/attendance/shift-assignments?user_id=${editId}&current_only=true`)),
+      can.people ? soft(api.get<EmployeeDocument[]>(`/people/${editId}/documents`)) : Promise.resolve([] as EmployeeDocument[]),
+      can.payroll ? soft(api.get<SalaryStructure[]>(`/payroll/${editId}`)) : Promise.resolve([] as SalaryStructure[]),
     ])
-    return { profile, shiftId: shifts[0]?.shift_id ?? '' }
+    const structure = (structures as SalaryStructure[]).find((s) => s.is_current || s.effective_to === null) ?? null
+    return { profile, shiftId: shifts[0]?.shift_id ?? '', docs: docs as EmployeeDocument[], structure }
   })
 
   const [d, setD] = useState<HireDraft>(emptyDraft)
   // What the edit started from, to send only what changed.
   const [original, setOriginal] = useState<HireDraft | null>(null)
   const employee = editing ? lookups.data?.people.find((p) => p.id === editId) : undefined
+  const [removedDocs, setRemovedDocs] = useState<Set<string>>(() => new Set())
+  const savedDocs = (source.data?.docs ?? []).filter((x) => !removedDocs.has(x.id))
+  const removeSavedDoc = async (id: string) => {
+    await api.del(`/people/documents/${id}`)
+    setRemovedDocs((s) => new Set(s).add(id))
+  }
   const onFile: OnFile | undefined = source.data?.profile ? {
     pan: source.data.profile.has_pan ? source.data.profile.pan_masked : null,
     aadhaar: source.data.profile.has_aadhaar ? source.data.profile.aadhaar_masked : null,
@@ -153,12 +164,24 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
   // built-in Employee role — the right answer for most hires.
   const seeded = useRef(false)
   useEffect(() => {
-    if (!editing || seeded.current || !employee || source.data === undefined) return
+    if (!editing || seeded.current || !employee || source.data === undefined || hrSettings.loading) return
     seeded.current = true
     const draft = draftFromEmployee(employee, source.data?.profile ?? null, source.data?.shiftId ?? '')
-    setD(draft)
+    const cur = source.data?.structure
+    if (cur) {
+      // Show what is in force. Saving without touching it adds no revision.
+      draft.gross_monthly = String(cur.gross_monthly / 100)
+      draft.salary_components = cur.components.map((c) => c.component_id)
+      draft.fixed_amounts = Object.fromEntries(cur.components.filter((c) => c.calculation === 'fixed').map((c) => [c.component_id, String(c.amount / 100)]))
+    }
     setOriginal(draft)
-  }, [editing, employee, source.data])
+    // An employee added before IDs were issued gets the next one offered, so the box is never empty.
+    // Only the form carries it: the saved record still has none, so Save writes it.
+    const offered = draft.employee_code
+      || hrSettings.data?.next_code
+      || suggestCode((lookups.data?.people ?? []).map((x) => x.employee_code))
+    setD(offered === draft.employee_code ? draft : { ...draft, employee_code: offered })
+  }, [editing, employee, source.data, hrSettings.loading])
   useEffect(() => {
     if (editing || seeded.current || !lookups.data || hrSettings.loading) return
     seeded.current = true
@@ -248,7 +271,10 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
   /** Salary, assets and documents: added the same way on a hire and an edit. */
   function extras(add: Add, salaryFrom: string, reason: string) {
     const gross = toPaise(d.gross_monthly)
-    if (can.payroll && gross && d.salary_components.length) {
+    const salaryTouched = !editing || !original || d.gross_monthly !== original.gross_monthly
+      || JSON.stringify([...d.salary_components].sort()) !== JSON.stringify([...original.salary_components].sort())
+      || JSON.stringify(d.fixed_amounts) !== JSON.stringify(original.fixed_amounts)
+    if (can.payroll && gross && d.salary_components.length && salaryTouched) {
       add('salary', reason === 'Joining salary' ? 'Joining salary structure' : 'Salary revision', (id) => api.post(`/payroll/${id}`, {
         effective_from: salaryFrom,
         gross_monthly: gross,
@@ -563,6 +589,7 @@ export function HireForm({ editId, dialog }: { editId?: string; dialog?: HireDia
   const props: StepProps = {
     d, set, errors: errors[step], lk: lookups.data, can, touched: visited.has(step), goTo,
     editing, onFile, fm: fieldMode, orderOf: fields.orderOf,
+    original, savedDocs, removeSavedDoc, currentSalary: source.data?.structure ?? null,
   }
   const current = STEPS[index]
   const stepLabel = (s: (typeof STEPS)[number]) => (editing && s.id === 'review' ? 'Review & save' : s.label)
