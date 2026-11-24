@@ -8,7 +8,7 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
-import FilterPopup, { FilterField } from '../../components/FilterPopup'
+import { IconSliders } from '../../components/Icons'
 import { crm } from '../crm/api'
 import TreeSelect from '../../components/TreeSelect'
 import { Dialog, Field, useAccess, useRun } from './parts'
@@ -179,15 +179,11 @@ export default function Ledgers() {
   const [picked, setPicked] = useState<string | null>(null)
   const list = useQuery(`erp-ledgers-${q}`, () => erp.ledgers({ q: q.trim() || undefined }))
   const removing = useRun(() => list.reload())
-  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
-  const [groupF, setGroupF] = useState('')
-  const [typeF, setTypeF] = useState('')
-  const [stateF, setStateF] = useState('')
+  const [filters, setFilters] = useState<LedgerFilters>(NO_FILTERS)
+  const [filtering, setFiltering] = useState(false)
   const all = list.data ?? []
-  const extra = (status !== 'all' ? 1 : 0) + (groupF ? 1 : 0) + (typeF ? 1 : 0) + (stateF ? 1 : 0)
-  const rows = all.filter((l) =>
-    (status === 'all' || (status === 'active') === l.is_active) && (!groupF || l.account_group === groupF)
-    && (!typeF || l.ledger_type === typeF) && (!stateF || l.state === stateF))
+  const extra = Object.entries(filters).filter(([k, v]) => v !== NO_FILTERS[k as keyof LedgerFilters]).length
+  const rows = all.filter((l) => matches(l, filters))
   const current = rows.find((l) => l.id === picked) ?? rows[0]
 
   function remove(l: Ledger) {
@@ -202,31 +198,10 @@ export default function Ledgers() {
           <IconSearch size={15} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, code, station, mobile, GSTIN" aria-label="Search ledgers" />
         </div>
-        <FilterPopup count={extra} onReset={() => { setStatus('all'); setGroupF(''); setTypeF(''); setStateF('') }}>
-          <FilterField label="Status">
-            <select value={status} onChange={(e) => setStatus(e.target.value as 'all' | 'active' | 'inactive')}>
-              <option value="all">All</option><option value="active">Active</option><option value="inactive">Inactive</option>
-            </select>
-          </FilterField>
-          <FilterField label="Account group">
-            <select value={groupF} onChange={(e) => setGroupF(e.target.value)}>
-              <option value="">Any</option>
-              {[...new Set(all.map((l) => l.account_group))].sort().map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </FilterField>
-          <FilterField label="Ledger type">
-            <select value={typeF} onChange={(e) => setTypeF(e.target.value)}>
-              <option value="">Any</option>
-              {LEDGER_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
-          </FilterField>
-          <FilterField label="State">
-            <select value={stateF} onChange={(e) => setStateF(e.target.value)}>
-              <option value="">Any</option>
-              {[...new Set(all.map((l) => l.state).filter((x): x is string => !!x))].sort().map((st) => <option key={st} value={st}>{st}</option>)}
-            </select>
-          </FilterField>
-        </FilterPopup>
+        <button type="button" className={`btn${extra > 0 ? ' is-on' : ''}`} onClick={() => setFiltering(true)} aria-haspopup="dialog">
+          <IconSliders size={15} /> Filter
+          {extra > 0 && <span className="ml-filter-count">{extra}</span>}
+        </button>
         {list.data && <span className="itl-count">Total no. of ledgers: {rows.length}</span>}
         <div className="crm-push" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ImportExport name="ledgers" columns={IO} rows={rows} canImport={manage} build={buildFromRow}
@@ -303,6 +278,10 @@ export default function Ledgers() {
         </div>
       )}
 
+      {filtering && (
+        <LedgerFilterDialog ledgers={all} value={filters} onClose={() => setFiltering(false)}
+                            onApply={(f) => { setFilters(f); setFiltering(false) }} />
+      )}
       {editing && (
         <LedgerForm ledger={editing === 'new' ? null : editing} known={rows.map((l) => l.account_group)} onClose={() => setEditing(null)}
                     onSaved={(l) => { setEditing(null); setPicked(l.id); list.reload() }} />
@@ -310,6 +289,108 @@ export default function Ledgers() {
     </>
   )
 }
+
+/* ---------------------------------------------------------------------------- filter */
+
+export interface LedgerFilters {
+  status: 'all' | 'active' | 'inactive'; group: string; category: string; station: string; state: string; mail_to: string; address: string; pincode: string
+  balancing: string; bill_at: string; salesman: string; area: string; days_from: string; days_to: string
+  ledger_type: string; gstin: string; pan: string
+  phone: string; email: string; contact: string; bank: string; notes: string
+}
+const NO_FILTERS: LedgerFilters = {
+  status: 'all', group: '', category: '', station: '', state: '', mail_to: '', address: '', pincode: '', balancing: '', bill_at: '', salesman: '', area: '',
+  days_from: '', days_to: '', ledger_type: '', gstin: '', pan: '', phone: '', email: '', contact: '', bank: '', notes: '',
+}
+const has = (hay: Array<string | null | undefined>, needle: string) => !needle.trim() || hay.some((x) => (x ?? '').toLowerCase().includes(needle.trim().toLowerCase()))
+
+/** Every filled field must match; an empty one is ignored. */
+function matches(l: Ledger, f: LedgerFilters): boolean {
+  return (f.status === 'all' || (f.status === 'active') === l.is_active)
+    && (!f.group || l.account_group === f.group) && (!f.category || l.category === f.category) && (!f.station || l.station === f.station)
+    && (!f.state || l.state === f.state) && has([l.mail_to], f.mail_to) && has([l.address1, l.address2, l.address3, l.city], f.address) && has([l.pincode], f.pincode)
+    && (!f.balancing || l.balancing_method === f.balancing) && (!f.bill_at || l.bill_at === f.bill_at) && (!f.salesman || l.salesman === f.salesman)
+    && (!f.area || l.area_route === f.area) && (!f.days_from || l.credit_days >= Number(f.days_from)) && (!f.days_to || l.credit_days <= Number(f.days_to))
+    && (!f.ledger_type || l.ledger_type === f.ledger_type) && has([l.gstin], f.gstin) && has([l.pan], f.pan)
+    && has([l.mobile, l.whatsapp, l.mobile1], f.phone) && has([l.email], f.email) && has([l.contact_person], f.contact)
+    && has([l.bank_holder, l.bank_name, l.bank_account, l.ifsc, l.bank_branch], f.bank) && has([l.notes], f.notes)
+}
+
+/** The Filter ledgers dialog: four groups of fields; Apply Filter keeps what is filled in. */
+function LedgerFilterDialog({ ledgers, value, onClose, onApply }: { ledgers: Ledger[]; value: LedgerFilters; onClose: () => void; onApply: (f: LedgerFilters) => void }) {
+  const [d, setD] = useState<LedgerFilters>(value)
+  const set = <K extends keyof LedgerFilters>(k: K, v: LedgerFilters[K]) => setD((c) => ({ ...c, [k]: v }))
+  const distinct = (pick: (l: Ledger) => string | null | undefined) => [...new Set(ledgers.map(pick).filter((x): x is string => !!x))].sort()
+  const count = Object.entries(d).filter(([k, v]) => v !== NO_FILTERS[k as keyof LedgerFilters]).length
+
+  const pickRow = (label: string, key: keyof LedgerFilters, options: Array<[string, string]>) => (
+    <label key={key} style={rowStyle}>
+      <span>{label}</span>
+      <select value={d[key]} onChange={(e) => set(key, e.target.value as never)}>
+        <option value="">Any</option>
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  )
+  const textRow = (label: string, key: keyof LedgerFilters, placeholder = 'Contains…', inputMode?: 'numeric') => (
+    <label key={key} style={rowStyle}>
+      <span>{label}</span>
+      <input value={d[key]} placeholder={placeholder} inputMode={inputMode}
+             onChange={(e) => set(key, (inputMode === 'numeric' ? e.target.value.replace(/\D/g, '') : e.target.value) as never)} />
+    </label>
+  )
+  const same = (xs: string[]): Array<[string, string]> => xs.map((x) => [x, x])
+
+  return (
+    <Dialog wide title="Filter ledgers" subtitle="Every field filled in must match. Leave a field empty to ignore it." onClose={onClose}
+            footer={<>
+              <span className="muted-sm">{count ? `${count} filter${count === 1 ? '' : 's'}` : 'No filter'}</span>
+              <button type="button" className="vw-link" onClick={() => setD(NO_FILTERS)}>Clear all</button>
+              <button className="btn crm-push" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => onApply(d)}>Apply Filter</button>
+            </>}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, padding: '8px 24px 20px', overflowY: 'auto', minHeight: 0, flex: 1, alignContent: 'start' }}>
+        <fieldset style={boxStyle}>
+          <legend style={legendStyle}>General</legend>
+          {pickRow('Status', 'status', [['active', 'Active'], ['inactive', 'Inactive']])}
+          {pickRow('Account group', 'group', same(distinct((l) => l.account_group)))}
+          {pickRow('Ledger category', 'category', same(distinct((l) => l.category)))}
+          {pickRow('Station', 'station', same(distinct((l) => l.station)))}
+          {pickRow('State', 'state', same(distinct((l) => l.state)))}
+          {textRow('Mail to', 'mail_to')}
+          {textRow('Address', 'address', 'Street, area or city')}
+          {textRow('PIN code', 'pincode')}
+        </fieldset>
+        <fieldset style={boxStyle}>
+          <legend style={legendStyle}>Billing</legend>
+          {pickRow('Balancing method', 'balancing', [['bill_by_bill', 'Bill by bill'], ['on_account', 'On account']])}
+          {pickRow('Bill at (rate)', 'bill_at', BILL_AT.map(([k, l]) => [k, l]))}
+          {pickRow('Salesman', 'salesman', same(distinct((l) => l.salesman)))}
+          {pickRow('Area / route', 'area', same(distinct((l) => l.area_route)))}
+          {textRow('Credit days from', 'days_from', '0', 'numeric')}
+          {textRow('Credit days to', 'days_to', '0', 'numeric')}
+        </fieldset>
+        <fieldset style={boxStyle}>
+          <legend style={legendStyle}>GST and licence</legend>
+          {pickRow('Ledger type', 'ledger_type', LEDGER_TYPES.map(([k, l]) => [k, l]))}
+          {textRow('GSTIN', 'gstin')}
+          {textRow('PAN', 'pan')}
+        </fieldset>
+        <fieldset style={boxStyle}>
+          <legend style={legendStyle}>Contact and bank</legend>
+          {textRow('Mobile / WhatsApp no.', 'phone')}
+          {textRow('Email', 'email')}
+          {textRow('Contact person', 'contact')}
+          {textRow('Bank, account no. or IFSC', 'bank')}
+          {textRow('Notes', 'notes')}
+        </fieldset>
+      </div>
+    </Dialog>
+  )
+}
+const rowStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: '170px 1fr', alignItems: 'center', gap: 10, fontSize: 13 }
+const boxStyle: React.CSSProperties = { display: 'grid', gap: 10, alignContent: 'start', margin: 0, padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 12, minWidth: 0 }
+const legendStyle: React.CSSProperties = { padding: '0 8px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
