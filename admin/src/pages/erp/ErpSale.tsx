@@ -241,7 +241,7 @@ export default function ErpSale() {
                 <button type="button" className={`sl-btn${filtersOpen ? ' is-on' : ''}`} aria-pressed={filtersOpen} onClick={() => setFiltersOpen((o) => !o)}>
                   <IconFilter size={14} /> Filters{(activeFilters > 0 || from !== firstOfMonth() || to !== todayISO()) && <span className="sl-count">{activeFilters + (from !== firstOfMonth() || to !== todayISO() ? 1 : 0)}</span>}
                 </button>
-                <button type="button" className="sl-btn" onClick={exportRows} disabled={rows.length === 0}><IconDownload size={14} /> Export</button>
+                <button aria-label="Export" title="Export" type="button" className="sl-btn" onClick={exportRows} disabled={rows.length === 0}><IconDownload size={14} /></button>
                 <ColumnSettings defs={SALE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
                 {biller && (
                   <button type="button" className="sl-btn sl-btn-primary" onClick={() => setBillOpen(true)}>

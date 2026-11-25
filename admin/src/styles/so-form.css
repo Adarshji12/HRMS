@@ -163,3 +163,10 @@
 /* Purchase order sheet: the sales order grid, plus a delivery date per line. */
 .pos-items .pos-c-date { width: 128px; }
 .pos-items .sb-grid td.pos-c-date input { font-size: 12px; padding: 0 4px 0 6px !important; }
+
+/* Sale return / quotation grids share the order form's ruled look */
+.sof-items .sb-grid tbody tr td { background: var(--surface-1, #fff); }
+.sof-items .sb-grid tbody tr:hover td { background: color-mix(in srgb, var(--brand-soft) 45%, #fff); }
+.sof-items .sb-grid td.sb-c-sr { text-align: center; color: var(--text-muted); font-size: 12px; }
+.sof-items .sb-grid thead th { text-align: left; }
+.sof-items .sb-grid thead th[style*="right"] { text-align: right; }

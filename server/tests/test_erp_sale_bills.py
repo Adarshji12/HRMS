@@ -54,8 +54,19 @@ def test_quotation_has_its_own_series_and_list(client, acme):
     led = _ledger(client, acme)
     line = {"description": "Chips", "quantity": "2", "rate": "6"}
     q = ok(client.post(f"{API}/sale-bills", json={"doc_type": "quotation", "valid_till": "2026-12-09", "ledger_id": led["id"], "lines": [line]}, headers=acme.headers()), 201)
-    assert q["number"].startswith("QT/") and q["doc_type"] == "quotation" and q["status"] == "open" and q["valid_till"] == "2026-12-09"
+    assert q["number"].startswith("QT-") and q["doc_type"] == "quotation" and q["status"] == "open" and q["valid_till"] == "2026-12-09"
     bill = ok(client.post(f"{API}/sale-bills", json={"ledger_id": led["id"], "lines": [line]}, headers=acme.headers()), 201)
     assert bill["number"].startswith("SB/")
     assert [r["id"] for r in ok(client.get(f"{API}/sale-bills", headers=acme.headers()))] == [bill["id"]]
     assert [r["id"] for r in ok(client.get(f"{API}/sale-bills?doc_type=quotation", headers=acme.headers()))] == [q["id"]]
+
+
+def test_return_and_stock_issue_take_their_numbers_from_the_bill_series(client, acme):
+    led = _ledger(client, acme)
+    line = {"description": "Chips", "quantity": "2", "rate": "6"}
+    ret = ok(client.post(f"{API}/sale-bills", json={"doc_type": "return", "ledger_id": led["id"], "against_number": "INV-2026-27-0001", "lines": [line]}, headers=acme.headers()), 201)
+    assert ret["number"].startswith("CN-") and ret["against_number"] == "INV-2026-27-0001"
+    issue = ok(client.post(f"{API}/sale-bills", json={"doc_type": "issue", "issued_to": "Main store", "lines": [line]}, headers=acme.headers()), 201)
+    assert issue["number"].startswith("SI-") and issue["party_name"] == "Main store"
+    again = ok(client.post(f"{API}/sale-bills", json={"doc_type": "issue", "issued_to": "Main store", "lines": [line]}, headers=acme.headers()), 201)
+    assert again["number"] != issue["number"]

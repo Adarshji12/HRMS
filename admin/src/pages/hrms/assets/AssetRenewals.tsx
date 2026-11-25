@@ -150,12 +150,12 @@ export default function AssetRenewals() {
             <ColumnSettings defs={RENEWAL_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                             onSave={columns.save} onReset={columns.reset} />
           )}
-          <button
+          <button aria-label="Export" title="Export"
             className="btn"
             onClick={tab === 'schedule' ? exportSchedule : exportHistory}
             disabled={tab === 'schedule' ? rows.length === 0 : (history.data ?? []).length === 0}
           >
-            <IconDownload size={14} /> Export
+            <IconDownload size={14} />
           </button>
         </div>
       </div>

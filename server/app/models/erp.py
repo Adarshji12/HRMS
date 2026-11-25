@@ -1841,6 +1841,7 @@ class ErpSaleBill(UUIDMixin, TimestampMixin, Base):
     #: bill | quotation. A quotation is an estimate: nothing moves from it.
     doc_type: Mapped[str] = mapped_column(String(12), default="bill", nullable=False, index=True)
     valid_till: Mapped[date | None] = mapped_column(Date, nullable=True)
+    against_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(12), default="open", nullable=False)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
     sub_total: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)

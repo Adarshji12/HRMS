@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.models.erp import ErpItem, ErpLedger, ErpSaleBill, ErpSaleBillLine, ErpWalkinCustomer, ErpWarehouse
 from app.schemas import erp as S
+from app.services.erp import bill_series
 from app.services.erp.common import ZERO, ErpError, get_owned, money, next_number, price_line, qty, record_audit, require
 
 WALKIN_NAME = "Walk-in Customer"
@@ -46,7 +47,7 @@ def _out(db: Session, bill: ErpSaleBill, *, lines: bool) -> dict:
     out = {
         "id": str(bill.id), "number": bill.number, "bill_date": bill.bill_date.isoformat(), "bill_type": bill.bill_type,
         "ledger_id": str(bill.ledger_id) if bill.ledger_id else None, "walkin_id": str(bill.walkin_id) if bill.walkin_id else None,
-        "party_name": bill.party_name, "doc_type": bill.doc_type, "valid_till": bill.valid_till.isoformat() if bill.valid_till else None,
+        "party_name": bill.party_name, "doc_type": bill.doc_type, "valid_till": bill.valid_till.isoformat() if bill.valid_till else None, "against_number": bill.against_number,
         "status": bill.status, "station": party[0], "mobile": party[1], "warehouse_id": str(bill.warehouse_id) if bill.warehouse_id else None,
         "warehouse_name": wh.name if wh else None, "sub_total": str(bill.sub_total), "discount_total": str(bill.discount_total),
         "tax_total": str(bill.tax_total), "grand_total": str(bill.grand_total), "notes": bill.notes,
@@ -80,16 +81,22 @@ def create_bill(db: Session, viewer: User, payload: S.SaleBillIn, request: Reque
     require(viewer, "can_manage_billing")
     ledger = get_owned(db, ErpLedger, viewer.org_id, payload.ledger_id, "ledger") if payload.ledger_id else None
     walkin = get_owned(db, ErpWalkinCustomer, viewer.org_id, payload.walkin_id, "walk-in customer") if payload.walkin_id else None
-    if ledger is None and walkin is None and not payload.walkin_bill:
+    issue = payload.doc_type == "issue"
+    if issue:
+        if not (payload.issued_to or "").strip():
+            raise ErpError("issued_to_required", "Say who the stock is issued to.", 422)
+    elif ledger is None and walkin is None and not payload.walkin_bill:
         raise ErpError("party_required", "Choose the party.", 422)
     if payload.warehouse_id:
         get_owned(db, ErpWarehouse, viewer.org_id, payload.warehouse_id, "store")
     on = payload.bill_date or date.today()
-    number = next_number(db, viewer.org_id, "QT" if payload.doc_type == "quotation" else "SB", on)
+    series_key = {"quotation": "quotation", "return": "credit_note", "issue": "stock_issue"}.get(payload.doc_type)
+    number = bill_series.issue_number(db, viewer.org_id, series_key, on) if series_key else next_number(db, viewer.org_id, "SB", on)
     bill = ErpSaleBill(
         org_id=viewer.org_id, number=number, bill_date=on, bill_type=payload.bill_type, doc_type=payload.doc_type, valid_till=payload.valid_till,
+        against_number=(payload.against_number or "").strip() or None,
         ledger_id=ledger.id if ledger else None, walkin_id=walkin.id if walkin else None,
-        party_name=ledger.name if ledger else (walkin.name if walkin else WALKIN_NAME),
+        party_name=(payload.issued_to or "").strip() if issue else ledger.name if ledger else (walkin.name if walkin else WALKIN_NAME),
         warehouse_id=payload.warehouse_id, notes=(payload.notes or "").strip() or None, created_by=viewer.id,
     )
     db.add(bill)

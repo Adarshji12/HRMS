@@ -496,9 +496,9 @@ function InvoiceList({ kind, onOpen, onNew }: {
           )}
         </div>
         <div className="ivl-export">
-          <button type="button" className="btn" disabled={!rows.length} aria-haspopup="menu" aria-expanded={exporting}
+          <button aria-label="Export" type="button" className="btn" disabled={!rows.length} aria-haspopup="menu" aria-expanded={exporting}
             title={rows.length ? `Export the ${rows.length} shown` : 'Nothing to export'} onClick={() => setExporting((v) => !v)}>
-            <IconDownload size={15} /> Export
+            <IconDownload size={15} />
           </button>
           {exporting && (
             <div className="ivl-export-menu" role="menu" onMouseLeave={() => setExporting(false)}>

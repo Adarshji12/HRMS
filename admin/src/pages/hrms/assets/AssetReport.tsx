@@ -148,8 +148,8 @@ export default function AssetReport() {
           <button className="btn" onClick={() => window.print()}>
             Print
           </button>
-          <button className="btn btn-primary" onClick={exportCsv}>
-            <IconDownload size={14} /> Export CSV
+          <button aria-label="Export" title="Export" className="btn btn-primary" onClick={exportCsv}>
+            <IconDownload size={14} />
           </button>
         </div>
       </div>

@@ -34,7 +34,7 @@ function years(on = new Date()) {
   return { fy: `${y}-${String((y + 1) % 100).padStart(2, '0')}`, cy: String(on.getFullYear()) }
 }
 /** What the next bill on a series would be called. */
-function preview(s: Pick<BillSeries, 'prefix' | 'suffix' | 'digits' | 'restart' | 'next_number'>): string {
+export function preview(s: Pick<BillSeries, 'prefix' | 'suffix' | 'digits' | 'restart' | 'next_number'>): string {
   const { fy, cy } = years()
   const mid = s.restart === 'april' ? `${fy}/` : s.restart === 'january' ? `${cy}/` : ''
   return `${s.prefix}${mid}${String(s.next_number).padStart(s.digits, '0')}${s.suffix}`

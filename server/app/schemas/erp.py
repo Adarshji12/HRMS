@@ -1002,8 +1002,12 @@ class SaleBillLineIn(_In):
 
 class SaleBillIn(_In):
     bill_date: date | None = None
-    doc_type: Literal["bill", "quotation"] = "bill"
+    doc_type: Literal["bill", "quotation", "return", "issue"] = "bill"
+    #: A stock issue goes to a name, department or place rather than a ledger.
+    issued_to: str | None = Field(default=None, max_length=160)
     valid_till: date | None = None
+    #: A sale return: the number of the bill the goods came back against.
+    against_number: str | None = Field(default=None, max_length=40)
     bill_type: Literal["credit", "cash"] = "credit"
     ledger_id: uuid.UUID | None = None
     walkin_id: uuid.UUID | None = None

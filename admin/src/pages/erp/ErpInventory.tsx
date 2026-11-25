@@ -98,9 +98,9 @@ function ExportMenu({ name, sheet, header, rows, money }: { name: string; sheet:
   const file = `${name}-${todayISO()}`
   return (
     <div className="ivl-export">
-      <button type="button" className="btn" disabled={!rows.length} aria-haspopup="menu" aria-expanded={open}
+      <button aria-label="Export" type="button" className="btn" disabled={!rows.length} aria-haspopup="menu" aria-expanded={open}
         title={rows.length ? `Export the ${rows.length} shown` : 'Nothing to export'} onClick={() => setOpen((v) => !v)}>
-        <IconDownload size={15} /> Export
+        <IconDownload size={15} />
       </button>
       {open && (
         <div className="ivl-export-menu" role="menu" onMouseLeave={() => setOpen(false)}>

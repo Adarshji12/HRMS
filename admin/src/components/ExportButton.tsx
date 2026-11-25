@@ -21,7 +21,7 @@ export function ExportButton({
   label = 'Export CSV',
   disabled,
   title,
-  iconOnly,
+  iconOnly = true,
   className,
 }: {
   href: string

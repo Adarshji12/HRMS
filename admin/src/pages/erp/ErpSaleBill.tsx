@@ -10,10 +10,13 @@ import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconSheet } from '../../components/Icons'
 import { daysFromTodayISO, todayISO } from '../crm/api'
 import AskBox from './AskBox'
+import ErpDocList from './ErpDocList'
+import { preview } from './ErpBillSeries'
+import '../../styles/so-form.css'
 import { Dialog as CrmDialog } from '../crm/parts'
 import { CrmPage } from '../crm/parts'
 import { ErpPage, Field, DateText, useAccess, useRun } from './parts'
-import { erp, rupees, type CustomerAccount, type Item, type Ledger, type OpeningLot, type SaleBill, type Walkin, type Warehouse } from './api'
+import { erp, rupees, type BillSeriesData, type CustomerAccount, type Item, type Ledger, type OpeningLot, type SaleBill, type Walkin, type Warehouse } from './api'
 
 const num = (s: string) => Number(s || 0)
 
@@ -23,9 +26,20 @@ export function ErpQuotation() {
   return <ErpSaleBill kind="quotation" />
 }
 
-export default function ErpSaleBill({ kind = 'bill' }: { kind?: 'bill' | 'quotation' }) {
+export function ErpStockIssue() {
+  return <ErpSaleBill kind="issue" />
+}
+
+export function ErpSaleReturn() {
+  return <ErpSaleBill kind="return" />
+}
+
+export default function ErpSaleBill({ kind = 'bill' }: { kind?: 'bill' | 'quotation' | 'return' | 'issue' }) {
   const quote = kind === 'quotation'
-  const word = quote ? 'Quotation' : 'Sale Bill'
+  const ret = kind === 'return'
+  const issue = kind === 'issue'
+  const slim = quote || ret || issue
+  const word = quote ? 'Quotation' : ret ? 'Sale Return' : issue ? 'Stock Issue' : 'Sale Bill'
   const { can, loaded } = useAccess()
   const [entryKey, setEntryKey] = useState(0)
   const [view, setView] = useState<'new' | 'list' | null>(null)
@@ -33,7 +47,7 @@ export default function ErpSaleBill({ kind = 'bill' }: { kind?: 'bill' | 'quotat
   const [shown, setShown] = useState<SaleBill | null>(null)
   const list = useQuery<SaleBill[]>(`erp-sale-bills-${kind}-${q}`, () => erp.saleBills({ q: q.trim() || undefined, doc_type: kind }))
   const rows = list.data ?? []
-  const shownView = view ?? (loaded && can('can_manage_billing') ? 'new' : 'list')
+  const shownView = view ?? (!slim && loaded && can('can_manage_billing') ? 'new' : 'list')
   if (!loaded) return <CrmPage><Loading /></CrmPage>
   if (shownView === 'new' && can('can_manage_billing')) {
     return (
@@ -43,28 +57,37 @@ export default function ErpSaleBill({ kind = 'bill' }: { kind?: 'bill' | 'quotat
       </CrmPage>
     )
   }
+  if (slim) {
+    return (
+      <CrmPage>
+        <ErpDocList kind={kind as 'quotation' | 'return' | 'issue'} word={word} rows={rows} loading={!list.data} error={list.error}
+          canNew={can('can_manage_billing')} onNew={() => setView('new')} onOpen={(b) => erp.saleBill(b.id).then(setShown)} />
+        {shown && <BillView bill={shown} word={word} onClose={() => setShown(null)} />}
+      </CrmPage>
+    )
+  }
   return (
-    <ErpPage title={word} subtitle={quote ? 'Estimates for a ledger or a walk-in customer. Nothing moves from a quotation.' : 'Bills raised against a ledger or a walk-in customer.'}
+    <ErpPage title={word} subtitle={ret ? 'Goods a customer sent back, against a bill or on their own.' : quote ? 'Estimates for a ledger or a walk-in customer. Nothing moves from a quotation.' : 'Bills raised against a ledger or a walk-in customer.'}
              actions={can('can_manage_billing') && <button className="btn btn-primary" onClick={() => setView('new')}>+ New</button>}>
       <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="crm-bar itl-bar">
           <div className="crm-search"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="No. or party" aria-label={`Search ${word}`} /></div>
-          <span className="itl-count crm-push">{quote ? 'Quotations' : 'Bills'}: <b>{rows.length}</b></span>
+          <span className="itl-count crm-push">{quote ? 'Quotations' : ret ? 'Returns' : 'Bills'}: <b>{rows.length}</b></span>
         </div>
         {list.error && <ErrorNote>{list.error}</ErrorNote>}
         {!list.data ? <Loading /> : rows.length === 0 ? (
-          <EmptyState icon={<IconSheet size={22} />} title={q ? 'Nothing matches' : quote ? 'No quotations yet' : 'No sale bills yet'} body={q ? 'Change the search.' : 'Add the first one with the Add button.'} />
+          <EmptyState icon={<IconSheet size={22} />} title={q ? 'Nothing matches' : quote ? 'No quotations yet' : ret ? 'No sale returns yet' : 'No sale bills yet'} body={q ? 'Change the search.' : 'Add the first one with the Add button.'} />
         ) : (
           <div className="table-wrap"><table className="itl">
-            <thead><tr><th>{quote ? 'No.' : 'Bill no.'}</th><th>Date</th><th>Party</th>{quote ? <><th>Station</th><th>Mobile</th><th>Valid till</th></> : <><th>Type</th><th>Store</th></>}<th style={{ textAlign: 'right' }}>Taxable</th><th style={{ textAlign: 'right' }}>GST</th><th style={{ textAlign: 'right' }}>Net amount</th>{quote && <th>Status</th>}</tr></thead>
+            <thead><tr><th>{slim ? 'No.' : 'Bill no.'}</th><th>Date</th><th>Party</th>{slim ? <><th>Station</th><th>Mobile</th><th>{ret ? 'Against bill' : 'Valid till'}</th></> : <><th>Type</th><th>Store</th></>}<th style={{ textAlign: 'right' }}>Taxable</th><th style={{ textAlign: 'right' }}>GST</th><th style={{ textAlign: 'right' }}>Net amount</th>{slim && <th>Status</th>}</tr></thead>
             <tbody>
               {rows.map((b) => (
                 <tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => erp.saleBill(b.id).then(setShown)}>
                   <td className="crm-code">{b.number}</td><td><DateText iso={b.bill_date} /></td><td><b>{b.party_name}</b></td>
-                  {quote ? <><td>{b.station ?? '—'}</td><td>{b.mobile ?? '—'}</td><td>{b.valid_till ? <DateText iso={b.valid_till} /> : '—'}</td></>
+                  {slim ? <><td>{b.station ?? '—'}</td><td>{b.mobile ?? '—'}</td><td>{ret ? (b.against_number ?? '—') : b.valid_till ? <DateText iso={b.valid_till} /> : '—'}</td></>
                     : <><td>{b.bill_type === 'cash' ? 'Cash' : 'Credit'}</td><td>{b.warehouse_name ?? '—'}</td></>}
                   <td style={{ textAlign: 'right' }}>{rupees(b.sub_total)}</td><td style={{ textAlign: 'right' }}>{rupees(b.tax_total)}</td><td style={{ textAlign: 'right' }}><b>{rupees(b.grand_total)}</b></td>
-                  {quote && <td><span className="mh-card-badge">{b.status === 'open' ? 'Open' : b.status}</span></td>}
+                  {slim && <td><span className="mh-card-badge">{b.status === 'open' ? 'Open' : b.status}</span></td>}
                 </tr>
               ))}
             </tbody>
@@ -110,9 +133,27 @@ function rowAmount(r: Row, mode: '%' | '₹') {
 const cell: React.CSSProperties = { border: 0, background: 'transparent', width: '100%', padding: '6px 8px', font: 'inherit', outline: 'none' }
 const right: React.CSSProperties = { ...cell, textAlign: 'right' }
 
-export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false }: { onClose: () => void; onSaved: (again: boolean) => void; kind?: 'bill' | 'quotation'; inline?: boolean }) {
+export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false }: { onClose: () => void; onSaved: (again: boolean) => void; kind?: 'bill' | 'quotation' | 'return' | 'issue'; inline?: boolean }) {
   const quote = kind === 'quotation'
-  const word = quote ? 'Quotation' : 'Sale Bill'
+  const ret = kind === 'return'
+  const issue = kind === 'issue'
+  const slim = quote || ret || issue
+  const word = quote ? 'Quotation' : ret ? 'Sale Return' : issue ? 'Stock Issue' : 'Sale Bill'
+  const [against, setAgainst] = useState('')
+  const [cur, setCur] = useState(0)
+  const seriesQ = useQuery<BillSeriesData>(`erp-bill-series-${kind}`, () => erp.billSeries(), { enabled: slim })
+  const seriesKey = quote ? 'quotation' : ret ? 'credit_note' : issue ? 'stock_issue' : ''
+  const mainSeries = (seriesQ.data?.series ?? []).filter((x) => x.transaction === seriesKey).sort((a, b) => Number(b.is_default) - Number(a.is_default))[0]
+  const nextNo = mainSeries ? preview(mainSeries) : null
+  const [billPick, setBillPick] = useState(false)
+  type PickBill = { id: string; number: string | null; customer_name: string; kind: string; invoice_date: string; grand_total: string; src: 'invoice' | 'bill' }
+  const billsList = useQuery<PickBill[]>('erp-return-bills', async () => {
+    const [inv, sb] = await Promise.all([erp.invoices({}), erp.saleBills({ doc_type: 'bill' })])
+    return [
+      ...inv.map((i) => ({ id: i.id, number: i.number, customer_name: i.customer_name, kind: i.kind, invoice_date: i.invoice_date, grand_total: i.grand_total, src: 'invoice' as const })),
+      ...sb.map((x) => ({ id: x.id, number: x.number, customer_name: x.party_name, kind: 'bill', invoice_date: x.bill_date, grand_total: x.grand_total, src: 'bill' as const })),
+    ].sort((p, q) => q.invoice_date.localeCompare(p.invoice_date))
+  }, { enabled: ret })
   const [validTill, setValidTill] = useState(() => daysFromTodayISO(15))
   const [confirming, setConfirming] = useState(false)
   const [askNext, setAskNext] = useState<SaleBill | null>(null)
@@ -125,7 +166,7 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
   const [type, setType] = useState<'credit' | 'cash'>('credit')
   const [store, setStore] = useState('')
   const [mode, setMode] = useState<'%' | '₹'>('%')
-  const [rows, setRows] = useState<Row[]>(() => Array.from({ length: MIN_ROWS }, blankRow))
+  const [rows, setRows] = useState<Row[]>(() => Array.from({ length: ret ? 5 : MIN_ROWS }, blankRow))
   const [focus, setFocus] = useState<number | null>(null)       // the row whose item box is open
   const [hot, setHot] = useState(0)
   const [lots, setLots] = useState<Record<string, OpeningLot[]>>({})
@@ -145,7 +186,7 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
     function key(e: KeyboardEvent) {
       if (pickerOpen || walkinOpen || confirming || askNext) return
       if (e.key === 'F3') { e.preventDefault(); setPickerOpen(true) }
-      else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask() }
+      else if ((e.key === 's' && (e.ctrlKey || e.metaKey)) || e.key === 'F10') { e.preventDefault(); ask() }
       else if (e.key === 'Escape' && focus === null) onClose()
     }
     window.addEventListener('keydown', key)
@@ -157,8 +198,39 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
     try { const l = await erp.openingLots(item.id, storeId); setLots((c) => ({ ...c, [item.id]: l.filter((x) => num(x.quantity) > 0) })) } catch { setLots((c) => ({ ...c, [item.id]: [] })) }
   }
 
+  const [note, setNote] = useState<string | null>(null)
+  useEffect(() => { if (!note) return; const id = setTimeout(() => setNote(null), 5000); return () => clearTimeout(id) }, [note])
+
+  /** Choosing a bill brings its items in, ready to change to what came back. */
+  async function bringIn(b: { id: string; number: string | null; customer_name: string; src: 'invoice' | 'bill' }) {
+    setAgainst(b.number ?? '')
+    try {
+      let got: Array<{ item_id: string | null; description: string; quantity: string; uom?: string | null; rate?: string; discount_percent?: string; gst_percent?: string }>
+      if (b.src === 'invoice') {
+        const inv = await erp.invoice(b.id)
+        got = (inv.lines ?? []).filter((l) => !(l as { is_charge?: boolean }).is_charge)
+      } else {
+        got = (await erp.saleBill(b.id)).lines ?? []
+      }
+      const made: Row[] = got.map((l) => {
+        const item = (itemsQ.data ?? []).find((x) => x.id === l.item_id) ?? null
+        return { item, text: l.description, lot: '', qty: String(num(l.quantity)), free: '', uom: l.uom ?? item?.uom ?? '', mrp: '', rate: String(num(l.rate ?? '0') || ''), dis: num(l.discount_percent ?? '0') ? String(num(l.discount_percent ?? '0')) : '', gst: String(num(l.gst_percent ?? '0')) }
+      })
+      if (made.length) {
+        setMode('%')
+        setRows([...made, ...Array.from({ length: Math.max(1, (ret ? 5 : MIN_ROWS) - made.length) }, blankRow)])
+        setNote(`${made.length} item${made.length === 1 ? '' : 's'} brought in from ${b.number ?? 'the bill'}`)
+      }
+      if (!party) {
+        const ls = await erp.ledgers()
+        const match = ls.find((l) => l.name === b.customer_name)
+        if (match) setParty({ kind: 'ledger', ledger: match })
+      }
+    } catch { setNote('The bill’s items could not be loaded') }
+  }
+
   function pickItem(i: number, item: Item) {
-    update(i, { item, text: item.name, uom: item.uom, rate: String(num(item.sale_price) || ''), mrp: '', gst: String(num(item.gst_percent)), qty: rows[i].qty || '1', lot: '' })
+    update(i, { item, text: item.name, uom: item.uom, rate: String((issue ? num(item.standard_cost) || num(item.sale_price) : num(item.sale_price)) || ''), mrp: '', gst: issue ? '0' : String(num(item.gst_percent)), qty: rows[i].qty || '1', lot: '' })
     setFocus(null)
     void loadLots(item)
   }
@@ -171,7 +243,7 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
   const used = rows.filter((r) => r.item || r.text.trim())
   const totals = used.reduce((t, r) => { const a = rowAmount(r, mode); return { gross: t.gross + a.gross, taxable: t.taxable + a.taxable, tax: t.tax + a.tax, amount: t.amount + a.amount, qty: t.qty + num(r.qty) } }, { gross: 0, taxable: 0, tax: 0, amount: 0, qty: 0 })
   const bad = used.some((r) => !(num(r.qty) > 0))
-  const blocked = !party ? 'Choose the party (F3)' : used.length === 0 ? 'Add at least one item' : bad ? 'Enter the quantity on every line' : null
+  const blocked = issue ? (!storeId ? 'Choose the store it is issued to' : null) ?? (used.length === 0 ? 'Add at least one item' : bad ? 'Enter the quantity on every line' : null) : !party ? 'Choose the party (F3)' : used.length === 0 ? 'Add at least one item' : bad ? 'Enter the quantity on every line' : null
 
   function ask() { if (!blocked) setConfirming(true) }
 
@@ -181,8 +253,9 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
     void run(async () => {
       const made = await erp.createSaleBill({
         doc_type: kind, valid_till: quote ? validTill || undefined : undefined,
-        bill_date: date, bill_type: type, warehouse_id: quote ? undefined : storeId || undefined, notes: notes || undefined,
-        ...(party!.kind === 'ledger' ? { ledger_id: party!.ledger.id } : party!.walkin ? { walkin_id: party!.walkin.id } : { walkin_bill: true }),
+        bill_date: date, bill_type: type, against_number: ret ? against || undefined : undefined,
+        warehouse_id: slim && !issue ? undefined : storeId || undefined, notes: notes || undefined,
+        ...(issue ? { issued_to: storeList.find((w) => w.id === storeId)?.name ?? '' } : party!.kind === 'ledger' ? { ledger_id: party!.ledger.id } : party!.walkin ? { walkin_id: party!.walkin.id } : { walkin_bill: true }),
         lines: used.map((r) => ({
           item_id: r.item?.id, description: r.item?.name ?? r.text.trim(), lot_no: r.lot || undefined, quantity: r.qty, free_qty: r.free || '0', uom: r.uom || undefined,
           mrp: r.mrp || '0', rate: r.rate || '0', gst_percent: r.gst || '0',
@@ -190,7 +263,7 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
         })),
       })
       setAskNext(made)
-    }, quote ? 'The quotation could not be saved' : 'The bill could not be saved')
+    }, quote ? 'The quotation could not be saved' : ret ? 'The sale return could not be saved' : 'The bill could not be saved')
   }
 
   return (
@@ -203,16 +276,35 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
           <span className="sb-bar-status"><i className="is-new" />New · not saved yet</span>
         </div>
         <span className="sb-bar-gap" />
-        <button type="button" className="btn btn-sm" onClick={onClose}>{inline ? `All ${quote ? 'quotations' : 'bills'}` : 'Close'} <kbd>Esc</kbd></button>
+        <button type="button" className="btn btn-sm" onClick={onClose}>{inline ? `All ${quote ? 'quotations' : ret ? 'returns' : 'bills'}` : 'Close'} <kbd>Esc</kbd></button>
       </div>
       <div className="sb-head">
+        {issue ? (
+          <label className="sb-f" style={{ gridColumn: 'span 6' }}><span>Issued to</span>
+            <select value={storeId} onChange={(e) => setStore(e.target.value)} aria-label="Issued to">{storeList.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
+        ) : (
         <label className="sb-f" style={{ gridColumn: 'span 6', cursor: 'pointer', background: party ? undefined : '#fff8dc' }} onClick={() => setPickerOpen(true)}>
           <span>Name <kbd>F3</kbd></span>
           <input readOnly value={partyName} placeholder="Select party…" style={{ cursor: 'pointer' }} onFocus={() => !party && setPickerOpen(true)} aria-label="Party" />
         </label>
-        <label className="sb-f" style={{ gridColumn: 'span 2', opacity: 0.85 }}><span>{quote ? 'No.' : 'Bill no.'}</span><input readOnly value="Auto" aria-label="Number" /></label>
+        )}
+        <label className="sb-f" style={{ gridColumn: 'span 2', opacity: 0.85 }}><span>{slim ? 'No.' : 'Bill no.'}</span><input readOnly value={nextNo ?? 'Auto'} title="Next number on the bill series" aria-label="Number" /></label>
         <label className="sb-f" style={{ gridColumn: 'span 2' }}><span>Date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" /></label>
-        {quote ? (
+        {issue ? (
+          <>
+            <label className="sb-f" style={{ gridColumn: 'span 6' }}><span>Narration</span><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" aria-label="Narration" /></label>
+            <label className="sb-f" style={{ gridColumn: 'span 4' }}><span>Value</span><input readOnly value={rupees(totals.amount)} style={{ textAlign: 'right' }} aria-label="Value" /></label>
+          </>
+        ) : ret ? (
+          <>
+            <label className="sb-f" style={{ gridColumn: 'span 5', cursor: 'pointer' }} onClick={() => setBillPick(true)}>
+              <span style={{ whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', marginRight: 14 }}>Against bill</span>
+              <input readOnly value={against} placeholder="Pick the bill" style={{ cursor: 'pointer' }} aria-label="Against bill"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setBillPick(true) } }} />
+              {against && <button type="button" className="crm-icon-btn" aria-label="Clear the bill" onClick={(e) => { e.stopPropagation(); setAgainst('') }}>×</button>}</label>
+            <label className="sb-f" style={{ gridColumn: 'span 5' }}><span>Narration</span><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" aria-label="Narration" /></label>
+          </>
+        ) : quote ? (
           <>
             <label className="sb-f" style={{ gridColumn: 'span 3' }}><span>Valid till</span><input type="date" value={validTill} min={date} onChange={(e) => setValidTill(e.target.value)} aria-label="Valid till" /></label>
             <label className="sb-f" style={{ gridColumn: 'span 7' }}><span>Narration</span><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" aria-label="Narration" /></label>
@@ -232,14 +324,15 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
           <button type="button" className="link-btn" onClick={() => setWalkinOpen(true)}>{party.walkin ? 'Change' : 'Add details'}</button>
         </div>
       )}
+      <section style={{ display: 'contents' }}>
       <div className="sb-grid" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <table style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}><tr>
-            <th style={{ width: 44 }}>Sr</th><th>Item name <kbd>F2</kbd></th>{!quote && <th style={{ width: 130 }}>S.Stock</th>}<th style={{ width: 80, textAlign: 'right' }}>Qty</th><th style={{ width: 70, textAlign: 'right' }}>Free</th>
-            <th style={{ width: 70 }}>Unit</th>{!quote && <th style={{ width: 90, textAlign: 'right' }}>M.R.P.</th>}<th style={{ width: 100, textAlign: 'right' }}>Rate</th>
-            <th style={{ width: 120 }}>Dis <span style={{ display: 'inline-flex', marginLeft: 4 }}>
-              {(['%', '₹'] as const).map((m) => <button key={m} type="button" className={`btn btn-sm${mode === m ? ' btn-primary' : ''}`} style={{ padding: '0 6px' }} onClick={() => setMode(m)}>{m}</button>)}</span></th>
-            <th style={{ width: 80, textAlign: 'right' }}>GST %</th><th style={{ width: 120, textAlign: 'right' }}>Amount</th>
+            <th className="sb-c-sr" style={{ width: 44 }}>Sr</th><th>Item name <kbd>F2</kbd></th>{ret && <th style={{ width: 100 }}>HSN/SAC</th>}{!slim && <th style={{ width: 130 }}>S.Stock</th>}<th style={{ width: 80, textAlign: 'right' }}>Qty</th>{!issue && <th style={{ width: 70, textAlign: 'right' }}>Free</th>}
+            <th style={{ width: 70 }}>Unit</th>{!slim && <th style={{ width: 90, textAlign: 'right' }}>M.R.P.</th>}<th style={{ width: 100, textAlign: 'right' }}>{issue ? 'Cost' : 'Rate'}</th>
+            {!issue && <th style={{ width: 120 }}>Dis
+              <span className="sb-mini-seg">{(['%', '₹'] as const).map((m) => <button key={m} type="button" className={mode === m ? 'is-on' : ''} onClick={() => setMode(m)}>{m}</button>)}</span></th>}
+            {!issue && <th style={{ width: 80, textAlign: 'right' }}>GST %</th>}<th style={{ width: 120, textAlign: 'right' }}>{issue ? 'Value' : 'Amount'}</th>
           </tr></thead>
           <tbody>
             {rows.map((r, i) => {
@@ -249,10 +342,10 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
               const hits = focus === i && !r.item ? goods.filter((g) => !needle || [g.code, g.name, g.barcode].some((x) => x && x.toLowerCase().includes(needle))).slice(0, 8) : []
               return (
                 <tr key={i}>
-                  <td className="muted-sm">{i + 1}</td>
+                  <td className="sb-c-sr">{i + 1}</td>
                   <td style={{ position: 'relative' }}>
                     <input value={r.text} style={cell} aria-label={`Item, line ${i + 1}`} placeholder={i === 0 ? 'Type the item name or code' : ''}
-                           onFocus={() => { setFocus(i); setHot(0) }} onBlur={() => setTimeout(() => setFocus((f) => (f === i ? null : f)), 150)}
+                           onFocus={() => { setFocus(i); setHot(0); setCur(i) }} onBlur={() => setTimeout(() => setFocus((f) => (f === i ? null : f)), 150)}
                            onChange={(e) => update(i, { text: e.target.value, item: null })}
                            onKeyDown={(e) => {
                              if (e.key === 'ArrowDown') { e.preventDefault(); setHot((h) => Math.min(h + 1, hits.length - 1)) }
@@ -271,35 +364,109 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
                       </div>
                     )}
                   </td>
-                  {!quote && (<td>{rowLots.length > 0
+                  {ret && <td><input readOnly tabIndex={-1} value={(r.item as { hsn_sac?: string | null } | null)?.hsn_sac ?? ''} style={cell} aria-label={`HSN/SAC, line ${i + 1}`} /></td>}
+                  {!slim && (<td>{rowLots.length > 0
                     ? <select value={r.lot} style={cell} aria-label={`S.Stock, line ${i + 1}`} onChange={(e) => pickLot(i, e.target.value)}><option value="">—</option>{rowLots.map((l) => <option key={l.id} value={l.lot_no}>{l.lot_no} ({num(l.quantity)})</option>)}</select>
                     : <input value={r.lot} style={cell} disabled={!r.item} aria-label={`S.Stock, line ${i + 1}`} onChange={(e) => update(i, { lot: e.target.value })} />}</td>)}
                   <td><input value={r.qty} inputMode="decimal" style={right} aria-label={`Quantity, line ${i + 1}`} onChange={(e) => update(i, { qty: e.target.value.replace(/[^\d.]/g, '') })} /></td>
-                  <td><input value={r.free} inputMode="decimal" style={right} aria-label={`Free, line ${i + 1}`} onChange={(e) => update(i, { free: e.target.value.replace(/[^\d.]/g, '') })} /></td>
+                  {!issue && <td><input value={r.free} inputMode="decimal" style={right} aria-label={`Free, line ${i + 1}`} onChange={(e) => update(i, { free: e.target.value.replace(/[^\d.]/g, '') })} /></td>}
                   <td><input value={r.uom} style={cell} aria-label={`Unit, line ${i + 1}`} onChange={(e) => update(i, { uom: e.target.value })} /></td>
-                  {!quote && <td><input value={r.mrp} inputMode="decimal" style={right} aria-label={`MRP, line ${i + 1}`} onChange={(e) => update(i, { mrp: e.target.value.replace(/[^\d.]/g, '') })} /></td>}
+                  {!slim && <td><input value={r.mrp} inputMode="decimal" style={right} aria-label={`MRP, line ${i + 1}`} onChange={(e) => update(i, { mrp: e.target.value.replace(/[^\d.]/g, '') })} /></td>}
                   <td><input value={r.rate} inputMode="decimal" style={right} aria-label={`Rate, line ${i + 1}`} onChange={(e) => update(i, { rate: e.target.value.replace(/[^\d.]/g, '') })} /></td>
-                  <td><input value={r.dis} inputMode="decimal" style={right} aria-label={`Discount, line ${i + 1}`} onChange={(e) => update(i, { dis: e.target.value.replace(/[^\d.]/g, '') })} /></td>
-                  <td><input value={r.gst} inputMode="decimal" style={right} aria-label={`GST %, line ${i + 1}`} onChange={(e) => update(i, { gst: e.target.value.replace(/[^\d.]/g, '') })} /></td>
-                  <td style={{ textAlign: 'right', paddingRight: 12 }}>{amt ? rupees(amt) : ''}</td>
+                  {!issue && <td><input value={r.dis} inputMode="decimal" style={right} aria-label={`Discount, line ${i + 1}`} onChange={(e) => update(i, { dis: e.target.value.replace(/[^\d.]/g, '') })} /></td>}
+                  {!issue && <td><input value={r.gst} inputMode="decimal" style={right} aria-label={`GST %, line ${i + 1}`} onChange={(e) => update(i, { gst: e.target.value.replace(/[^\d.]/g, '') })} /></td>}
+                  <td className="sb-c-amt">{amt ? rupees(amt) : ''}</td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface, #fff)' }}>
-        {!quote && <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Narration (optional)" aria-label="Narration" style={{ maxWidth: 280 }} />}
-        <span className="muted-sm">Items <b>{used.length}</b> · Qty <b>{totals.qty}</b></span>
-        <span className="muted-sm">Taxable <b>{rupees(totals.taxable)}</b></span>
-        <span className="muted-sm">GST <b>{rupees(totals.tax)}</b></span>
-        <span style={{ fontSize: 16 }}>Net <b>{rupees(totals.amount)}</b></span>
-        <span className="crm-push" />
-        {error ? <span className="error">{error}</span> : blocked && <span className="lf-foot-note lf-foot-link">{blocked}</span>}
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={busy || !!blocked} onClick={ask}>{busy ? 'Saving…' : `Save ${word} (Ctrl+S)`}</button>
-      </div>
-      {confirming && <AskBox title={`Save this ${quote ? 'quotation' : 'bill'}?`} sub={`Total ${rupees(totals.amount)}`} yes="Yes" onYes={save} onNo={() => setConfirming(false)} />}
+      </section>
+      {ret && (
+        <div className="sof-panels" style={{ gridTemplateAreas: "'a sum'", gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 360px)', padding: '16px 16px 12px' }}>
+          <section className="pof-sec sdt sof-p-a">
+            <header className="pof-sec-head"><h3>Return details</h3></header>
+            <p className="muted-sm" style={{ margin: 0 }}>{against ? `Against bill ${against}.` : 'Not linked to a bill — pick one with Against bill when you can.'} Stock and the party's balance are not changed by a sale return yet.</p>
+          </section>
+          <section className="pof-sec sof-p-sum">
+            <header className="pof-sec-head"><h3>Charges &amp; tax summary</h3></header>
+            <div style={{ display: 'grid', gap: 4, fontSize: 12.5 }}>
+              {([['Subtotal', totals.gross], ['Total discount', totals.gross - totals.taxable], ['Taxable amount', totals.taxable], ['GST', totals.tax]] as const).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{k}</span><span>{rupees(v)}</span></div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '10px 14px', borderRadius: 10, background: 'var(--brand)', color: '#fff', fontSize: 16, fontWeight: 700 }}>
+                <span style={{ fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase' }}>Net amount</span><span>{rupees(totals.amount)}</span></div>
+            </div>
+          </section>
+        </div>
+      )}
+      {!issue && (
+      <div className={ret ? 'pof-page-foot' : undefined} style={ret ? undefined : { display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface, #fff)' }}>
+          {!slim && <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Narration (optional)" aria-label="Narration" style={{ maxWidth: 280 }} />}
+          {ret || issue ? <span className="pof-page-total">{issue ? 'Issue' : 'Return'} total <b>{rupees(totals.amount)}</b></span> : <>
+            <span className="muted-sm">Items <b>{used.length}</b> · Qty <b>{totals.qty}</b></span>
+            <span className="muted-sm">Taxable <b>{rupees(totals.taxable)}</b></span>
+            <span className="muted-sm">GST <b>{rupees(totals.tax)}</b></span>
+            <span style={{ fontSize: 16 }}>Net <b>{rupees(totals.amount)}</b></span></>}
+          <span className="crm-push" />
+          {error ? <span className="error">{error}</span> : blocked ? <span className={ret ? 'sof-hint' : 'lf-foot-note lf-foot-link'}>{blocked}</span> : ret && <span className="sof-ok">Ready to save</span>}
+          {ret
+            ? <button className="btn" onClick={() => { setRows(Array.from({ length: MIN_ROWS }, blankRow)); setParty(null); setAgainst(''); setNotes('') }}>Clear</button>
+            : <button className="btn" onClick={onClose}>Cancel</button>}
+          <button className="btn btn-primary" disabled={busy || !!blocked} onClick={ask}>{busy ? 'Saving…' : `Save ${word} (Ctrl+S)`}</button>
+        </div>
+      )}
+      {issue && (
+        <>
+          <div className="sb-foot">
+            <section className="sb-panel">
+              <h4>Item details</h4>
+              {(() => {
+                const it = rows[cur]?.item ?? null
+                const x = it as unknown as { code?: string; hsn_sac?: string | null; gst_percent?: string; available_qty?: string; is_stocked?: boolean; uom?: string; sale_price?: string; standard_cost?: string } | null
+                return it && x ? (
+                  <dl>
+                    <dt>Item</dt><dd title={it.name}>{it.name}{x.code && <small> ({x.code})</small>}</dd>
+                    <dt>HSN / GST</dt><dd>{x.hsn_sac || '—'} · {Number(x.gst_percent || 0)}%</dd>
+                    <dt>Stock</dt><dd>{x.is_stocked ? `${Number(x.available_qty || 0)} ${x.uom ?? ''}` : 'Not stocked'}</dd>
+                    <dt>Rates</dt><dd>Sale {rupees(Number(x.sale_price || 0))} · Purchase {rupees(Number(x.standard_cost || 0))}</dd>
+                  </dl>
+                ) : <p className="muted-sm" style={{ margin: 0 }}>Move to an item row to see its stock and rates.</p>
+              })()}
+            </section>
+            <section className="sb-panel">
+              <h4>Stock issue</h4>
+              <dl>
+                <dt>Effect</dt><dd style={{ whiteSpace: 'normal' }}>Stock goes out (qty −) at running cost: Stock Variance Dr, Stock in Hand Cr.</dd>
+                <dt>Issued To</dt><dd>{storeList.find((w) => w.id === storeId)?.name ?? '—'}</dd>
+              </dl>
+            </section>
+            <section className="sb-panel">
+              <dl><dt>Items / Qty</dt><dd>{used.length} / {totals.qty}</dd></dl>
+              <div className="sb-net" style={{ margin: '8px 0' }}><span>Total Value</span><b>{rupees(totals.amount)}</b></div>
+              {error && <p className="error sb-error">{error}</p>}
+              <div className="sb-save">
+                <button type="button" className="btn sb-save-btn" disabled={busy || !!blocked} onClick={ask}>{busy ? 'Saving…' : 'Save Stock Issue'} <kbd>Ctrl+S</kbd></button>
+              </div>
+            </section>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '8px 16px', background: 'var(--brand, #0b3d6e)', color: '#fff', fontSize: 12.5, borderRadius: '0 0 12px 12px' }}>
+            <span><kbd>Esc</kbd> Back</span>
+            <span><kbd>F10</kbd> Save</span>
+            <span style={{ marginLeft: 'auto', opacity: 0.85 }}>No GST — stock at cost</span>
+          </div>
+        </>
+      )}
+      {note && (
+        <div role="status" style={{ position: 'fixed', top: 70, right: 24, zIndex: 90, maxWidth: 360, padding: '12px 16px', borderRadius: 12, background: '#fff', border: '1px solid var(--border)', borderLeft: '4px solid var(--brand)', boxShadow: '0 16px 40px rgba(15,23,42,.22)' }}>
+          <b>{note}</b>
+          {!note.includes('could not') && <div className="muted-sm">Change the quantities to what came back; delete rows you do not need.</div>}
+        </div>
+      )}
+      {billPick && <BillPicker title={party ? `${partyName} — sale bills` : 'Sale bills'} bills={(billsList.data ?? []).filter((b) => b.kind !== 'credit_note' && b.number && (!party || b.customer_name === partyName))}
+        onClose={() => setBillPick(false)} onPick={(b) => { setBillPick(false); void bringIn(b) }} />}
+      {confirming && <AskBox title={`Save this ${quote ? 'quotation' : ret ? 'sale return' : 'bill'}?`} sub={`Total ${rupees(totals.amount)}`} yes="Yes" onYes={save} onNo={() => setConfirming(false)} />}
       {askNext && <AskBox title={`${word} ${askNext.number} saved`} sub={`${rupees(askNext.grand_total)} · Enter the next one? (N opens this one)`} yes="Yes" onYes={() => onSaved(true)} onNo={() => onSaved(false)} />}
       {pickerOpen && <PartyPicker onClose={() => setPickerOpen(false)} onPick={(p) => { setPickerOpen(false); if (p.kind === 'customer' || p.kind === 'row') return; setParty(p); if (p.kind === 'walkin') setWalkinOpen(true) }} />}
       {walkinOpen && <WalkinDetails current={party?.kind === 'walkin' ? party.walkin : null} onClose={() => setWalkinOpen(false)} onDone={(w) => { setWalkinOpen(false); setParty({ kind: 'walkin', walkin: w }) }} />}
@@ -461,5 +628,53 @@ export function WalkinDetails({ current, onClose, onDone }: { current: Walkin | 
         {existing && <p className="muted-sm" style={{ margin: 0, gridColumn: '1 / -1' }}>Existing customer — their details are shown.</p>}
       </div>
     </CrmDialog>
+  )
+}
+
+/* ================================================================ bill picker */
+
+/** The bills a return can be made against: search, arrows to move, Enter to choose. */
+function BillPicker({ title, bills, onClose, onPick }: {
+  title: string
+  bills: Array<{ id: string; number: string | null; customer_name: string; invoice_date: string; grand_total: string; src: 'invoice' | 'bill' }>
+  onClose: () => void
+  onPick: (bill: { id: string; number: string | null; customer_name: string; src: 'invoice' | 'bill' }) => void
+}) {
+  const [q, setQ] = useState('')
+  const [hot, setHot] = useState(0)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => input.current?.focus(), [])
+  const needle = q.trim().toLowerCase()
+  const list = bills.filter((b) => !needle || [b.number, b.customer_name].some((x) => x && x.toLowerCase().includes(needle)))
+  const at = Math.min(hot, Math.max(list.length - 1, 0))
+  function key(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHot(Math.min(at + 1, list.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHot(Math.max(at - 1, 0)) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (list[at]?.number) onPick(list[at]) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() }
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(15,23,42,.45)', display: 'grid', placeItems: 'start center', paddingTop: 70 }} onKeyDown={key} onClick={onClose}>
+      <div className="card" style={{ width: 'min(640px, 94vw)', maxHeight: '70vh', padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+          <b>{title}</b><span className="crm-push muted-sm">{list.length} found</span>
+        </div>
+        <div style={{ padding: '8px 16px' }}><input ref={input} value={q} onChange={(e) => { setQ(e.target.value); setHot(0) }} placeholder="Type to search" aria-label="Search the bills" style={{ width: '100%' }} /></div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <table className="itl"><thead style={{ position: 'sticky', top: 0 }}><tr><th>Bill no.</th><th>Date</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
+            <tbody>
+              {list.map((b, n) => (
+                <tr key={b.id} ref={(el) => { if (el && n === at) el.scrollIntoView({ block: 'nearest' }) }} onClick={() => b.number && onPick(b)} onMouseEnter={() => setHot(n)}
+                  style={{ cursor: 'pointer', background: n === at ? 'var(--brand-soft)' : undefined }}>
+                  <td><b>{b.number}</b>{!title.includes('—') && <div className="muted-sm">{b.customer_name}</div>}</td>
+                  <td><DateText iso={b.invoice_date} /></td><td style={{ textAlign: 'right' }}>{rupees(b.grand_total)}</td>
+                </tr>
+              ))}
+              {list.length === 0 && <tr><td colSpan={3} className="muted-sm" style={{ padding: 18 }}>No bill found.</td></tr>}
+            </tbody></table>
+        </div>
+        <div className="muted-sm" style={{ padding: '8px 16px', borderTop: '1px solid var(--border)' }}><kbd>↑</kbd><kbd>↓</kbd> Move · <kbd>Enter</kbd> Select · <kbd>Esc</kbd> Back</div>
+      </div>
+    </div>
   )
 }

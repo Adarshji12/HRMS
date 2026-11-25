@@ -15,7 +15,7 @@ def _all(client, tenant) -> dict:
 
 def test_every_transaction_starts_with_one_default_series(client, acme):
     data = _all(client, acme)
-    assert len(data["transactions"]) == 14
+    assert len(data["transactions"]) == 16
     inv = [s for s in data["series"] if s["transaction"] == "sales_invoice"]
     assert len(inv) == 1 and inv[0]["name"] == "Default" and inv[0]["prefix"] == "INV-" and inv[0]["is_default"] is True
 

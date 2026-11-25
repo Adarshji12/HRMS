@@ -281,12 +281,12 @@ export default function Assets() {
         <div className="head-actions">
           <ColumnSettings defs={ASSET_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                           onSave={columns.save} onReset={columns.reset} />
-          <button
+          <button aria-label="Export" title="Export"
             className="btn"
             disabled={rows.length === 0}
             onClick={() => exportAssetsCsv(`assets-${todayISODate()}.csv`, rows)}
           >
-            <IconDownload size={14} /> Export
+            <IconDownload size={14} />
           </button>
           <button
             className="btn btn-primary"

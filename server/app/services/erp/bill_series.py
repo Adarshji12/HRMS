@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import Request
 from sqlalchemy import func, select
@@ -15,13 +16,15 @@ from app.services.erp.common import ErpError, get_owned, record_audit, require, 
 
 #: (key, label, group, default prefix) in the order the page lists them.
 TRANSACTIONS = [
-    ("sales_invoice", "Sales invoice", "sales", "INV-"), ("sales_order", "Sales order", "sales", "SO-"),
+    ("sales_invoice", "Sales invoice", "sales", "INV-"), ("sale_order", "Sale order", "sales", "SLO-"),
+    ("sales_order", "Sales order", "sales", "SO-"),
     ("quotation", "Quotation", "sales", "QT-"), ("delivery_challan", "Delivery challan", "sales", "DC-"),
     ("credit_note", "Credit note", "sales", "CN-"), ("receipt", "Receipt", "sales", "RC-"),
     ("purchase_bill", "Purchase bill", "purchase", "BILL-"), ("purchase_order", "Purchase order", "purchase", "PO-"),
     ("debit_note", "Debit note", "purchase", "DN-"), ("expense", "Expense", "purchase", "EXP-"),
     ("stock_adjustment", "Stock adjustment", "others", "SA-"), ("stock_transfer", "Stock transfer", "others", "ST-"),
     ("counter_shift", "Counter shift", "others", "CS-"), ("journal_entry", "Journal entry", "others", "JV-"),
+    ("stock_issue", "Stock issue", "others", "SI-"),
 ]
 KEYS = {t[0] for t in TRANSACTIONS}
 
@@ -34,13 +37,38 @@ def _out(row: ErpBillSeries) -> dict:
 
 
 def _seed(db: Session, org_id: uuid.UUID) -> None:
-    """One default series per transaction, the first time the page is opened."""
-    if db.scalar(select(func.count()).select_from(ErpBillSeries).where(ErpBillSeries.org_id == org_id)):
-        return
+    """One default series per transaction. A transaction added later gets its own the next time the page opens."""
+    have = set(db.scalars(select(ErpBillSeries.transaction).where(ErpBillSeries.org_id == org_id)))
+    added = False
     for key, _label, _grp, prefix in TRANSACTIONS:
+        if key in have:
+            continue
         db.add(ErpBillSeries(org_id=org_id, transaction=key, name="Default", prefix=prefix, is_default=True,
                              default_groups=[]))
-    db.commit()
+        added = True
+    if added:
+        db.commit()
+
+
+def _years(on: date) -> tuple[str, str]:
+    y = on.year if on.month >= 4 else on.year - 1
+    return f"{y}-{(y + 1) % 100:02d}", str(on.year)
+
+
+def issue_number(db: Session, org_id: uuid.UUID, transaction: str, on: date) -> str:
+    """The next number on the default series for a transaction, taken: the series counter moves on."""
+    _seed(db, org_id)
+    row = db.scalar(select(ErpBillSeries).where(
+        ErpBillSeries.org_id == org_id, ErpBillSeries.transaction == transaction
+    ).order_by(ErpBillSeries.is_default.desc(), ErpBillSeries.created_at))
+    if row is None:
+        raise ErpError("no_series", "This transaction has no number series.", 422)
+    fy, cy = _years(on)
+    mid = f"{fy}/" if row.restart == "april" else f"{cy}/" if row.restart == "january" else ""
+    number = f"{row.prefix}{mid}{str(row.next_number).zfill(row.digits)}{row.suffix}"
+    row.next_number += 1
+    row.issued += 1
+    return number
 
 
 def transactions() -> list[dict]:

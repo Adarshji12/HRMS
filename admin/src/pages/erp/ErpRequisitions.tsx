@@ -297,9 +297,9 @@ export default function ErpRequisitions() {
           <ColumnSettings defs={REQ_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
             onSave={columns.save} onReset={columns.reset} />
           <div className="ivl-export">
-            <button type="button" className="btn" disabled={!total} aria-haspopup="menu" aria-expanded={exporting}
+            <button aria-label="Export" type="button" className="btn" disabled={!total} aria-haspopup="menu" aria-expanded={exporting}
               title={total ? `Export all ${total} matching` : 'Nothing to export'} onClick={() => setExporting((v) => !v)}>
-              <IconDownload size={15} /> Export
+              <IconDownload size={15} />
             </button>
             {exporting && (
               <div className="ivl-export-menu" role="menu" onMouseLeave={() => setExporting(false)}>

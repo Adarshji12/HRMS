@@ -206,7 +206,7 @@ export default function ErpPurchaseOrders() {
             onSave={columns.save} onReset={columns.reset} />
         </div>
         <div className="pol-export">
-          <button type="button" className="btn" disabled={!rows.length} onClick={() => setExporting((x) => !x)}><IconDownload size={15} /> Export</button>
+          <button aria-label="Export" title="Export" type="button" className="btn" disabled={!rows.length} onClick={() => setExporting((x) => !x)}><IconDownload size={15} /></button>
           {exporting && (
             <div className="pol-export-menu" role="menu" onMouseLeave={() => setExporting(false)}>
               <button type="button" role="menuitem" onClick={() => exportRows('xlsx')}><b>Excel</b><small>.xlsx · {rows.length} rows</small></button>

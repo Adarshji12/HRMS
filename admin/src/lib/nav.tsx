@@ -428,8 +428,8 @@ export const ERP_TRANSACTIONS: {
         { to: '/erp/invoices', label: 'Sale', icon: IconChart, end: true },
         { to: '/erp/quotation', label: 'Quotation', icon: IconSheet, end: true },
         { to: '/erp/sales-orders', label: 'Sale Order', icon: IconSheet, end: true },
-        { to: '/erp/billing?tab=credit_notes', label: 'Sale Return', icon: IconReturn, end: true },
-        { to: '/erp/inventory?tab=docs', label: 'Stock Issue', icon: IconFolder, end: true },
+        { to: '/erp/sale-return', label: 'Sale Return', icon: IconReturn, end: true },
+        { to: '/erp/stock-issue', label: 'Stock Issue', icon: IconFolder, end: true },
       ],
     },
     {

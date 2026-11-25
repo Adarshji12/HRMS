@@ -46,7 +46,7 @@ export interface SaleBill {
   id: string; number: string; bill_date: string; bill_type: 'credit' | 'cash'; ledger_id: string | null; walkin_id: string | null
   party_name: string; warehouse_id: string | null; warehouse_name: string | null
   sub_total: string; discount_total: string; tax_total: string; grand_total: string; notes: string | null; created_at: string
-  doc_type?: string; valid_till?: string | null; status?: string; station?: string | null; mobile?: string | null
+  doc_type?: string; valid_till?: string | null; against_number?: string | null; status?: string; station?: string | null; mobile?: string | null
   lines?: SaleBillLine[]
 }
 

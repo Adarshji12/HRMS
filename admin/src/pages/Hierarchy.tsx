@@ -393,8 +393,8 @@ export default function Hierarchy() {
                 </button>
               </div>
 
-              <button className="btn" onClick={exportCsv} title="Download the whole chart as CSV">
-                <IconDownload size={15} /> Export
+              <button aria-label="Export" className="btn" onClick={exportCsv} title="Download the whole chart as CSV">
+                <IconDownload size={15} />
               </button>
 
               {editable && (
