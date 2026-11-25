@@ -20,6 +20,8 @@ import { CrmPage, OwnerSelect } from '../crm/parts'
 import '../../styles/invoice.css'
 import '../../styles/salebill.css'
 import InvoicePrint, { downloadInvoicePdf } from './InvoicePrint'
+import RowShare from '../../components/RowShare'
+import type { IoColumn } from '../../components/ImportExport'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 import {
   ChainView, DateText, DecideBar, Dialog, ErpPage, ErpState,
@@ -233,6 +235,15 @@ type InvoiceColumn = ColumnDef & {
   thClass?: string
 }
 const INV_DASH = <span className="itl-muted">—</span>
+const SHARE_COLUMNS: IoColumn<Invoice>[] = [
+  { key: 'customer', label: 'Customer', get: (i) => i.customer_name },
+  { key: 'date', label: 'Date', get: (i) => i.invoice_date },
+  { key: 'due', label: 'Due', get: (i) => i.due_date },
+  { key: 'taxable', label: 'Taxable value', get: (i) => rupees(i.sub_total) },
+  { key: 'tax', label: 'Total tax', get: (i) => rupees(Number(i.tax_total) + Number(i.cess_total ?? 0)) },
+  { key: 'net', label: 'Net amount', get: (i) => rupees(i.grand_total) },
+  { key: 'balance', label: 'Balance due', get: (i) => rupees(i.outstanding) },
+]
 const INVOICE_COLUMNS: InvoiceColumn[] = [
   { key: 'number', label: 'Invoice / credit note no.', locked: true, td: (i) => (
     <>
@@ -251,7 +262,10 @@ const INVOICE_COLUMNS: InvoiceColumn[] = [
       {payState(i) === 'overdue' && <small className="ivl-late">{i.days_overdue}d overdue</small>}
     </>
   ) },
-  { key: 'grand_total', label: 'Grand total', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (i) => <>{rupees(i.grand_total)}</> },
+  { key: 'taxable', label: 'Taxable value', thClass: 'crm-num', className: 'crm-num', td: (i) => <>{rupees(i.sub_total)}</> },
+  { key: 'gst', label: 'GST', thClass: 'crm-num', className: 'crm-num', td: (i) => <>{rupees(Number(i.cgst ?? 0) + Number(i.sgst ?? 0) + Number(i.igst ?? 0))}</> },
+  { key: 'tax_total', label: 'Total tax', thClass: 'crm-num', className: 'crm-num', td: (i) => <>{rupees(Number(i.tax_total) + Number(i.cess_total ?? 0))}</> },
+  { key: 'grand_total', label: 'Net amount', thClass: 'crm-num', className: 'crm-num ivl-amt', td: (i) => <>{rupees(i.grand_total)}</> },
   { key: 'paid', label: 'Paid', thClass: 'crm-num', className: (i) => `crm-num${Number(i.amount_received) > 0 ? ' ivl-paid' : ' ivl-zero'}`, td: (i) => (
     <>
       {invoicePaid(i) ? rupees(i.amount_received) : '—'}
@@ -527,6 +541,7 @@ function InvoiceList({ kind, onOpen, onNew }: {
                   <td className="ivl-c-act" onClick={(e) => e.stopPropagation()}>
                     <div className="ivl-actions">
                       <button className="crm-icon-btn" title="Open" aria-label={`Open ${i.number ?? 'draft'}`} onClick={() => onOpen(i.id)}><IconSheet size={14} /></button>
+                      <RowShare name="invoice" title={i.number ?? 'Draft invoice'} row={i} columns={SHARE_COLUMNS} />
                       <button className="crm-icon-btn" disabled={!canEdit}
                         title={canEdit ? 'Edit draft' : 'Only a draft can be edited'} aria-label="Edit draft"
                         onClick={() => setEditing({ inv: i, copy: false })}><IconEdit size={14} /></button>
@@ -828,7 +843,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const { user } = useAuth()
   const [seed] = useState(() => (invoice ? seedFrom(invoice, Boolean(copy)) : null))
   const editing = Boolean(invoice && !copy)
-  const [kind, setKind] = useState<'service' | 'proforma'>(seed?.kind ?? 'service')
+  const [kind] = useState<'service' | 'proforma'>(seed?.kind ?? 'service')
   const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
   // A walk-in sale has no customer record: the party is "walk-in", with details taken at the counter.
   const [walkinMode, setWalkinMode] = useState(false)
@@ -853,8 +868,8 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const [lines, setLines] = useState<BillLine[]>(seed?.lines ?? [blankBillLine()])
   const [discMode, setDiscMode] = useState<DiscMode>(seed?.discMode ?? 'amt')
   const [discMode2, setDiscMode2] = useState<DiscMode>(seed?.discMode2 ?? 'pct')
-  const [ratesIncl, setRatesIncl] = useState(false)
-  const [cessOn, setCessOn] = useState(seed?.cessOn ?? false)
+  const [ratesIncl] = useState(false)
+  const [cessOn] = useState(seed?.cessOn ?? false)
   // Item list: the name searches the item master and a pick fills HSN, unit,
   // rate and GST. Manual: whatever is typed is the line, filled by hand.
   const [itemMode, setItemMode] = useState<'list' | 'manual'>('list')
@@ -1104,6 +1119,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
         </label>
         {pickerOpen && <PartyPicker customers={customers.data ?? []} onClose={() => setPickerOpen(false)} onPick={(p) => {
           setPickerOpen(false); setPlace(null); setBilling(null); setShipTo('same')
+          setTimeout(() => document.querySelector<HTMLInputElement>('.sb-head .sb-f-date input')?.focus(), 60)
           if (p.kind === 'walkin') { setCustomerId(''); setWalkinMode(true); setAskWalkin(true) }
           else if (p.kind === 'customer') { setWalkinMode(false); setWalkin(null); setCustomerId(p.customer.customer_id) }
         }} />}
@@ -1114,7 +1130,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
     invoice_date: fm('invoice_date') !== 'hide' && (
         <label className="sb-f sb-f-date">
           <span>Date{star('invoice_date')}</span>
-          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value || todayISO())} />
+          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} onBlur={() => { if (!invoiceDate) setInvoiceDate(todayISO()) }} />
         </label>
     ),
     bill_no: fm('bill_no') !== 'hide' && (
@@ -1254,19 +1270,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
             {filled.length > 0 && <> · {filled.length} line{filled.length === 1 ? '' : 's'}</>}
           </span>
         </div>
-        <div className="sb-seg" role="radiogroup" aria-label="Bill type">
-          {([['service', 'Tax invoice'], ['proforma', 'Proforma']] as const).map(([key, label]) => (
-            <button key={key} type="button" role="radio" aria-checked={kind === key}
-              className={kind === key ? 'is-on' : ''} onClick={() => setKind(key)}>{label}</button>
-          ))}
-        </div>
         <span className="sb-bar-gap" />
-        <label className={`sb-incl${cessOn ? ' is-on' : ''}`} title="Show a Cess % column — for goods that attract GST compensation cess">
-          <input type="checkbox" checked={cessOn} onChange={(e) => setCessOn(e.target.checked)} /> Cess
-        </label>
-        <label className={`sb-incl${ratesIncl ? ' is-on' : ''}`} title="The rate typed in the grid already includes GST">
-          <input type="checkbox" checked={ratesIncl} onChange={(e) => setRatesIncl(e.target.checked)} /> Rates include GST
-        </label>
         <FieldSettings defs={BILL_FIELDS} sections={BILL_SECTIONS} modes={fields.modes} order={fields.order}
           onSave={fields.save} onReset={fields.reset} />
         <button type="button" className={`btn btn-sm${more ? ' is-on' : ''}`} onClick={() => setMore((m) => !m)}>

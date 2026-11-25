@@ -191,11 +191,6 @@ export default function ErpSale() {
     return () => window.removeEventListener('keydown', onKey)
   }, [openId, printId, billOpen])
 
-  const [note, setNote] = useState<string | null>(null)
-  function flash(text: string) {
-    setNote(text)
-    window.setTimeout(() => setNote(null), 2200)
-  }
   function exportRows() {
     downloadCsv(
       `sale-${from || 'start'}-to-${to || 'today'}.csv`,
@@ -205,15 +200,6 @@ export default function ErpSale() {
         i.sub_total, i.tax_total, i.grand_total, i.outstanding, i.due_date ?? '', PAY_LABEL[payState(i)], i.created_by_name ?? '',
       ]),
     )
-  }
-  async function share() {
-    const link = `${window.location.origin}/erp/invoices${current ? `?open=${current.id}` : ''}`
-    try {
-      await navigator.clipboard.writeText(link)
-      flash(current ? `Link to ${current.number ?? 'the draft'} copied` : 'Link copied')
-    } catch {
-      flash('Could not copy the link')
-    }
   }
 
   return (
@@ -247,20 +233,16 @@ export default function ErpSale() {
             {/* ------------------------------------------------------ toolbar -- */}
             <div className="sl-bar">
               <h1 className="sl-title">Sale</h1>
+              <label className="sl-search">
+                <IconSearch size={15} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Bill no. or party" aria-label="Search bills" />
+              </label>
               <div className="sl-tools">
-                <input type="date" className="sl-date" value={from} max={to || undefined} aria-label="From date" onChange={(e) => setFrom(e.target.value)} />
-                <input type="date" className="sl-date" value={to} min={from || undefined} aria-label="To date" onChange={(e) => setTo(e.target.value)} />
-                <label className="sl-search">
-                  <IconSearch size={15} />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Bill no. or party" aria-label="Search bills" />
-                </label>
                 <button type="button" className={`sl-btn${filtersOpen ? ' is-on' : ''}`} aria-pressed={filtersOpen} onClick={() => setFiltersOpen((o) => !o)}>
-                  <IconFilter size={14} /> Filters{activeFilters > 0 && <span className="sl-count">{activeFilters}</span>} <kbd>F3</kbd>
+                  <IconFilter size={14} /> Filters{(activeFilters > 0 || from !== firstOfMonth() || to !== todayISO()) && <span className="sl-count">{activeFilters + (from !== firstOfMonth() || to !== todayISO() ? 1 : 0)}</span>}
                 </button>
                 <button type="button" className="sl-btn" onClick={exportRows} disabled={rows.length === 0}><IconDownload size={14} /> Export</button>
                 <ColumnSettings defs={SALE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
-                <button type="button" className="sl-btn" onClick={() => current && setPrintId(current.id)} disabled={!current}><IconPrinter size={14} /> Print</button>
-                <button type="button" className="sl-btn" onClick={() => void share()}>Share</button>
                 {biller && (
                   <button type="button" className="sl-btn sl-btn-primary" onClick={() => setBillOpen(true)}>
                     <IconPlus size={14} /> New <kbd>F2</kbd>
@@ -271,14 +253,13 @@ export default function ErpSale() {
 
             {filtersOpen && (
               <FilterDialog
-                value={filters}
+                value={filters} from={from} to={to}
                 onClose={() => setFiltersOpen(false)}
-                onApply={(next) => { setFilters(next); setFiltersOpen(false) }}
+                onApply={(next, f, t) => { setFilters(next); setFrom(f); setTo(t); setFiltersOpen(false) }}
                 series={seriesList} customers={customers} users={usersList} stations={stationsList} kinds={kindsList}
               />
             )}
 
-            {note && <div className="sl-note" role="status">{note}</div>}
             {list.error && <ErrorNote>{erpError(list.cause, 'Could not load the bills')}</ErrorNote>}
 
             {/* -------------------------------------------------------- table -- */}
@@ -346,7 +327,6 @@ export default function ErpSale() {
               <span><kbd>↑</kbd><kbd>↓</kbd> Move</span>
               <span><kbd>Enter</kbd> Open bill</span>
               {biller && <span><kbd>F2</kbd> New bill</span>}
-              <span><kbd>F3</kbd> Filters</span>
               <span><kbd>PgUp</kbd> / <kbd>PgDn</kbd> Page {safePage + 1} of {pages}</span>
             </div>
           </>
@@ -362,10 +342,12 @@ export default function ErpSale() {
 }
 
 /** GST invoice filters: set a few, press Submit, and the register narrows. */
-function FilterDialog({ value, onClose, onApply, series, customers, users, stations, kinds }: {
+function FilterDialog({ value, from, to, onClose, onApply, series, customers, users, stations, kinds }: {
   value: SaleFilters
+  from: string
+  to: string
   onClose: () => void
-  onApply: (next: SaleFilters) => void
+  onApply: (next: SaleFilters, from: string, to: string) => void
   series: string[]
   customers: Array<[string, string]>
   users: string[]
@@ -373,6 +355,8 @@ function FilterDialog({ value, onClose, onApply, series, customers, users, stati
   kinds: string[]
 }) {
   const [f, setF] = useState(value)
+  const [d1, setD1] = useState(from)
+  const [d2, setD2] = useState(to)
   const set = <K extends keyof SaleFilters>(key: K, v: SaleFilters[K]) => setF((c) => ({ ...c, [key]: v }))
   const bad = (f.noFrom && f.noTo && Number(f.noFrom) > Number(f.noTo)) || (f.above !== '' && !/^\d+(\.\d{1,2})?$/.test(f.above))
   return (
@@ -382,12 +366,19 @@ function FilterDialog({ value, onClose, onApply, series, customers, users, stati
       footer={
         <>
           <button type="button" className="btn" onClick={onClose}><kbd>Esc</kbd> Close</button>
-          <button type="button" className="btn" onClick={() => { setF(NO_FILTERS); onApply(NO_FILTERS) }}>Reset</button>
-          <button type="button" className="btn btn-primary" disabled={Boolean(bad)} onClick={() => onApply(f)}>Submit</button>
+          <button type="button" className="btn" onClick={() => { setF(NO_FILTERS); onApply(NO_FILTERS, firstOfMonth(), todayISO()) }}>Reset</button>
+          <button type="button" className="btn btn-primary" disabled={Boolean(bad)} onClick={() => onApply(f, d1, d2)}>Submit</button>
         </>
       }
     >
-      <form className="sl-fd" onSubmit={(e) => { e.preventDefault(); if (!bad) onApply(f) }}>
+      <form className="sl-fd" onSubmit={(e) => { e.preventDefault(); if (!bad) onApply(f, d1, d2) }}>
+        <div className="sl-fd-row"><span>Date From</span>
+          <div className="sl-fd-pair">
+            <input type="date" value={d1} max={d2 || undefined} aria-label="From date" onChange={(e) => setD1(e.target.value)} />
+            <span>Date To</span>
+            <input type="date" value={d2} min={d1 || undefined} aria-label="To date" onChange={(e) => setD2(e.target.value)} />
+          </div>
+        </div>
         <label className="sl-fd-row"><span>Multiseries</span>
           <select value={f.series} onChange={(e) => set('series', e.target.value)} autoFocus>
             <option value="">All series</option>

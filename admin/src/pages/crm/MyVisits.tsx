@@ -147,11 +147,8 @@ const VISIT_COLUMNS: VisitColumn[] = [
       <span className="vs-avatar" aria-hidden>{initials(v.customer_name)}</span>
       <span className="vs-who-text">
         <span className="crm-strong">
-          {/* The name opens the lead's or customer's own page. */}
-          {(v.subject_kind === 'lead' ? v.lead_id : v.customer_id) ? (
-            <Link className="vs-name-link" to={v.subject_kind === 'lead' ? `/crm/leads/${v.lead_id}` : `/crm/customers?open=${v.customer_id}`}
-                  title={v.subject_kind === 'lead' ? 'Open the lead' : 'Open the customer'}>{v.customer_name}</Link>
-          ) : v.customer_name}
+          {/* The name opens this visit's own page. */}
+          <Link className="vs-name-link" to={`/crm/visits/${v.id}`} title="Open this visit">{v.customer_name}</Link>
           {v.subject_kind === 'lead' && <span className="vs-kind">Lead</span>}
         </span>
         <span className="crm-sub">{v.mobile ?? v.customer_mobile}</span>
@@ -840,7 +837,7 @@ function VisitForm({
   )
 }
 
-function CheckInDialog({
+export function CheckInDialog({
   visit,
   onClose,
   onDone,
@@ -901,7 +898,7 @@ function CheckInDialog({
   )
 }
 
-function CloseVisitDialog({
+export function CloseVisitDialog({
   visit,
   onClose,
   onDone,

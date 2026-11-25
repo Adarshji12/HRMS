@@ -126,6 +126,7 @@ import LeadDetail from './pages/crm/LeadDetail'
 import MyLeads from './pages/crm/MyLeads'
 import MyFollowUps from './pages/crm/MyFollowUps'
 import MyVisits from './pages/crm/MyVisits'
+import VisitDetail from './pages/crm/VisitDetail'
 import SupportCenter from './pages/crm/SupportCenter'
 import MyCustomers from './pages/crm/MyCustomers'
 import Quotations from './pages/crm/Quotations'
@@ -1041,6 +1042,7 @@ function Shell() {
             <Route path="/crm/leads/:leadId" element={<LeadDetail />} />
             <Route path="/crm/follow-ups" element={<MyFollowUps />} />
             <Route path="/crm/visits" element={<MyVisits />} />
+            <Route path="/crm/visits/:id" element={<VisitDetail />} />
             <Route path="/crm/support" element={<SupportCenter />} />
             <Route path="/crm/customers" element={<MyCustomers />} />
             <Route path="/crm/quotations" element={<Quotations />} />
