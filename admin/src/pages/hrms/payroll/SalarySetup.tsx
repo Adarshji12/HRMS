@@ -170,7 +170,7 @@ function StructureDialog({ existing, components, onClose, onSaved }: {
                 {busy ? 'Saving…' : existing ? 'Save' : 'Add'}
               </button>
             </>}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) minmax(250px,1fr)', gap: 20, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) minmax(250px,1fr)', gap: 20, padding: '8px 24px 20px', flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start' }}>
         <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <label className="pr-field"><span className="pr-field-label">Name</span>

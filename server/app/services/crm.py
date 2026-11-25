@@ -1107,18 +1107,20 @@ def update_lead(
     if changes.get("mobile") and _mobile_digits(changes["mobile"]) != _mobile_digits(lead.mobile):
         _refuse_duplicate_mobile(db, viewer, changes["mobile"], lead.id)
 
+    if "owner_id" in changes and changes["owner_id"] != lead.owner_id:
+        require_may_assign(db, viewer, "lead")
+        new_owner = db.get(User, changes["owner_id"]) if changes["owner_id"] else None
+        if changes["owner_id"] and (new_owner is None or new_owner.org_id != viewer.org_id):
+            raise HTTPException(http_status.HTTP_404_NOT_FOUND, "That person is not in this workspace")
+        _log(db, lead, viewer, "assignment",
+             f"Assigned to {new_owner.full_name}" if new_owner else "Returned to the unassigned pool")
+
     if "status_id" in changes and changes["status_id"] != lead.status_id:
         return move_status(
             db, viewer, lead_id,
             S.LeadStatusMove(status_id=changes.pop("status_id"), note=changes.get("lost_reason")),
             extra=changes, request=request,
         )
-    if "owner_id" in changes and changes["owner_id"] != lead.owner_id:
-        require_may_assign(db, viewer, "lead")
-        new_owner = db.get(User, changes["owner_id"]) if changes["owner_id"] else None
-        _log(db, lead, viewer, "assignment",
-             f"Assigned to {new_owner.full_name}" if new_owner else "Returned to the unassigned pool")
-
     for field, value in changes.items():
         setattr(lead, field, value)
     if request is not None:
@@ -1170,6 +1172,21 @@ def move_status(
     db.commit()
     db.refresh(lead)
     return _lead_out(lead)
+
+
+def list_assignees(db: Session, viewer: User) -> list[dict]:
+    """Everyone in the workspace a lead or customer may be handed to.
+
+    Not the employee roster: that is cut down to the viewer's data scope, so a
+    salesperson scoped to themselves saw only their own name and could not pick
+    anybody to assign to. Names only; nothing else about the person.
+    """
+    rows = db.execute(
+        select(User.id, User.full_name)
+        .where(User.org_id == viewer.org_id, User.is_active.is_(True))
+        .order_by(User.full_name)
+    ).all()
+    return [{"id": r.id, "full_name": r.full_name} for r in rows]
 
 
 def bulk_assign(
@@ -1284,7 +1301,7 @@ def email_lead(
     if not mailconfig.resolve(db, org_id=viewer.org_id).configured:
         raise HTTPException(
             http_status.HTTP_409_CONFLICT,
-            "Email is not set up yet. Ask an administrator to set up the mail connector, then send again.",
+            "Email is not set up yet, so nothing was sent. The workspace owner can add the SMTP server details under Settings > Email, then send again.",
         )
     greeting = (payload.name or lead.name or "").strip()
     body = payload.body.strip()

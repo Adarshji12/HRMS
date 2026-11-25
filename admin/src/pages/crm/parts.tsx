@@ -482,7 +482,7 @@ export function LostReasonSelect({ value, onChange, autoFocus }: { value: string
  * person may do, where an error banner would suggest the page is broken. */
 export function useTeam() {
   return useQuery<Array<{ id: string; full_name: string }>>('crm-team', () =>
-    api.get<Array<{ id: string; full_name: string }>>('/admin/employees').catch(() => []),
+    api.get<Array<{ id: string; full_name: string }>>('/crm/assignees').catch(() => []),
   )
 }
 

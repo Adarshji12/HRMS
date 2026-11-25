@@ -282,3 +282,7 @@ button.vs-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .vs-toolbar .export-wrap { margin-left: auto; }
 .vs-toolbar .export-wrap + .vs-new { margin-left: 0; }
 .crm .vs-card .vs-toolbar .vs-export { padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }
+
+/* The customer's name in the visits list opens their page */
+.vs-name-link { color: inherit; font-weight: inherit; text-decoration: none; }
+.vs-name-link:hover { color: var(--brand); text-decoration: underline; }

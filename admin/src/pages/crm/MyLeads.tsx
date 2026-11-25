@@ -14,6 +14,7 @@
  * lies about the pipeline.
  */
 
+import SampleFile from '../../components/SampleFile'
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
@@ -1425,6 +1426,11 @@ function ImportDialog({
               if (file) void readFile(file)
             }}
           />
+        
+          <SampleFile filename="leads-sample.csv"
+            headers={['Name', 'Mobile', 'Company', 'Email', 'Source', 'Status', 'Product', 'City', 'State', 'Pincode', 'Address', 'Notes']}
+            rows={[['Rahul Sharma', '9876543210', 'Acme Industries', 'rahul@acme.com', 'Website', '', '', 'Pune', 'Maharashtra', '411019', 'Plot 14, MIDC', 'Asked for a demo'],
+                   ['Asha Verma', '9123456780', '', '', 'Referral', '', '', 'Jaipur', 'Rajasthan', '302039', '', '']]} />
         </Field>
         <Field label="Assign every imported lead to">
           <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Leave unassigned" />

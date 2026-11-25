@@ -200,7 +200,7 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
                 {busy ? 'Saving…' : 'Save salary'}
               </button>
             </>}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(240px,1fr)', gap: 20, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(240px,1fr)', gap: 20, padding: '8px 24px 20px', flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start' }}>
         <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <label className="pr-field"><span className="pr-field-label">Monthly CTC (₹)</span>

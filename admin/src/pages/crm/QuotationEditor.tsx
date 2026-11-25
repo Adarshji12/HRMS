@@ -857,9 +857,14 @@ function NameCombo({ value, customers, onType, onPick }: {
   const q = value.trim().toLowerCase()
   const shown = customers
     .filter((c) => !q || [c.name, c.company, c.mobile, c.code, c.city_name].some((v) => v?.toLowerCase().includes(q)))
-    .slice(0, 8)
   const pick = (c: Customer) => { onPick(c.id); setOpen(false) }
   const box = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLUListElement>(null)
+  // Keep the highlighted option in view as the arrow keys walk a long list.
+  useEffect(() => {
+    if (!open) return
+    list.current?.querySelector<HTMLElement>('li.is-at')?.scrollIntoView({ block: 'nearest' })
+  }, [at, open, shown.length])
   const input = useRef<HTMLInputElement>(null)
   // A click anywhere outside closes the list, whatever has focus.
   useEffect(() => {
@@ -902,7 +907,7 @@ function NameCombo({ value, customers, onType, onPick }: {
           setOpen(true)
         }} />
       {open && (
-        <ul className="qe-combo-list" role="listbox">
+        <ul className="qe-combo-list" role="listbox" ref={list} style={{ maxHeight: 280, overflowY: 'auto' }}>
           {shown.length === 0 ? (
             <li className="qe-combo-empty">{customers.length ? 'No match — the name is used as typed' : 'No customers yet — add them in My Customers'}</li>
           ) : shown.map((c, n) => (

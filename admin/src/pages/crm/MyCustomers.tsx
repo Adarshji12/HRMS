@@ -11,6 +11,7 @@
  * through to add one line.
  */
 
+import SampleFile from '../../components/SampleFile'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
@@ -973,8 +974,14 @@ function CustomerForm({
   // Checked as the person types, shown once they have left the field.
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const touch = (key: string) => () => setTouched((t) => ({ ...t, [key]: true }))
-  const digits = (s: string) => s.replace(/\D/g, '')
-  const phoneBad = (s: string) => s.trim() !== '' && (digits(s).length < 10 || digits(s).length > 15)
+  const phoneBad = (s: string) => {
+    if (s.trim() === '') return false
+    let d = s.replace(/[\s-]/g, '')
+    if (!/^\+?\d+$/.test(d)) return true
+    if (d.startsWith('+91')) d = d.slice(3)
+    else if (d.length === 12 && d.startsWith('91')) d = d.slice(2)
+    return !/^[6-9]\d{9}$/.test(d)
+  }
   const mobileBad = phoneBad(mobile)
   const whatsappBad = !sameNumber && phoneBad(whatsapp)
   const emailBad = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1074,7 +1081,7 @@ function CustomerForm({
         ),
     mobile: (
           <LfField label="Mobile number" required
-                   error={touched.mobile && mobileBad ? 'Enter a 10-digit mobile number.' : undefined}>
+                   error={touched.mobile && mobileBad ? 'Enter a valid 10-digit mobile number.' : undefined}>
             <LfInput icon={<IconPhone size={15} />} bad={touched.mobile && mobileBad}>
               <input value={mobile} onChange={(event) => setMobile(event.target.value)} onBlur={touch('mobile')}
                      placeholder="98765 43210" inputMode="tel" required />
@@ -1091,7 +1098,7 @@ function CustomerForm({
         ),
     whatsapp: fm('whatsapp') !== 'hide' && (
           <LfField label="WhatsApp number" required={rq('whatsapp')} wide
-                   error={touched.whatsapp && whatsappBad ? 'Enter a 10-digit WhatsApp number.' : undefined}
+                   error={touched.whatsapp && whatsappBad ? 'Enter a valid 10-digit mobile number.' : undefined}
                    aside={
                      <label className="lf-switch">
                        <input type="checkbox" checked={sameNumber} onChange={(event) => setSameNumber(event.target.checked)} />
@@ -1193,6 +1200,7 @@ function CustomerForm({
             onSubmit={(event) => {
               event.preventDefault()
               if (stepped && step < lastStep) { goNext(); return }
+              if (!ready) setTouched((t) => ({ ...t, mobile: true, email: true, whatsapp: true, gstin: true, pincode: true }))
               if (ready && !busy) save()
             }}>
         {error && <ErrorNote>{error}</ErrorNote>}
@@ -1610,6 +1618,11 @@ function ImportCustomersDialog({ onClose, onDone }: { onClose: () => void; onDon
         {error && <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>}
         <Field label="File" wide>
           <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f) }} />
+        
+          <SampleFile filename="customers-sample.csv"
+            headers={['Name', 'Mobile', 'Company', 'Email', 'WhatsApp', 'Customer type', 'GSTIN', 'Pincode', 'Address']}
+            rows={[['Rahul Sharma', '9876543210', 'Acme Industries', 'rahul@acme.com', '9876543210', '', '08AAAAA0000A1Z5', '311001', 'Vidyadhar nagar, Chittorgarh'],
+                   ['Asha Verma', '9123456780', '', '', '', '', '', '', '']]} />
         </Field>
         {fileName && !result && rows.length > 0 && (
           <p className="crm-form-wide crm-sub">{rows.length} row{rows.length === 1 ? '' : 's'} read from {fileName}.</p>

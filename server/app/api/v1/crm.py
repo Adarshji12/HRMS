@@ -518,6 +518,12 @@ def export_leads(
     )
 
 
+@router.get("/assignees")
+def assignees(viewer: CurrentUser, db: DbSession) -> list[dict]:
+    """Who a lead or customer can be assigned to — the whole workspace, by name."""
+    return svc.list_assignees(db, viewer)
+
+
 @router.post("/leads/assign")
 def assign_leads(
     payload: S.LeadBulkAssign, viewer: CurrentUser, db: DbSession, request: Request

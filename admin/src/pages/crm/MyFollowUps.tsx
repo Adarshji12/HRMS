@@ -11,6 +11,7 @@
  * card is also the filter for its window.
  */
 
+import SampleFile from '../../components/SampleFile'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../../styles/crm.css'
@@ -702,11 +703,6 @@ function AddFollowUpDialog({ onClose, onDone, existing }: { onClose: () => void;
 
 /* ----------------------------------------------------------------- import --- */
 
-const SAMPLE_CSV =
-  'Contact,Due date,Time,Purpose,Notes\n' +
-  'L-0001,2026-11-03,10:30,Send the quotation,Asked for annual pricing\n' +
-  '9876543210,03-11-2026,15:00,Demo call,\n'
-
 /** "2026-11-03", "03-11-2026" or "03/11/2026", plus an optional "15:00", to
  *  the moment it means on this computer's clock. */
 function parseDue(day: string, at: string): string | null {
@@ -759,15 +755,6 @@ function ImportFollowUpsDialog({ onClose, onDone }: { onClose: () => void; onDon
   })
   const usable = parsed.filter((row) => row.contact && row.due)
 
-  function downloadSample() {
-    const url = URL.createObjectURL(new Blob([SAMPLE_CSV], { type: 'text/csv' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'follow-ups-sample.csv'
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
   async function run() {
     setBusy(true)
     setError(null)
@@ -815,7 +802,7 @@ function ImportFollowUpsDialog({ onClose, onDone }: { onClose: () => void; onDon
       }
     >
       <div className="crm-form">
-        <Field label="File" wide hint={<button type="button" className="link-btn" onClick={downloadSample}>Download a sample file</button>}>
+        <Field label="File" wide>
           <input
             type="file"
             accept=".csv,text/csv"
@@ -824,6 +811,9 @@ function ImportFollowUpsDialog({ onClose, onDone }: { onClose: () => void; onDon
               if (file) void readFile(file)
             }}
           />
+        
+          <SampleFile filename="follow-ups-sample.csv" headers={['Contact', 'Due date', 'Time', 'Purpose', 'Notes']}
+            rows={[['L-0001', '2026-11-03', '10:30', 'Send the quotation', 'Asked for annual pricing'], ['9876543210', '03-11-2026', '15:00', 'Demo call', '']]} />
         </Field>
         <Field label="Owner" hint="Left empty, each goes to its record's owner." wide>
           <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Record's owner" />

@@ -217,19 +217,19 @@ function ApplyDialog({ onClose, onDone }: { onClose: () => void; onDone: (messag
       <form id="ld-apply" className="ld-form" onSubmit={submit}>
         <div className="ld-section">WHO, AND WHAT KIND</div>
         <div className="ld-two">
-          <label>Employee <i className="lf-req">*</i>
+          <label><span className="ld-lbl">Employee <i className="lf-req">*</i></span>
             <select value={who} onChange={(e) => setWho(e.target.value)}>
               {(people.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}{x.code ? ` (${x.code})` : ''}</option>)}
             </select></label>
-          <label>Leave type <i className="lf-req">*</i>
+          <label><span className="ld-lbl">Leave type <i className="lf-req">*</i></span>
             <select value={typeKey} onChange={(e) => { setTypeId(e.target.value); if (!activeTypes.find((t) => t.id === e.target.value)?.allow_half_day) setHalf(false) }}>
               {activeTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select></label>
         </div>
         <div className="ld-section">WHEN</div>
         <div className="ld-two">
-          <label>From <i className="lf-req">*</i><input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to < e.target.value) setTo(e.target.value) }} /></label>
-          <label>To <i className="lf-req">*</i>{half && <span className="muted-sm"> Locked — a half day is one date</span>}
+          <label><span className="ld-lbl">From <i className="lf-req">*</i></span><input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to < e.target.value) setTo(e.target.value) }} /></label>
+          <label><span className="ld-lbl">To <i className="lf-req">*</i>{half && <span className="muted-sm"> Locked — a half day is one date</span>}</span>
             <input type="date" value={end} min={from} disabled={half} onChange={(e) => setTo(e.target.value)} /></label>
         </div>
         <div className="ld-half">
@@ -246,9 +246,9 @@ function ApplyDialog({ onClose, onDone }: { onClose: () => void; onDone: (messag
         </div>
         <div className="ld-section">WHY</div>
         <div className="ld-two">
-          <label>Reason <i className="lf-req">*</i> <span className="muted-sm">This is what the approver reads</span>
+          <label><span className="ld-lbl">Reason <i className="lf-req">*</i> <span className="muted-sm">This is what the approver reads</span></span>
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Family function out of town" /></label>
-          <label>Contact while away <span className="muted-sm">Optional — somebody always asks</span>
+          <label><span className="ld-lbl">Contact while away <span className="muted-sm">Optional — somebody always asks</span></span>
             <input value={contact} maxLength={40} onChange={(e) => setContact(e.target.value)} placeholder="Mobile or an alternate number" /></label>
         </div>
         {error && <ErrorNote>{error}</ErrorNote>}

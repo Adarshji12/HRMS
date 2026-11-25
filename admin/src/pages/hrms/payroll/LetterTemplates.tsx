@@ -5,7 +5,7 @@ import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import { Dialog } from '../../crm/parts'
-import { LETTER_TYPES, typeName, type LetterTemplate } from './Letters'
+import { LETTER_TYPES, LetterText, typeName, type LetterTemplate } from './Letters'
 import '../../../styles/payroll.css'
 
 interface Field { token: string; label: string; example: string; group: string }
@@ -13,6 +13,7 @@ interface Field { token: string; label: string; example: string; group: string }
 export default function LetterTemplates() {
   const q = useQuery<LetterTemplate[]>('letters-templates-all', () => api.get<LetterTemplate[]>('/letters/templates'))
   const [dlg, setDlg] = useState<LetterTemplate | 'new' | null>(null)
+  const [view, setView] = useState<LetterTemplate | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -49,28 +50,33 @@ export default function LetterTemplates() {
             <button className="btn btn-primary" disabled={busy} onClick={() => void seed()}>{busy ? 'Adding…' : 'Add starter templates'}</button>
           </Empty>
         ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Template</th><th>Type</th><th>Employees can request</th><th>Status</th><th /></tr></thead>
-              <tbody>
-                {q.data.map((t) => (
-                  <tr key={t.id} className={t.is_active ? '' : 'is-off'}>
-                    <td><b>{t.name}</b>{t.description && <div className="muted-sm">{t.description}</div>}</td>
-                    <td>{typeName(t.letter_type)}</td>
-                    <td>{t.employee_requestable ? 'Yes' : 'No'}</td>
-                    <td><span className={`pr-status ${t.is_active ? 'pr-status-ok' : 'pr-status-muted'}`}>{t.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td className="row-actions">
-                      <button className="btn small" onClick={() => setDlg(t)}>Edit</button>{' '}
-                      <button className="btn small" onClick={() => void toggle(t)}>{t.is_active ? 'Deactivate' : 'Activate'}</button>{' '}
-                      <button className="btn small danger" onClick={() => void remove(t)}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="lt-grid">
+            {q.data.map((t) => (
+              <article key={t.id} className={`lt-card${t.is_active ? '' : ' is-off'}`}>
+                <div className="lt-top">
+                  <span className="lt-type">{typeName(t.letter_type)}</span>
+                  <span className={`pr-status ${t.is_active ? 'pr-status-ok' : 'pr-status-muted'}`}>{t.is_active ? 'Active' : 'Inactive'}</span>
+                </div>
+                <h3 className="lt-name" title={t.name}>{t.name}</h3>
+                <p className="lt-desc muted-sm">{t.description || (t.subject ? `Subject: ${t.subject}` : 'No description')}</p>
+                <div className="lt-meta">{t.employee_requestable ? 'Employees can request' : 'HR issues only'}</div>
+                <div className="lt-actions">
+                  <button className="btn small" onClick={() => setDlg(t)}>Edit</button>
+                  <button className="btn small" onClick={() => setView(t)}>Preview</button>
+                  <button className="btn small" onClick={() => void toggle(t)}>{t.is_active ? 'Deactivate' : 'Activate'}</button>
+                  <button className="btn small danger" onClick={() => void remove(t)}>Delete</button>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
+      {view && (
+        <Dialog title={view.name} subtitle={view.subject ?? undefined} wide onClose={() => setView(null)}
+                footer={<button className="btn" onClick={() => setView(null)}>Close</button>}>
+          <div className="lt-preview"><LetterText text={view.body} /></div>
+        </Dialog>
+      )}
       {dlg && <TemplateDialog existing={dlg === 'new' ? null : dlg} onClose={() => setDlg(null)} onSaved={() => { setDlg(null); q.reload() }} />}
     </div>
   )
@@ -110,7 +116,7 @@ function TemplateDialog({ existing, onClose, onSaved }: { existing: LetterTempla
               <button className="btn" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" disabled={busy || !d.name.trim() || !d.body.trim()} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
             </>}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(220px,1fr)', gap: 20, padding: '8px 24px 20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(220px,1fr)', gap: 20, padding: '8px 24px 20px', flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start' }}>
         <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
             <label className="pr-field"><span className="pr-field-label">Name</span>

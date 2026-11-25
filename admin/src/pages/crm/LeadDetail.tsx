@@ -40,6 +40,7 @@ export default function LeadDetail() {
   const detail = useQuery<Detail>(`crm-lead-${leadId}`, () => crm.lead(leadId))
   const [editing, setEditing] = useState(false)
   const [converting, setConverting] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
   const opportunities = useQuery<Opportunity[]>(
     `crm-lead-opportunities-${leadId}`,
     () => crm.opportunities(leadId),
@@ -73,6 +74,22 @@ export default function LeadDetail() {
           </div>
         </div>
         <div className="ldp-head-actions">
+          <label className="ldp-assign" title="Reassign this lead">
+            <span className="crm-sub">Assigned to</span>{' '}
+            <OwnerSelect
+              value={lead.owner_id ?? ''}
+              placeholder="Unassigned"
+              onChange={async (owner) => {
+                setAssignError(null)
+                try {
+                  await crm.patchLead(lead.id, { owner_id: owner || null })
+                  detail.reload()
+                } catch (err) {
+                  setAssignError(crmError(err, 'That lead could not be reassigned'))
+                }
+              }}
+            />
+          </label>
           <Link className="btn" to={`/crm/quotations/new?lead=${lead.id}`}>
             <IconSheet size={14} /> Add quotation
           </Link>
@@ -82,6 +99,7 @@ export default function LeadDetail() {
         </div>
       </header>
 
+      {assignError && <div className="ldp-notice"><ErrorNote>{assignError}</ErrorNote></div>}
       {lead.customer_id && (
         <div className="notice notice-ok ldp-notice">
           Converted {lead.converted_at ? relativeTime(lead.converted_at) : ''} — this lead is now a customer.

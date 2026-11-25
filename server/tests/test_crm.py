@@ -1094,3 +1094,18 @@ def test_own_only_narrows_a_person_and_customers_have_their_own_setting(client, 
                if r["user_id"] == str(acme.employee.id))
     assert (row["lead_scope"], row["customer_scope"]) == ("own", "all")
     assert _set_access(client, acme, lead_scope="everything").status_code == 422
+
+
+def test_assignees_list_whole_workspace_and_owner_change_is_logged(client, acme):
+    people = client.get("/api/v1/crm/assignees", headers=acme.headers(acme.employee_token))
+    assert people.status_code == 200, people.text
+    ids = {p["id"] for p in people.json()}
+    assert str(acme.owner.id) in ids and str(acme.employee.id) in ids
+    lead = _new_lead(client, acme, mobile="919000000091")
+    patched = client.patch(
+        f"/api/v1/crm/leads/{lead['id']}", json={"owner_id": str(acme.employee.id)}, headers=acme.headers(),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["owner_id"] == str(acme.employee.id)
+    detail = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=acme.headers()).json()
+    assert any(a["kind"] == "assignment" for a in detail["activities"])

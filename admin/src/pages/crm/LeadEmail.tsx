@@ -7,7 +7,9 @@
    only closes once the server has accepted the message. */
 
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ErrorNote } from '../../components/ui'
+import { ApiError } from '../../lib/api'
 import { crm, crmError, type Lead } from './api'
 import { Dialog, Field } from './parts'
 
@@ -32,6 +34,7 @@ export function LeadEmailDialog({
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notSetUp, setNotSetUp] = useState(false)
 
   const toBad = to.trim() !== '' && !ADDRESS.test(to.trim())
   const bccList = splitAddresses(bcc)
@@ -42,12 +45,14 @@ export function LeadEmailDialog({
     if (!ready || busy) return
     setBusy(true)
     setError(null)
+    setNotSetUp(false)
     try {
       await crm.emailLead(lead.id, {
         to: to.trim(), name: name.trim() || null, subject: subject.trim(), body: body.trim(), bcc: bccList,
       })
       onSent(`Email sent to ${to.trim()}.`)
     } catch (err) {
+      setNotSetUp(err instanceof ApiError && err.status === 409)
       setError(crmError(err, 'The email could not be sent'))
       setBusy(false)
     }
@@ -69,7 +74,9 @@ export function LeadEmailDialog({
     >
       <div className="crm-form">
         {error && (
-          <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote></div>
+          <div className="crm-form-wide"><ErrorNote>{error}</ErrorNote>
+            {notSetUp && <p className="crm-sub"><Link to="/settings/email">Open Email setup</Link> (workspace owner only)</p>}
+          </div>
         )}
         <Field label="Name">
           <input value={name} onChange={(event) => setName(event.target.value)} />

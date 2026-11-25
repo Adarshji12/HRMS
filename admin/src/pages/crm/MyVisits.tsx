@@ -13,6 +13,7 @@
  */
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import '../../styles/crm.css'
 import '../../styles/visits.css'
 import '../../styles/hrdash.css'
@@ -146,7 +147,11 @@ const VISIT_COLUMNS: VisitColumn[] = [
       <span className="vs-avatar" aria-hidden>{initials(v.customer_name)}</span>
       <span className="vs-who-text">
         <span className="crm-strong">
-          {v.customer_name}
+          {/* The name opens the lead's or customer's own page. */}
+          {(v.subject_kind === 'lead' ? v.lead_id : v.customer_id) ? (
+            <Link className="vs-name-link" to={v.subject_kind === 'lead' ? `/crm/leads/${v.lead_id}` : `/crm/customers?open=${v.customer_id}`}
+                  title={v.subject_kind === 'lead' ? 'Open the lead' : 'Open the customer'}>{v.customer_name}</Link>
+          ) : v.customer_name}
           {v.subject_kind === 'lead' && <span className="vs-kind">Lead</span>}
         </span>
         <span className="crm-sub">{v.mobile ?? v.customer_mobile}</span>
@@ -199,6 +204,8 @@ export default function MyVisits() {
   const [checkingIn, setCheckingIn] = useState<Visit | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  // The visit just booked, so "Start visit" is on offer right after saving.
+  const [justBooked, setJustBooked] = useState<Visit | null>(null)
 
   // One set of filters for the table and the export, so the file is the screen.
   const query = {
@@ -319,6 +326,25 @@ export default function MyVisits() {
           {banner}
           <button className="link-btn" onClick={() => setBanner(null)}>
             Dismiss
+          </button>
+        </div>
+      )}
+      {justBooked && (
+        <div className="notice notice-ok" style={{ marginBottom: 12 }}>
+          Visit {justBooked.visit_no} is scheduled.
+          <button
+            className="btn btn-sm btn-primary"
+            style={{ marginLeft: 12 }}
+            onClick={() => {
+              const v = justBooked
+              setJustBooked(null)
+              void start(v)
+            }}
+          >
+            Start visit
+          </button>
+          <button className="link-btn" onClick={() => setJustBooked(null)}>
+            Later
           </button>
         </div>
       )}
@@ -481,8 +507,8 @@ export default function MyVisits() {
                                     Get code
                                   </button>
                                 )}
-                                <button className="btn btn-sm" onClick={() => start(visit)}>
-                                  Check in
+                                <button className="btn btn-sm btn-primary" onClick={() => start(visit)}>
+                                  Start visit
                                 </button>
                               </>
                             )}
@@ -531,7 +557,8 @@ export default function MyVisits() {
             setBooking(false)
             setEditing(null)
           }}
-          onSaved={() => {
+          onSaved={(created) => {
+            if (created && created.status === 'scheduled') setJustBooked(created)
             setBooking(false)
             setEditing(null)
             visits.reload()
@@ -574,7 +601,7 @@ function VisitForm({
 }: {
   visit: Visit | null
   onClose: () => void
-  onSaved: () => void
+  onSaved: (created?: Visit) => void
 }) {
   const [kind, setKind] = useState<'lead' | 'customer'>('customer')
   const [lead, setLead] = useState<Lead | null>(null)
@@ -640,9 +667,12 @@ function VisitForm({
       scheduled_at: localToISO(when),
     }
     try {
-      if (visit) await crm.patchVisit(visit.id, body)
-      else await crm.createVisit(body)
-      onSaved()
+      if (visit) {
+        await crm.patchVisit(visit.id, body)
+        onSaved()
+      } else {
+        onSaved(await crm.createVisit(body))
+      }
     } catch (err) {
       setError(crmError(err, 'That visit could not be saved'))
       setBusy(false)

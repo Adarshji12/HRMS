@@ -27,12 +27,15 @@
 .ld-s-pending { background: #fff4dc; color: #b97800; } .ld-s-approved { background: #e1f6ee; color: #0f7a54; } .ld-s-rejected { background: #fde7e9; color: #c0262b; }
 .ld-act { white-space: nowrap; text-align: right; }
 
-.ld-form { display: grid; gap: 14px; }
+.ld-form { display: grid; gap: 14px; align-content: start; flex: 1; min-height: 0; overflow-y: auto; padding: 8px 26px 16px; }
 .ld-section { margin-top: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-muted); }
-.ld-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ld-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ld-two > label { min-width: 0; }
+.ld-lbl { display: block; line-height: 1.35; }
+.ld-lbl .muted-sm { display: block; margin-top: 2px; }
 .ld-two label { display: grid; gap: 6px; font-size: 13.5px; }
-.ld-two label i { color: #e5484d; font-style: normal; }
-.ld-two input, .ld-two select, .ld-bar select { width: 100%; max-width: none; height: 42px; border-radius: 10px; }
+.ld-two label i { color: #e5484d; font-style: normal; margin-left: 2px; }
+.ld-two input, .ld-two select, .ld-bar select { width: 100%; max-width: none; min-width: 0; box-sizing: border-box; height: 42px; border-radius: 10px; }
 .ld-bar select { width: auto; }
 .ld-half { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .ld-summary { padding: 14px 16px; border: 1px solid #b7e8d4; border-radius: 12px; background: #e9faf2; color: #0f7a54; }

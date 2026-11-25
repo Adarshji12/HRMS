@@ -980,6 +980,20 @@ class CustomerIn(CrmBase):
         "address", "notes", mode="before",
     )(_blank_to_none)
 
+    @field_validator("mobile", "whatsapp")
+    @classmethod
+    def _indian_mobile(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        digits = re.sub(r"[\s\-]", "", value)
+        if digits.startswith("+91"):
+            digits = digits[3:]
+        elif len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        if not re.fullmatch(r"[6-9][0-9]{9}", digits):
+            raise ValueError("Enter a valid 10-digit mobile number.")
+        return value
+
 
 class CustomerPatch(CustomerIn):
     """Same fields, all optional."""
