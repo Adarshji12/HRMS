@@ -13,7 +13,8 @@ import { ErrorNote, Loading } from '../../components/ui'
 import { IconArrowLeft, IconCheck, IconClose, IconEdit, IconPlus } from '../../components/Icons'
 import { crm, crmError, isoToLocalInput, localToISO, type Visit } from './api'
 import { CrmPage, Dialog, Field } from './parts'
-import { CheckInDialog, CloseVisitDialog } from './MyVisits'
+import { CheckInDialog } from './MyVisits'
+import CompleteVisitDialog from './CompleteVisitDialog'
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
 const STATUS: Record<Visit['status'], string> = { scheduled: 'Scheduled', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' }
@@ -114,7 +115,7 @@ export default function VisitDetail() {
       </div>
 
       {dialog === 'start' && <CheckInDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}
-      {dialog === 'complete' && <CloseVisitDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog === 'complete' && <CompleteVisitDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'move' && <MoveDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'activity' && <ActivityDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'follow' && <FollowDialog visit={v} onClose={() => setDialog(null)} onDone={done} />}

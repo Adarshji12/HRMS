@@ -20,6 +20,7 @@ import '../../styles/hrdash.css'
 import { ExportButton } from '../../components/ExportButton'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
+import CompleteVisitDialog from './CompleteVisitDialog'
 import {
   IconAlert,
   IconCalendar,
@@ -577,7 +578,7 @@ export default function MyVisits() {
       )}
 
       {closing && (
-        <CloseVisitDialog
+        <CompleteVisitDialog
           visit={closing}
           onClose={() => setClosing(null)}
           onDone={() => {
