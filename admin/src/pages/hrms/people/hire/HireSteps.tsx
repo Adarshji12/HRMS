@@ -252,8 +252,10 @@ export function BasicStep(p: StepProps) {
       }} />
       <Part p={p} id="basic-joining" title="Joining" nodes={{
         employee_code: (
-          <Text p={p} k="employee_code" label="Employee ID" disabled={p.editing && Boolean(p.original?.employee_code)}
-                hint={p.editing ? (p.original?.employee_code ? 'Issued when they were added — it cannot be changed.' : 'No ID was issued yet — you can set one now. Once saved it cannot be changed.') : 'Next ID from HR Settings. Clear it to issue one automatically.'} />
+          <Text p={p} k="employee_code" label="Employee ID" disabled placeholder="Assigned when saved"
+                hint={p.editing
+                  ? (p.original?.employee_code ? 'Issued when they were added — it cannot be changed.' : 'Assigned when you save — it cannot be changed after.')
+                  : 'Assigned automatically from HR Settings — it cannot be edited.'} />
         ),
         joined_on: <Text p={p} k="joined_on" label="Date of joining" type="date" />,
         status: (

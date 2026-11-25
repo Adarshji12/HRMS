@@ -6,10 +6,11 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import { crm } from '../crm/api'
-import { Dialog, Field, useAccess, useRun } from './parts'
+import { Dialog, Field, newestFirst, useAccess, useRun } from './parts'
 import { erp, type Lookup } from './api'
 
 export type LookupKind = 'subcategory' | 'unit' | 'hsn' | 'rack' | 'billseries'
@@ -101,11 +102,11 @@ export default function Lookups({ kind }: { kind: LookupKind }) {
         : kind === 'hsn' ? [...new Set(all.map(facetOf))].sort((a, b) => Number(a) - Number(b)).map((v) => [v, `${v}%`] as [string, string])
           : [...new Set(all.map(facetOf).filter(Boolean))].sort().map((v) => [v, v] as [string, string])
   const extra = (show !== 'active' ? 1 : 0) + (facet ? 1 : 0)
-  const rows = facet ? all.filter((l) => facetOf(l) === facet) : all
+  const rows = newestFirst(facet ? all.filter((l) => facetOf(l) === facet) : all)
   const io: IoColumn<Lookup>[] = [
     { key: 'name', label: spec.nameLabel, required: true, sample: spec.namePlaceholder, get: (l) => l.name },
     ...(spec.parent ? [{ key: 'parent_name', label: spec.parent.label, required: true, sample: '', get: (l: Lookup) => l.parent_name }] : []),
-    { key: 'description', label: 'Description', sample: '', get: (l) => l.description },
+    ...(kind !== 'unit' && kind !== 'rack' ? [{ key: 'description', label: 'Description', sample: '', get: (l: Lookup) => l.description }] : []),
   ]
 
   function remove(l: Lookup) {
@@ -115,7 +116,7 @@ export default function Lookups({ kind }: { kind: LookupKind }) {
 
   return (
     <>
-      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <section className="card" style={{ padding: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
           <div>
             <h2 className="card-title" style={{ margin: 0 }}>{spec.title}</h2>
@@ -170,6 +171,7 @@ export default function Lookups({ kind }: { kind: LookupKind }) {
                   {manage && (
                     <td className="itl-c-act">
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="entry" title={l.name} columns={io} row={l} />
                         <button className="crm-icon-btn" onClick={() => setEditing(l)} title="Edit" aria-label={`Edit ${l.name}`}><IconEdit size={14} /></button>
                         <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(l)} disabled={removing.busy} title="Delete" aria-label={`Delete ${l.name}`}><IconTrash size={14} /></button>
                       </div>
@@ -192,7 +194,7 @@ function lookupFields(kind: LookupKind): { sections: FieldSection[]; defs: Field
   const sections: FieldSection[] = [{ id: 'main', label: SPECS[kind].title }]
   const defs: FieldDef[] =
     kind === 'unit' ? [main('name', 'Code', { fixed: true }), main('unitname', 'Unit name', { fixed: true }), main('uqc', 'GST UQC'), main('decimals', 'Decimals', { optionalOnly: true })]
-      : kind === 'hsn' ? [main('name', 'HSN / SAC code', { fixed: true }), main('type', 'Type', { optionalOnly: true }), main('gst', 'GST rate %', { optionalOnly: true }),
+      : kind === 'hsn' ? [main('name', 'HSN / SAC code', { fixed: true }), main('type', 'Type', { optionalOnly: true }), main('gst', 'GST rate %', { fixed: true }),
         main('short', 'Short name'), main('uqc', 'UQC', { fixed: true }), main('description', 'Description')]
         : kind === 'rack' ? [main('name', 'Rack name', { fixed: true }), main('parent', 'Store', { fixed: true })]
           : spec_parent(kind) ? [main('name', SPECS[kind].nameLabel, { fixed: true }), main('parent', SPECS[kind].parent!.label, { fixed: true }), main('description', 'Description')]

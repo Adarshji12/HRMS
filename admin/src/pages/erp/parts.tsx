@@ -26,6 +26,12 @@ const NONE = {} as Access
 
 /** What this person may do. Buttons they cannot use are not shown — the server
  *  refuses them anyway, and a button that only ever errors is a broken page. */
+/** A master list, newest record first (rows without a date keep their order). */
+export function newestFirst<T>(rows: T[]): T[] {
+  const at = (r: T) => String((r as { created_at?: string }).created_at ?? '')
+  return [...rows].sort((a, b) => at(b).localeCompare(at(a)))
+}
+
 export function useAccess(): { can: (flag: Capability) => boolean; loaded: boolean; any: boolean } {
   const q = useQuery('erp-access', () => erp.access())
   const data = q.data ?? NONE

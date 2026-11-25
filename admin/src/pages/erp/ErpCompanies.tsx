@@ -6,10 +6,11 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconClose, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import { crm } from '../crm/api'
-import { Dialog, Field, useAccess, useRun } from './parts'
+import { Dialog, Field, newestFirst, useAccess, useRun } from './parts'
 
 interface Contact { name: string | null; mobile: string | null; email: string | null }
 interface Company {
@@ -64,7 +65,7 @@ export default function Companies() {
   const removing = useRun(() => list.reload())
   const needle = q.trim().toLowerCase()
   const all = list.data ?? []
-  const rows = all.filter((c) =>
+  const rows = newestFirst(all).filter((c) =>
     (show === 'all' || (show === 'active') === c.is_active)
     && (!hasContact || (hasContact === 'yes') === ((c.contacts?.length ?? 0) > 0))
     && (!needle || [c.name, c.short_name, first(c, 'name'), first(c, 'mobile'), first(c, 'email')].some((x) => x && x.toLowerCase().includes(needle))))
@@ -77,7 +78,7 @@ export default function Companies() {
 
   return (
     <>
-      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <section className="card" style={{ padding: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
           <div>
             <h2 className="card-title" style={{ margin: 0 }}>Companies</h2>
@@ -136,6 +137,7 @@ export default function Companies() {
                   {manage && (
                     <td className="itl-c-act">
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="company" title={c.name} columns={IO} row={c} />
                         <button className="crm-icon-btn" onClick={() => setEditing(c)} title="Edit" aria-label={`Edit ${c.name}`}><IconEdit size={14} /></button>
                         <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(c)} disabled={removing.busy} title="Delete" aria-label={`Delete ${c.name}`}><IconTrash size={14} /></button>
                       </div>

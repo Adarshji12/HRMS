@@ -7,11 +7,12 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import { IconSliders } from '../../components/Icons'
 import { crm } from '../crm/api'
 import TreeSelect from '../../components/TreeSelect'
-import { Dialog, Field, useAccess, useRun } from './parts'
+import { Dialog, Field, newestFirst, useAccess, useRun } from './parts'
 
 import { erp, rupees, type AccountGroup, type Ledger, type Salesman } from './api'
 import { SalesmanForm } from './ErpSalesmen'
@@ -96,6 +97,7 @@ const LEDGER_FIELDS: FieldDef[] = [
   { key: 'city', label: 'City', section: 'general' },
   { key: 'pincode', label: 'PIN code', section: 'general' },
   { key: 'category', label: 'Ledger category', section: 'general' },
+  { key: 'status', label: 'Status', section: 'general', optionalOnly: true },
   { key: 'balancing_method', label: 'Balancing method', section: 'balance', optionalOnly: true },
   { key: 'opening_balance', label: 'Opening balance', section: 'balance' },
   { key: 'credit_days', label: 'Credit days', section: 'balance' },
@@ -183,7 +185,7 @@ export default function Ledgers() {
   const [filtering, setFiltering] = useState(false)
   const all = list.data ?? []
   const extra = Object.entries(filters).filter(([k, v]) => v !== NO_FILTERS[k as keyof LedgerFilters]).length
-  const rows = all.filter((l) => matches(l, filters))
+  const rows = newestFirst(all).filter((l) => matches(l, filters))
   const current = rows.find((l) => l.id === picked) ?? rows[0]
 
   function remove(l: Ledger) {
@@ -235,6 +237,7 @@ export default function Ledgers() {
                   {manage && (
                     <td className="itl-c-act" onClick={(e) => e.stopPropagation()}>
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="ledger" title={l.name} columns={IO} row={l} />
                         <button className="crm-icon-btn" onClick={() => setEditing(l)} title="Edit" aria-label={`Edit ${l.name}`}>
                           <IconEdit size={14} />
                         </button>
@@ -515,13 +518,12 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     station: (
       <Field label="Station" required hint="Town or city, from the geography master">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-          <TreeSelect value={f.station} onChange={pickTown} placeholder="Search town…" searchPlaceholder="Search towns…"
-                      options={[
-                        ...(towns.data ?? []).filter((t) => t.is_active !== false)
-                          .map((t) => ({ key: t.name, label: t.name, sub: [t.district_name, t.state_name].filter(Boolean).join(', ') })),
-                        // A station already on the ledger that is not on the list still has to show.
-                        ...(f.station && !(towns.data ?? []).some((t) => t.name === f.station) ? [{ key: f.station, label: f.station }] : []),
-                      ]} />
+          <select value={f.station} onChange={(e) => pickTown(e.target.value)} aria-label="Station">
+            <option value="">{towns.loading ? 'Loading…' : 'Choose station'}</option>
+            {/* A station already on the ledger that is not on the list still has to show. */}
+            {f.station && !(towns.data ?? []).some((x) => x.name === f.station) && <option value={f.station}>{f.station}</option>}
+            {(towns.data ?? []).filter((x) => x.is_active !== false).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}
+          </select>
           <button type="button" className="btn vw-refresh" title="Add a town" aria-label="Add a town" onClick={() => setAddingTown(true)}>
             <IconPlus size={14} />
           </button>
@@ -569,6 +571,15 @@ export function LedgerForm({ ledger, known, initialGroup, onClose, onSaved }: { 
     category: fm('category') !== 'hide' && (
       <Field label="Ledger category" required={rq('category')} hint="Picks the company discount">
         <input value={f.category} maxLength={80} onChange={(e) => set('category', e.target.value)} placeholder="Others" />
+      </Field>
+    ),
+
+    status: fm('status') !== 'hide' && (
+      <Field label="Status" hint={f.is_active ? 'Shows in party lists' : 'Hidden from party lists; its history stays'}>
+        <select value={f.is_active ? 'active' : 'inactive'} onChange={(e) => set('is_active', e.target.value === 'active')}>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
       </Field>
     ),
 

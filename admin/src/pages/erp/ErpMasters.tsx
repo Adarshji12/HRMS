@@ -12,7 +12,7 @@ import {
   erp, erpError, qtyText, rupees,
   type CustomerAccount, type Item, type Vendor, type Warehouse,
 } from './api'
-import { DateText, Dialog, Drawer, ErpPage, ErpState, Facts, Field, Note, ReasonDialog, Tabs, useAccess, useRun } from './parts'
+import { DateText, Dialog, Drawer, ErpPage, ErpState, Facts, Field, newestFirst, Note, ReasonDialog, Tabs, useAccess, useRun } from './parts'
 import { MasterTrail } from '../masters/MasterBack'
 import { crm } from '../crm/api'
 import {
@@ -20,6 +20,7 @@ import {
   type FieldDef, type FieldSection,
 } from '../../components/ViewSettings'
 import { cells, heads, type Col } from './listColumns'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import Ledgers from './ErpLedgers'
@@ -234,7 +235,6 @@ const ITEM_COLUMNS: ItemColumn[] = [
   { key: 'part_number', label: 'Part number', initial: false, className: 'itl-mono', td: (i) => i.part_number || '—' },
   { key: 'barcode', label: 'Barcode', initial: false, className: 'itl-mono', td: (i) => i.barcode || '—' },
   { key: 'purchase_gst', label: 'Purchase GST', initial: false, thClass: 'crm-num', className: 'crm-num', td: (i) => `${Number(i.purchase_gst_percent)}%` },
-  { key: 'reorder', label: 'Reorder level', initial: false, thClass: 'crm-num', className: 'crm-num', td: (i) => qtyText(i.reorder_level) },
   { key: 'warranty', label: 'Warranty', initial: false, td: (i) => (i.warranty_months ? `${i.warranty_months} months` : '—') },
 ]
 
@@ -248,7 +248,8 @@ function Items() {
   const list = useQuery(`erp-items-list-${q}`, () => erp.items({ q: q.trim() || undefined }))
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const removing = useRun(() => list.reload())
-  const rows = (list.data ?? []).filter((i) =>
+  // Newest first, so an item just added is at the top.
+  const rows = newestFirst(list.data ?? []).filter((i) =>
     (!type || i.item_type === type) && (!state || (state === 'active') === i.is_active))
   function remove(i: Item) {
     if (!window.confirm(`Delete the item “${i.name}”? This cannot be undone.`)) return
@@ -299,6 +300,7 @@ function Items() {
                   {manage && (
                     <td className="itl-c-act">
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="item" title={i.name} columns={ITEM_IO} row={i} />
                         <button className="crm-icon-btn" onClick={() => setEditing(i)} title="Edit" aria-label={`Edit ${i.name}`}>
                           <IconEdit size={14} />
                         </button>
@@ -550,7 +552,7 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
       <>
         <span className="itx-req"><b>*</b> Required</span>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
+        {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>}
         <span className="crm-push" />
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !ready || missing}
@@ -590,13 +592,11 @@ function ItemForm({ item, onClose, onSaved }: { item: Item | null; onClose: () =
               <span className="itf-switch-track" aria-hidden />
               <span>{form.is_active ? 'Active' : 'Inactive'}</span>
             </label>
-            {goods && (
-              <label className="itf-switch" title="Each unit gets its own serial on receipt, issue and invoice.">
-                <input type="checkbox" checked={Boolean(form.is_serialized)} onChange={(e) => set('is_serialized', e.target.checked)} />
-                <span className="itf-switch-track" aria-hidden />
-                <span>Track serial numbers</span>
-              </label>
-            )}
+            <label className="itf-switch" title={goods ? 'Each unit gets its own serial on receipt, issue and invoice.' : 'Each service job or unit serviced carries its own serial number.'}>
+              <input type="checkbox" checked={Boolean(form.is_serialized)} onChange={(e) => set('is_serialized', e.target.checked)} />
+              <span className="itf-switch-track" aria-hidden />
+              <span>Track serial numbers</span>
+            </label>
           </div>
         </aside>
 
@@ -755,7 +755,7 @@ function Warehouses() {
     void removing.run(() => erp.deleteWarehouse(w.id), 'That store could not be deleted')
   }
   const needle = q.trim().toLowerCase()
-  const rows = (list.data ?? []).filter((w) =>
+  const rows = newestFirst(list.data ?? []).filter((w) =>
     (show === 'all' || (show === 'active') === w.is_active) && (!defaultF || (defaultF === 'yes') === !!w.is_default)
     && (!needle || [w.name, w.code, w.address].some((x) => x && x.toLowerCase().includes(needle))))
   const extra = (show !== 'active' ? 1 : 0) + (defaultF ? 1 : 0)
@@ -809,7 +809,8 @@ function Warehouses() {
                 {manage && (
                   <td className="itl-c-act">
                     <div className="crm-row-actions itl-actions">
-                      <button className="crm-icon-btn" onClick={() => setEditing(w)} title="Edit" aria-label={`Edit ${w.name}`}><IconEdit size={15} /></button>
+                      <RowShare name="store" title={w.name} columns={WAREHOUSE_IO} row={w} />
+                        <button className="crm-icon-btn" onClick={() => setEditing(w)} title="Edit" aria-label={`Edit ${w.name}`}><IconEdit size={15} /></button>
                       <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(w)} disabled={removing.busy} title="Delete" aria-label={`Delete ${w.name}`}><IconTrash size={15} /></button>
                     </div>
                   </td>
@@ -984,7 +985,7 @@ function Vendors() {
   const inView = (v: Vendor, w: VendorView) =>
     !w || (w === 'active' && v.status === 'active') || (w === 'awaiting' && (v.status === 'draft' || v.status === 'pending'))
     || (w === 'msme' && v.is_msme) || (w === 'blocked' && (v.status === 'suspended' || v.status === 'blacklisted'))
-  const rows = all.filter((v) => inView(v, view) && (!status || v.status === status) && (!type || v.vendor_type === type)
+  const rows = newestFirst(all).filter((v) => inView(v, view) && (!status || v.status === status) && (!type || v.vendor_type === type)
     && (!needle || [v.code, v.legal_name, v.gstin, v.pan, v.category, v.contact_name, v.phone, v.email, v.state]
       .some((x) => x && x.toLowerCase().includes(needle))))
   const count = (w: VendorView) => all.filter((v) => inView(v, w)).length
@@ -1267,7 +1268,7 @@ function VendorForm({ vendor, onClose, onSaved }: { vendor: Vendor | null; onClo
     <Dialog wide title={vendor ? `Edit vendor · ${vendor.code}` : 'New vendor'} onClose={onClose} footer={
       <>
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
+        {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>}
         <button className="btn crm-push" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !String(form.legal_name).trim() || missing || invalid}
           onClick={() => void run(async () => onSaved(await erp.saveVendor(body, vendor?.id)))}>
@@ -1633,7 +1634,7 @@ function CustomerDrawer({ customer, onClose, onChanged }: { customer: CustomerAc
     <Drawer title={customer.customer_name} meta={customer.customer_code} onClose={onClose} footer={
       <div className="crm-row-actions">
         {error && <span className="error">{error}</span>}
-        {missing && <span className="error">Fill in the fields marked <b className="lf-req">*</b></span>}
+        {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>}
         {can('can_approve_billing') && (
           <button className="btn" onClick={() => setHolding(true)}>{a?.credit_hold ? 'Release hold' : 'Place on credit hold'}</button>
         )}

@@ -6,9 +6,10 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, useColumns, type ColumnDef } from '../../components/ViewSettings'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import { crm } from '../crm/api'
-import { Dialog, Field, useAccess, useRun } from './parts'
+import { Dialog, Field, newestFirst, useAccess, useRun } from './parts'
 import { erp, type Station } from './api'
 
 const COLUMNS: Array<ColumnDef & { td: (s: Station) => React.ReactNode; className?: string }> = [
@@ -50,7 +51,7 @@ export default function Stations() {
   const removing = useRun(() => list.reload())
   const all = list.data ?? []
   const needle = q.trim().toLowerCase()
-  const rows = useMemo(() => all.filter((s) =>
+  const rows = useMemo(() => newestFirst(all).filter((s) =>
     (!stateId || s.state_id === stateId) && (!districtId || s.district_id === districtId) && (!customOnly || s.source === 'custom')
     && (!needle || [s.name, s.district_name, s.pincode].some((x) => x && x.toLowerCase().includes(needle)))), [all, stateId, districtId, customOnly, needle])
   const districtChoices = (districts.data ?? []).filter((d) => !stateId || d.state_id === stateId)
@@ -111,6 +112,7 @@ export default function Stations() {
                   {manage && (
                     <td className="itl-c-act">
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="station" title={s.name} columns={IO} row={s} />
                         <button className="crm-icon-btn" onClick={() => setEditing(s)} title="Edit" aria-label={`Edit ${s.name}`}><IconEdit size={14} /></button>
                         <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(s)} disabled={removing.busy || s.ledgers > 0}
                                 title={s.ledgers > 0 ? `${s.ledgers} ledger${s.ledgers === 1 ? '' : 's'} at this station` : 'Delete'} aria-label={`Delete ${s.name}`}><IconTrash size={14} /></button>

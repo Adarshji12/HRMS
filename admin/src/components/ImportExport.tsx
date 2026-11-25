@@ -47,7 +47,6 @@ export default function ImportExport<T>({
   canImport?: boolean
 }) {
   const [open, setOpen] = useState(false)
-
   function exportRows() {
     downloadCsv(`${name}-${new Date().toISOString().slice(0, 10)}.csv`, columns.map((c) => c.label),
       rows.map((r) => columns.map((c) => c.get(r))))

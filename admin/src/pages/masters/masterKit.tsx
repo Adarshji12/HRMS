@@ -16,7 +16,7 @@ import { useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
 import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
-import { IconCheck, IconPlus } from '../../components/Icons'
+import { IconCheck, IconEdit, IconPlus, IconTrash } from '../../components/Icons'
 import { crm, crmError } from '../crm/api'
 import {
   ColumnSettings, FieldSettings, useColumns, useFieldModes,
@@ -421,6 +421,7 @@ export function MasterTable({ list }: { list: ListDef }) {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('')
   const columnDefs = masterColumnDefs(list)
   const columns = useColumns('master:' + list.kind, columnDefs)
 
@@ -430,7 +431,8 @@ export function MasterTable({ list }: { list: ListDef }) {
   )
 
   const data = (rows.data ?? []).filter((row) =>
-    q ? String(row.name ?? '').toLowerCase().includes(q.toLowerCase()) : true,
+    (q ? String(row.name ?? '').toLowerCase().includes(q.toLowerCase()) : true)
+    && (!status || (status === 'active') === (row.is_active !== false)),
   )
 
   /** Reload the table and tell the count tiles above it to recount. */
@@ -481,6 +483,11 @@ export function MasterTable({ list }: { list: ListDef }) {
             placeholder="Search…"
             aria-label={`Search ${list.label}`}
           />
+          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} aria-label={`Filter ${list.label} by status`}>
+            <option value="">All status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
           <span className="crm-sub">{data.length}</span>
           <ColumnSettings defs={columnDefs} order={columns.pref.order} hidden={columns.pref.hidden}
                           onSave={columns.save} onReset={columns.reset} />
@@ -538,11 +545,11 @@ export function MasterTable({ list }: { list: ListDef }) {
                   </td>
                   <td>
                     <div className="crm-row-actions">
-                      <button className="link-btn" onClick={() => setEditing(row)}>
-                        Edit
+                      <button className="crm-icon-btn" onClick={() => setEditing(row)} title="Edit" aria-label={`Edit ${String(row.name ?? '')}`}>
+                        <IconEdit size={14} />
                       </button>
-                      <button className="link-btn" onClick={() => remove(row)}>
-                        Delete
+                      <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(row)} title="Delete" aria-label={`Delete ${String(row.name ?? '')}`}>
+                        <IconTrash size={14} />
                       </button>
                     </div>
                   </td>

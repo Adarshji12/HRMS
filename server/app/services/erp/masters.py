@@ -271,8 +271,6 @@ def save_item(
                 "item_in_stock",
                 "Serial tracking cannot change while the item has stock on hand.", 409,
             )
-    if payload.item_type == "service" and payload.is_serialized:
-        raise ErpError("service_serialized", "A service has no serial numbers.")
     if payload.purchase_gst_percent is None:
         payload.purchase_gst_percent = payload.gst_percent
     for field, value in payload.model_dump().items():

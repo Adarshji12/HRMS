@@ -238,6 +238,7 @@ export interface Ledger {
 
 export interface Item {
   id: string
+  created_at?: string
   code: string
   name: string
   description: string | null

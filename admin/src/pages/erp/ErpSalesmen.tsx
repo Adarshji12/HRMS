@@ -6,9 +6,10 @@ import { useQuery } from '../../lib/useQuery'
 import { EmptyState, ErrorNote, Loading } from '../../components/ui'
 import { IconBuilding, IconEdit, IconPlus, IconSearch, IconTrash } from '../../components/Icons'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
+import RowShare from '../../components/RowShare'
 import ImportExport, { type IoColumn } from '../../components/ImportExport'
 import FilterPopup, { FilterField } from '../../components/FilterPopup'
-import { Dialog, Field, useAccess, useRun } from './parts'
+import { Dialog, Field, newestFirst, useAccess, useRun } from './parts'
 import { erp, rupees, type Salesman } from './api'
 
 type Show = 'active' | 'inactive' | 'all'
@@ -71,7 +72,7 @@ export default function Salesmen() {
   const [login, setLogin] = useState('')
   const [hasLedgers, setHasLedgers] = useState('')
   const extra = (show !== 'active' ? 1 : 0) + (login ? 1 : 0) + (hasLedgers ? 1 : 0)
-  const rows = (list.data ?? []).filter((m) =>
+  const rows = newestFirst(list.data ?? []).filter((m) =>
     (!login || (login === 'yes') === m.allow_login) && (!hasLedgers || (hasLedgers === 'yes') === m.ledgers > 0))
 
   function remove(s: Salesman) {
@@ -81,7 +82,7 @@ export default function Salesmen() {
 
   return (
     <>
-      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <section className="card" style={{ padding: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
           <div>
             <h2 className="card-title" style={{ margin: 0 }}>Salesman</h2>
@@ -141,6 +142,7 @@ export default function Salesmen() {
                   {manage && (
                     <td className="itl-c-act">
                       <div className="crm-row-actions itl-actions">
+                        <RowShare name="salesman" title={s.name} columns={IO} row={s} />
                         <button className="crm-icon-btn" onClick={() => setEditing(s)} title="Edit" aria-label={`Edit ${s.name}`}><IconEdit size={14} /></button>
                         <button className="crm-icon-btn crm-icon-danger" onClick={() => remove(s)} disabled={removing.busy} title="Delete" aria-label={`Delete ${s.name}`}><IconTrash size={14} /></button>
                       </div>
