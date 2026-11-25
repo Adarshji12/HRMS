@@ -32,7 +32,7 @@ export function HourlyChart({ data }: { data: HourBucket[] }) {
   const clipId = useId()
 
   const W = 720
-  const H = 190
+  const H = 170
   const padL = 34
   const padR = 6
   const padT = 8
@@ -292,6 +292,7 @@ export function DailyBars({ data }: { data: DailyPoint[] }) {
               x={padL + index * slot + slot / 2}
               y={H - 18}
               textAnchor="middle"
+              style={{ fontSize: 8.5 }}
             >
               {weekday(point.date)}
             </text>
@@ -300,6 +301,7 @@ export function DailyBars({ data }: { data: DailyPoint[] }) {
               x={padL + index * slot + slot / 2}
               y={H - 6}
               textAnchor="middle"
+              style={{ fontSize: 8.5 }}
             >
               {shortDate(point.date)}
             </text>

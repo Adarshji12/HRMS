@@ -514,3 +514,20 @@
 /* Breathing room around the day-flag chips and the office-locations card. */
 .att2 .att-hero-side .att-flags { margin: 16px 0 16px; gap: 8px; }
 .att2 .att-hero-side .att-offices { margin-top: auto; }
+
+/* ---- Compact cards: the work-mode choices, the Today tiles and the calendar totals take less height ---- */
+.att2 .wm-choice { padding: 10px 14px !important; gap: 2px 10px; min-height: 0; }
+.att2 .wm-choice svg { margin-bottom: 4px; width: 30px; height: 30px; padding: 7px; border-radius: 9px; }
+.att2 .wm-choice-label { font-size: 14px; }
+.att2 .wm-choice-hint { font-size: 12px; line-height: 1.35; }
+.att2 .att-hero-side .att-pairs { gap: 10px; }
+.att2 .att-info { padding: 10px 14px 12px; border-radius: 14px; }
+.att-info-head { margin-bottom: 6px; }
+.att2 .att-info-icon { width: 28px; height: 28px; border-radius: 8px; }
+.att2 .att-pair-value { font-size: 15.5px; }
+.att2 .att-pair-meta { margin-top: 2px; font-size: 12px; line-height: 1.4; }
+.att-kpis { gap: 10px; margin-bottom: 14px; }
+.att2 .att-kpis .tile { padding: 10px 14px; }
+.att2 .att-kpis .tile-label { margin-bottom: 4px; }
+.att2 .att-kpis .tile-value { font-size: 24px; line-height: 1.15; }
+.att2 .att-kpis .tile-meta { padding-top: 2px; }

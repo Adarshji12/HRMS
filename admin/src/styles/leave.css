@@ -181,3 +181,12 @@
   .lv-item-facts { gap: 10px; }
   .lv-bal-head { flex-direction: column; }
 }
+
+/* My applications: the status tabs, refresh and Columns sit together at the right */
+.lv-hist-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+/* Compact balance cards */
+.lv-balances { gap: 10px; }
+.card.lv-bal { padding: 10px 14px; gap: 6px; }
+.lv-bal-value { font-size: 22px; }
+.lv-bal-foot { padding-top: 0; }

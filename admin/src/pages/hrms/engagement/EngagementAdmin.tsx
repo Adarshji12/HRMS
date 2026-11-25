@@ -141,7 +141,7 @@ function Posts({ onError }: { onError: (m: string | null) => void }) {
 
   return (
     <>
-      <div className="eg-actions">
+      <div className="eg-actions eg-toolbar">
         <ColumnSettings defs={POST_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                         onSave={columns.save} onReset={columns.reset} />
         <button className="btn primary" onClick={() => setWriting((v) => !v)}>
@@ -225,7 +225,7 @@ function ReachPanel({
   if (!reach) return null
 
   return (
-    <section className="card">
+    <section className="card eg-reach">
       <h2 className="card-title">Reach</h2>
       <div className="eg-figures">
         <div><span className="eg-figure">{reach.audience}</span><span className="muted">sent to</span></div>

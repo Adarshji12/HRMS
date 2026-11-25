@@ -537,3 +537,7 @@
 .lp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; }
 .lp-checks { display: grid; gap: 14px; margin-top: 20px; }
 @media (max-width: 720px) { .crm .lt-row-5, .crm .lt-row-3, .lp-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Filters popup on Apps & Websites */
+.aw-filters label.field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.aw-filters select, .aw-filters input { width: 100%; }

@@ -24,6 +24,7 @@ import { api, download } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
+import { IconPlus } from '../../../components/Icons'
 import type {
   ExpenseCategory,
   ExpenseClaimDetail,
@@ -84,8 +85,8 @@ export default function MyExpenses() {
             to your manager until you do.
           </p>
         </div>
-        <button className="btn primary" onClick={() => setCreating(true)}>
-          New claim
+        <button className="btn primary ex-new" onClick={() => setCreating(true)}>
+          <IconPlus size={15} /> New claim
         </button>
       </header>
 
@@ -258,8 +259,6 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
         </p>
       )}
 
-      <LineTable claim={claim} busy={busy} act={act} />
-
       {claim.can_edit && (
         <AddLine
           claimId={claim.id}
@@ -268,6 +267,8 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
           act={act}
         />
       )}
+
+      <LineTable claim={claim} busy={busy} act={act} />
 
       <div className="ex-actions">
         <div className="ex-total">

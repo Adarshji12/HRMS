@@ -451,3 +451,9 @@
 
 /* "Selected: …" beside the work-mode question — drawn only where a page opts in. */
 .wm-selected { display: none; }
+
+/* the request card's controls sit together at the right */
+.att-req-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+.ts-count { margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--brand); color: #fff; font-size: 11px; line-height: 18px; display: inline-block; text-align: center; }
+.card-head > div > .card-note { display: block; margin-top: 2px; }

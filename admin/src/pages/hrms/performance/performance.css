@@ -103,3 +103,11 @@
 }
 .perf-competencies li:last-child { border-bottom: none; }
 .perf-competencies li.is-off { color: var(--text-muted); text-decoration: line-through; }
+
+/* New cycle form: one aligned row of fields, the Settings button in the card's corner */
+.perf-form { position: relative; }
+.perf-form > .lf-settings { position: absolute; top: 12px; right: 16px; margin: 0; }
+.perf-form .perf-row { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; margin-bottom: 6px; }
+.perf-form .perf-field { min-width: 0; }
+.perf-period-hint { margin: 0 0 14px; }
+@media (max-width: 900px) { .perf-form .perf-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -99,3 +99,25 @@
   .ex-card-head { flex-wrap: wrap; }
   .ex-addline > * { flex: 1 1 100% !important; }
 }
+
+/* ---- New look: coloured rails on the tiles, rounder cards, a gradient New claim button ---- */
+.ex-tiles { gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ex-tile { position: relative; padding: 16px 18px; border-radius: 16px; box-shadow: 0 2px 10px rgb(15 23 42 / .05); overflow: hidden; }
+.ex-tile::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: #6366f1; }
+.ex-tile:nth-child(2)::before { background: #0ea5e9; }
+.ex-tile:nth-child(3)::before { background: #f5b301; }
+.ex-tile:nth-child(4)::before { background: #12b886; }
+.ex-tile-label { color: #8a94a6; }
+.ex-tile-value { font-size: 26px; font-weight: 750; letter-spacing: -.02em; }
+.ex-tile-meta { margin-top: 4px; color: #3f7f9a; }
+.ex-card { border-radius: 14px; box-shadow: 0 2px 10px rgb(15 23 42 / .04); }
+.ex-newclaim { border-radius: 16px; }
+.btn.ex-new { display: inline-flex; align-items: center; gap: 6px; border: 0; color: #fff; border-radius: 12px; padding: 10px 18px; font-weight: 650;
+  background: linear-gradient(90deg, #0b7bc9, #5b4de0); box-shadow: 0 6px 16px -6px rgb(91 77 224 / .6); }
+.btn.ex-new:hover { filter: brightness(1.06); }
+@media (max-width: 900px) { .ex-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.ex-newclaim .card-title { margin-bottom: 12px; }
+
+/* the add-line row sits above the lines now */
+.ex-addline { border-top: 0 !important; border-bottom: 1px dashed var(--border); padding: 0 0 14px !important; margin: 0 0 14px !important; }

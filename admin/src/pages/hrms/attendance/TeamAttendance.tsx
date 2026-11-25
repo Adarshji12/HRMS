@@ -18,6 +18,7 @@ import {
   type AttendanceStatus,
 } from './MyAttendance'
 import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
+import { Dialog } from '../../crm/parts'
 import {
   canApproveRegularization,
   DayRegularization,
@@ -88,6 +89,7 @@ export default function TeamAttendance() {
   const today = orgToday(tz)
   const [day, setDay] = useState(today)
   const [status, setStatus] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [q, setQ] = useState('')
   const [subject, setSubject] = useState<{ id: string; name: string } | null>(null)
   const [panel, setPanel] = useState<Panel>('muster')
@@ -114,17 +116,15 @@ export default function TeamAttendance() {
 
   return (
     <div>
-      <div className="page-head">
+      <div className="page-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 className="page-title">Team attendance</h1>
           <p className="page-sub">
             The daily muster for everyone who reports to you.
           </p>
         </div>
-      </div>
-
-      {mayDecide && !subject && (
-        <div className="ts-toggle" style={{ marginBottom: 14 }}>
+        {mayDecide && !subject && (
+        <div className="ts-toggle">
           <button
             className={`ts-toggle-btn${panel === 'muster' ? ' ts-toggle-on' : ''}`}
             onClick={() => setPanel('muster')}
@@ -139,6 +139,7 @@ export default function TeamAttendance() {
           </button>
         </div>
       )}
+      </div>
 
       {mayDecide && panel === 'corrections' && !subject ? (
         <RegularizationQueue timeZone={tz} />
@@ -153,36 +154,46 @@ export default function TeamAttendance() {
         />
       ) : (
         <>
-          <div className="filter-row">
-            <div className="att-cal-nav">
-              <button className="btn btn-sm" onClick={() => setDay(addDays(day, -1))} aria-label="Previous day">
-                ←
-              </button>
-              <input type="date" value={day} onChange={(e) => setDay(e.target.value)} aria-label="Day" />
-              <button className="btn btn-sm" onClick={() => setDay(addDays(day, 1))} aria-label="Next day">
-                →
-              </button>
-              <button className="btn btn-sm" onClick={() => setDay(today)} disabled={day === today}>
-                Today
-              </button>
-            </div>
+          <div className="filter-row" style={{ alignItems: 'center' }}>
             <input
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search name…"
               aria-label="Search people"
-              style={{ minWidth: 200 }}
+              style={{ minWidth: 240 }}
             />
-            <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-              <option value="">All statuses</option>
-              {(Object.keys(STATUS) as AttendanceStatus[]).map((key) => (
-                <option key={key} value={key}>
-                  {STATUS[key].label}
-                </option>
-              ))}
-            </select>
+            <button type="button" className={`btn${filtersOpen ? ' is-on' : ''}`} onClick={() => setFiltersOpen(true)}>
+              Filters{(day !== today || status) && <span className="ts-count">{(day !== today ? 1 : 0) + (status ? 1 : 0)}</span>}
+            </button>
           </div>
+          {filtersOpen && (
+            <Dialog title="Filters" onClose={() => setFiltersOpen(false)}
+              footer={<>
+                <button type="button" className="btn" onClick={() => setFiltersOpen(false)}>Close</button>
+                <button type="button" className="btn" onClick={() => { setDay(today); setStatus(''); setFiltersOpen(false) }}>Reset</button>
+                <button type="button" className="btn btn-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+              </>}>
+              <div style={{ display: 'grid', gap: 14, padding: '4px 22px 10px' }}>
+                <label style={{ display: 'grid', gap: 6, fontWeight: 600, fontSize: 13 }}>Date
+                  <span className="att-cal-nav">
+                    <button type="button" className="btn btn-sm" onClick={() => setDay(addDays(day, -1))} aria-label="Previous day">←</button>
+                    <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Day" />
+                    <button type="button" className="btn btn-sm" onClick={() => setDay(addDays(day, 1))} aria-label="Next day">→</button>
+                    <button type="button" className="btn btn-sm" onClick={() => setDay(today)} disabled={day === today}>Today</button>
+                  </span>
+                </label>
+                <label style={{ display: 'grid', gap: 6, fontWeight: 600, fontSize: 13 }}>Status
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+                    <option value="">All statuses</option>
+                    {(Object.keys(STATUS) as AttendanceStatus[]).map((key) => (
+                      <option key={key} value={key}>{STATUS[key].label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </Dialog>
+          )}
 
           <Muster
             day={day}
@@ -267,10 +278,14 @@ function Muster({
 
       <section className="card">
         <div className="card-head">
-          <h2 className="card-title">Muster</h2>
-          <span className="card-note">{hm(counts.worked)} worked across the team</span>
+          <div>
+            <h2 className="card-title">Muster</h2>
+            <span className="card-note">{counts.worked ? `${hm(counts.worked)} worked across the team` : 'No hours worked yet'}</span>
+          </div>
+          <div className="att-req-tools">
           <ColumnSettings defs={MUSTER_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                           onSave={columns.save} onReset={columns.reset} />
+          </div>
         </div>
 
         {/* Said plainly, because the alternative is a manager concluding that

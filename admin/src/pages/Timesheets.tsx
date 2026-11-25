@@ -233,7 +233,7 @@ export default function Timesheets() {
           ))}
         </div>
 
-        <div className="ts-nav">
+        <div className="ts-nav" style={{ marginLeft: 'auto' }}>
           <button className="btn btn-sm" onClick={() => setDay(shiftPeriod(day, period, -1))} aria-label="Previous period">←</button>
           <input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
           <button className="btn btn-sm" onClick={() => setDay(shiftPeriod(day, period, 1))} aria-label="Next period">→</button>

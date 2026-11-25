@@ -103,10 +103,6 @@ export default function Appraisals() {
       <header className="page-head">
         <div>
           <h1>Appraisals</h1>
-          <p className="muted">
-            Run a review round: set goals, collect both halves, finalise the
-            ratings and release them.
-          </p>
         </div>
         <button className="btn primary" onClick={() => setCreating((v) => !v)}>
           {creating ? 'Close' : 'New cycle'}
@@ -126,7 +122,7 @@ export default function Appraisals() {
       ) : cyclesQ.error ? (
         <ErrorNote>{cyclesQ.error}</ErrorNote>
       ) : !cycles.length ? (
-        <Empty>No appraisal cycles yet. Start one to set goals and collect reviews.</Empty>
+        <p className="muted" style={{ margin: '8px 0' }}>No appraisal cycles yet. Start one to set goals and collect reviews.</p>
       ) : (
         <>
           <div className="perf-cycle-tabs">
@@ -192,9 +188,6 @@ function NewCycle({
         <span className="perf-field-label">Period from <span className="lf-req">*</span></span>
         <input type="date" value={form.period_start}
                onChange={(e) => setForm({ ...form, period_start: e.target.value })} />
-        <span className="perf-field-hint">
-          The period being appraised, not the window for doing the appraising.
-        </span>
       </label>
     ),
     period_end: (
@@ -247,6 +240,7 @@ function NewCycle({
       <div className="perf-row">
         {fieldsOf('cycle')}
       </div>
+      <p className="perf-field-hint perf-period-hint">The period is the time being appraised, not the window for doing the appraising.</p>
       {fieldsOf('rules')}
       <div className="perf-actions">
         <button
@@ -685,7 +679,7 @@ function Competencies({ onError }: { onError: (m: string | null) => void }) {
           ))}
         </ul>
       ) : (
-        <Empty>None yet. Goals alone are a complete appraisal for many companies.</Empty>
+        <p className="muted" style={{ margin: '8px 0' }}>None yet. Goals alone are a complete appraisal for many companies.</p>
       )}
     </section>
   )

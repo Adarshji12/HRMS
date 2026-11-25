@@ -840,6 +840,7 @@ export function MyRegularizations({
           <h2 className="card-title">My correction requests</h2>
           <p className="att-card-sub">Ask for a fix when a punch is missing or wrong. A manager decides each one.</p>
         </div>
+        <div className="att-req-tools">
         <ColumnSettings defs={MY_REG_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                         onSave={columns.save} onReset={columns.reset} />
         <div className="ts-toggle ts-toggle-xs">
@@ -853,6 +854,7 @@ export function MyRegularizations({
               {key === 'pending' && pendingCount > 0 ? ` ${pendingCount}` : ''}
             </button>
           ))}
+        </div>
         </div>
       </div>
 

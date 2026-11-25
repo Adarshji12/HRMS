@@ -914,6 +914,7 @@ function History({
     <section className="card">
       <div className="card-head">
         <h2 className="card-title">My applications</h2>
+        <div className="lv-hist-tools">
         <div className="ts-toggle" role="group" aria-label="Status">
           {HISTORY_FILTERS.map((f) => (
             <button
@@ -928,6 +929,7 @@ function History({
         </div>
         <ColumnSettings defs={HISTORY_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden}
                         onSave={columns.save} onReset={columns.reset} />
+        </div>
       </div>
 
       {loading ? (

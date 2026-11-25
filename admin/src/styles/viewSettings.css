@@ -79,3 +79,8 @@
 
 /* Required star, defined here too so screens outside the CRM bundle get it. */
 .lf-req { color: var(--status-critical, #c0392b); font-weight: 700; }
+
+/* In a card header the refresh and Columns buttons sit together at the right edge,
+   whatever else the header holds. */
+.card-head > .vw-refresh { margin-left: auto; }
+.card-head > .vw-refresh + .vw-wrap { margin-left: 0; }

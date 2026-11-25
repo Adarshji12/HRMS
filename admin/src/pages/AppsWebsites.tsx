@@ -8,6 +8,7 @@ import { clockTime, duration, todayISO } from '../lib/format'
 import type { Department, Productivity, Team, User } from '../lib/types'
 import { ErrorNote, ProductivityBadge } from '../components/ui'
 import { ExportButton } from '../components/ExportButton'
+import { Dialog } from './crm/parts'
 
 interface ActivityRow {
   id: string
@@ -51,6 +52,7 @@ export default function AppsWebsites() {
   const [productivity, setProductivity] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(0)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const employees = useQuery<User[]>('employees', () => api.get<User[]>('/admin/employees'))
   const teams = useQuery<Team[]>('teams', () => api.get<Team[]>('/org/teams'))
@@ -83,6 +85,8 @@ export default function AppsWebsites() {
     api.get<ActivityLog>(`/admin/activity?${key}`),
   )
 
+  const activeCount = (start !== todayISO() ? 1 : 0) + (end !== todayISO() ? 1 : 0) + (userId ? 1 : 0) + (teamId ? 1 : 0) + (departmentId ? 1 : 0) + (kind !== 'all' ? 1 : 0) + (productivity ? 1 : 0)
+
   function reset<T>(setter: (v: T) => void) {
     return (value: T) => {
       // Any filter change invalidates the current page — staying on page 4 of a
@@ -110,56 +114,7 @@ export default function AppsWebsites() {
         </div>
       </div>
 
-      <div className="filter-row">
-        <label className="field">
-          From
-          <input type="date" value={start} max={end} onChange={(e) => reset(setStart)(e.target.value)} />
-        </label>
-        <label className="field">
-          To
-          <input type="date" value={end} max={todayISO()} onChange={(e) => reset(setEnd)(e.target.value)} />
-        </label>
-        {/* An employee's own list holds one name, so this rendered a chooser
-            labelled "Everyone" offering only themselves. The server refuses a
-            colleague's id regardless; hiding the control stops it reading as a
-            broken feature. */}
-        {canViewTeam(user) && (
-          <>
-            <select value={userId} onChange={(e) => reset(setUserId)(e.target.value)}>
-              <option value="">Everyone</option>
-              {employees.data?.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-              ))}
-            </select>
-            <select
-              value={teamId}
-              onChange={(e) => reset(setTeamId)(e.target.value)}
-              aria-label="Team"
-            >
-              <option value="">All teams</option>
-              {teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <select
-              value={departmentId}
-              onChange={(e) => reset(setDepartmentId)(e.target.value)}
-              aria-label="Department"
-            >
-              <option value="">All departments</option>
-              {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </>
-        )}
-        <select value={kind} onChange={(e) => reset(setKind)(e.target.value as typeof kind)}>
-          <option value="all">Apps &amp; websites</option>
-          <option value="apps">Applications only</option>
-          <option value="websites">Websites only</option>
-        </select>
-        <select value={productivity} onChange={(e) => reset(setProductivity)(e.target.value)}>
-          <option value="">Any classification</option>
-          <option value="productive">Productive</option>
-          <option value="neutral">Neutral</option>
-          <option value="unproductive">Unproductive</option>
-        </select>
+      <div className="filter-row" style={{ alignItems: 'center' }}>
         <input
           type="search"
           placeholder="Search app, site or title…"
@@ -167,7 +122,70 @@ export default function AppsWebsites() {
           onChange={(e) => reset(setQ)(e.target.value)}
           style={{ minWidth: 210 }}
         />
+        <button type="button" className="btn" onClick={() => setFiltersOpen(true)}>
+          Filters{activeCount > 0 && <span className="ts-count">{activeCount}</span>}
+        </button>
       </div>
+      {filtersOpen && (
+        <Dialog title="Filters" onClose={() => setFiltersOpen(false)}
+          footer={<>
+            <button type="button" className="btn" onClick={() => setFiltersOpen(false)}>Close</button>
+            <button type="button" className="btn" onClick={() => { setPage(0); setStart(todayISO()); setEnd(todayISO()); setUserId(''); setTeamId(''); setDepartmentId(''); setKind('all'); setProductivity('') }}>Reset</button>
+            <button type="button" className="btn btn-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+          </>}>
+          <div className="aw-filters" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, padding: '4px 22px 12px' }}>
+        <label className="field">
+              From
+              <input type="date" value={start} max={end} onChange={(e) => reset(setStart)(e.target.value)} />
+            </label>
+            <label className="field">
+              To
+              <input type="date" value={end} max={todayISO()} onChange={(e) => reset(setEnd)(e.target.value)} />
+            </label>
+            {/* An employee's own list holds one name, so this rendered a chooser
+                labelled "Everyone" offering only themselves. The server refuses a
+                colleague's id regardless; hiding the control stops it reading as a
+                broken feature. */}
+            {canViewTeam(user) && (
+              <>
+                <select value={userId} onChange={(e) => reset(setUserId)(e.target.value)}>
+                  <option value="">Everyone</option>
+                  {employees.data?.map((emp) => (
+                    <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                  ))}
+                </select>
+                <select
+                  value={teamId}
+                  onChange={(e) => reset(setTeamId)(e.target.value)}
+                  aria-label="Team"
+                >
+                  <option value="">All teams</option>
+                  {teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <select
+                  value={departmentId}
+                  onChange={(e) => reset(setDepartmentId)(e.target.value)}
+                  aria-label="Department"
+                >
+                  <option value="">All departments</option>
+                  {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </>
+            )}
+            <select value={kind} onChange={(e) => reset(setKind)(e.target.value as typeof kind)}>
+              <option value="all">Apps &amp; websites</option>
+              <option value="apps">Applications only</option>
+              <option value="websites">Websites only</option>
+            </select>
+            <select value={productivity} onChange={(e) => reset(setProductivity)(e.target.value)}>
+              <option value="">Any classification</option>
+              <option value="productive">Productive</option>
+              <option value="neutral">Neutral</option>
+              <option value="unproductive">Unproductive</option>
+            </select>
+          </div>
+        </Dialog>
+      )}
 
       {error && <ErrorNote>{error}</ErrorNote>}
 

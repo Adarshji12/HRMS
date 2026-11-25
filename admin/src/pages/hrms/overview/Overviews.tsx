@@ -93,6 +93,7 @@ export function TimeOverview() {
         </div>
         {/* Bars, not the chart component: seven values against one shared
             maximum is a shape the eye compares directly, and it needs no axis. */}
+        {worked === 0 && <p className="muted-sm" style={{ margin: '4px 0 0' }}>No activity was tracked in these seven days.</p>}
         <div className="ov-spark">
           {daily.map((d) => (
             <div className="ov-spark-day" key={d.date}>

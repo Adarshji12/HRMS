@@ -29,6 +29,7 @@ import PlatformApp from './pages/platform/PlatformApp'
 import MyPerformance from './pages/MyPerformance'
 import JoinersLettersHub from './pages/hrms/JoinersLettersHub'
 import HrDashboard from './pages/hrms/home/HrDashboard'
+import HrmsHub from './pages/hrms/home/HrmsHub'
 import Dashboard from './pages/Dashboard'
 import CompanyOverview from './pages/CompanyOverview'
 import HRMSSettings from './pages/hrms/HRMSSettings'
@@ -683,6 +684,7 @@ function Shell() {
               come here to click, so they render bare. */}
 
           <Route path="/home" element={<EmployeeHome />} />
+          <Route path="/hrms" element={<HrmsHub />} />
           <Route path="/hrms/dashboard" element={<HrDashboard />} />
           <Route
             path="/hrms/working-hours"

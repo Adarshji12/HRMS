@@ -382,6 +382,7 @@ export const NAV: NavGroup[] = [
 ]
 
 export const HRMS_NAV_ITEMS: NavItem[] = [
+  { to: '/hrms', label: 'Overview', icon: IconDashboard, end: true },
   { to: '/hrms/dashboard', label: 'HR Dashboard', icon: IconDashboard, end: true },
   { to: '/attendance', label: 'Attandance', icon: IconClock, end: true },
   { to: '/tracking', label: 'Employee Tracking', icon: IconPin, end: true, teamOnly: true },

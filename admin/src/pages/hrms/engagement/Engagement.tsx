@@ -35,7 +35,7 @@ export default function Engagement() {
   const [error, setError] = useState<string | null>(null)
   return (
     <div className="page">
-      <header className="page-head">
+      <header className="page-head eg-head">
         <div>
           <h1>Noticeboard</h1>
           <p className="muted">
@@ -46,8 +46,10 @@ export default function Engagement() {
       </header>
       {error && <ErrorNote>{error}</ErrorNote>}
       <MySurveys onError={setError} />
-      <Feed onError={setError} />
-      <Wall onError={setError} />
+      <div className="eg-grid">
+        <Feed onError={setError} />
+        <Wall onError={setError} />
+      </div>
     </div>
   )
 }
@@ -285,7 +287,7 @@ function Feed({ onError }: { onError: (m: string | null) => void }) {
                 {post.is_pinned && <span className="eg-pin">Pinned</span>}
                 {post.title}
               </div>
-              <span className="muted">
+              <span className="eg-meta">
                 {post.published_at ? shortDate(post.published_at) : ''}
                 {post.published_by_name ? ` · ${post.published_by_name}` : ''}
               </span>
@@ -310,7 +312,7 @@ function Feed({ onError }: { onError: (m: string | null) => void }) {
                   </>
                 )
               ) : post.read_at ? (
-                <span className="eg-done">Read</span>
+                <span className="eg-done">✓ Read</span>
               ) : (
                 <button className="btn small" disabled={busy}
                         onClick={() => mark(post, false)}>
@@ -361,6 +363,8 @@ function Wall({ onError }: { onError: (m: string | null) => void }) {
         <ul className="eg-wall">
           {wallQ.data.map((row) => (
             <li key={row.id}>
+              <span className="eg-avatar" aria-hidden>{(row.from_name ?? '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+              <div className="eg-wall-main">
               <div>
                 {/* A name that resolves to nothing means the person has left.
                     "A former colleague" is truer than a blank. */}
@@ -372,7 +376,8 @@ function Wall({ onError }: { onError: (m: string | null) => void }) {
                 {!row.is_public && <span className="eg-tag is-private">Private</span>}
               </div>
               <p>{row.message}</p>
-              <span className="muted">{shortDate(row.created_at)}</span>
+              <span className="eg-when">{shortDate(row.created_at)}</span>
+              </div>
             </li>
           ))}
         </ul>

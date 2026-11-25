@@ -25,6 +25,8 @@
 .jl-points li { display: flex; gap: 12px; }
 .jl-tick { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border: 1px solid #a8e3ea; border-radius: 50%; background: #e9f9fb; color: #0b7285; flex: none; }
 .jl-points b { display: block; font-size: 13.5px; }
-.jl-points span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.jl-points div > span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 .jl-note { margin-top: auto; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); font-size: 12.5px; color: var(--text-secondary); }
 @media (max-width: 900px) { .jl-grid { grid-template-columns: minmax(0, 1fr); } .jl-steps { grid-template-columns: minmax(0, 1fr); } }
+.jl-points .jl-tick { display: grid; place-items: center; margin-top: 1px; line-height: 0; }
+.jl-points .jl-tick svg { display: block; }
