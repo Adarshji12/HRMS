@@ -1,4 +1,4 @@
-"""Letters on the company letterhead, in one of five layouts.
+"""Letters on the company letterhead, in one of eight layouts.
 
 Pure functions, like ``payslip_render``: the same code draws the live preview (placeholder lines) and
 a real issued letter, so the letterhead an administrator designs is the one that prints.
@@ -14,6 +14,9 @@ TEMPLATES = [
     ("stripe", "Stripe", "A colour bar down the left edge, header indented beside it."),
     ("formal", "Formal", "Everything centred under the logo, name in spaced caps, double rule."),
     ("minimal", "Minimal", "Small logo, details on one line opposite, no rule. Mostly white space."),
+    ("split", "Split", "Name and logo on the left, contact details stacked on the right, a thick rule beneath."),
+    ("corner", "Corner", "A coloured block in the top-left corner holding the logo, name beside it."),
+    ("footer", "Footer band", "A clean top with the name only; address, phone and email sit in a band at the foot."),
 ]
 
 DEFAULTS = {
@@ -62,6 +65,13 @@ def render(settings: dict, content: dict | None = None, template: str | None = N
     elif tpl == "formal":
         head = (f'<div class="ctr">{logo}<div class="nm caps">{escape(company.upper())}</div>{det}</div>'
                 '<div class="dbl"></div>')
+    elif tpl == "split":
+        lines = "".join(f"<div>{escape(x)}</div>" for x in (s["address"], s["phone"], s["email"], f'GSTIN {s["gstin"]}' if s["gstin"] else "") if x) if s["show_details"] else ""
+        head = f'<div class="spl"><div class="hd">{logo}{name_html}</div><div class="spr">{lines}</div></div><div class="thick"></div>'
+    elif tpl == "corner":
+        head = f'<div class="crn"><div class="cb">{logo}</div><div>{name_html}{det}</div></div>'
+    elif tpl == "footer":
+        head = f'<div class="hd" style="justify-content:{logo_just}">{logo}{name_html}</div><div class="short"></div>'
     else:  # minimal
         head = f'<div class="mini">{logo}<b>{escape(company)}</b><span>{escape(details) if s["show_details"] else ""}</span></div>'
     head_style = f'text-align:{det_align};' if tpl in ("classic", "stripe") else ""
@@ -78,7 +88,9 @@ def render(settings: dict, content: dict | None = None, template: str | None = N
     sign = (f'<div class="sg" style="align-items:{sig_side}">{sig_img}<div class="sline"></div><b>{escape(sig_name)}</b>'
             + (f'<span>{escape(sig_title)}</span>' if sig_title else "") + '</div>')
     foot = ""
-    if s["show_footer"]:
+    if tpl == "footer" and details and s["show_details"]:
+        foot = f'<div class="ft" style="background:{a}">{escape(details)}</div>'
+    elif s["show_footer"]:
         foot = f'<div class="ft" style="background:{a}">{escape(s["footer_note"] or "")}</div>'
     elif s["footer_note"]:
         foot = f'<div class="fn">{escape(s["footer_note"])}</div>'
@@ -97,7 +109,7 @@ def render(settings: dict, content: dict | None = None, template: str | None = N
 
     css = f"""
 :root{{--a:{escape(a)}}} *{{box-sizing:border-box}} body{{margin:0;background:#eef2f6;font:11pt/1.6 'Poppins',Arial,sans-serif;color:#111827}}
-.pg{{position:relative;max-width:760px;min-height:1000px;margin:20px auto;background:#fff;padding:56px 60px;overflow:hidden}}
+.pg{{position:relative;max-width:760px;min-height:1000px;margin:20px auto 0;background:#fff;padding:56px 60px 70px;overflow:hidden}}
 .pg.stripe{{border-left:12px solid var(--a);padding-left:52px}} .pg.banded{{padding-top:0}}
 .nm{{font-weight:700;font-size:15pt}} .caps{{letter-spacing:.25em;font-size:13pt}} .det{{font-size:8.5pt;color:#64748b;margin-top:2px}}
 .hd{{display:flex;align-items:center;gap:14px}} .logo{{max-height:52px;max-width:150px}}
@@ -110,7 +122,9 @@ def render(settings: dict, content: dict | None = None, template: str | None = N
 .sg{{display:flex;flex-direction:column;margin-top:120px;font-size:9pt}} .sline{{border-top:1px solid #94a3b8;width:210px;margin-bottom:6px}} .sg span{{color:#64748b}} .simg{{max-height:44px;max-width:180px;margin-bottom:-8px}}
 .ft{{position:absolute;left:0;right:0;bottom:0;color:#fff;text-align:center;padding:10px;font-size:8.5pt}} .fn{{margin-top:36px;text-align:center;font-size:8pt;color:#64748b}}
 .bd{{position:absolute;pointer-events:none}} .wm{{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:70pt;font-weight:800;transform:rotate(-24deg);pointer-events:none;color:#000}}
-@media print{{body{{background:#fff}} .pg{{margin:0;max-width:none}}}}
+.spl{{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}} .spr{{text-align:right;font-size:8.5pt;color:#64748b;line-height:1.5}} .thick{{border-top:5px solid var(--a);margin-top:14px}}
+.crn{{display:flex;align-items:center;gap:16px;margin:-56px 0 0 -60px}} .cb{{background:var(--a);min-width:130px;min-height:110px;padding:22px 24px;display:flex;align-items:center;justify-content:center;border-bottom-right-radius:60px}} .cb .logo{{filter:brightness(0) invert(1)}}
+*{{-webkit-print-color-adjust:exact;print-color-adjust:exact}} @media print{{body{{background:#fff}} .pg{{margin:0;max-width:none}}}}
 """
     cls = "pg " + tpl
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{escape(c['subject'] or 'Letter')}</title><style>{css}</style></head>

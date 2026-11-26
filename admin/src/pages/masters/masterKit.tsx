@@ -891,16 +891,6 @@ export const MASTER_GROUPS: MasterGroup[] = [
     kinds: ['statuses', 'sources', 'campaigns', 'industries', 'requirement-types'],
   },
   {
-    key: 'erp',
-    title: 'ERP Master',
-    description: 'Vendors and customer accounts for purchase and billing.',
-    kinds: [],
-    links: [
-      { label: 'Vendors', to: '/masters/erp/vendors' },
-      { label: 'Customer accounts', to: '/masters/erp/customers' },
-    ],
-  },
-  {
     key: 'inventory',
     title: 'Inventory Masters',
     description: 'Items and the lists an item is described from: companies, categories, units, tax codes, stores and racks.',
@@ -913,35 +903,30 @@ export const MASTER_GROUPS: MasterGroup[] = [
       { label: 'HSN / SAC', to: '/masters/erp/hsn' },
       { label: 'Stores', to: '/masters/erp/warehouses' },
       { label: 'Racks', to: '/masters/erp/racks' },
-      { label: 'Bill Series', to: '/masters/erp/billseries' },
     ],
     rowOrder: [
       '/masters/erp/items', '/masters/erp/companies', 'item-categories', '/masters/erp/subcategories', '/masters/erp/units',
-      '/masters/erp/hsn', '/masters/erp/warehouses', '/masters/erp/racks', '/masters/erp/billseries',
+      '/masters/erp/hsn', '/masters/erp/warehouses', '/masters/erp/racks',
     ],
   },
   {
     key: 'ledger',
     title: 'Ledger Master',
-    description: 'Ledgers, the chart of accounts they sit in, salesmen and walk-in customers.',
+    description: 'Ledgers and the chart of accounts they sit in.',
     kinds: [],
     links: [
       { label: 'Ledger', to: '/masters/erp/ledgers' },
       { label: 'List of accounts', to: '/masters/erp/accounts' },
-      { label: 'Salesman', to: '/masters/erp/salesmen' },
-      { label: 'Walk-in customers', to: '/masters/erp/walkins' },
     ],
   },
   {
     key: 'update',
     title: 'Update Master',
-    description: 'Set many records at once: ledger openings, stock openings, racks and barcode labels.',
+    description: 'Set many records at once: ledger openings and stock openings.',
     kinds: [],
     links: [
       { label: 'Ledger Openings', to: '/masters/erp/ledger-openings' },
       { label: 'Stock Openings', to: '/masters/erp/stock-openings' },
-      { label: 'Rack Update', to: '/masters/erp/rack-update' },
-      { label: 'Print Barcode', to: '/masters/erp/print-barcode' },
     ],
   },
   {

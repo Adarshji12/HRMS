@@ -295,6 +295,10 @@ def create_claim(
         title=payload.title.strip(),
         note=(payload.note or "").strip() or None,
         project_id=payload.project_id,
+        claim_type=payload.claim_type,
+        employee_grade=(payload.employee_grade or "").strip() or None,
+        work_location=(payload.work_location or "").strip() or None,
+        project_label=(payload.project_label or "").strip() or None,
         status=ClaimStatus.DRAFT.value,
         total_amount=0,
     )
@@ -396,6 +400,27 @@ def _check_line(db: Session, org_id: uuid.UUID, category: ExpenseCategory, paylo
         )
 
 
+CONVEYANCE_CATEGORY = "Local conveyance"
+
+
+def conveyance_category(db: Session, org_id: uuid.UUID) -> ExpenseCategory:
+    """The category every journey line files under; created on first use.
+
+    Journeys are local fares paid in cash or by card with no slip to attach, so it asks for no receipt and has no
+    per-item cap. An administrator can still add a cap or rename it under Expense settings.
+    """
+    found = db.scalar(select(ExpenseCategory).where(
+        ExpenseCategory.org_id == org_id, ExpenseCategory.name == CONVEYANCE_CATEGORY))
+    if found is not None:
+        return found
+    made = ExpenseCategory(org_id=org_id, name=CONVEYANCE_CATEGORY,
+                           description="Local journeys on the conveyance claim form",
+                           requires_receipt=False, max_amount=None, is_active=True)
+    db.add(made)
+    db.flush()
+    return made
+
+
 def add_line(
     db: Session,
     viewer: User,
@@ -406,17 +431,48 @@ def add_line(
 ) -> ExpenseLine:
     claim = get_claim(db, viewer, claim_id)
     _require_editable(claim, viewer)
-    category = get_category(db, viewer.org_id, payload.category_id)
-    _check_line(db, viewer.org_id, category, payload)
+
+    journey: dict = {}
+    if claim.claim_type == "conveyance":
+        # A journey: the fare, food and parking are entered separately and the line's amount is their sum, so the
+        # form's "Grand total" can never disagree with what is claimed.
+        if not (payload.from_location or "").strip() or not (payload.to_location or "").strip():
+            raise ExpenseError("journey_incomplete", "Say where the journey started and where it ended.")
+        fare = payload.conveyance_amount or 0
+        amount = fare + payload.food_amount + payload.parking_amount
+        if amount <= 0:
+            raise ExpenseError("journey_empty", "Enter the fare, or a food or parking amount, for this journey.")
+        category = conveyance_category(db, viewer.org_id)
+        description = (payload.description or "").strip() or f"{payload.from_location.strip()} to {payload.to_location.strip()}"
+        journey = {
+            "start_time": payload.start_time, "end_time": payload.end_time,
+            "from_location": payload.from_location.strip(), "to_location": payload.to_location.strip(),
+            "customer_name": (payload.customer_name or "").strip() or None,
+            "so_number": (payload.so_number or "").strip() or None,
+            "conveyance_mode": (payload.conveyance_mode or "").strip() or None,
+            "distance_km": payload.distance_km, "rate_per_km": payload.rate_per_km,
+            "conveyance_amount": fare, "food_amount": payload.food_amount, "parking_amount": payload.parking_amount,
+            "remarks": (payload.remarks or "").strip() or None,
+        }
+        check = type("Journey", (), {"spent_on": payload.spent_on, "amount": amount})()
+    else:
+        if payload.category_id is None or payload.amount is None or not (payload.description or "").strip():
+            raise ExpenseError("line_incomplete", "A claim line needs a category, a description and an amount.")
+        category = get_category(db, viewer.org_id, payload.category_id)
+        amount = payload.amount
+        description = payload.description.strip()
+        check = payload
+    _check_line(db, viewer.org_id, category, check)
 
     line = ExpenseLine(
         org_id=viewer.org_id,
         claim_id=claim.id,
         category_id=category.id,
         spent_on=payload.spent_on,
-        description=payload.description.strip(),
+        description=description,
         merchant=(payload.merchant or "").strip() or None,
-        amount=payload.amount,
+        amount=amount,
+        **journey,
     )
     db.add(line)
     db.flush()

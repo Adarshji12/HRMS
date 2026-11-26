@@ -202,6 +202,16 @@ class TicketIn(BaseModel):
     # impossible to retrofit once tickets carry unvetted refs.
     source_module: str | None = Field(default=None, max_length=40)
     source_ref: uuid.UUID | None = None
+    # Incident details, all optional: who the call is for and where.
+    incident_on: datetime | None = None
+    customer_name: str | None = Field(default=None, max_length=200)
+    contact_name: str | None = Field(default=None, max_length=160)
+    contact_email: str | None = Field(default=None, max_length=200)
+    contact_phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=2000)
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=120)
+    pincode: str | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def _source_pair(self) -> "TicketIn":
@@ -272,6 +282,19 @@ class TicketOut(ORMModel):
     closed_at: datetime | None = None
     source_module: str | None = None
     source_ref: uuid.UUID | None = None
+    ticket_no: int | None = None
+    respond_by: datetime | None = None
+    resolve_by: datetime | None = None
+    first_response_at: datetime | None = None
+    incident_on: datetime | None = None
+    customer_name: str | None = None
+    contact_name: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    pincode: str | None = None
     # Derived display fields, so a ticket table needs no client-side joins.
     category_name: str | None = None
     raised_by_name: str | None = None
@@ -308,3 +331,31 @@ class TicketStaffDetailOut(TicketOut):
     comments: list[StaffCommentOut] = []
     comment_count: int = 0
     internal_comment_count: int = 0
+
+
+# --------------------------------------------------------------------------
+# SLA
+# --------------------------------------------------------------------------
+
+
+class SlaRow(BaseModel):
+    priority: TicketPriorityLiteral
+    #: Minutes to a first reply from staff, and to resolution.
+    respond_minutes: int = Field(ge=1, le=60 * 24 * 90)
+    resolve_minutes: int = Field(ge=1, le=60 * 24 * 365)
+
+    @model_validator(mode="after")
+    def _resolve_after_respond(self) -> "SlaRow":
+        if self.resolve_minutes < self.respond_minutes:
+            raise ValueError("resolution cannot be due before the first response")
+        return self
+
+
+class SlaIn(BaseModel):
+    rows: list[SlaRow] = Field(min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def _one_per_priority(self) -> "SlaIn":
+        if len({r.priority for r in self.rows}) != len(self.rows):
+            raise ValueError("one row per priority")
+        return self

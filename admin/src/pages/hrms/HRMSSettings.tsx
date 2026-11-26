@@ -16,7 +16,7 @@ import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
 import { ErrorNote, Loading } from '../../components/ui'
-import { IconBell, IconBriefcase, IconBuilding, IconCheck, IconClock, IconGear, IconPin, IconReturn, IconSheet } from '../../components/Icons'
+import { IconBriefcase, IconStar, IconBuilding, IconCheck, IconClock, IconGear, IconPin, IconReturn, IconSheet } from '../../components/Icons'
 import DepartmentMaster from '../masters/DepartmentMaster'
 import DesignationMaster from '../masters/DesignationMaster'
 import BranchMaster from '../masters/BranchMaster'
@@ -24,9 +24,9 @@ import LocationMaster from '../masters/LocationMaster'
 import AttendanceSettings from './attendance/AttendanceSettings'
 import LeavePolicyTab from './leave/LeavePolicyTab'
 import ApprovalRules from './workflow/ApprovalRules'
-import PayrollTab from './payroll/PayrollTab'
+import { SalesTarget } from './payroll/PayrollTab'
+import StatutorySettings from './payroll/StatutorySettings'
 import ExpenseSettings from './expenses/ExpenseSettings'
-import NotificationsTab from './NotificationsTab'
 
 export interface HrSettings {
   emp_code_prefix: string
@@ -41,17 +41,17 @@ export interface HrSettings {
   next_code: string
 }
 
-type TabKey = 'general' | 'organisation' | 'attendance' | 'leave' | 'approvals' | 'payroll' | 'expenses' | 'notifications'
+type TabKey = 'general' | 'organisation' | 'attendance' | 'leave' | 'approvals' | 'payroll' | 'sales' | 'expenses'
 
 const TABS: Array<{ key: TabKey; label: string; icon: ReactNode; admin: boolean }> = [
   { key: 'general', label: 'General', icon: <IconGear size={15} />, admin: false },
-  { key: 'organisation', label: 'Organisation', icon: <IconBuilding size={15} />, admin: true },
+//   { key: 'organisation', label: 'Organisation', icon: <IconBuilding size={15} />, admin: true },
   { key: 'attendance', label: 'Attendance', icon: <IconClock size={15} />, admin: true },
   { key: 'leave', label: 'Leave', icon: <IconReturn size={15} />, admin: true },
   { key: 'approvals', label: 'Approvals', icon: <IconCheck size={15} />, admin: true },
   { key: 'payroll', label: 'Payroll', icon: <IconSheet size={15} />, admin: true },
+  { key: 'sales', label: 'Sales Target', icon: <IconStar size={15} />, admin: true },
 //   { key: 'expenses', label: 'Expenses', icon: <IconCard size={15} />, admin: true },
-  { key: 'notifications', label: 'Notifications', icon: <IconBell size={15} />, admin: false },
 ]
 
 export default function HRMSSettings() {
@@ -86,9 +86,9 @@ export default function HRMSSettings() {
         {tab === 'attendance' && <AttendanceSettings embedded />}
         {tab === 'leave' && <LeavePolicyTab />}
         {tab === 'approvals' && <ApprovalRules />}
-        {tab === 'payroll' && <PayrollTab />}
+        {tab === 'payroll' && <StatutorySettings embedded />}
+        {tab === 'sales' && <div className="hs-org"><SalesTarget /></div>}
         {tab === 'expenses' && <ExpenseSettings />}
-        {tab === 'notifications' && <NotificationsTab />}
       </div>
     </div>
   )

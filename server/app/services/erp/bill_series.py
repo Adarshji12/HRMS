@@ -71,6 +71,19 @@ def issue_number(db: Session, org_id: uuid.UUID, transaction: str, on: date) -> 
     return number
 
 
+def peek_number(db: Session, org_id: uuid.UUID, transaction: str, on: date) -> str:
+    """The number the next document of this kind will get, without taking it: what the form shows before saving."""
+    _seed(db, org_id)
+    row = db.scalar(select(ErpBillSeries).where(
+        ErpBillSeries.org_id == org_id, ErpBillSeries.transaction == transaction
+    ).order_by(ErpBillSeries.is_default.desc(), ErpBillSeries.created_at))
+    if row is None:
+        raise ErpError("no_series", "This transaction has no number series.", 422)
+    fy, cy = _years(on)
+    mid = f"{fy}/" if row.restart == "april" else f"{cy}/" if row.restart == "january" else ""
+    return f"{row.prefix}{mid}{str(row.next_number).zfill(row.digits)}{row.suffix}"
+
+
 def transactions() -> list[dict]:
     return [{"key": k, "label": l, "group": g} for k, l, g, _ in TRANSACTIONS]
 

@@ -104,7 +104,9 @@ def _from_row(stored: MailSettings, source: str) -> MailConfig:
         user=stored.smtp_user,
         password=decrypt(stored.smtp_password_enc),
         use_tls=stored.smtp_use_tls,
-        sender=stored.email_from,
+        # Most providers (Gmail, Microsoft 365, SES) refuse or rewrite a From they do not own, and the
+        # login is usually that address, so a blank From falls back to it rather than to no-reply@localhost.
+        sender=stored.email_from.strip() or (stored.smtp_user.strip() if "@" in stored.smtp_user else ""),
         source=source,
     )
 

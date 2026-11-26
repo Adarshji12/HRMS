@@ -11,12 +11,11 @@ import { IconSheet } from '../../components/Icons'
 import { daysFromTodayISO, todayISO } from '../crm/api'
 import AskBox from './AskBox'
 import ErpDocList from './ErpDocList'
-import { preview } from './ErpBillSeries'
 import '../../styles/so-form.css'
 import { Dialog as CrmDialog } from '../crm/parts'
 import { CrmPage } from '../crm/parts'
 import { ErpPage, Field, DateText, useAccess, useRun } from './parts'
-import { erp, rupees, type BillSeriesData, type CustomerAccount, type Item, type Ledger, type OpeningLot, type SaleBill, type Walkin, type Warehouse } from './api'
+import { erp, rupees, type CustomerAccount, type Item, type Ledger, type OpeningLot, type SaleBill, type Walkin, type Warehouse } from './api'
 
 const num = (s: string) => Number(s || 0)
 
@@ -141,10 +140,9 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
   const word = quote ? 'Quotation' : ret ? 'Sale Return' : issue ? 'Stock Issue' : 'Sale Bill'
   const [against, setAgainst] = useState('')
   const [cur, setCur] = useState(0)
-  const seriesQ = useQuery<BillSeriesData>(`erp-bill-series-${kind}`, () => erp.billSeries(), { enabled: slim })
-  const seriesKey = quote ? 'quotation' : ret ? 'credit_note' : issue ? 'stock_issue' : ''
-  const mainSeries = (seriesQ.data?.series ?? []).filter((x) => x.transaction === seriesKey).sort((a, b) => Number(b.is_default) - Number(a.is_default))[0]
-  const nextNo = mainSeries ? preview(mainSeries) : null
+  // The number this document will be given when it is saved: generated, not typed.
+  const nextNoQ = useQuery<{ number: string | null }>(`erp-next-no-${kind}`, () => erp.nextSaleBillNumber(kind ?? 'bill', new Date().toISOString().slice(0, 10)), { enabled: slim })
+  const nextNo = nextNoQ.data?.number ?? null
   const [billPick, setBillPick] = useState(false)
   type PickBill = { id: string; number: string | null; customer_name: string; kind: string; invoice_date: string; grand_total: string; src: 'invoice' | 'bill' }
   const billsList = useQuery<PickBill[]>('erp-return-bills', async () => {
@@ -288,7 +286,7 @@ export function SaleBillEntry({ onClose, onSaved, kind = 'bill', inline = false 
           <input readOnly value={partyName} placeholder="Select party…" style={{ cursor: 'pointer' }} onFocus={() => !party && setPickerOpen(true)} aria-label="Party" />
         </label>
         )}
-        <label className="sb-f" style={{ gridColumn: 'span 2', opacity: 0.85 }}><span>{slim ? 'No.' : 'Bill no.'}</span><input readOnly value={nextNo ?? 'Auto'} title="Next number on the bill series" aria-label="Number" /></label>
+        <label className="sb-f" style={{ gridColumn: 'span 2', opacity: 0.85 }}><span>{slim ? 'No.' : 'Bill no.'}</span><input readOnly value={nextNo ?? 'Auto'} title="The number this will be saved under" aria-label="Number" /></label>
         <label className="sb-f" style={{ gridColumn: 'span 2' }}><span>Date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" /></label>
         {issue ? (
           <>

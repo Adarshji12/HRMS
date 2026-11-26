@@ -1,12 +1,11 @@
 /* Salary slips, for administrators: everyone's payslip for a month, or one person's across months. */
 
 import { useState } from 'react'
-import { api } from '../../../lib/api'
+import { api, openPrintable } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import type { PayRun, PayRunDetail, Payslip, User } from '../../../lib/types'
-import { PayslipCard } from './PayRuns'
 
 type Mode = 'month' | 'employee'
 
@@ -30,7 +29,6 @@ export default function SalarySlips() {
 }
 
 function SlipTable({ slips, showEmployee, showPeriod }: { slips: Payslip[]; showEmployee: boolean; showPeriod: boolean }) {
-  const [open, setOpen] = useState<string | null>(null)
   return (
     <div className="table-wrap">
       <table className="table">
@@ -42,21 +40,24 @@ function SlipTable({ slips, showEmployee, showPeriod }: { slips: Payslip[]; show
           </tr>
         </thead>
         <tbody>
-          {slips.map((s) => (
-            <SlipRow key={s.id} slip={s} showEmployee={showEmployee} showPeriod={showPeriod} open={open === s.id}
-                     onToggle={() => setOpen(open === s.id ? null : s.id)} />
-          ))}
+          {slips.map((s) => <SlipRow key={s.id} slip={s} showEmployee={showEmployee} showPeriod={showPeriod} />)}
         </tbody>
       </table>
     </div>
   )
 }
 
-function SlipRow({ slip, showEmployee, showPeriod, open, onToggle }: {
-  slip: Payslip; showEmployee: boolean; showPeriod: boolean; open: boolean; onToggle: () => void
-}) {
-  const full = useQuery<Payslip>(`salary-slip-${slip.id}`, () => api.get<Payslip>(`/payruns/payslips/${slip.id}`), { enabled: open })
-  const cols = 5 + Number(showEmployee) + Number(showPeriod)
+/** View opens the payslip itself, laid out with the company's payslip design, in a new tab to read, print or save as PDF. */
+function SlipRow({ slip, showEmployee, showPeriod }: { slip: Payslip; showEmployee: boolean; showPeriod: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function view() {
+    setBusy(true)
+    setError(null)
+    try { await openPrintable(`/payruns/payslips/${slip.id}/print`) }
+    catch (caught) { setError((caught as Error).message) }
+    finally { setBusy(false) }
+  }
   return (
     <>
       <tr>
@@ -66,15 +67,9 @@ function SlipRow({ slip, showEmployee, showPeriod, open, onToggle }: {
         <td className="num">{money(slip.total_deductions)}</td>
         <td className="num"><strong>{money(slip.net)}</strong></td>
         <td className="muted-sm">{slip.run_status ?? ''}</td>
-        <td className="row-actions"><button className="btn small" onClick={onToggle}>{open ? 'Hide' : 'View'}</button></td>
+        <td className="row-actions"><button className="btn small" disabled={busy} onClick={() => void view()}>{busy ? 'Opening…' : 'View'}</button></td>
       </tr>
-      {open && (
-        <tr>
-          <td colSpan={cols}>
-            {full.error ? <ErrorNote>{full.error}</ErrorNote> : full.data ? <PayslipCard slip={full.data} /> : <Loading />}
-          </td>
-        </tr>
-      )}
+      {error && <tr><td colSpan={7}><ErrorNote>{error}</ErrorNote></td></tr>}
     </>
   )
 }
@@ -96,11 +91,11 @@ function ByMonth() {
   return (
     <section className="card">
       <div className="card-head" style={{ gap: 12, flexWrap: 'wrap' }}>
+        <input placeholder="Search employee" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 260 }} />
+        <span className="card-note" style={{ marginLeft: 'auto' }}>{slips.length} payslips</span>
         <select value={chosen} onChange={(e) => setRunId(e.target.value)}>
           {usable.map((r) => <option key={r.id} value={r.id}>{r.period_label} · {r.status}</option>)}
         </select>
-        <input placeholder="Search employee" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 260 }} />
-        <span className="card-note">{slips.length} payslips</span>
       </div>
       {detail.error ? <ErrorNote>{detail.error}</ErrorNote> : !detail.data ? <Loading /> : slips.length === 0 ? (
         <Empty>{detail.data.payslips.length === 0 ? 'Nothing computed for this month yet.' : 'Nobody matches that search.'}</Empty>

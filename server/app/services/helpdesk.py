@@ -82,6 +82,7 @@ from app.models import (
     AttendanceRecord,
     HelpdeskCategory,
     HelpdeskComment,
+    HelpdeskSla,
     HelpdeskTicket,
     LeaveApplication,
     OffboardingRequest,
@@ -416,6 +417,19 @@ def _base_fields(
         "closed_at": ticket.closed_at,
         "source_module": ticket.source_module,
         "source_ref": ticket.source_ref,
+        "ticket_no": ticket.ticket_no,
+        "respond_by": ticket.respond_by,
+        "resolve_by": ticket.resolve_by,
+        "first_response_at": ticket.first_response_at,
+        "incident_on": ticket.incident_on,
+        "customer_name": ticket.customer_name,
+        "contact_name": ticket.contact_name,
+        "contact_email": ticket.contact_email,
+        "contact_phone": ticket.contact_phone,
+        "address": ticket.address,
+        "city": ticket.city,
+        "state": ticket.state,
+        "pincode": ticket.pincode,
         "category_name": categories.get(ticket.category_id) if ticket.category_id else None,
         "raised_by_name": raiser[0] if raiser else None,
         "assigned_to_name": assignee[0] if assignee else None,
@@ -880,6 +894,61 @@ def _default_assignee(db: Session, org_id: uuid.UUID, category: HelpdeskCategory
     return None
 
 
+def sla_table(db: Session, org_id: uuid.UUID) -> dict[str, tuple[int, int]]:
+    """Minutes to respond and to resolve, per priority: the company's own rows over the defaults."""
+    from app.models.helpdesk import DEFAULT_SLA
+
+    table = dict(DEFAULT_SLA)
+    for row in db.scalars(select(HelpdeskSla).where(HelpdeskSla.org_id == org_id)):
+        table[row.priority] = (row.respond_minutes, row.resolve_minutes)
+    return table
+
+
+def set_sla(db: Session, org_id: uuid.UUID, rows) -> dict[str, tuple[int, int]]:
+    existing = {r.priority: r for r in db.scalars(select(HelpdeskSla).where(HelpdeskSla.org_id == org_id))}
+    for row in rows:
+        found = existing.get(row.priority)
+        if found is None:
+            db.add(HelpdeskSla(org_id=org_id, priority=row.priority,
+                               respond_minutes=row.respond_minutes, resolve_minutes=row.resolve_minutes))
+        else:
+            found.respond_minutes, found.resolve_minutes = row.respond_minutes, row.resolve_minutes
+    db.commit()
+    return sla_table(db, org_id)
+
+
+def apply_sla(db: Session, ticket: HelpdeskTicket) -> None:
+    """Fix the two deadlines from the ticket's own raise time and its current priority."""
+    from datetime import timedelta
+
+    respond, resolve = sla_table(db, ticket.org_id).get(ticket.priority, (None, None))
+    start = ticket.created_at or datetime.now(timezone.utc)
+    ticket.respond_by = start + timedelta(minutes=respond) if respond else None
+    ticket.resolve_by = start + timedelta(minutes=resolve) if resolve else None
+
+
+def average_first_response_minutes(db: Session, org_id: uuid.UUID, *, raised_by: uuid.UUID | None = None) -> int | None:
+    """Mean minutes from raising to the first staff reply, over tickets that have had one."""
+    stmt = select(HelpdeskTicket.created_at, HelpdeskTicket.first_response_at).where(
+        HelpdeskTicket.org_id == org_id, HelpdeskTicket.first_response_at.is_not(None))
+    if raised_by is not None:
+        stmt = stmt.where(HelpdeskTicket.raised_by == raised_by)
+    gaps = []
+    for created, first in db.execute(stmt):
+        if created is None:
+            continue
+        a = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+        b = first if first.tzinfo else first.replace(tzinfo=timezone.utc)
+        gaps.append(max((b - a).total_seconds() / 60, 0))
+    return round(sum(gaps) / len(gaps)) if gaps else None
+
+
+def next_ticket_no(db: Session, org_id: uuid.UUID) -> int:
+    """The number the next ticket in this company will carry: one past the highest so far, from 1001."""
+    highest = db.scalar(select(func.max(HelpdeskTicket.ticket_no)).where(HelpdeskTicket.org_id == org_id))
+    return (highest or 1000) + 1
+
+
 def raise_ticket(db: Session, raiser: User, payload: TicketIn) -> HelpdeskTicket:
     """Create a ticket. Commits, then alerts — see ``_notify`` for why.
 
@@ -900,6 +969,7 @@ def raise_ticket(db: Session, raiser: User, payload: TicketIn) -> HelpdeskTicket
     assignee = _default_assignee(db, raiser.org_id, category)
     ticket = HelpdeskTicket(
         org_id=raiser.org_id,
+        ticket_no=next_ticket_no(db, raiser.org_id),
         raised_by=raiser.id,
         category_id=category.id if category else None,
         subject=payload.subject.strip(),
@@ -909,8 +979,20 @@ def raise_ticket(db: Session, raiser: User, payload: TicketIn) -> HelpdeskTicket
         assigned_to=assignee.id if assignee else None,
         source_module=payload.source_module,
         source_ref=payload.source_ref,
+        incident_on=(payload.incident_on.strip() or None) if isinstance(payload.incident_on, str) else payload.incident_on,
+        customer_name=(payload.customer_name.strip() or None) if isinstance(payload.customer_name, str) else payload.customer_name,
+        contact_name=(payload.contact_name.strip() or None) if isinstance(payload.contact_name, str) else payload.contact_name,
+        contact_email=(payload.contact_email.strip() or None) if isinstance(payload.contact_email, str) else payload.contact_email,
+        contact_phone=(payload.contact_phone.strip() or None) if isinstance(payload.contact_phone, str) else payload.contact_phone,
+        address=(payload.address.strip() or None) if isinstance(payload.address, str) else payload.address,
+        city=(payload.city.strip() or None) if isinstance(payload.city, str) else payload.city,
+        state=(payload.state.strip() or None) if isinstance(payload.state, str) else payload.state,
+        pincode=(payload.pincode.strip() or None) if isinstance(payload.pincode, str) else payload.pincode,
     )
     db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+    apply_sla(db, ticket)
     db.commit()
     db.refresh(ticket)
 
@@ -995,8 +1077,9 @@ def update_ticket(
 
     if payload.category_id is not None:
         ticket.category_id = get_category(db, staff.org_id, payload.category_id).id
-    if payload.priority is not None:
+    if payload.priority is not None and payload.priority != ticket.priority:
         ticket.priority = payload.priority
+        apply_sla(db, ticket)
 
     if payload.status is not None and payload.status != ticket.status:
         became_resolved = payload.status == TicketStatus.RESOLVED.value
@@ -1116,6 +1199,9 @@ def add_comment(
         is_internal=is_internal,
     )
     db.add(comment)
+    # The first public reply from anybody but the person who raised it is the response the SLA clock is waiting for.
+    if not is_internal and author.id != ticket.raised_by and ticket.first_response_at is None:
+        ticket.first_response_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(comment)
     return comment

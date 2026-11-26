@@ -1092,3 +1092,77 @@ def test_a_source_row_in_another_tenant_is_never_verifiable(client, cast):
     )
     link = client.get(f"{BASE}/tickets/{ticket_id}/source", headers=cast["alice"].headers).json()
     assert link["available"] is False and link["label"] is None
+
+
+def test_incident_details_are_stored_and_read_back_by_the_raiser(client, cast):
+    """A ticket raised for a customer's call keeps the contact block, and the raiser reads it back."""
+    made = _raise_ticket(
+        client, cast["alice"], subject="Printer down", priority="urgent",
+        incident_on="2026-09-04T09:20:25Z", customer_name="HCL Technologies LTD",
+        contact_name="Ravi", contact_email="ravi@hcl.example", contact_phone="9876543210",
+        address="Tower 1, Noida", city="Noida", state="Uttar Pradesh", pincode="201304",
+    )
+    assert made["customer_name"] == "HCL Technologies LTD"
+    assert made["pincode"] == "201304" and made["city"] == "Noida"
+
+    seen = client.get(f"{BASE}/tickets/{made['id']}", headers=cast["alice"].headers).json()
+    assert seen["contact_phone"] == "9876543210"
+    assert seen["incident_on"].startswith("2026-09-04")
+
+    # An ordinary ticket still carries none of it.
+    plain = _raise_ticket(client, cast["alice"], subject="Plain")
+    assert plain["customer_name"] is None and plain["incident_on"] is None
+
+
+def test_tickets_are_numbered_and_the_next_number_is_offered(client, cast):
+    first = _raise_ticket(client, cast["alice"], subject="One")
+    nxt = client.get(f"{BASE}/tickets/next-number", headers=cast["alice"].headers)
+    assert nxt.status_code == 200, nxt.text
+    assert first["ticket_no"] >= 1001
+    assert nxt.json()["next_ticket_no"] == first["ticket_no"] + 1
+    second = _raise_ticket(client, cast["alice"], subject="Two")
+    assert second["ticket_no"] == first["ticket_no"] + 1
+
+
+def test_sla_deadlines_follow_priority_and_first_response_is_the_first_staff_reply(client, cast):
+    """P1 is due in 15 minutes by default; a priority change re-works the deadline from the raise time; only staff
+    answering publicly stops the response clock."""
+    from datetime import datetime, timedelta
+
+    table = client.get(f"{BASE}/sla", headers=cast["alice"].headers).json()["rows"]
+    assert {r["priority"]: r["respond_minutes"] for r in table}["urgent"] == 15
+
+    ticket = _raise_ticket(client, cast["alice"], subject="Down", priority="urgent")
+    made = datetime.fromisoformat(ticket["created_at"].replace("Z", "+00:00"))
+    due = datetime.fromisoformat(ticket["respond_by"].replace("Z", "+00:00"))
+    assert abs((due - made) - timedelta(minutes=15)) < timedelta(seconds=2)
+    assert ticket["first_response_at"] is None
+
+    # The raiser's own reply and an internal note do not count as a response.
+    client.post(f"{BASE}/tickets/{ticket['id']}/comments", json={"body": "any news?"}, headers=cast["alice"].headers)
+    client.post(f"{BASE}/staff/tickets/{ticket['id']}/comments", json={"body": "note", "is_internal": True}, headers=cast["hr"].headers)
+    assert client.get(f"{BASE}/tickets/{ticket['id']}", headers=cast["alice"].headers).json()["first_response_at"] is None
+
+    client.post(f"{BASE}/staff/tickets/{ticket['id']}/comments", json={"body": "On it", "is_internal": False}, headers=cast["hr"].headers)
+    seen = client.get(f"{BASE}/tickets/{ticket['id']}", headers=cast["alice"].headers).json()
+    assert seen["first_response_at"] is not None
+
+    # Lowering the priority moves the deadline to the new row, measured from when it was raised.
+    changed = client.patch(f"{BASE}/staff/tickets/{ticket['id']}", json={"priority": "low"}, headers=cast["hr"].headers)
+    assert changed.status_code == 200, changed.text
+    new_due = datetime.fromisoformat(changed.json()["respond_by"].replace("Z", "+00:00"))
+    assert abs((new_due - made) - timedelta(minutes=24 * 60)) < timedelta(seconds=2)
+
+    stats = client.get(f"{BASE}/stats", headers=cast["alice"].headers).json()
+    assert stats["avg_first_response_minutes"] is not None
+
+
+def test_only_helpdesk_staff_change_the_sla_and_it_applies_to_new_tickets(client, cast):
+    rows = {"rows": [{"priority": "urgent", "respond_minutes": 30, "resolve_minutes": 120}]}
+    assert client.put(f"{BASE}/sla", json=rows, headers=cast["alice"].headers).status_code in (403, 404)
+    saved = client.put(f"{BASE}/sla", json=rows, headers=cast["hr"].headers)
+    assert saved.status_code == 200, saved.text
+    assert {r["priority"]: r["respond_minutes"] for r in saved.json()["rows"]}["urgent"] == 30
+    # Resolution before response is refused.
+    bad = client.put(f"{BASE}/sla", json={"rows": [{"priority": "high", "respond_minutes": 60, "resolve_minutes": 30}]}, headers=cast["hr"].headers)
+    assert bad.status_code == 422

@@ -19,7 +19,7 @@ export default function SalarySetup() {
   const [tab, setTab] = useState<'structures' | 'components'>('structures')
   return (
     <div className="page">
-      <div className="ld-tabs" role="tablist">
+      <div className="ld-tabs ld-tabs-sm" role="tablist">
         <button className={`ld-tab ${tab === 'structures' ? 'is-on' : ''}`} onClick={() => setTab('structures')}>Structures</button>
         <button className={`ld-tab ${tab === 'components' ? 'is-on' : ''}`} onClick={() => setTab('components')}>Components</button>
       </div>

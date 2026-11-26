@@ -150,6 +150,20 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
   })
   const [amounts, setAmounts] = useState<Record<string, string>>({})
   const [remarks, setRemarks] = useState('')
+  const revising = person.gross_monthly != null
+  // A revision starts from what is in force: the fixed amounts already set for this person come back filled in.
+  const currentQ = useQuery<SalaryStructure[]>(`payroll-structures-${person.user_id}`, () => api.get<SalaryStructure[]>(`/payroll/${person.user_id}`), { enabled: revising })
+  const [seeded, setSeeded] = useState(false)
+  useEffect(() => {
+    if (seeded || !currentQ.data) return
+    const now = currentQ.data.find((row) => row.is_current)
+    if (now) {
+      const filled: Record<string, string> = {}
+      for (const c of now.components) if (c.calculation === 'fixed' && c.amount) filled[c.component_id] = String(c.amount / 100)
+      setAmounts((prev) => ({ ...filled, ...prev }))
+    }
+    setSeeded(true)
+  }, [currentQ.data, seeded])
   const templatesQ = useQuery<SalaryTemplate[]>('salary-templates', () => api.get<SalaryTemplate[]>('/payroll/templates'))
   const templates = (templatesQ.data ?? []).filter((t) => t.is_active)
   const [templateId, setTemplateId] = useState<string | null>(null)
@@ -193,7 +207,7 @@ function SalaryDialog({ person, components, onClose, onSaved }: {
   }
 
   return (
-    <Dialog title={`Set salary — ${person.full_name}`} wide onClose={onClose}
+    <Dialog title={`${revising ? 'Revise' : 'Set'} salary — ${person.full_name}`} wide onClose={onClose}
             footer={<>
               <button className="btn" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" disabled={!grossPaise || !preview || busy || !effective} onClick={save}>

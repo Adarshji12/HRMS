@@ -20,7 +20,7 @@
       formatted value. */
 
 import { useCallback, useState } from 'react'
-import { api, download } from '../../../lib/api'
+import { api, download, openPrintable } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
@@ -63,10 +63,10 @@ export default function MyExpenses() {
     summaryQ.reload()
   }, [claimsQ, summaryQ])
 
-  async function create(title: string) {
+  async function create(body: Record<string, unknown>) {
     setError(null)
     try {
-      const claim = await api.post<ExpenseClaimDetail>('/expenses', { title })
+      const claim = await api.post<ExpenseClaimDetail>('/expenses', body)
       setCreating(false)
       setOpen(claim.id)
       reload()
@@ -143,25 +143,50 @@ function NewClaim({
   onCreate,
   onCancel,
 }: {
-  onCreate: (title: string) => void
+  onCreate: (body: Record<string, unknown>) => void
   onCancel: () => void
 }) {
+  const month = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const [kind, setKind] = useState<'general' | 'conveyance'>('general')
   const [title, setTitle] = useState('')
+  const [grade, setGrade] = useState('')
+  const [location, setLocation] = useState('')
+  const [project, setProject] = useState('')
+  const conveyance = kind === 'conveyance'
+  const finalTitle = title.trim() || (conveyance ? `Local conveyance - ${month}` : '')
+  const create = () => onCreate({
+    title: finalTitle, claim_type: kind,
+    ...(conveyance ? { employee_grade: grade.trim() || null, work_location: location.trim() || null, project_label: project.trim() || null } : {}),
+  })
   return (
     <section className="card ex-newclaim">
       <h2 className="card-title">New claim</h2>
+      <div className="ecv-kinds" role="radiogroup" aria-label="Claim type">
+        <button type="button" role="radio" aria-checked={!conveyance} className={!conveyance ? 'is-on' : ''} onClick={() => setKind('general')}>
+          <b>General claim</b><span>Travel, meals, supplies - one line per receipt</span>
+        </button>
+        <button type="button" role="radio" aria-checked={conveyance} className={conveyance ? 'is-on' : ''} onClick={() => setKind('conveyance')}>
+          <b>Local conveyance claim</b><span>Journeys to customers: from, to, mode, fare, food and parking</span>
+        </button>
+      </div>
       <div className="ex-row">
         <input
           autoFocus
-          placeholder="What is this claim for? e.g. Client visit, Mumbai"
+          placeholder={conveyance ? `Local conveyance - ${month}` : 'What is this claim for? e.g. Client visit, Mumbai'}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && title.trim()) onCreate(title.trim())
+            if (event.key === 'Enter' && finalTitle) create()
           }}
         />
-        <button className="btn primary" disabled={!title.trim()}
-                onClick={() => onCreate(title.trim())}>
+        {conveyance && (
+          <>
+            <input placeholder="Employee grade" value={grade} onChange={(e) => setGrade(e.target.value)} aria-label="Employee grade" />
+            <input placeholder="Location, e.g. Noida" value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Location" />
+            <input placeholder="Project" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project" />
+          </>
+        )}
+        <button className="btn primary" disabled={!finalTitle} onClick={create}>
           Create
         </button>
         <button className="btn" onClick={onCancel}>Cancel</button>
@@ -259,16 +284,29 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
         </p>
       )}
 
-      {claim.can_edit && (
+      {claim.claim_type === 'conveyance' && (
+        <div className="ecv-head">
+          <span><em>Employee</em><b>{claim.user_name ?? '-'}</b></span>
+          <span><em>Grade</em><b>{claim.employee_grade || '-'}</b></span>
+          <span><em>Location</em><b>{claim.work_location || '-'}</b></span>
+          <span><em>Project</em><b>{claim.project_label || '-'}</b></span>
+        </div>
+      )}
+
+      {claim.can_edit && (claim.claim_type === 'conveyance' ? (
+        <ConveyanceAddLine claimId={claim.id} busy={busy} act={act} />
+      ) : (
         <AddLine
           claimId={claim.id}
           categories={categoriesQ.data ?? []}
           busy={busy}
           act={act}
         />
-      )}
+      ))}
 
-      <LineTable claim={claim} busy={busy} act={act} />
+      {claim.claim_type === 'conveyance'
+        ? <ConveyanceTable claim={claim} busy={busy} act={act} />
+        : <LineTable claim={claim} busy={busy} act={act} />}
 
       <div className="ex-actions">
         <div className="ex-total">
@@ -285,6 +323,10 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
             Submit for approval
           </button>
         )}
+        <button className="btn" disabled={busy}
+                onClick={() => void openPrintable(`/expenses/${claim.id}/print`).catch((caught) => setError((caught as Error).message))}>
+          Print claim form
+        </button>
         {claim.can_cancel && (
           <button className="btn" disabled={busy}
                   onClick={() => act(() => api.post(`/expenses/${claim.id}/cancel`))}>
@@ -482,6 +524,148 @@ function AddLine({
       <button className="btn primary" disabled={!ready || busy} onClick={add}>
         Add
       </button>
+    </div>
+  )
+}
+
+/* ------------------------------------------------- local conveyance form --- */
+
+const MODES = ['Metro/Auto', 'Cab', 'Bus', 'Train', 'Own vehicle']
+const rupee = (paise: number | null | undefined, currency?: string) => money(paise ?? 0, currency)
+
+/** One journey: date and times, from and to, customer and SO number, mode, distance, fare, food and parking. */
+function ConveyanceAddLine({
+  claimId,
+  busy,
+  act,
+}: {
+  claimId: string
+  busy: boolean
+  act: (run: () => Promise<unknown>) => Promise<void>
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const blank = { spent_on: today, start: '', end: '', from: '', to: '', customer: '', so: '', mode: 'Metro/Auto', km: '', rate: '', fare: '', food: '', parking: '', remarks: '' }
+  const [f, setF] = useState(blank)
+  const set = (patch: Partial<typeof blank>) => setF((p) => ({ ...p, ...patch }))
+
+  const km = f.km.trim() ? Number(f.km) : null
+  const rate = toPaise(f.rate)
+  // Own vehicle is paid by the kilometre: with a distance and a rate and no fare typed, the fare is their product.
+  const computed = km && rate ? Math.round(km * rate) : null
+  const fare = toPaise(f.fare) ?? computed ?? 0
+  const food = toPaise(f.food) ?? 0
+  const parking = toPaise(f.parking) ?? 0
+  const grand = fare + food + parking
+  const ready = Boolean(f.from.trim() && f.to.trim() && grand > 0)
+
+  async function add() {
+    await act(() =>
+      api.post(`/expenses/${claimId}/lines`, {
+        spent_on: f.spent_on,
+        start_time: f.start || null,
+        end_time: f.end || null,
+        from_location: f.from.trim(),
+        to_location: f.to.trim(),
+        customer_name: f.customer.trim() || null,
+        so_number: f.so.trim() || null,
+        conveyance_mode: f.mode.trim() || null,
+        distance_km: km,
+        rate_per_km: rate,
+        conveyance_amount: fare,
+        food_amount: food,
+        parking_amount: parking,
+        remarks: f.remarks.trim() || null,
+      }),
+    )
+    // Dates and the mode carry over: a day's journeys are usually entered together.
+    setF({ ...blank, spent_on: f.spent_on, mode: f.mode })
+  }
+
+  return (
+    <div className="ecv-add">
+      <div className="ecv-grid">
+        <label>Date<input type="date" value={f.spent_on} max={today} onChange={(e) => set({ spent_on: e.target.value })} /></label>
+        <label>Start time<input type="time" value={f.start} onChange={(e) => set({ start: e.target.value })} /></label>
+        <label>End time<input type="time" value={f.end} onChange={(e) => set({ end: e.target.value })} /></label>
+        <label className="is-2">From (start location)<input value={f.from} maxLength={160} placeholder="Noida Sec-62" onChange={(e) => set({ from: e.target.value })} /></label>
+        <label className="is-2">To (end location)<input value={f.to} maxLength={160} placeholder="CDOT, Chattarpur" onChange={(e) => set({ to: e.target.value })} /></label>
+        <label>Customer<input value={f.customer} maxLength={160} onChange={(e) => set({ customer: e.target.value })} /></label>
+        <label>SO no<input value={f.so} maxLength={60} onChange={(e) => set({ so: e.target.value })} /></label>
+        <label>Mode of conveyance
+          <input list="ecv-modes" value={f.mode} maxLength={60} onChange={(e) => set({ mode: e.target.value })} />
+          <datalist id="ecv-modes">{MODES.map((m) => <option key={m} value={m} />)}</datalist>
+        </label>
+        <label>Distance (km)<input type="number" min={0} step="any" value={f.km} onChange={(e) => set({ km: e.target.value })} /></label>
+        <label>Rate per km (as per policy)<input type="number" min={0} step="any" value={f.rate} onChange={(e) => set({ rate: e.target.value })} /></label>
+        <label>Fare (total)<input type="number" min={0} step="any" value={f.fare} placeholder={computed ? String(computed / 100) : '0'} onChange={(e) => set({ fare: e.target.value })} /></label>
+        <label>Food bill<input type="number" min={0} step="any" value={f.food} placeholder="0" onChange={(e) => set({ food: e.target.value })} /></label>
+        <label>Parking / toll<input type="number" min={0} step="any" value={f.parking} placeholder="0" onChange={(e) => set({ parking: e.target.value })} /></label>
+        <label className="is-2">Remarks<input value={f.remarks} maxLength={300} onChange={(e) => set({ remarks: e.target.value })} /></label>
+      </div>
+      <div className="ecv-add-foot">
+        <span>Grand total for this journey <strong>{money(grand)}</strong></span>
+        <button className="btn primary" disabled={!ready || busy} onClick={add}>Add journey</button>
+      </div>
+    </div>
+  )
+}
+
+/** The journeys as the form lays them out, with its totals row. */
+function ConveyanceTable({
+  claim,
+  busy,
+  act,
+}: {
+  claim: ExpenseClaimDetail
+  busy: boolean
+  act: (run: () => Promise<unknown>) => Promise<void>
+}) {
+  if (!claim.lines.length) return <Empty>No journeys on this claim yet. Add the first one above.</Empty>
+  const sum = (pick: (l: ExpenseClaimDetail['lines'][number]) => number | null | undefined) =>
+    claim.lines.reduce((n, l) => n + (pick(l) ?? 0), 0)
+  const lines = [...claim.lines].sort((a, b) => (a.spent_on + (a.start_time ?? '')).localeCompare(b.spent_on + (b.start_time ?? '')))
+  return (
+    <div className="table-wrap">
+      <table className="table ecv-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Time</th><th>From</th><th>To</th><th>Customer</th><th>SO no</th><th>Mode</th>
+            <th className="num">Km</th><th className="num">Fare</th><th className="num">Food</th><th className="num">Parking</th>
+            <th className="num">Grand total</th><th>Remarks</th><th />
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) => (
+            <tr key={l.id}>
+              <td>{l.spent_on}</td>
+              <td className="muted">{[l.start_time, l.end_time].filter(Boolean).join(' - ') || '-'}</td>
+              <td>{l.from_location}</td><td>{l.to_location}</td>
+              <td>{l.customer_name || '-'}</td><td>{l.so_number || '-'}</td><td>{l.conveyance_mode || '-'}</td>
+              <td className="num">{l.distance_km ?? '-'}</td>
+              <td className="num">{rupee(l.conveyance_amount, claim.currency)}</td>
+              <td className="num">{l.food_amount ? rupee(l.food_amount, claim.currency) : '-'}</td>
+              <td className="num">{l.parking_amount ? rupee(l.parking_amount, claim.currency) : '-'}</td>
+              <td className="num"><strong>{rupee(l.amount, claim.currency)}</strong></td>
+              <td className="muted">{l.remarks || ''}</td>
+              <td className="row-actions">
+                {claim.can_edit && (
+                  <button className="btn small danger" disabled={busy} onClick={() => act(() => api.del(`/expenses/lines/${l.id}`))}>Remove</button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={8}><strong>Total</strong></td>
+            <td className="num"><strong>{rupee(sum((l) => l.conveyance_amount), claim.currency)}</strong></td>
+            <td className="num"><strong>{rupee(sum((l) => l.food_amount), claim.currency)}</strong></td>
+            <td className="num"><strong>{rupee(sum((l) => l.parking_amount), claim.currency)}</strong></td>
+            <td className="num"><strong>{rupee(claim.total_amount, claim.currency)}</strong></td>
+            <td colSpan={2} />
+          </tr>
+        </tfoot>
+      </table>
     </div>
   )
 }

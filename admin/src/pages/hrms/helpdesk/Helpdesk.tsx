@@ -1,15 +1,18 @@
-import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/helpdesk.css'
 import { api, ApiError } from '../../../lib/api'
+import { canViewTeam, useAuth } from '../../../lib/auth'
 import { useQuery } from '../../../lib/useQuery'
-import type { User } from '../../../lib/types'
+import type { EmployeeProfile, User } from '../../../lib/types'
 import { dateTime, relativeTime } from '../../../lib/format'
-import { Empty, EmptyState, ErrorNote, Loading } from '../../../components/ui'
-import { IconInfo } from '../../../components/Icons'
+import { Avatar, Empty, EmptyState, ErrorNote, Loading } from '../../../components/ui'
+import { IconCheck, IconInfo, IconPlus } from '../../../components/Icons'
+import { crm, type Customer } from '../../crm/api'
+import { SlaChips, SlaSettings, isBreached, minutesText, useSla } from './sla'
 import {
-  ColumnSettings, FieldSettings, useColumns, useFieldModes,
-  type ColumnDef, type FieldDef, type FieldSection,
+  ColumnSettings, useColumns,
+  type ColumnDef,
 } from '../../../components/ViewSettings'
 
 /* ---------------------------------------------------------------- types ---
@@ -37,6 +40,20 @@ export interface Ticket {
   category_name: string | null
   raised_by_name: string | null
   assigned_to_name: string | null
+  /* Incident details: who the call is for. All optional. */
+  incident_on?: string | null
+  customer_name?: string | null
+  contact_name?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  pincode?: string | null
+  ticket_no?: number | null
+  respond_by?: string | null
+  resolve_by?: string | null
+  first_response_at?: string | null
 }
 
 /**
@@ -176,11 +193,12 @@ type TicketColumn = ColumnDef & {
 const TICKET_COLUMNS: TicketColumn[] = [
   { key: 'subject', label: 'Subject', locked: true, td: (ticket, ctx) => (
     <button className="hd-rowbtn" onClick={() => ctx.select(ticket.id)}>
-      <div className="hd-subject">{ticket.subject}</div>
+      <div className="hd-subject">{ticket.ticket_no ? <code className="hd-no">#INC-{ticket.ticket_no}</code> : null}{ticket.subject}</div>
       <div className="hd-sub">
         {ticket.category_name ?? 'Uncategorised'}
         {' · '}
-        {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
+        <span className={`hd-ptxt hd-ptxt-${ticket.priority}`}>{PRIORITY_P[ticket.priority] ?? ticket.priority}</span>
+        {isBreached(ticket) && <span className="hd-breach">SLA breached</span>}
       </div>
     </button>
   ) },
@@ -193,14 +211,45 @@ const TICKET_COLUMNS: TicketColumn[] = [
     td: (ticket) => (ticket.resolved_at ? relativeTime(ticket.resolved_at) : '—') },
 ]
 
-// The server needs the subject and the description; category and priority are optional.
-const RAISE_FIELDS: FieldDef[] = [
-  { key: 'subject', label: 'Subject', section: 'ticket', fixed: true },
-  { key: 'category', label: 'Category', section: 'ticket' },
-  { key: 'priority', label: 'Priority', section: 'ticket' },
-  { key: 'description', label: 'What happened', section: 'ticket', fixed: true },
-]
-const RAISE_SECTIONS: FieldSection[] = [{ id: 'ticket', label: 'Ticket' }]
+const PRIORITIES_DESC = ['urgent', 'high', 'normal', 'low'] as const
+
+/** P1 is the one that wakes somebody up. The four stored levels read as the P1-P4 an incident desk uses. */
+const PRIORITY_P: Record<string, string> = { urgent: 'P1 - Critical', high: 'P2 - High', normal: 'P3 - Normal', low: 'P4 - Low' }
+
+/** The incident's own details in two columns, read-only. Nothing renders for an ordinary ticket with none of them. */
+export function IncidentDetails({ ticket }: { ticket: Ticket }) {
+  const has = [ticket.customer_name, ticket.contact_name, ticket.contact_email, ticket.contact_phone, ticket.address,
+    ticket.city, ticket.state, ticket.pincode, ticket.incident_on].some(Boolean)
+  if (!has) return null
+  const rows: Array<[string, string | null | undefined]> = [
+    ['Incident date', ticket.incident_on ? dateTime(ticket.incident_on) : null],
+    ['Priority', PRIORITY_P[ticket.priority] ?? ticket.priority],
+    ['Customer', ticket.customer_name],
+    ['Engineer', ticket.assigned_to_name],
+    ['Contact name', ticket.contact_name],
+    ['Contact email', ticket.contact_email],
+    ['Contact number', ticket.contact_phone],
+    ['Pincode', ticket.pincode],
+    ['City', ticket.city],
+    ['State', ticket.state],
+    ['Address', ticket.address],
+    ['Created by', ticket.raised_by_name],
+    ['Created date', dateTime(ticket.created_at)],
+  ]
+  return (
+    <div className="hd-incident">
+      <h3>Incident details</h3>
+      <div className="hd-incident-grid">
+        {rows.map(([label, value]) => (
+          <div key={label} className={label === 'Address' ? 'is-wide' : undefined}>
+            <span>{label}</span>
+            <b>{value || '-'}</b>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function Helpdesk() {
   const [params, setParams] = useSearchParams()
@@ -211,6 +260,10 @@ export default function Helpdesk() {
   const sourceModule = params.get('source_module')
   const sourceRef = params.get('source_ref')
 
+  const [dismissed, setDismissed] = useState(false)
+  const [slaOpen, setSlaOpen] = useState(false)
+  const { user: me } = useAuth()
+  const staff = canViewTeam(me) && permits(me, 'can_manage_helpdesk')
   const [raising, setRaising] = useState(sourceModule !== null && sourceRef !== null)
   const [openOnly, setOpenOnly] = useState(false)
   const [status, setStatus] = useState('')
@@ -224,6 +277,9 @@ export default function Helpdesk() {
   const categories = useQuery<Category[]>('hd-categories', () =>
     api.get<Category[]>('/helpdesk/categories'),
   )
+  const stats = useQuery<{ avg_first_response_minutes: number | null } | null>('hd-stats', () =>
+    api.get<{ avg_first_response_minutes: number | null }>('/helpdesk/stats').catch(() => null),
+  )
 
   const counts = useMemo(() => {
     const all = tickets.data ?? []
@@ -234,6 +290,8 @@ export default function Helpdesk() {
   }, [tickets.data])
 
   function select(id: string | null) {
+    // Closing the panel is a choice: it stays closed until another ticket is picked.
+    setDismissed(id === null)
     const next = new URLSearchParams(params)
     if (id) next.set('t', id)
     else next.delete('t')
@@ -244,25 +302,35 @@ export default function Helpdesk() {
     setParams(next, { replace: true })
   }
 
+  // Open on the most recent ticket rather than an empty panel. Not while a new incident is being raised from a link,
+  // and not once somebody has picked one (or closed the panel on purpose, which clears it only until the next load).
+  const latestId = useMemo(() => {
+    const all = tickets.data ?? []
+    return all.length ? [...all].sort((x, y) => y.created_at.localeCompare(x.created_at))[0].id : null
+  }, [tickets.data])
+  const shown = selected ?? (raising || dismissed ? null : latestId)
+
   if (tickets.error) {
     return <ErrorNote>{errorText(tickets.error, 'Could not load your tickets')}</ErrorNote>
   }
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Helpdesk</h1>
-          <p className="page-sub">
-            Raise a request with HR or IT and follow it through.
-          </p>
+      <div className="hd-page-head">
+        <i className="hd-page-ic" aria-hidden><IconInfo size={22} /></i>
+        <div className="hd-page-title">
+          <div className="hd-crumb">Support <span>&rsaquo;</span> <b>Incident desk</b></div>
+          <h1>Support &amp; Incident Desk</h1>
+          <p>Log customer incidents, track active tickets and follow the replies.</p>
         </div>
-        <div className="head-actions">
-          <button className="btn btn-primary" onClick={() => setRaising((v) => !v)}>
-            {raising ? 'Cancel' : 'Raise a ticket'}
-          </button>
-        </div>
+        <span className="hd-pill-open">{counts.open} Open</span>
+        {stats.data?.avg_first_response_minutes != null && <span className="hd-pill-avg">Avg response: {minutesText(stats.data.avg_first_response_minutes)}</span>}
+        {staff && <button className="btn" onClick={() => setSlaOpen(true)}>SLA targets</button>}
+        <button className="btn btn-primary" onClick={() => setRaising((v) => !v)}>
+          {raising ? 'Hide form' : 'New incident'}
+        </button>
       </div>
+      {slaOpen && <SlaSettings onClose={() => setSlaOpen(false)} />}
 
       {raising && (
         <RaiseTicket
@@ -339,7 +407,7 @@ export default function Helpdesk() {
                 </thead>
                 <tbody>
                   {(tickets.data ?? []).map((ticket) => (
-                    <tr key={ticket.id} className={ticket.id === selected ? 'hd-row-selected' : undefined}>
+                    <tr key={ticket.id} className={ticket.id === shown ? 'hd-row-selected' : undefined}>
                       {(columns.visible as TicketColumn[]).map((col) => (
                         <td key={col.key} className={col.className}>{col.td(ticket, { select })}</td>
                       ))}
@@ -352,10 +420,10 @@ export default function Helpdesk() {
         </section>
 
         <section className="card">
-          {selected ? (
+          {shown ? (
             <MyTicket
-              key={selected}
-              ticketId={selected}
+              key={shown}
+              ticketId={shown}
               onChanged={() => tickets.reload()}
               onClose={() => select(null)}
             />
@@ -383,30 +451,83 @@ function RaiseTicket({
   onCancel: () => void
   onDone: (id: string) => void
 }) {
-  const [form, setForm] = useState({
-    subject: '',
-    description: '',
-    category_id: '',
-    priority: 'normal',
-  })
+  const nowLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  const blank = {
+    incident_on: nowLocal(), priority: 'normal', category_id: '', problem: '', details: '',
+    customer_id: '', customer_name: '', contact_name: '', contact_email: '', contact_phone: '',
+    address: '', city: '', state: '', pincode: '',
+  }
+  const [f, setF] = useState(blank)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [locOpen, setLocOpen] = useState(true)
   const linked = sourceModule !== null && sourceRef !== null
-  const fields = useFieldModes('helpdesk-raise-form', RAISE_FIELDS)
-  const fm = fields.mode
-  const star = (key: string) => (fm(key) === 'mandatory' ? <span className="lf-req"> *</span> : null)
-  const missing = (fm('category') === 'mandatory' && !form.category_id)
+  const customersQ = useQuery<Customer[]>('hd-customers', () => crm.customers({}).catch(() => [] as Customer[]))
+  const sla = useSla()
+  const [slaForm, setSlaForm] = useState(false)
+  const { user: formUser } = useAuth()
+  const staffForm = canViewTeam(formUser) && permits(formUser, 'can_manage_helpdesk')
+  const nextQ = useQuery<{ next_ticket_no: number } | null>('hd-next-no', () => api.get<{ next_ticket_no: number }>('/helpdesk/tickets/next-number').catch(() => null))
+  const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
+
+  // The contact block starts as the person raising it, read from their own profile. Only fields still empty are filled,
+  // so a slow load never overwrites what has already been typed or picked.
+  const { user } = useAuth()
+  const profileQ = useQuery<EmployeeProfile | null>('hd-my-profile', () => api.get<EmployeeProfile>('/people/me').catch(() => null))
+  const mine = useMemo(() => {
+    const p = profileQ.data
+    return {
+      contact_name: p?.full_name ?? user?.full_name ?? '',
+      contact_email: p?.email ?? user?.email ?? '',
+      contact_phone: user?.phone ?? p?.alternate_phone ?? '',
+      address: p?.current_address ?? '',
+      city: p?.current_city ?? '',
+      state: p?.current_state ?? '',
+      pincode: p?.current_postal_code ?? '',
+    }
+  }, [profileQ.data, user])
+  useEffect(() => {
+    setF((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(mine) as Array<keyof typeof mine>) if (!prev[key]) next[key] = mine[key] ?? ''
+      return next
+    })
+  }, [mine])
+
+  function resetToProfile() {
+    set({ customer_id: '', customer_name: '', ...mine })
+  }
+
+  function pickCustomer(id: string) {
+    const c = (customersQ.data ?? []).find((x) => x.id === id)
+    if (!c) { set({ customer_id: '' }); return }
+    set({
+      customer_id: id, customer_name: c.company || c.name, contact_name: c.name, contact_email: c.email ?? '',
+      contact_phone: c.mobile ?? '', address: c.address ?? '', city: c.city_name ?? '', state: c.state_name ?? '', pincode: c.pincode ?? '',
+    })
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     setError(null)
     try {
+      const problem = f.problem.trim()
       const created = await api.post<Ticket>('/helpdesk/tickets', {
-        subject: form.subject.trim(),
-        description: form.description.trim(),
-        category_id: form.category_id || null,
-        priority: form.priority,
+        // The problem summary is the subject; the server also wants a description, which is the extra detail or else the same words.
+        subject: problem,
+        description: f.details.trim() || problem,
+        category_id: f.category_id || null,
+        priority: f.priority,
+        incident_on: f.incident_on ? new Date(f.incident_on).toISOString() : null,
+        customer_name: f.customer_name.trim() || null,
+        contact_name: f.contact_name.trim() || null,
+        contact_email: f.contact_email.trim() || null,
+        contact_phone: f.contact_phone.trim() || null,
+        address: f.address.trim() || null,
+        city: f.city.trim() || null,
+        state: f.state.trim() || null,
+        pincode: f.pincode.trim() || null,
         /* Both or neither. The server refuses a ref the raiser cannot already
            see, so a link that does not belong to them fails at write time
            rather than becoming a probe for which ids exist. */
@@ -415,112 +536,147 @@ function RaiseTicket({
       })
       onDone(created.id)
     } catch (err) {
-      setError(errorText(err, 'Could not raise the ticket'))
+      setError(errorText(err, 'Could not raise the incident'))
     } finally {
       setBusy(false)
     }
   }
 
-  const fieldNodes: Record<string, ReactNode> = {
-    subject: (
-      <label className="setting" style={{ gridColumn: '1 / -1' }}>
-        Subject *
-        <input
-          value={form.subject}
-          onChange={(e) => setForm({ ...form, subject: e.target.value })}
-          maxLength={300}
-          placeholder="Laptop will not boot after the update"
-          required
-          autoFocus
-        />
-      </label>
-    ),
-    category: fm('category') !== 'hide' && (
-      <label className="setting">
-        Category{star('category')}
-        <select
-          value={form.category_id}
-          onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-        >
-          <option value="">Not sure — let triage decide</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <span className="setting-hint">
-          {categories.length === 0
-            ? 'No categories set up yet. Leave it blank and somebody will route it.'
-            : 'Picking the right one routes it to the people who handle it.'}
-        </span>
-      </label>
-    ),
-    priority: fm('priority') !== 'hide' && (
-      <label className="setting">
-        Priority{star('priority')}
-        <select
-          value={form.priority}
-          onChange={(e) => setForm({ ...form, priority: e.target.value })}
-        >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {PRIORITY_LABEL[p]}
-            </option>
-          ))}
-        </select>
-        <span className="setting-hint">Staff may change this when they triage it.</span>
-      </label>
-    ),
-    description: (
-      <label className="setting" style={{ gridColumn: '1 / -1' }}>
-        What happened *
-        <textarea
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          rows={5}
-          maxLength={20000}
-          placeholder="What you expected, what happened instead, and anything you already tried."
-          required
-        />
-      </label>
-    ),
-  }
+  const nextId = nextQ.data ? `#INC-${nextQ.data.next_ticket_no}` : '#INC-'
+  const catName = categories.find((c) => c.id === f.category_id)?.name
+  const place = [f.address, [f.city, f.state].filter(Boolean).join(', ')].filter(Boolean).join(', ')
+  const pickedP = PRIORITIES_DESC.find((p) => p === f.priority) ?? 'normal'
 
   return (
-    <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
-      <div className="card-head">
-        <h2 className="card-title">Raise a ticket</h2>
-        <div className="lf-settings">
-          <FieldSettings defs={RAISE_FIELDS} sections={RAISE_SECTIONS} modes={fields.modes} order={fields.order}
-                         onSave={fields.save} onReset={fields.reset} />
+    <form className="hd-create" onSubmit={submit}>
+      <header className="hd-create-head">
+        <i className="hd-create-ic" aria-hidden><IconPlus size={18} /></i>
+        <div>
+          <h2>Create incident</h2>
+          <p>Contact details start from your profile. Edit any field or pick a customer to log the incident on their behalf.</p>
         </div>
-      </div>
-      {error && (
-        <div style={{ marginBottom: 12 }}>
-          <ErrorNote>{error}</ErrorNote>
-        </div>
-      )}
-      {linked && (
-        <div className="hd-source" style={{ marginBottom: 12 }}>
-          <IconInfo size={14} />
-          <span className="hd-source-mod">{sourceModule}</span>
-          <span>This ticket will be linked back to the item you came from.</span>
-        </div>
-      )}
+        <span className="hd-nextid">Next ID: {nextId}</span>
+      </header>
 
-      <div className="settings-grid">
-        {fields.orderOf('ticket').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
-      </div>
+      <div className="hd-create-grid">
+        <div className="hd-create-main">
+          {error && <ErrorNote>{error}</ErrorNote>}
+          {linked && (
+            <div className="hd-source">
+              <IconInfo size={14} />
+              <span className="hd-source-mod">{sourceModule}</span>
+              <span>This incident will be linked back to the item you came from.</span>
+            </div>
+          )}
 
-      <div className="btn-group" style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy || missing}>
-          {busy ? 'Raising…' : 'Raise ticket'}
-        </button>
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        {missing && <span className="hd-when">Fill in the fields marked <b className="lf-req">*</b>.</span>}
+          <div className="hd-sec"><span>1. Incident details</span></div>
+          <div className="hd-lab-row">Priority{staffForm && <button type="button" className="hd-linkbtn" onClick={() => setSlaForm(true)}>Edit SLA targets</button>}</div>
+          {slaForm && <SlaSettings onClose={() => setSlaForm(false)} />}
+          <div className="hd-prio-cards" role="radiogroup" aria-label="Priority">
+            {PRIORITIES_DESC.map((p) => (
+              <button key={p} type="button" role="radio" aria-checked={f.priority === p}
+                      className={`hd-pc hd-pc-${p}${f.priority === p ? ' is-on' : ''}`} onClick={() => set({ priority: p })}>
+                <i aria-hidden />
+                <span className="hd-pc-t"><b>{PRIORITY_P[p]}</b>{sla.byPriority[p] && <small>SLA: {minutesText(sla.byPriority[p]!.respond_minutes)}</small>}</span>
+                {f.priority === p && <IconCheck size={14} />}
+              </button>
+            ))}
+          </div>
+
+          <div className="hd-two">
+            <label className="hd-f"><span className="hd-lab-row">Reported date &amp; time
+              <button type="button" className="hd-linkbtn" onClick={() => set({ incident_on: nowLocal() })}>Set to now</button></span>
+              <input type="datetime-local" value={f.incident_on} onChange={(e) => set({ incident_on: e.target.value })} />
+            </label>
+            <label className="hd-f"><span className="hd-lab">Category</span>
+              <select value={f.category_id} onChange={(e) => set({ category_id: e.target.value })}>
+                <option value="">Not sure - let triage decide</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="hd-f"><span className="hd-lab-row">Problem summary <b className="lf-req">*</b><em>Required to submit</em></span>
+            <input value={f.problem} maxLength={300} required autoFocus onChange={(e) => set({ problem: e.target.value })}
+                   placeholder="e.g., Unable to process the monthly payroll batch or login timeout" />
+          </label>
+          <label className="hd-f"><span className="hd-lab">Additional description / steps to reproduce <small>(optional)</small></span>
+            <textarea rows={3} maxLength={20000} value={f.details} onChange={(e) => set({ details: e.target.value })}
+                      placeholder="Include error codes, affected employee IDs, or steps leading up to the issue..." />
+          </label>
+
+          <div className="hd-sec"><span>2. Customer &amp; point of contact</span>
+            <button type="button" className="hd-linkbtn" onClick={resetToProfile}>Reset to my profile</button></div>
+          <label className="hd-f"><span className="hd-lab">Select customer account</span>
+            <select value={f.customer_id} onChange={(e) => pickCustomer(e.target.value)}>
+              <option value="">{(customersQ.data ?? []).length ? 'Myself - no customer' : 'Type the customer below'}</option>
+              {(customersQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.company || c.name}{c.company ? ` - ${c.name}` : ''}</option>)}
+            </select>
+          </label>
+          <div className="hd-two">
+            <label className="hd-f"><span className="hd-lab">Customer name</span>
+              <input value={f.customer_name} maxLength={200} onChange={(e) => set({ customer_name: e.target.value })} /></label>
+            <label className="hd-f"><span className="hd-lab">Contact name</span>
+              <input value={f.contact_name} maxLength={160} onChange={(e) => set({ contact_name: e.target.value })} /></label>
+            <label className="hd-f"><span className="hd-lab">Contact number</span>
+              <input value={f.contact_phone} maxLength={40} inputMode="tel" onChange={(e) => set({ contact_phone: e.target.value })} /></label>
+            <label className="hd-f"><span className="hd-lab">Contact email</span>
+              <input type="email" value={f.contact_email} maxLength={200} onChange={(e) => set({ contact_email: e.target.value })} /></label>
+          </div>
+
+          <div className="hd-loc">
+            <button type="button" className="hd-loc-head" aria-expanded={locOpen} onClick={() => setLocOpen((v) => !v)}>
+              <b>3. Service location</b>
+              {!locOpen && place && <span>- {place}</span>}
+              <i aria-hidden>{locOpen ? '\u25B4' : '\u25BE'}</i>
+            </button>
+            {locOpen && (
+              <div className="hd-loc-body">
+                <label className="hd-f"><span className="hd-lab">Address</span>
+                  <input value={f.address} maxLength={2000} onChange={(e) => set({ address: e.target.value })} /></label>
+                <div className="hd-three">
+                  <label className="hd-f"><span className="hd-lab">City</span>
+                    <input value={f.city} maxLength={120} onChange={(e) => set({ city: e.target.value })} /></label>
+                  <label className="hd-f"><span className="hd-lab">State</span>
+                    <input value={f.state} maxLength={120} onChange={(e) => set({ state: e.target.value })} /></label>
+                  <label className="hd-f"><span className="hd-lab">Pincode</span>
+                    <input value={f.pincode} maxLength={20} inputMode="numeric" onChange={(e) => set({ pincode: e.target.value })} /></label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="hd-create-foot">
+            <button type="button" className="hd-linkbtn" onClick={() => setF({ ...blank, incident_on: nowLocal(), ...mine })}>Reset</button>
+            <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+            <button className="btn btn-primary" disabled={busy || !f.problem.trim()}>{busy ? 'Creating...' : 'Create incident'}</button>
+          </div>
+        </div>
+
+        <aside className="hd-create-side">
+          <div className="hd-lab hd-live">Ticket preview <em>Live</em></div>
+          <div className="hd-pv">
+            <div className="hd-pv-top"><code>{nextId}</code><span className={`hd-pv-p hd-pc-${pickedP}`}><i aria-hidden />{PRIORITY_P[pickedP]}</span></div>
+            <div className="hd-pv-sub">Subject</div>
+            <div className={`hd-pv-title${f.problem.trim() ? '' : ' is-empty'}`}>{f.problem.trim() || 'Enter a problem summary to preview...'}</div>
+            <div className="hd-pv-meta">{catName && <span className="hd-chip">{catName}</span>}<span>{f.incident_on ? dateTime(new Date(f.incident_on).toISOString()) : ''}</span></div>
+            {sla.byPriority[pickedP] && (
+              <div className="hd-pv-sla">
+                <div><b>Target first response</b><span>Resolve within {minutesText(sla.byPriority[pickedP]!.resolve_minutes)}</span></div>
+                <code>{minutesText(sla.byPriority[pickedP]!.respond_minutes)}</code>
+              </div>
+            )}
+            <div className="hd-pv-sub">Customer &amp; contact</div>
+            <div className="hd-pv-cust">
+              <i aria-hidden>{(f.customer_name || f.contact_name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</i>
+              <div>
+                <b>{f.customer_name || f.contact_name || '-'}</b>
+                <span>{[f.customer_name ? f.contact_name : '', f.contact_phone].filter(Boolean).join(' \u00B7 ')}</span>
+                {f.contact_email && <code>{f.contact_email}</code>}
+              </div>
+            </div>
+            {place && <div className="hd-pv-loc">{place}{f.pincode ? ` - ${f.pincode}` : ''}</div>}
+          </div>
+        </aside>
       </div>
     </form>
   )
@@ -568,21 +724,35 @@ function MyTicket({
     <div className="hd-detail">
       <div className="hd-detail-head">
         <div style={{ minWidth: 0 }}>
-          <h2 className="hd-detail-title">{ticket.subject}</h2>
+          <h2 className="hd-detail-title">{ticket.ticket_no ? <code className="hd-no">#INC-{ticket.ticket_no}</code> : null}{ticket.subject}</h2>
           <div className="hd-detail-meta">
-            <TicketStatusPill value={ticket.status} />
-            <PriorityTag value={ticket.priority} />
-            <span className="hd-when">raised {relativeTime(ticket.created_at)}</span>
+            <span>{ticket.category_name ?? 'Uncategorised'}</span>
+            <span className={`hd-ptxt hd-ptxt-${ticket.priority}`}>{PRIORITY_P[ticket.priority] ?? ticket.priority}</span>
+            <span className="hd-when">Raised {relativeTime(ticket.created_at)}</span>
           </div>
         </div>
+        <TicketStatusPill value={ticket.status} />
         <button className="btn btn-sm" onClick={onClose}>
           Close panel
         </button>
       </div>
 
+      <SlaChips ticket={ticket} />
+
+      {(ticket.customer_name || ticket.contact_name || ticket.assigned_to_name) && (
+        <div className="hd-strip">
+          {ticket.customer_name && <b>{ticket.customer_name}</b>}
+          {ticket.contact_name && <span>{ticket.contact_name}{ticket.contact_phone ? ` (${ticket.contact_phone})` : ''}</span>}
+          {ticket.contact_email && <code>{ticket.contact_email}</code>}
+          <em>{ticket.assigned_to_name ? `Handled by ${ticket.assigned_to_name}` : 'Not picked up yet'}</em>
+        </div>
+      )}
+
       <SourceBackLink path={`/helpdesk/tickets/${ticket.id}/source`} />
 
-      <p className="hd-body">{ticket.description}</p>
+      {ticket.description !== ticket.subject && <p className="hd-body">{ticket.description}</p>}
+
+      <IncidentDetails ticket={ticket} />
 
       {/* Two timestamps, two facts. `resolved_at` is cleared when a ticket is
           reopened, and `closed_at` is separate because a ticket can be closed
@@ -643,12 +813,16 @@ function MyTicket({
                  employee-facing type pins the flag to `false` and raises rather
                  than serialising anything else. So there is no badge, no
                  filter and no toggle here: there is nothing to distinguish. */
-              <article className="hd-comment" key={comment.id}>
-                <div className="hd-comment-head">
-                  <span className="hd-comment-who">{comment.author_name ?? 'Former colleague'}</span>
-                  <span className="hd-comment-when">{dateTime(comment.created_at)}</span>
+              <article className={`hd-comment ${comment.author_id === ticket.raised_by ? 'is-customer' : 'is-support'}`} key={comment.id}>
+                <Avatar name={comment.author_name ?? 'Former colleague'} small />
+                <div className="hd-comment-card">
+                  <div className="hd-comment-head">
+                    <span className="hd-comment-who">{comment.author_name ?? 'Former colleague'}</span>
+                    <span className="hd-comment-badge">{comment.author_id === ticket.raised_by ? 'Customer' : 'Support engineer'}</span>
+                    <span className="hd-comment-when">{dateTime(comment.created_at)}</span>
+                  </div>
+                  <div className="hd-comment-body">{comment.body}</div>
                 </div>
-                <div className="hd-comment-body">{comment.body}</div>
               </article>
             ))}
           </div>

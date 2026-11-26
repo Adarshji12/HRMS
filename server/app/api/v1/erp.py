@@ -233,6 +233,17 @@ def create_sale_bill(payload: S.SaleBillIn, viewer: CurrentUser, db: DbSession, 
     return sale_bills.create_bill(db, viewer, payload, request=request)
 
 
+@router.get("/sale-bills/next-number")
+def sale_bill_next_number(viewer: CurrentUser, db: DbSession, doc_type: str = "quotation", on: date | None = None) -> dict:
+    """The generated number the next quotation, sale return or stock issue will carry, for the form's No. box."""
+    key = {"quotation": "quotation", "return": "credit_note", "issue": "stock_issue"}.get(doc_type)
+    if key is None:
+        return {"number": None}
+    number = bill_series.peek_number(db, viewer.org_id, key, on or date.today())
+    db.commit()
+    return {"number": number}
+
+
 @router.get("/sale-bills/{bill_id}")
 def get_sale_bill(bill_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
     return sale_bills.get_bill(db, viewer, bill_id)

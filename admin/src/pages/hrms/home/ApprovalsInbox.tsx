@@ -909,7 +909,7 @@ export default function ApprovalsInbox() {
                 <SegButton
                   key={t.id}
                   lane={t.id}
-                  label={LANE_LABEL[t.id]}
+                  label={t.id === 'expense' ? 'Expense Approvals' : LANE_LABEL[t.id]}
                   count={counts[t.id]}
                   on={lane === t.id}
                   onPick={() => setLane(t.id)}

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../lib/auth'
+import { canAdminister, useAuth } from '../lib/auth'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { Avatar } from './ui'
-import { IconBell, IconGear, IconMonitor, IconMoon, IconSignOut, IconSun, IconUsers } from './Icons'
+import { IconBell, IconBuilding, IconGear, IconMonitor, IconMoon, IconSignOut, IconSun, IconUsers } from './Icons'
 
 const MODES: Array<{ id: ThemeMode; label: string; icon: (p: { size?: number }) => JSX.Element }> = [
   { id: 'light', label: 'Light', icon: IconSun },
@@ -87,6 +87,11 @@ export default function AccountMenu({ settingsHome }: { settingsHome: string }) 
             <Link to="/profile" className="account-link" onClick={() => setOpen(false)}>
               <IconUsers size={15} /> My profile
             </Link>
+            {canAdminister(user) && (
+              <Link to="/settings/company" className="account-link" onClick={() => setOpen(false)}>
+                <IconBuilding size={15} /> Company profile
+              </Link>
+            )}
             <Link to="/settings/notifications" className="account-link" onClick={() => setOpen(false)}>
               <IconBell size={15} /> Notification settings
             </Link>

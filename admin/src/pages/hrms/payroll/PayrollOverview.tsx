@@ -184,9 +184,6 @@ export default function PayrollOverview() {
           </p>
         </div>
         <div className="head-actions">
-          <Link className="btn" to="/payroll">
-            Employee Salaries
-          </Link>
           <Link className="btn btn-primary" to="/payroll/runs">
             Open pay runs
           </Link>
@@ -361,9 +358,6 @@ export default function PayrollOverview() {
             </Link>
             <Link to="/payroll/components" className="pr-jump-link">
               <IconChart size={16} /> Pay components
-            </Link>
-            <Link to="/payroll/tax" className="pr-jump-link">
-              <IconCheck size={16} /> Tax declarations
             </Link>
             <Link to="/payroll/year-end" className="pr-jump-link">
               <IconSheet size={16} /> Year end &amp; Form 16

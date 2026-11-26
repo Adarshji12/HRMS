@@ -686,3 +686,69 @@ def test_expenses_are_gated_like_every_other_module(client, tenants, platform_to
     response = client.get("/api/v1/expenses", headers=acme.headers())
     assert response.status_code == 402
     assert response.json()["detail"]["module"] == "expenses"
+
+
+def test_a_conveyance_claim_sums_fare_food_and_parking_and_prints_the_form(client, tenants):
+    """Journey lines carry their own amounts; the line total is fare + food + parking and the form prints it."""
+    acme, _ = tenants
+    token = acme.employee_token
+    claim = _claim(client, acme, token, title="Oct conveyance", claim_type="conveyance",
+                   employee_grade="E2", work_location="Noida", project_label="Csirt Power")
+    assert claim["claim_type"] == "conveyance" and claim["project_name"] == "Csirt Power"
+
+    body = {
+        "spent_on": date.today().isoformat(), "start_time": "09:00", "end_time": "11:00",
+        "from_location": "Noida Sec-62", "to_location": "CDOT, Chattarpur", "customer_name": "CDOT",
+        "so_number": "S00252", "conveyance_mode": "Metro/Auto", "conveyance_amount": 15000,
+        "food_amount": 5000, "parking_amount": 2000,
+    }
+    url = f"/api/v1/expenses/{claim['id']}/lines"
+    response = client.post(url, json=body, headers=acme.headers(token))
+    assert response.status_code == 201, response.text
+    detail = response.json()
+    assert detail["total_amount"] == 22000
+    line = detail["lines"][0]
+    assert line["amount"] == 22000 and line["conveyance_amount"] == 15000 and line["category_name"] == "Local conveyance"
+
+    # A journey with no destination, or with nothing to claim, is refused.
+    bad = client.post(url, json={**body, "to_location": ""}, headers=acme.headers(token))
+    assert bad.status_code in (400, 409, 422)
+    empty = client.post(url, json={**body, "conveyance_amount": 0, "food_amount": 0, "parking_amount": 0},
+                        headers=acme.headers(token))
+    assert empty.status_code in (400, 409, 422)
+
+    form = client.get(f"/api/v1/expenses/{claim['id']}/print", headers=acme.headers(token))
+    assert form.status_code == 200
+    assert "LOCAL CONVEYANCE CLAIM FORM" in form.text and "CDOT, Chattarpur" in form.text and "220.00" in form.text
+
+
+def test_a_conveyance_claim_goes_through_approval_and_payment_and_the_form_shows_who_signed(client, tenants):
+    """The Excel's own numbers: twelve journeys of 150 and 100 make 1,500, and the printed form names the approver and payer."""
+    acme, _ = tenants
+    token = acme.employee_token
+    claim = _claim(client, acme, token, title="Oct conveyance", claim_type="conveyance", work_location="Noida")
+    url = f"/api/v1/expenses/{claim['id']}/lines"
+    base = {"spent_on": date.today().isoformat(), "conveyance_mode": "Metro/Auto", "customer_name": "CDOT", "so_number": "S00252"}
+    for start, end, a, b, fare in [("09:00", "11:00", "Noida Sec-62", "CDOT,Chattarpur", 15000),
+                                   ("19:00", "21:20", "CDOT,Chattarpur", "Noida Sec-62", 10000)] * 6:
+        r = client.post(url, json={**base, "start_time": start, "end_time": end, "from_location": a,
+                                   "to_location": b, "conveyance_amount": fare}, headers=acme.headers(token))
+        assert r.status_code == 201, r.text
+    assert r.json()["total_amount"] == 150000 and r.json()["line_count"] == 12
+
+    submitted = client.post(f"/api/v1/expenses/{claim['id']}/submit", headers=acme.headers(token))
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["status"] == "submitted"
+    # Frozen once submitted.
+    frozen = client.post(url, json={**base, "from_location": "A", "to_location": "B", "conveyance_amount": 100}, headers=acme.headers(token))
+    assert frozen.status_code in (403, 409)
+
+    approved = client.post(f"/api/v1/expenses/{claim['id']}/review", json={"status": "approved"}, headers=acme.headers())
+    assert approved.status_code == 200 and approved.json()["approved_amount"] == 150000
+    paid = client.post(f"/api/v1/expenses/{claim['id']}/reimburse", json={"payment_reference": "UTR1"}, headers=acme.headers())
+    assert paid.status_code == 200 and paid.json()["status"] == "reimbursed"
+
+    form = client.get(f"/api/v1/expenses/{claim['id']}/print", headers=acme.headers(token)).text
+    assert "1,500.00" in form and form.count("CDOT,Chattarpur") >= 12
+    assert f"Approved by: <span>{acme.owner.full_name}</span>" in form
+    assert f"Verified by: <span>{acme.owner.full_name}</span>" in form

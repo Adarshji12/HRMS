@@ -28,12 +28,6 @@ const MODULES: Record<string, { tab: Exclude<Tab, 'all'>; text: string }> = {
   '/hrms/working-hours': { tab: 'time', text: 'Shift schedules, overtime, and hours worked across teams.' },
   '/salary': { tab: 'pay', text: 'Salary structures, automated payslips, and tax compliance.' },
   '/expenses': { tab: 'pay', text: 'Employee claims, receipt uploads, and reimbursements.' },
-  '/settings/approvals': { tab: 'people', text: 'Multi-level approval chains and routing rules.' },
-  '/timesheets': { tab: 'time', text: 'Billable time, project hours, and timesheet approvals.' },
-  '/workforce': { tab: 'time', text: 'Shift rostering, coverage planning, and availability.' },
-  '/noticeboard': { tab: 'people', text: 'Company announcements, policies, and pinned notices.' },
-  '/me': { tab: 'people', text: 'OKRs, appraisals, and feedback cycles.' },
-  '/hrms/joiners-letters': { tab: 'people', text: 'New-hire onboarding, pre-joining checks, and employment letters.' },
   '/hrms/settings': { tab: 'people', text: 'Policies, probation, document and birthday windows.' },
 }
 
@@ -113,7 +107,7 @@ export default function HrmsHub() {
           const Icon = m.icon
           const fig = metric(m.to)
           return (
-            <Link key={m.to} to={m.to} className="hh-card">
+            <Link key={m.to} to={admin && m.adminTo ? m.adminTo : m.to} className="hh-card">
               <div className="hh-card-top">
                 <i className="hh-ic is-brand" aria-hidden><Icon size={18} /></i>
                 <span className="hh-go" aria-hidden><IconChevronRight size={14} /></span>

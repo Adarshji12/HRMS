@@ -1,17 +1,17 @@
-/* HR Settings → Notifications: the company's email events.
+/* Settings → Notifications: the company's email events.
  *
  * Email only. Each event can be switched on or off, and its subject and body reworded with
- * placeholders. Below: a log of what has actually been sent, and the two company-wide HR alerts.
+ * placeholders.
  */
 
 import { useState } from 'react'
 import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
-import { dateTime } from '../../lib/format'
-import { Empty, ErrorNote, Loading } from '../../components/ui'
+import { ErrorNote, Loading } from '../../components/ui'
 import { IconMail } from '../../components/Icons'
 import NotificationSettings from '../NotificationSettings'
+import '../../styles/hrsettings.css'
 
 interface EventRow {
   key: string; label: string; description: string; audience: 'employee' | 'manager'; schedule: string | null
@@ -23,22 +23,18 @@ interface Payload {
   events: EventRow[]
   alerts: { probation_alert: boolean; document_alert: boolean }
 }
-interface Sent { event: string; label: string; to: string; subject: string; status: string; error: string | null; sent_at: string }
 
 const WHO = { employee: 'The employee', manager: 'Their reporting manager' } as const
-const STATUS: Record<string, string> = { sent: 'Delivered', logged: 'Not sent — no mail server configured', failed: 'Failed', pending: 'Pending' }
 
 export default function NotificationsTab() {
   const { user } = useAuth()
   if (!canAdminister(user)) return <NotificationSettings />
-  return <Events />
+  return <div className="page"><Events /></div>
 }
 
 function Events() {
   const q = useQuery<Payload>('notif-rules', () => api.get<Payload>('/notifications/rules'))
-  const sent = useQuery<{ items: Sent[] }>('notif-sent', () => api.get<{ items: Sent[] }>('/notifications/sent'))
   const [open, setOpen] = useState<string | null>(null)
-  const [logOpen, setLogOpen] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   if (q.error) return <ErrorNote>{q.error}</ErrorNote>
@@ -66,7 +62,7 @@ function Events() {
         <div className="hs-card-body">
           <p className="nt-intro">
             Sends from the account’s configured mail settings. Subject and body are yours to write.
-            {!data.email_configured && <> <b>No mail server is configured yet</b>, so messages are recorded below but not delivered.</>}
+            {!data.email_configured && <> <b>No mail server is configured yet</b>, so messages are not delivered yet.</>}
           </p>
           {data.events.map((ev) => (
             <EventCard key={ev.key} ev={ev} placeholders={data.placeholders} open={open === ev.key}
@@ -74,56 +70,6 @@ function Events() {
                        onToggle={(on) => void put(`/notifications/rules/${ev.key}`, { is_enabled: on })}
                        onSave={async (subject, body) => { await put(`/notifications/rules/${ev.key}`, { subject, body }) }} />
           ))}
-        </div>
-      </section>
-
-      <section className="card hs-card" style={{ marginTop: 14 }}>
-        <header className="hs-card-head lp-head nt-head" onClick={() => setLogOpen(!logOpen)} style={{ cursor: 'pointer' }}>
-          <h2>What has been sent</h2>
-          <span className="lp-note">{logOpen ? '▴' : '▾'}</span>
-        </header>
-        {logOpen && (
-          <div className="hs-card-body">
-            {sent.data && sent.data.items.length > 0 ? (
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>When</th><th>Notification</th><th>To</th><th>Subject</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {sent.data.items.map((s, i) => (
-                      <tr key={`${s.event}-${s.sent_at}-${i}`}>
-                        <td>{dateTime(s.sent_at)}</td>
-                        <td>{s.label}</td>
-                        <td>{s.to}</td>
-                        <td className="muted-sm">{s.subject}</td>
-                        <td title={s.error ?? undefined}>{STATUS[s.status] ?? s.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>Nothing has been sent yet. Every attempt lands here — including the ones that fail, with the reason.</Empty>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="card hs-card" style={{ marginTop: 14 }}>
-        <header className="hs-card-head lp-head nt-head">
-          <h2>Other HR alerts</h2>
-          <span className="lp-note">Saved now, used by Employees</span>
-        </header>
-        <div className="hs-card-body">
-          <label className="crm-check pr-check">
-            <input type="checkbox" checked={data.alerts.probation_alert}
-                   onChange={(e) => void put('/notifications/alerts', { ...data.alerts, probation_alert: e.target.checked })} />
-            Tell HR when a probation is about to end
-          </label>
-          <label className="crm-check pr-check">
-            <input type="checkbox" checked={data.alerts.document_alert}
-                   onChange={(e) => void put('/notifications/alerts', { ...data.alerts, document_alert: e.target.checked })} />
-            Tell HR when a stored document expires
-          </label>
         </div>
       </section>
     </div>

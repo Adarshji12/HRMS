@@ -70,7 +70,7 @@ const DEFAULTS: Config = {
 const rupees = (paise: number) => String(paise / 100)
 const percent = (bps: number) => String(bps / 100)
 
-function PayrollSetup() {
+export function PayrollSetup() {
   const q = useQuery<Config | null>('hr-statutory-config', () => api.get<Config | null>('/statutory/config'))
   const [draft, setDraft] = useState<Record<string, string | boolean> | null>(null)
   const [busy, setBusy] = useState(false)
@@ -199,7 +199,7 @@ interface TargetRow { user_id: string; name: string; target: number; is_set: boo
 
 const inr = (n: number) => Math.round(n).toLocaleString('en-IN')
 
-function SalesTarget() {
+export function SalesTarget() {
   const q = useQuery<Rule>('incentive-rule', () => api.get<Rule>('/incentives/rule'))
   const [draft, setDraft] = useState<{ on: boolean; ttype: string; target: string; itype: string; amount: string; achievement: string; minPct: string; approval: boolean } | null>(null)
   const [busy, setBusy] = useState(false)

@@ -90,3 +90,6 @@
 .ld-cal td.ld-pend { background: repeating-linear-gradient(135deg, var(--c, #0ea5e9) 0 4px, #fff 4px 8px); }
 .ld-cal-wrap { padding: 0 18px 8px; }
 @media (max-width: 800px) { .ld-head { flex-direction: column; } .ld-head-right { flex-wrap: wrap; } }
+
+.ld-tabs-sm { padding: 5px; gap: 2px; }
+.ld-tabs-sm .ld-tab { padding: 7px 14px; font-size: 12.5px; }

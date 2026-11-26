@@ -241,6 +241,7 @@ export function Dialog({
   wide,
   narrow,
   medium,
+  className,
 }: {
   title: string
   subtitle?: ReactNode
@@ -252,6 +253,7 @@ export function Dialog({
   narrow?: boolean
   /** A form of a dozen fields: about 600px. */
   medium?: boolean
+  className?: string
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -272,7 +274,7 @@ export function Dialog({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <div
-        className={`crm-dialog${wide ? ' crm-dialog-wide' : ''}${narrow ? ' crm-dialog-narrow' : ''}${medium ? ' crm-dialog-medium' : ''}`}
+        className={`crm-dialog${wide ? ' crm-dialog-wide' : ''}${narrow ? ' crm-dialog-narrow' : ''}${medium ? ' crm-dialog-medium' : ''}${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -757,10 +759,12 @@ export function LeadName({ lead }: { lead: Lead }) {
    field is a label (with a red mark when required), the control, and one line
    under it — the hint, or the error once there is one. */
 
-export function LfSection({ icon, title, note, children }: {
+export function LfSection({ icon, title, note, action, children }: {
   icon: ReactNode
   title: string
   note: string
+  /** Something that belongs on the heading's row at the right, e.g. the field-settings button. */
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -771,6 +775,7 @@ export function LfSection({ icon, title, note, children }: {
           <h3>{title}</h3>
           <p>{note}</p>
         </div>
+        {action && <div className="lf-section-action">{action}</div>}
       </header>
       <div className="lf-grid">{children}</div>
     </section>

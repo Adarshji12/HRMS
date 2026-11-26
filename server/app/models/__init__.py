@@ -24,6 +24,7 @@ from app.models.billing import Payment, Subscription
 from app.models.device import Device, WorkSession
 from app.models.helpdesk import (
     HelpdeskCategory,
+    HelpdeskSla,
     HelpdeskComment,
     HelpdeskTicket,
     TicketPriority,
@@ -353,6 +354,7 @@ __all__ = [
     "GeofenceEnforcement",
     "HalfDaySession",
     "HelpdeskCategory",
+    "HelpdeskSla",
     "HrSettings",
     "HelpdeskComment",
     "HelpdeskTicket",

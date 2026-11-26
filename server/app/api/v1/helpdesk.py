@@ -46,6 +46,7 @@ from app.schemas.helpdesk import (
     CategoryOut,
     CommentIn,
     PublicCommentOut,
+    SlaIn,
     StaffCommentIn,
     StaffCommentOut,
     TicketDetailOut,
@@ -173,6 +174,32 @@ def raise_ticket(payload: TicketIn, viewer: CurrentUser, db: DbSession) -> Ticke
     """
     ticket = hd.raise_ticket(db, viewer, payload)
     return hd.ticket_out(db, ticket)
+
+
+@router.get("/tickets/next-number")
+def next_number(viewer: CurrentUser, db: DbSession) -> dict:
+    """What the ticket being raised will be called, for the preview beside the form."""
+    return {"next_ticket_no": hd.next_ticket_no(db, viewer.org_id)}
+
+
+@router.get("/sla")
+def read_sla(viewer: CurrentUser, db: DbSession) -> dict:
+    """The response and resolution targets per priority, in minutes. Anyone may read them: the raise form shows them."""
+    table = hd.sla_table(db, viewer.org_id)
+    return {"rows": [{"priority": p, "respond_minutes": r, "resolve_minutes": s} for p, (r, s) in table.items()]}
+
+
+@router.put("/sla")
+def write_sla(payload: SlaIn, staff: HelpdeskStaff, db: DbSession) -> dict:
+    """Set the targets. Applies to tickets raised from now on; tickets already open keep the deadlines they were given."""
+    table = hd.set_sla(db, staff.org_id, payload.rows)
+    return {"rows": [{"priority": p, "respond_minutes": r, "resolve_minutes": s} for p, (r, s) in table.items()]}
+
+
+@router.get("/stats")
+def my_stats(viewer: CurrentUser, db: DbSession) -> dict:
+    """Average minutes to the first staff reply on the viewer's own tickets, for the header."""
+    return {"avg_first_response_minutes": hd.average_first_response_minutes(db, viewer.org_id, raised_by=viewer.id)}
 
 
 @router.get("/tickets", response_model=list[TicketOut])

@@ -70,3 +70,15 @@ def test_return_and_stock_issue_take_their_numbers_from_the_bill_series(client, 
     assert issue["number"].startswith("SI-") and issue["party_name"] == "Main store"
     again = ok(client.post(f"{API}/sale-bills", json={"doc_type": "issue", "issued_to": "Main store", "lines": [line]}, headers=acme.headers()), 201)
     assert again["number"] != issue["number"]
+
+
+def test_the_form_is_shown_the_generated_number_before_saving_and_gets_that_number(client, acme):
+    led = _ledger(client, acme)
+    line = {"description": "Chips", "quantity": "2", "rate": "6"}
+    shown = ok(client.get(f"{API}/sale-bills/next-number?doc_type=return", headers=acme.headers()))["number"]
+    assert shown.startswith("CN-")
+    # Asking does not use the number up.
+    assert ok(client.get(f"{API}/sale-bills/next-number?doc_type=return", headers=acme.headers()))["number"] == shown
+    saved = ok(client.post(f"{API}/sale-bills", json={"doc_type": "return", "ledger_id": led["id"], "lines": [line]}, headers=acme.headers()), 201)
+    assert saved["number"] == shown
+    assert ok(client.get(f"{API}/sale-bills/next-number?doc_type=return", headers=acme.headers()))["number"] != shown

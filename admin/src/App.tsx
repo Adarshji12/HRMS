@@ -9,6 +9,7 @@ import {
   canSee,
   firstRouteIn,
   itemsIn,
+  forRole,
   costsheetGranted,
   dashboardOpen,
   locate,
@@ -46,7 +47,7 @@ import ErpSale from './pages/erp/ErpSale'
 import ErpMasters from './pages/erp/ErpMasters'
 import ErpPlaceholder from './pages/erp/ErpPlaceholder'
 import ErpSettingsPage from './pages/erp/ErpSettingsPage'
-import NotificationSettings from './pages/NotificationSettings'
+import NotificationsTab from './pages/hrms/NotificationsTab'
 import EmailSetup from './pages/EmailSetup'
 import CompanyProfile from './pages/CompanyProfile'
 import Employees from './pages/Employees'
@@ -93,7 +94,6 @@ import LetterTemplates from './pages/hrms/payroll/LetterTemplates'
 import PayRuns, { MyPayslips } from './pages/hrms/payroll/PayRuns'
 import SalarySlips from './pages/hrms/payroll/SalarySlips'
 import PayrollOverview from './pages/hrms/payroll/PayrollOverview'
-import StatutorySettings from './pages/hrms/payroll/StatutorySettings'
 import TaxDeclarationPage from './pages/hrms/payroll/TaxDeclaration'
 import TaxVerification from './pages/hrms/payroll/TaxVerification'
 import YearEnd, { MyForm16 } from './pages/hrms/payroll/YearEnd'
@@ -166,7 +166,7 @@ function Shell() {
     canApprove: canApproveSomething(user) || costsheetGranted(user?.menu_rights),
     menuRights: user?.menu_rights ?? null,
   }
-  const hrmsItems = HRMS_NAV_ITEMS.filter((item) => canSee(item, access))
+  const hrmsItems = HRMS_NAV_ITEMS.filter((item) => canSee(item, access)).map((item) => forRole(item, access))
   const hrmsRouteActive = location.pathname !== '/' && hrmsItems.some((item) =>
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   )
@@ -755,14 +755,19 @@ function Shell() {
             <Route path="/projects" element={page('projects', <Projects />)} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route path="/reports" element={page('reports', <Reports />)} />
+            <Route
+              path="/settings/tracking"
+              element={isAdmin ? <Settings /> : <Navigate to={'/screenshots'} replace />}
+            />
           </Route>
 
           {/* Core HR. `/profile` is your own; `/people/:userId` is somebody
               else's and the server refuses it unless you administer people —
               the refusal belongs there, not in a route guard here, because a
               hidden route would leave the API reachable anyway. */}
+          {/* Your own profile is a page of its own, reached from the account menu — not one tab among the people pages. */}
+          <Route path="/profile" element={<MyProfile />} />
           <Route element={<ModulePanel group={mod('people')} />}>
-            <Route path="/profile" element={<MyProfile />} />
             <Route path="/people/:userId" element={<PersonProfile />} />
             {/* Hidden from the rail for employees; the routes have to agree, or
                 the links are merely invisible rather than actually closed. The
@@ -1077,7 +1082,7 @@ function Shell() {
               path="/settings/organisation"
               element={access.canViewTeam ? <OrgStructure /> : <Navigate to={settingsHome} replace />}
             />
-            <Route path="/settings/notifications" element={<NotificationSettings />} />
+            <Route path="/settings/notifications" element={<NotificationsTab />} />
             <Route
               path="/settings/email"
               element={owner ? <EmailSetup /> : <Navigate to={settingsHome} replace />}
@@ -1085,10 +1090,6 @@ function Shell() {
             <Route
               path="/billing"
               element={isAdmin ? <Billing /> : <Navigate to={settingsHome} replace />}
-            />
-            <Route
-              path="/settings/tracking"
-              element={isAdmin ? <Settings /> : <Navigate to={settingsHome} replace />}
             />
             <Route
               path="/settings/attendance"
@@ -1102,10 +1103,7 @@ function Shell() {
               path="/settings/expenses"
               element={isAdmin ? <ExpenseSettings /> : <Navigate to={settingsHome} replace />}
             />
-            <Route
-              path="/settings/payroll"
-              element={isAdmin ? <StatutorySettings /> : <Navigate to={settingsHome} replace />}
-            />
+            <Route path="/settings/payroll" element={<Navigate to="/hrms/settings?tab=payroll" replace />} />
           </Route>
 
           {/* Workflow is its own module now. The path keeps its /settings/
@@ -1130,7 +1128,7 @@ function Shell() {
           <Route path="/attendance/settings" element={<Navigate to="/settings/attendance" replace />} />
           <Route path="/leave/settings" element={<Navigate to="/settings/leave" replace />} />
           <Route path="/expenses/settings" element={<Navigate to="/settings/expenses" replace />} />
-          <Route path="/payroll/statutory" element={<Navigate to="/settings/payroll" replace />} />
+          <Route path="/payroll/statutory" element={<Navigate to="/hrms/settings?tab=payroll" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -756,10 +756,22 @@ export const crm = {
   deleteReminder: (id: string) => api.del(`/crm/reminders/${id}`),
 }
 
-/** WhatsApp deep link for a number, or null when there is nothing to dial. */
+/** The country code assumed for a number typed without one: leads and customers here are Indian numbers, saved as 10 digits. */
+const DEFAULT_COUNTRY_CODE = '91'
+
+/** A number in the form WhatsApp needs: digits only, with the country code. wa.me refuses a bare 10-digit number. */
+export function whatsappDigits(mobile: string | null | undefined): string | null {
+  let digits = (mobile ?? '').replace(/\D/g, '')
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1)
+  if (digits.length === 10) digits = DEFAULT_COUNTRY_CODE + digits
+  return digits.length >= 11 ? digits : null
+}
+
+/** WhatsApp deep link for a number, or null when there is nothing valid to dial. */
 export function whatsappLink(mobile: string | null | undefined, text?: string): string | null {
-  const digits = (mobile ?? '').replace(/\D/g, '')
-  if (digits.length < 8) return null
+  const digits = whatsappDigits(mobile)
+  if (!digits) return null
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ''}`
 }
 

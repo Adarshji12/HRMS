@@ -12,6 +12,7 @@ import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/
 import {
   PRIORITIES,
   PRIORITY_LABEL,
+  IncidentDetails,
   PriorityTag,
   SourceBackLink,
   TICKET_STATUS_LABEL,
@@ -22,6 +23,7 @@ import {
   type PublicComment,
   type Ticket,
 } from './Helpdesk'
+import { SlaChips, SlaSettings, isBreached } from './sla'
 
 /* ---------------------------------------------------------------- types ---
 
@@ -109,6 +111,7 @@ const QUEUE_COLUMNS: QueueColumn[] = [
       <div className="hd-detail-meta" style={{ marginTop: 6 }}>
         <TicketStatusPill value={row.status} />
         <PriorityTag value={row.priority} />
+        {isBreached(row) && <span className="hd-breach">SLA breached</span>}
       </div>
     </>
   ) },
@@ -149,6 +152,7 @@ export default function HelpdeskQueue() {
   const allowed = canViewTeam(user) && permits(user, 'can_manage_helpdesk')
 
   const [params, setParams] = useSearchParams()
+  const [slaOpen, setSlaOpen] = useState(false)
   const selected = params.get('t')
 
   const [scope, setScope] = useState<'all' | 'mine' | 'unassigned'>('all')
@@ -240,7 +244,11 @@ export default function HelpdeskQueue() {
             Every ticket in the company, by priority then age.
           </p>
         </div>
+        <div className="head-actions">
+          <button className="btn" onClick={() => setSlaOpen(true)}>SLA targets</button>
+        </div>
       </div>
+      {slaOpen && <SlaSettings onClose={() => setSlaOpen(false)} />}
 
       <div className="grid grid-tiles" style={{ marginBottom: 14 }}>
         <StatTile label="In this view" value={String(summary.total)} />
@@ -449,7 +457,11 @@ function StaffTicket({
 
       <SourceBackLink path={`/helpdesk/staff/tickets/${ticket.id}/source`} />
 
-      <p className="hd-body">{ticket.description}</p>
+      {ticket.description !== ticket.subject && <p className="hd-body">{ticket.description}</p>}
+
+      <SlaChips ticket={ticket} />
+
+      <IncidentDetails ticket={ticket} />
 
       {/* Two independent timestamps. Reopening clears `resolved_at`; a ticket
           closed as a duplicate or withdrawn by the raiser never had one. */}

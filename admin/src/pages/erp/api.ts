@@ -1131,6 +1131,7 @@ export const erp = {
   addPoAttachment: (id: string, body: { name: string; data: string }) => api.post<PurchaseOrder>(`${B}/purchase-orders/${id}/attachments`, body),
   poAttachment: (id: string, attId: string) => api.get<{ name: string; data: string }>(`${B}/purchase-orders/${id}/attachments/${attId}`),
   removePoAttachment: (id: string, attId: string) => api.del<PurchaseOrder>(`${B}/purchase-orders/${id}/attachments/${attId}`),
+  nextSaleBillNumber: (docType: string, on: string) => api.get<{ number: string | null }>(`${B}/sale-bills/next-number${qs({ doc_type: docType, on })}`),
   nextPoNumber: (on: string) => api.get<{ number: string; company_state?: string | null }>(`${B}/purchase-orders/next-number${qs({ on })}`),
   savePurchaseOrder: (body: Body, id?: string) =>
     id ? api.put<PurchaseOrder>(`${B}/purchase-orders/${id}`, body) : api.post<PurchaseOrder>(`${B}/purchase-orders`, body),

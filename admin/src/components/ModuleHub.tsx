@@ -52,7 +52,11 @@ const DESCRIPTIONS: Record<string, string> = {
   '/crm/quotations': 'Build, send and track price quotes',
   '/crm/settings': 'Stages, sources and CRM preferences',
   // HRMS
+  '/hrms': 'Every HR module in one place',
   '/hrms/dashboard': 'Headcount, joiners, exits and what is due',
+  '/tracking': 'Live field check-ins and location history',
+  '/hrms/leave': 'Time-off balances, holidays and leave requests',
+  '/payroll/overview': 'Pay runs, payslips and salary structures',
   '/attendance': 'Daily punches, presence and regularisation',
   '/hrms/working-hours': 'Hours worked across the team',
   '/salary': 'Salary structure, payslips and pay runs',

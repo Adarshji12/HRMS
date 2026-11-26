@@ -74,13 +74,13 @@ import {
   MasterSelect,
   OwnerSelect,
   StagePill,
-  WhatsAppButton,
   useSelection,
   ThCaret,
   nationalDigits,
   onlyDigits,
   withDialCode,
 } from './parts'
+import LeadWhatsApp from './LeadWhatsApp'
 import { LeadEmailDialog } from './LeadEmail'
 import { ColumnSettings, FieldSettings, useColumns, useFieldModes, type ColumnDef, type FieldDef, type FieldSection } from '../../components/ViewSettings'
 
@@ -127,8 +127,8 @@ const LEAD_COLUMNS: LeadColumn[] = [
 /** What the Add lead form can show, make mandatory or hide. A lead's name and
  *  mobile number are the two the server needs, so they cannot be changed. */
 const LEAD_SECTIONS: FieldSection[] = [
-  { id: 'customer', label: 'Customer info' },
-  { id: 'lead', label: 'Lead info' },
+  { id: 'customer', label: 'Customer information' },
+  { id: 'lead', label: 'Lead information' },
   { id: 'address', label: 'Address' },
   { id: 'deal', label: 'Deal details' },
   { id: 'opportunity', label: 'Opportunity' },
@@ -578,7 +578,7 @@ export default function MyLeads() {
                             >
                               <IconSheet size={15} />
                             </Link>
-                            <WhatsAppButton mobile={lead.whatsapp ?? lead.mobile} />
+                            <LeadWhatsApp lead={lead} />
                             <button
                               className="crm-icon-btn"
                               onClick={() => setEmailing(lead)}
@@ -1042,7 +1042,7 @@ export function LeadForm({
     dealOk && !valueBad && !dealMand.opportunity && !valueMissing,
   ]
   const lastStep = showDeal ? 4 : 2
-  const stepNames = ['Customer info', 'Lead info', 'Address', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
+  const stepNames = ['Customer information', 'Lead information', 'Address', ...(showDeal ? ['Deal details', 'Opportunity'] : [])]
   const goNext = () => {
     if (!stepOk[step]) {
       setTouched((t) => ({ ...t, mobile: true, email: true, whatsapp: true, pincode: true, value: true }))
@@ -1235,13 +1235,19 @@ export function LeadForm({
   const fieldsOf = (section: string) =>
     fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
 
+  const fieldSettings = (
+    <FieldSettings defs={LEAD_FIELDS} sections={LEAD_SECTIONS} modes={fields.modes} order={fields.order}
+                   onSave={fields.save} onReset={fields.reset} />
+  )
+
   const form = (
       <form className="lf lf-single" id="crm-lead-form" ref={formRef} onSubmit={submit} noValidate>
         {error && <ErrorNote>{error}</ErrorNote>}
-        <div className="lf-settings">
-          <FieldSettings defs={LEAD_FIELDS} sections={LEAD_SECTIONS} modes={fields.modes} order={fields.order}
-                         onSave={fields.save} onReset={fields.reset} />
-        </div>
+        {/* The settings button sits on the first section's heading; on a later step of the stepped form, where that
+            heading is not on screen, it keeps its own row. */}
+        {stepped && step > 0 && (
+          <div className="lf-settings">{fieldSettings}</div>
+        )}
         {stepped && (
           <ol className="lf-steps" aria-label="Lead steps">
             {stepNames.map((label, i) => (
@@ -1257,7 +1263,7 @@ export function LeadForm({
           </ol>
         )}
 
-        {(!stepped || step === 0) && <LfSection icon={<IconUser size={16} />} title="Customer info" note="The person you will be speaking to.">
+        {(!stepped || step === 0) && <LfSection icon={<IconUser size={16} />} title="Customer information" note="The person you will be speaking to." action={fieldSettings}>
           {fieldsOf('customer')}
           
           
@@ -1268,7 +1274,7 @@ export function LeadForm({
           
         </LfSection>}
 
-        {(!stepped || step === 1) && <LfSection icon={<IconStar size={16} />} title="Lead info" note="Where it came from, what they want, and who owns it.">
+        {(!stepped || step === 1) && <LfSection icon={<IconStar size={16} />} title="Lead information" note="Where it came from, what they want, and who owns it.">
           {fieldsOf('lead')}
           
           

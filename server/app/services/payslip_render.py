@@ -1,4 +1,4 @@
-"""The payslip as a printable page, in one of five layouts, from the company's design settings.
+"""The payslip as a printable page, in one of eight layouts, from the company's design settings.
 
 Pure functions: a settings dict and a data dict in, HTML out. The same code draws the live preview
 (sample data) and a real payslip, so what the administrator sees while designing is what is printed.
@@ -14,6 +14,9 @@ TEMPLATES = [
     ("professional", "Professional", "Boxed sections with a summary panel down the right."),
     ("detailed", "Detailed", "Adds attendance, leave, PF/ESIC wages and year-to-date figures."),
     ("executive", "Executive", "Minimal, wide margins, net pay set large. Nothing but the numbers."),
+    ("compact", "Compact", "Tight spacing and smaller type so a long payslip still fits one page."),
+    ("ledger", "Ledger", "Serif type inside a double-ruled frame, like a printed accounts statement."),
+    ("sidebar", "Sidebar", "A coloured column down the left with the employee and net pay; figures on the right."),
 ]
 
 DEFAULTS = {
@@ -190,6 +193,13 @@ def render(settings: dict, data: dict | None = None, template: str | None = None
 <div class="cols exc"><div><div class="tag">EARNINGS</div><table class="ed"><tbody>{_rows(d['earnings'])}<tr class="tot"><td>Total</td><td class="num">{money(d['gross'])}</td></tr></tbody></table></div>
 <div><div class="tag">DEDUCTIONS</div><table class="ed"><tbody>{_rows(d['deductions'])}<tr class="tot"><td>Total</td><td class="num">{money(d['total_deductions'])}</td></tr></tbody></table></div></div>
 {_attendance(d['attendance']) if att_on else ''}{note}{_sign(s)}{foot}"""
+    elif tpl == "sidebar":
+        who = "".join(f'<div class="k">{escape(k)}</div><div class="sv">{_e(v)}</div>' for k, v in base_pairs)
+        body = f"""<div class="sbw"><aside class="sbl">{logo}<div class="name">{escape(company)}</div>{sub_html}
+<div class="tag" style="margin-top:22px">PAYSLIP</div><b>{escape(d['period'])}</b>
+<div class="k" style="margin-top:22px">NET PAY</div><div class="big">Rs. {money(d['net'])}</div><div class="sub">{escape(net_words)}</div>
+<div class="sbline"></div>{who}</aside>
+<main class="sbm">{_tables(d)}{_attendance(d['attendance']) if att_on else ''}{note}{_sign(s)}{foot}</main></div>"""
     else:  # corporate and detailed
         detailed = tpl == "detailed"
         pairs = base_pairs if not detailed else base_pairs
@@ -213,7 +223,7 @@ def render(settings: dict, data: dict | None = None, template: str | None = None
     css = f"""
 :root{{--a:{escape(accent)};--ink:#111827;--mut:#6b7280;--line:#d7e3e1;--tint:#e8f3f1}}
 *{{box-sizing:border-box}} body{{margin:0;background:#eef2f6;font:10pt/1.45 'Poppins',Arial,sans-serif;color:var(--ink)}}
-.page{{position:relative;max-width:760px;margin:20px auto;background:#fff;padding:34px 38px;border-top:8px solid var(--a);overflow:hidden}}
+.page{{position:relative;max-width:760px;margin:20px auto 0;background:#fff;padding:34px 38px 70px;border-top:8px solid var(--a);overflow:hidden}}
 .name{{font-weight:700;font-size:15pt}} .sub{{font-size:8.5pt;color:var(--mut)}} .logo{{max-height:46px;max-width:140px;margin-right:12px}}
 .co{{display:flex;align-items:center}} .head{{display:flex;justify-content:space-between;align-items:flex-start}} .hr{{text-align:right}}
 .tag{{font-size:8pt;letter-spacing:.2em;font-weight:700;color:var(--a)}} .per{{display:block;font-size:12.5pt;margin-top:4px}}
@@ -233,7 +243,10 @@ def render(settings: dict, data: dict | None = None, template: str | None = None
 .split{{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-top:14px}} .panel{{border:2px solid #7cc4bb;background:#eef8f6;border-radius:16px;padding:18px}} .panel .big{{font-size:17pt}}
 .exco{{letter-spacing:.3em;font-weight:700;font-size:10pt}} .exrule{{border-top:2px solid var(--ink);margin:12px 0 22px}} .exrow{{display:flex;justify-content:space-between}} .exname{{font-size:22pt;font-weight:600;margin-top:34px}} .exnet{{font-size:30pt;font-weight:700;color:var(--a)}} .exc .ed td{{padding:9px 8px;border:0}}
 .wm{{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:64pt;font-weight:800;color:#000;transform:rotate(-24deg);pointer-events:none}}
-@media print{{body{{background:#fff}} .page{{margin:0;max-width:none}}}}
+.t-compact{{padding:22px 26px 56px;font-size:9pt;border-top-width:5px}} .t-compact .banner{{display:none}} .t-compact .grid .k,.t-compact .grid .v{{padding:4px 6px}} .t-compact .ed td{{padding:3px 8px}} .t-compact .ed th{{padding:4px 8px}} .t-compact .netbar{{padding:7px 14px}} .t-compact .sign{{margin-top:26px}} .t-compact .rule{{margin:8px 0}}
+.t-ledger{{font-family:Georgia,'Times New Roman',serif;border:1px solid var(--ink);border-top:1px solid var(--ink);outline:1px solid var(--ink);outline-offset:-8px;padding:42px 46px 80px}} .t-ledger .banner{{background:none;color:var(--ink);border-top:1px solid var(--ink);border-bottom:1px solid var(--ink)}} .t-ledger .ed th{{background:none;color:var(--ink);border-bottom:1px solid var(--ink)}} .t-ledger .ed td{{border-bottom:1px dotted #999}} .t-ledger .tot td{{background:none;border-top:1px solid var(--ink)}} .t-ledger .grid{{border:1px solid var(--ink)}} .t-ledger .grid .k{{background:none}} .t-ledger .netbar{{background:none;color:var(--ink);border:1px solid var(--ink)}} .t-ledger .rule{{border-top:3px double var(--ink)}} .t-ledger .tag,.t-ledger .att td{{color:var(--ink)}}
+.t-sidebar{{padding:0;border-top:0}} .sbw{{display:grid;grid-template-columns:230px 1fr;min-height:760px}} .sbl{{background:var(--a);color:#fff;padding:28px 20px}} .sbl .sub,.sbl .k,.sbl .tag{{color:#d5ece8}} .sbl .logo{{display:block;margin:0 0 10px}} .sbl .big{{color:#fff;font-size:17pt;margin:6px 0}} .sbline{{border-top:1px solid rgba(255,255,255,.35);margin:20px 0 6px}} .sbl .k{{margin-top:10px}} .sv{{font-weight:600;font-size:9pt;word-break:break-word}} .sbm{{padding:28px 28px 70px}} .sbm .cols{{grid-template-columns:1fr}}
+*{{-webkit-print-color-adjust:exact;print-color-adjust:exact}} @media print{{body{{background:#fff}} .page{{margin:0;max-width:none}}}}
 """
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>Payslip — {escape(emp['name'])} · {escape(d['period'])}</title>
-<style>{css}</style></head><body><div class="page">{wm}{body}</div></body></html>"""
+<style>{css}</style></head><body><div class="page t-{tpl}">{wm}{body}</div></body></html>"""

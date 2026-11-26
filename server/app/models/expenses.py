@@ -33,6 +33,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -139,6 +140,14 @@ class ExpenseClaim(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
 
+    #: "general" is the ordinary claim; "conveyance" is the local conveyance claim form, whose lines are
+    #: journeys (from, to, customer, mode, fare, food, parking) rather than receipts.
+    claim_type: Mapped[str] = mapped_column(String(20), default="general", nullable=False)
+    #: Header details printed on the conveyance form. Free text: a grade or a site is whatever the company calls it.
+    employee_grade: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    work_location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    project_label: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
     status: Mapped[str] = mapped_column(
         String(16), default=ClaimStatus.DRAFT.value, nullable=False, index=True
     )
@@ -212,6 +221,23 @@ class ExpenseLine(UUIDMixin, TimestampMixin, Base):
     merchant: Mapped[str | None] = mapped_column(String(160), nullable=True)
     #: Paise.
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: Journey details, set only on conveyance claims. `amount` stays the line's grand total
+    #: (conveyance + food + parking) so caps, totals and approvals work as they do for any other line.
+    start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    end_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    from_location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    to_location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    customer_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    so_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    conveyance_mode: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    distance_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Paise per km, as per policy. Informational: the fare below is what is claimed.
+    rate_per_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    conveyance_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    food_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    parking_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    remarks: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
     #: The receipt. Nullable because some categories do not require one; the
     #: service refuses submission when a category does and this is empty.

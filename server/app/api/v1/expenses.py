@@ -138,7 +138,7 @@ def _claim_out(
     # redundant "filed by" line repeating the claimant's own name.
     if claim.created_by_user_id and claim.created_by_user_id != claim.user_id:
         out.created_by_name = names.get(claim.created_by_user_id)
-    out.project_name = projects.get(claim.project_id)
+    out.project_name = projects.get(claim.project_id) or claim.project_label
     out.line_count = counts.get(claim.id, 0)
 
     state = claim.status_enum
@@ -458,6 +458,19 @@ def download_receipt(
 # --------------------------------------------------------------------------- #
 # Transitions
 # --------------------------------------------------------------------------- #
+
+
+@router.get("/{claim_id}/print", response_model=None)
+def print_claim(claim_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> Response:
+    """The claim as the paper form: the conveyance claim form for a conveyance claim, a plain statement otherwise."""
+    from app.services import expense_form
+
+    try:
+        claim = svc.get_claim(db, viewer, claim_id)
+    except svc.ExpenseError as error:
+        _fail(error)
+    return Response(content=expense_form.render(db, claim), media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'inline; filename="claim-{claim.id}.html"'})
 
 
 @router.post("/{claim_id}/submit", response_model=ClaimDetailOut)

@@ -1,4 +1,4 @@
-/* Letterhead: the header every issued letter prints on. Five layouts, a company block, images, border and watermark. */
+/* Letterhead: the header every issued letter prints on. Eight layouts, a company block, images, border and watermark. */
 
 import { useEffect, useRef, useState } from 'react'
 import { api, postHtml } from '../../../lib/api'
@@ -25,10 +25,21 @@ function pick(s: Settings): Draft {
 }
 
 function openForPrint(html: string) {
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.open(); w.document.write(html); w.document.close()
-  w.focus(); setTimeout(() => w.print(), 400)
+  // Printed from a hidden frame in this page: the print dialog appears straight away, with no blank tab first.
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:1100px;border:0;opacity:0;pointer-events:none'
+  frame.onload = () => {
+    const w = frame.contentWindow
+    if (!w) return
+    const go = () => { w.focus(); w.print() }
+    const fonts = (w.document as Document & { fonts?: { ready: Promise<unknown> } }).fonts
+    if (fonts) void fonts.ready.then(go, go); else go()
+    w.onafterprint = () => frame.remove()
+    setTimeout(() => frame.remove(), 120_000)
+  }
+  frame.srcdoc = html
+  document.body.appendChild(frame)
 }
 
 function Segmented({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
@@ -223,14 +234,14 @@ export default function LetterheadTab() {
       )}
 
       {view && (
-        <Dialog title={data.templates.find((t) => t.key === view)?.name ?? 'Template'} subtitle={data.templates.find((t) => t.key === view)?.blurb} wide onClose={() => setView(null)}
+        <Dialog title={data.templates.find((t) => t.key === view)?.name ?? 'Template'} subtitle={data.templates.find((t) => t.key === view)?.blurb} wide className="dlg-preview" onClose={() => setView(null)}
                 footer={<>
                   <button className="btn" disabled={!viewHtml} onClick={() => openForPrint(viewHtml)}>Test PDF</button>
                   {saved.template === view ? <button className="btn" disabled>In use</button>
                     : <button className="btn btn-primary" disabled={busy} onClick={() => void save({ ...draft, template: view }).then(() => setView(null))}>Use this template</button>}
                 </>}>
           <div style={{ padding: '0 16px 16px' }}>
-            {viewHtml ? <iframe title="Template preview" srcDoc={viewHtml} style={{ width: '100%', height: 640, border: 0, background: '#eef2f6' }} /> : <Loading />}
+            {viewHtml ? <iframe title="Template preview" srcDoc={viewHtml} style={{ width: '100%', height: 'min(640px, calc(100vh - 300px))', minHeight: 320, border: 0, background: '#eef2f6' }} /> : <Loading />}
           </div>
         </Dialog>
       )}

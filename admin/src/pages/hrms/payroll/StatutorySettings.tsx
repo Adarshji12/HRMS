@@ -1,7 +1,7 @@
-/* Statutory settings — PF, ESI, professional tax, LWF.
+/* Payroll settings — the cycle, PF, ESI, professional tax, LWF and exit settlement.
 
-   The preview at the bottom is the point of this screen. Statutory rules are the
-   part of payroll people check against a printed circular, so the form runs the
+   The simulator on the right is the point of this screen. Statutory rules are the
+   part of payroll people check against a printed circular, so the page runs the
    same function a pay run runs and shows what comes off at a wage you type —
    rather than letting somebody find out at month end.
 
@@ -15,19 +15,30 @@
      exceed the employer rate — the server refuses, and the hint says why.
    * **The PF ceiling is optional but the pension cap is separate**, because
      contributing on full wages while the pension slice stays capped is exactly
-     how the scheme works and a single switch could not express it. */
+     how the scheme works and a single switch could not express it.
 
-import { useCallback, useState } from 'react'
+   One Save sends the whole configuration, cycle days and TDS included: the PUT
+   replaces the row, so anything left out would fall back to its default. */
+
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
-import { Empty, ErrorNote, Loading } from '../../../components/ui'
+import { ErrorNote, Loading } from '../../../components/ui'
+import { IconBuilding, IconCalendar, IconCard, IconCheck, IconGauge, IconUsers } from '../../../components/Icons'
 import type { PtSlab, StatutoryConfig, StatutoryPreview } from '../../../lib/types'
 import '../../../styles/payroll.css'
+import '../../../styles/statutory.css'
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+const STATES = [
+  'Andhra Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Meghalaya', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ]
 
 /** Basis points in, percentage string out. */
@@ -43,6 +54,9 @@ function toBps(input: string): number | null {
 }
 
 const DEFAULTS = {
+  cycle_close_day: 31,
+  salary_paid_day: 7,
+  tds_enabled: true,
   pf_enabled: false,
   pf_employee_rate_bps: 1200,
   pf_employer_rate_bps: 1200,
@@ -70,7 +84,7 @@ const DEFAULTS = {
 
 type Draft = typeof DEFAULTS
 
-export default function StatutorySettings() {
+export default function StatutorySettings({ embedded = false }: { embedded?: boolean } = {}) {
   const configQ = useQuery<StatutoryConfig | null>('statutory-config', () =>
     api.get<StatutoryConfig | null>('/statutory/config'),
   )
@@ -81,16 +95,18 @@ export default function StatutorySettings() {
   if (configQ.error) return <ErrorNote>{configQ.error}</ErrorNote>
 
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>Statutory settings</h1>
-          <p className="muted">
-            What is deducted, and what the company contributes on top. Nothing is
-            deducted until you switch it on.
-          </p>
-        </div>
-      </header>
+    <div className={`st ${embedded ? 'hs-org' : 'page'}`}>
+      {!embedded && (
+        <header className="page-head">
+          <div>
+            <h1>Statutory settings</h1>
+            <p className="muted">
+              What is deducted, and what the company contributes on top. Nothing is
+              deducted until you switch it on.
+            </p>
+          </div>
+        </header>
+      )}
 
       {error && <ErrorNote>{error}</ErrorNote>}
       {configQ.data === null && (
@@ -100,23 +116,76 @@ export default function StatutorySettings() {
         </p>
       )}
 
-      <ConfigForm
-        current={configQ.data ?? null}
-        onSaved={() => { configQ.reload(); slabsQ.reload() }}
-        onError={setError}
-      />
-
-      {(configQ.data?.pt_enabled ?? false) && (
-        <Slabs
-          slabs={slabsQ.data ?? []}
-          state={configQ.data?.pt_state ?? null}
-          onChanged={() => { slabsQ.reload(); configQ.reload() }}
-          onError={setError}
-        />
-      )}
-
-      <Preview configured={configQ.data !== null} onError={setError} />
+      <div className="st-grid">
+        <div className="st-main">
+          <ConfigForm
+            current={configQ.data ?? null}
+            onSaved={() => { configQ.reload(); slabsQ.reload() }}
+            onError={setError}
+            slabs={(ptOn) => ptOn && (
+              <Slabs
+                slabs={slabsQ.data ?? []}
+                onChanged={() => { slabsQ.reload(); configQ.reload() }}
+                onError={setError}
+              />
+            )}
+          />
+        </div>
+        <aside className="st-side">
+          <Preview configured={configQ.data !== null} onError={setError} />
+        </aside>
+      </div>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ pieces -- */
+
+function Switch({ on, onChange, label }: { on: boolean; onChange: (on: boolean) => void; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label}
+            className={`hs-switch${on ? ' is-on' : ''}`} onClick={() => onChange(!on)}><span /></button>
+  )
+}
+
+function Card({ icon, tone, title, sub, toggle, children }: {
+  icon: ReactNode
+  tone: 'teal' | 'green' | 'blue' | 'amber' | 'purple'
+  title: string
+  sub: string
+  toggle?: { on: boolean; label: string; onChange: (on: boolean) => void }
+  children?: ReactNode
+}) {
+  return (
+    <section className="st-card">
+      <header className="st-card-head">
+        <i className={`st-ic is-${tone}`} aria-hidden>{icon}</i>
+        <div><h2>{title}</h2><p>{sub}</p></div>
+        {toggle && (
+          <label className="st-tog"><span>{toggle.label}</span><Switch on={toggle.on} onChange={toggle.onChange} label={toggle.label} /></label>
+        )}
+      </header>
+      {children && <div className="st-card-body">{children}</div>}
+    </section>
+  )
+}
+
+function Row({ title, hint, on, onChange }: { title: string; hint: string; on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <div className="st-row">
+      <div><b>{title}</b><span>{hint}</span></div>
+      <Switch on={on} onChange={onChange} label={title} />
+    </div>
+  )
+}
+
+function Field({ label, hint, bad, children }: { label: string; hint?: string; bad?: boolean; children: ReactNode }) {
+  return (
+    <label className={`st-f${bad ? ' is-bad' : ''}`}>
+      <span className="st-fl">{label}</span>
+      {children}
+      {hint && <span className="st-hint">{hint}</span>}
+    </label>
   )
 }
 
@@ -124,14 +193,21 @@ function ConfigForm({
   current,
   onSaved,
   onError,
+  slabs,
 }: {
   current: StatutoryConfig | null
   onSaved: () => void
   onError: (message: string) => void
+  /** The professional-tax slab table, drawn inside the professional-tax card once it is on. */
+  slabs: (ptOn: boolean) => ReactNode
 }) {
+  const raw = current as unknown as Record<string, unknown> | null
   const [draft, setDraft] = useState<Draft>(() =>
     current
       ? {
+          cycle_close_day: Number(raw?.cycle_close_day ?? 31),
+          salary_paid_day: Number(raw?.salary_paid_day ?? 7),
+          tds_enabled: Boolean(raw?.tds_enabled ?? true),
           pf_enabled: current.pf_enabled,
           pf_employee_rate_bps: current.pf_employee_rate_bps,
           pf_employer_rate_bps: current.pf_employer_rate_bps,
@@ -167,6 +243,8 @@ function ConfigForm({
   }
 
   const pensionTooHigh = draft.pf_pension_rate_bps > draft.pf_employer_rate_bps
+  const cycleBad = !(Number.isInteger(draft.cycle_close_day) && draft.cycle_close_day >= 1 && draft.cycle_close_day <= 31)
+    || !(Number.isInteger(draft.salary_paid_day) && draft.salary_paid_day >= 1 && draft.salary_paid_day <= 28)
 
   async function save() {
     setBusy(true)
@@ -184,198 +262,152 @@ function ConfigForm({
     }
   }
 
+  const stateOptions = draft.pt_state && !STATES.includes(draft.pt_state) ? [draft.pt_state, ...STATES] : STATES
+
   return (
-    <section className="card pr-form">
-      <h2 className="card-title">Provident Fund</h2>
-      <label className="pr-check">
-        <input type="checkbox" checked={draft.pf_enabled}
-               onChange={(e) => set('pf_enabled', e.target.checked)} />
-        <span>Deduct provident fund</span>
-      </label>
-      {draft.pf_enabled && (
-        <>
-          <div className="pr-row">
-            <Rate label="Employee %" bps={draft.pf_employee_rate_bps}
-                  onChange={(v) => set('pf_employee_rate_bps', v)} />
-            <Rate label="Employer %" bps={draft.pf_employer_rate_bps}
-                  onChange={(v) => set('pf_employer_rate_bps', v)} />
-            <Rate label="of which pension %" bps={draft.pf_pension_rate_bps}
-                  bad={pensionTooHigh}
-                  hint="The EPS slice, out of the employer share."
-                  onChange={(v) => set('pf_pension_rate_bps', v)} />
-            <Amount label="Wage ceiling" paise={draft.pf_wage_ceiling}
-                    onChange={(v) => set('pf_wage_ceiling', v)} />
+    <>
+      <Card icon={<IconCalendar size={18} />} tone="teal" title="Payroll Cycle & Income Tax"
+            sub="Monthly attendance cutoff, payout schedule, and TDS automation">
+        <div className="st-two">
+          <Field label="Cycle closes on day" hint="31 = last day of the month" bad={draft.cycle_close_day < 1 || draft.cycle_close_day > 31}>
+            <span className="st-in"><input type="number" min={1} max={31} step={1} value={draft.cycle_close_day}
+                                           onChange={(e) => set('cycle_close_day', Number(e.target.value))} /><em>Day</em></span>
+          </Field>
+          <Field label="Salary paid on day" hint="Of the following month" bad={draft.salary_paid_day < 1 || draft.salary_paid_day > 28}>
+            <span className="st-in"><input type="number" min={1} max={28} step={1} value={draft.salary_paid_day}
+                                           onChange={(e) => set('salary_paid_day', Number(e.target.value))} /><em>Day</em></span>
+          </Field>
+        </div>
+        <Row title="TDS on salary" hint="Automatically deduct income tax as per each employee's tax regime declaration"
+             on={draft.tds_enabled} onChange={(v) => set('tds_enabled', v)} />
+      </Card>
+
+      <Card icon={<IconUsers size={18} />} tone="green" title="Provident Fund (EPF & EPS)"
+            sub="Employees' Provident Fund and pension contribution splits"
+            toggle={{ on: draft.pf_enabled, label: 'Deduct provident fund', onChange: (v) => set('pf_enabled', v) }}>
+        {draft.pf_enabled && (
+          <>
+            <div className="st-four">
+              <Rate label="Employee %" bps={draft.pf_employee_rate_bps} onChange={(v) => set('pf_employee_rate_bps', v)} />
+              <Rate label="Employer %" bps={draft.pf_employer_rate_bps} onChange={(v) => set('pf_employer_rate_bps', v)} />
+              <Rate label="Of which pension %" bps={draft.pf_pension_rate_bps} bad={pensionTooHigh}
+                    hint="The EPS slice, out of the employer share." onChange={(v) => set('pf_pension_rate_bps', v)} />
+              <Amount label="Wage ceiling" paise={draft.pf_wage_ceiling} onChange={(v) => set('pf_wage_ceiling', v)} />
+            </div>
+            {pensionTooHigh && (
+              <p className="pr-warn">The pension slice comes out of the employer share and cannot exceed it.</p>
+            )}
+            <div className="st-rows">
+              <Row title="Cap contributions at the ceiling"
+                   hint="Off means contributing on full wages, which is equally legitimate — and changes everybody's take-home."
+                   on={draft.pf_cap_at_ceiling} onChange={(v) => set('pf_cap_at_ceiling', v)} />
+              <Row title="Cap the pension slice at the ceiling"
+                   hint="Separate switch: the pension slice stays capped even when EPF is not."
+                   on={draft.pf_pension_cap_at_ceiling} onChange={(v) => set('pf_pension_cap_at_ceiling', v)} />
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card icon={<IconCheck size={18} />} tone="blue" title="Employees' State Insurance (ESI)"
+            sub="Medical and cash benefit contributions for eligible wage brackets"
+            toggle={{ on: draft.esi_enabled, label: 'Deduct ESI', onChange: (v) => set('esi_enabled', v) }}>
+        {draft.esi_enabled && (
+          <div className="st-three">
+            <Rate label="Employee %" bps={draft.esi_employee_rate_bps} onChange={(v) => set('esi_employee_rate_bps', v)} />
+            <Rate label="Employer %" bps={draft.esi_employer_rate_bps} onChange={(v) => set('esi_employer_rate_bps', v)} />
+            <Amount label="Applies below" paise={draft.esi_wage_threshold}
+                    hint="Threshold, not a ceiling — at or above it ESI stops entirely."
+                    onChange={(v) => set('esi_wage_threshold', v)} />
           </div>
-          {pensionTooHigh && (
-            <p className="pr-warn">
-              The pension slice comes out of the employer share and cannot exceed
-              it.
-            </p>
-          )}
-          <label className="pr-check">
-            <input type="checkbox" checked={draft.pf_cap_at_ceiling}
-                   onChange={(e) => set('pf_cap_at_ceiling', e.target.checked)} />
-            <span>
-              Cap contributions at the ceiling
-              <span className="pr-field-hint">
-                Off means contributing on full wages, which is equally
-                legitimate — and changes everybody’s take-home.
-              </span>
-            </span>
-          </label>
-          <label className="pr-check">
-            <input type="checkbox" checked={draft.pf_pension_cap_at_ceiling}
-                   onChange={(e) => set('pf_pension_cap_at_ceiling', e.target.checked)} />
-            <span>
-              Cap the pension slice at the ceiling
-              <span className="pr-field-hint">
-                Separate switch: the pension slice stays capped even when EPF is
-                not.
-              </span>
-            </span>
-          </label>
-        </>
-      )}
+        )}
+      </Card>
 
-      <h2 className="card-title">Employees’ State Insurance</h2>
-      <label className="pr-check">
-        <input type="checkbox" checked={draft.esi_enabled}
-               onChange={(e) => set('esi_enabled', e.target.checked)} />
-        <span>Deduct ESI</span>
-      </label>
-      {draft.esi_enabled && (
-        <div className="pr-row">
-          <Rate label="Employee %" bps={draft.esi_employee_rate_bps}
-                onChange={(v) => set('esi_employee_rate_bps', v)} />
-          <Rate label="Employer %" bps={draft.esi_employer_rate_bps}
-                onChange={(v) => set('esi_employer_rate_bps', v)} />
-          <Amount label="Applies below" paise={draft.esi_wage_threshold}
-                  hint="A threshold, not a ceiling — at or above it ESI stops entirely."
-                  onChange={(v) => set('esi_wage_threshold', v)} />
-        </div>
-      )}
+      <Card icon={<IconBuilding size={18} />} tone="blue" title="Professional Tax (PT)"
+            sub="State-level monthly gross salary slab deductions"
+            toggle={{ on: draft.pt_enabled, label: 'Deduct professional tax', onChange: (v) => set('pt_enabled', v) }}>
+        {draft.pt_enabled && (
+          <>
+            <Field label="State jurisdiction" hint="Add the bands below once this is on and saved.">
+              <select className="st-select" value={draft.pt_state} onChange={(e) => set('pt_state', e.target.value)}>
+                <option value="">Select a state</option>
+                {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            {slabs(current?.pt_enabled ?? false)}
+          </>
+        )}
+      </Card>
 
-      <h2 className="card-title">Professional tax</h2>
-      <label className="pr-check">
-        <input type="checkbox" checked={draft.pt_enabled}
-               onChange={(e) => set('pt_enabled', e.target.checked)} />
-        <span>
-          Deduct professional tax
-          <span className="pr-field-hint">
-            A state slab table. Add the bands below once this is on and saved.
-          </span>
-        </span>
-      </label>
-      {draft.pt_enabled && (
-        <div className="pr-row">
-          <label className="pr-field">
-            <span className="pr-field-label">State</span>
-            <input value={draft.pt_state} placeholder="Karnataka"
-                   onChange={(e) => set('pt_state', e.target.value)} />
-          </label>
-        </div>
-      )}
+      <Card icon={<IconCard size={18} />} tone="amber" title="Labour Welfare Fund (LWF)"
+            sub="Periodic statutory welfare contribution rules"
+            toggle={{ on: draft.lwf_enabled, label: 'Deduct LWF', onChange: (v) => set('lwf_enabled', v) }}>
+        {draft.lwf_enabled && (
+          <div className="st-three">
+            <Amount label="Employee" paise={draft.lwf_employee_amount} onChange={(v) => set('lwf_employee_amount', v)} />
+            <Amount label="Employer" paise={draft.lwf_employer_amount} onChange={(v) => set('lwf_employer_amount', v)} />
+            <Field label="Collection month" hint="Most states collect once or twice a year.">
+              <select className="st-select" value={draft.lwf_month ?? ''}
+                      onChange={(e) => set('lwf_month', e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Every month</option>
+                {MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
+      </Card>
 
-      <h2 className="card-title">Labour Welfare Fund</h2>
-      <label className="pr-check">
-        <input type="checkbox" checked={draft.lwf_enabled}
-               onChange={(e) => set('lwf_enabled', e.target.checked)} />
-        <span>Deduct LWF</span>
-      </label>
-      {draft.lwf_enabled && (
-        <div className="pr-row">
-          <Amount label="Employee" paise={draft.lwf_employee_amount}
-                  onChange={(v) => set('lwf_employee_amount', v)} />
-          <Amount label="Employer" paise={draft.lwf_employer_amount}
-                  onChange={(v) => set('lwf_employer_amount', v)} />
-          <label className="pr-field">
-            <span className="pr-field-label">Month</span>
-            <select value={draft.lwf_month ?? ''}
-                    onChange={(e) =>
-                      set('lwf_month', e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Every month</option>
-              {MONTHS.map((name, index) => (
-                <option key={name} value={index + 1}>{name}</option>
-              ))}
+      {/* Read only when somebody leaves — see `services/settlement`. Grouped here rather than on the
+          exit screen so there is one place the company decides what a day of leave is worth. */}
+      <Card icon={<IconGauge size={18} />} tone="purple" title="Exit & Full-and-Final Settlement"
+            sub="Leave encashment divisor and statutory gratuity calculation rules">
+        <p className="st-note">Nothing below affects a monthly payslip. It is read only when a full-and-final settlement is computed.</p>
+        <div className="st-two">
+          <Field label="Leave encashment: days in a month" hint="26 and 30 are both common, and they differ by 15%.">
+            <input className="st-plain" type="number" min={1} max={31} value={draft.encashment_month_days}
+                   onChange={(e) => set('encashment_month_days', Number(e.target.value))} />
+          </Field>
+          <Field label="Encash on" hint="Basic is the usual reading. Flagged in the pay component catalogue.">
+            <select className="st-select" value={draft.encashment_on_basic ? 'basic' : 'gross'}
+                    onChange={(e) => set('encashment_on_basic', e.target.value === 'basic')}>
+              <option value="basic">Basic</option>
+              <option value="gross">Gross</option>
             </select>
-            <span className="pr-field-hint">
-              Most states collect once or twice a year.
-            </span>
-          </label>
+          </Field>
         </div>
-      )}
-
-      {/* Read only when somebody leaves — see `services/settlement`. Grouped
-          here rather than on the exit screen so there is one place the company
-          decides what a day of leave is worth. */}
-      <h2 className="card-title">Exit settlement</h2>
-      <p className="muted">
-        Nothing below affects a monthly payslip. It is read when a full-and-final
-        settlement is computed.
-      </p>
-
-      <div className="pr-row">
-        <label className="pr-field">
-          <span className="pr-field-label">Leave encashment: days in a month</span>
-          <input placeholder="30" type="number" min={1} max={31} value={draft.encashment_month_days}
-                 onChange={(e) => set('encashment_month_days', Number(e.target.value))} />
-          <span className="pr-field-hint">
-            26 and 30 are both common, and they differ by 15%.
-          </span>
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Encash on</span>
-          <select value={draft.encashment_on_basic ? 'basic' : 'gross'}
-                  onChange={(e) => set('encashment_on_basic', e.target.value === 'basic')}>
-            <option value="basic">Basic</option>
-            <option value="gross">Gross</option>
-          </select>
-          <span className="pr-field-hint">
-            Basic is the usual reading. Which component is basic is whichever one
-            you flagged in the pay component catalogue.
-          </span>
-        </label>
-      </div>
-
-      <label className="pr-check">
-        <input type="checkbox" checked={draft.gratuity_enabled}
-               onChange={(e) => set('gratuity_enabled', e.target.checked)} />
-        <span>
-          Compute gratuity — Payment of Gratuity Act, 1972. Due after five years
-          of continuous service; a part-year of six months or more counts as a
-          full year.
-        </span>
-      </label>
-      {draft.gratuity_enabled && (
-        <div className="pr-row">
-          <label className="pr-field">
-            <span className="pr-field-label">Days per completed year</span>
-            <input placeholder="15" type="number" min={0} max={90} value={draft.gratuity_days_per_year}
-                   onChange={(e) => set('gratuity_days_per_year', Number(e.target.value))} />
-            <span className="pr-field-hint">15 is the statutory figure.</span>
-          </label>
-          <label className="pr-field">
-            <span className="pr-field-label">Divided by</span>
-            <input placeholder="26" type="number" min={1} max={31} value={draft.gratuity_month_days}
-                   onChange={(e) => set('gratuity_month_days', Number(e.target.value))} />
-            <span className="pr-field-hint">26 notional working days.</span>
-          </label>
-          <Amount label="Ceiling" paise={draft.gratuity_ceiling}
-                  onChange={(v) => set('gratuity_ceiling', v)} />
+        <div className="st-box">
+          <div className="st-box-head">
+            <div>
+              <b>Compute gratuity</b>
+              <span>Payment of Gratuity Act, 1972. Due after five years of continuous service; a part-year of six months or more counts as a full year.</span>
+            </div>
+            <Switch on={draft.gratuity_enabled} onChange={(v) => set('gratuity_enabled', v)} label="Compute gratuity" />
+          </div>
+          {draft.gratuity_enabled && (
+            <div className="st-three st-box-body">
+              <Field label="Days per completed year" hint="15 is the statutory figure.">
+                <input className="st-plain" type="number" min={0} max={90} value={draft.gratuity_days_per_year}
+                       onChange={(e) => set('gratuity_days_per_year', Number(e.target.value))} />
+              </Field>
+              <Field label="Divided by" hint="26 notional working days.">
+                <input className="st-plain" type="number" min={1} max={31} value={draft.gratuity_month_days}
+                       onChange={(e) => set('gratuity_month_days', Number(e.target.value))} />
+              </Field>
+              <Amount label="Ceiling" paise={draft.gratuity_ceiling} hint="Statutory limit: ₹20,00,000"
+                      onChange={(v) => set('gratuity_ceiling', v)} />
+            </div>
+          )}
         </div>
-      )}
+      </Card>
 
-      <div className="pr-actions">
-        <button className="btn primary" disabled={busy || pensionTooHigh} onClick={save}>
+      <div className="st-save">
+        <button className="btn btn-primary" disabled={busy || pensionTooHigh || cycleBad} onClick={save}>
           {busy ? 'Saving…' : 'Save settings'}
         </button>
         {saved && <span className="ok-note">Saved</span>}
-        <span className="muted">
-          Applies to the next pay run computed. Runs already approved keep their
-          own frozen figures.
-        </span>
+        <span className="muted">Applies to the next pay run computed. Runs already approved keep their own frozen figures.</span>
       </div>
-    </section>
+    </>
   )
 }
 
@@ -394,16 +426,14 @@ function Rate({
 }) {
   const [text, setText] = useState(() => pctOf(bps))
   return (
-    <label className="pr-field">
-      <span className="pr-field-label">{label}</span>
-      <input placeholder="12" value={text} type="number" data-spin min={0} step="any" className={bad ? 'is-bad' : ''}
-             onChange={(e) => {
-               setText(e.target.value)
-               const next = toBps(e.target.value)
-               if (next !== null) onChange(next)
-             }} />
-      {hint && <span className="pr-field-hint">{hint}</span>}
-    </label>
+    <Field label={label} hint={hint} bad={bad}>
+      <span className="st-in"><input placeholder="12" value={text} type="number" data-spin min={0} step="any"
+                                     onChange={(e) => {
+                                       setText(e.target.value)
+                                       const next = toBps(e.target.value)
+                                       if (next !== null) onChange(next)
+                                     }} /><em>%</em></span>
+    </Field>
   )
 }
 
@@ -420,27 +450,23 @@ function Amount({
 }) {
   const [text, setText] = useState(() => String(paise / 100))
   return (
-    <label className="pr-field">
-      <span className="pr-field-label">{label}</span>
-      <input placeholder="15000" value={text} type="number" data-spin min={0} step="any"
-             onChange={(e) => {
-               setText(e.target.value)
-               const next = toPaise(e.target.value)
-               if (next !== null) onChange(next)
-             }} />
-      {hint && <span className="pr-field-hint">{hint}</span>}
-    </label>
+    <Field label={label} hint={hint}>
+      <span className="st-in is-pre"><em>₹</em><input placeholder="15000" value={text} type="number" data-spin min={0} step="any"
+                                                     onChange={(e) => {
+                                                       setText(e.target.value)
+                                                       const next = toPaise(e.target.value)
+                                                       if (next !== null) onChange(next)
+                                                     }} /></span>
+    </Field>
   )
 }
 
 function Slabs({
   slabs,
-  state,
   onChanged,
   onError,
 }: {
   slabs: PtSlab[]
-  state: string | null
   onChanged: () => void
   onError: (message: string) => void
 }) {
@@ -467,10 +493,11 @@ function Slabs({
   const ready = minPaise !== null && amountPaise !== null
 
   return (
-    <section className="card pr-form">
-      <h2 className="card-title">
-        Professional tax slabs{state ? ` · ${state}` : ''}
-      </h2>
+    <div className="st-slabs">
+      <div className="st-slabs-head">
+        <b>Professional tax slabs</b>
+        <span>{slabs.length} {slabs.length === 1 ? 'band' : 'bands'}</span>
+      </div>
       {!slabs.length && (
         <p className="pr-warn">
           Professional tax is switched on with no slabs configured, so nothing is
@@ -478,32 +505,20 @@ function Slabs({
         </p>
       )}
 
-      <div className="pr-row">
-        <label className="pr-field">
-          <span className="pr-field-label">From</span>
-          <input value={min} type="number" data-spin min={0} step="any" placeholder="0"
-                 onChange={(e) => setMin(e.target.value)} />
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">To</span>
-          <input value={max} type="number" data-spin min={0} step="any" placeholder="blank = no limit"
-                 onChange={(e) => setMax(e.target.value)} />
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Deduct</span>
-          <input value={amount} type="number" data-spin min={0} step="any" placeholder="200"
-                 onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Month</span>
-          <select value={month} onChange={(e) => setMonth(e.target.value)}>
+      <div className="st-add">
+        <Field label="From (₹)"><input className="st-plain" value={min} type="number" data-spin min={0} step="any" placeholder="0"
+                                       onChange={(e) => setMin(e.target.value)} /></Field>
+        <Field label="To (₹)"><input className="st-plain" value={max} type="number" data-spin min={0} step="any" placeholder="blank = no limit"
+                                     onChange={(e) => setMax(e.target.value)} /></Field>
+        <Field label="Deduct (₹)"><input className="st-plain" value={amount} type="number" data-spin min={0} step="any" placeholder="200"
+                                         onChange={(e) => setAmount(e.target.value)} /></Field>
+        <Field label="Month">
+          <select className="st-select" value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">Every month</option>
-            {MONTHS.map((name, index) => (
-              <option key={name} value={index + 1}>{name}</option>
-            ))}
+            {MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
           </select>
-        </label>
-        <button className="btn primary" disabled={!ready || busy}
+        </Field>
+        <button type="button" className="btn btn-primary st-addbtn" disabled={!ready || busy}
                 onClick={() => run(async () => {
                   await api.post('/statutory/slabs', {
                     min_gross: minPaise,
@@ -513,51 +528,40 @@ function Slabs({
                   })
                   setMin(''); setMax(''); setAmount(''); setMonth('')
                 })}>
-          Add band
+          + Add band
         </button>
       </div>
 
       {slabs.length > 0 && (
         <>
-        <div className="table-wrap">
-          <table className="table">
+          <table className="st-table">
             <thead>
-              <tr><th>Band</th><th>Month</th><th className="num">Deduct</th><th /></tr>
+              <tr><th>Salary band</th><th>Month</th><th>Deduct</th><th className="r">Action</th></tr>
             </thead>
             <tbody>
               {slabs.map((slab) => (
                 <tr key={slab.id}>
                   <td>
-                    {money(slab.min_gross)} —{' '}
-                    {slab.max_gross === null ? 'above' : money(slab.max_gross)}
-                    {slab.label && <div className="muted">{slab.label}</div>}
+                    {money(slab.min_gross)} — {slab.max_gross === null ? 'No limit' : money(slab.max_gross)}
+                    {slab.label && <div className="muted-sm">{slab.label}</div>}
                   </td>
-                  <td>
-                    {slab.applies_in_month
-                      ? MONTHS[slab.applies_in_month - 1]
-                      : <span className="muted">Every month</span>}
-                  </td>
-                  <td className="num">{money(slab.amount)}</td>
-                  <td className="row-actions">
-                    <button className="btn small danger" disabled={busy}
-                            onClick={() => run(() =>
-                              api.del(`/statutory/slabs/${slab.id}`))}>
-                      Remove
-                    </button>
+                  <td>{slab.applies_in_month ? MONTHS[slab.applies_in_month - 1] : 'Every month'}</td>
+                  <td><b>{money(slab.amount)}</b></td>
+                  <td className="r">
+                    <button type="button" className="st-remove" disabled={busy}
+                            onClick={() => run(() => api.del(`/statutory/slabs/${slab.id}`))}>Remove</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-        <p className="muted">
-          A month-specific band wins over a general one covering the same
-          range — which is how a state that charges differently in one month is
-          expressed.
-        </p>
+          <p className="st-note">
+            A month-specific band wins over a general one covering the same range — which is how a state that
+            charges differently in one month is expressed.
+          </p>
         </>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -591,90 +595,76 @@ function Preview({
     }
   }, [pfWage, esiWage, gross, month, onError])
 
-  return (
-    <section className="card pr-form">
-      <h2 className="card-title">What would come off</h2>
-      <p className="muted">
-        Runs the same computation a pay run runs. Check it against your circular
-        here rather than at month end.
-      </p>
-      {!configured && <Empty>Save the settings above first.</Empty>}
+  // Live: recompute a moment after the figures change, once there is a saved configuration to run.
+  useEffect(() => {
+    if (!configured) return
+    const t = setTimeout(() => { void run() }, 450)
+    return () => clearTimeout(t)
+  }, [configured, run])
 
-      <div className="pr-row">
-        <label className="pr-field">
-          <span className="pr-field-label">PF wages</span>
-          <input placeholder="15000" value={pfWage} type="number" data-spin min={0} step="any"
-                 onChange={(e) => setPfWage(e.target.value)} />
-          <span className="pr-field-hint">Usually basic. Components you flagged.</span>
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">ESI wages</span>
-          <input placeholder="21000" value={esiWage} type="number" data-spin min={0} step="any"
-                 onChange={(e) => setEsiWage(e.target.value)} />
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Salary gross</span>
-          <input placeholder="30000" value={gross} type="number" data-spin min={0} step="any"
-                 onChange={(e) => setGross(e.target.value)} />
-          <span className="pr-field-hint">For the PT band. Excludes reimbursements.</span>
-        </label>
-        <label className="pr-field">
-          <span className="pr-field-label">Month</span>
-          <select value={month} onChange={(e) => setMonth(e.target.value)}>
-            {MONTHS.map((name, index) => (
-              <option key={name} value={index + 1}>{name}</option>
-            ))}
-          </select>
-        </label>
-        <button className="btn" disabled={busy || !configured} onClick={run}>
-          Compute
+  const takeHome = result ? (toPaise(gross) ?? 0) - result.employee_total : null
+
+  return (
+    <section className="st-sim">
+      <header className="st-sim-head">
+        <div className="st-sim-top">
+          <h2><i aria-hidden><IconGauge size={16} /></i> What would come off</h2>
+          <span className="st-live">Live simulator</span>
+        </div>
+        <p>Runs the same computation a pay run runs. Check it against your circular right here.</p>
+      </header>
+
+      <div className="st-sim-body">
+        {!configured && <p className="st-note">Save the settings first, then the simulator runs.</p>}
+        <div className="st-sim-grid">
+          <Field label="PF wages" hint="Usually basic wages">
+            <span className="st-in is-pre"><em>₹</em><input value={pfWage} type="number" data-spin min={0} step="any" onChange={(e) => setPfWage(e.target.value)} /></span>
+          </Field>
+          <Field label="ESI wages" hint="ESI gross components">
+            <span className="st-in is-pre"><em>₹</em><input value={esiWage} type="number" data-spin min={0} step="any" onChange={(e) => setEsiWage(e.target.value)} /></span>
+          </Field>
+          <Field label="Salary gross" hint="For PT band (excl. reimb.)">
+            <span className="st-in is-pre"><em>₹</em><input value={gross} type="number" data-spin min={0} step="any" onChange={(e) => setGross(e.target.value)} /></span>
+          </Field>
+          <Field label="Month" hint="Tests PT & LWF month">
+            <select className="st-select" value={month} onChange={(e) => setMonth(e.target.value)}>
+              {MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <button type="button" className="st-compute" disabled={busy || !configured} onClick={run}>
+          {busy ? 'Computing…' : '▷ Compute now'}
         </button>
       </div>
 
       {result && (
-        <div className="pr-payslip-cols">
-          <div>
-            <h3 className="pr-subhead">Deducted from the employee</h3>
-            {result.employee_lines.length ? (
-              <table className="table pr-components">
-                <tbody>
-                  {result.employee_lines.map((line) => (
-                    <tr key={line.code}>
-                      <td>
-                        <div className="pr-code">{line.code}</div>
-                        <div className="muted">{line.detail ?? line.name}</div>
-                      </td>
-                      <td className="num">{money(line.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="pr-total-row">
-                    <td>Total</td><td className="num">{money(result.employee_total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            ) : <p className="muted">Nothing.</p>}
+        <div className="st-result">
+          <div className="st-group">
+            <div className="st-group-head"><span>Employee deductions</span><em>From gross</em></div>
+            {result.employee_lines.length ? result.employee_lines.map((line) => (
+              <div key={line.code} className="st-line">
+                <div><b>{line.name || line.code}</b><span>{line.detail ?? ''}</span></div>
+                <strong>{money(line.amount)}</strong>
+              </div>
+            )) : <p className="st-note">Nothing is deducted.</p>}
+            <div className="st-total"><span>Total employee deductions</span><b className="is-neg">− {money(result.employee_total)}</b></div>
           </div>
-          <div>
-            <h3 className="pr-subhead">Paid by the company on top</h3>
-            {result.employer_lines.length ? (
-              <table className="table pr-components">
-                <tbody>
-                  {result.employer_lines.map((line) => (
-                    <tr key={line.code}>
-                      <td>
-                        <div className="pr-code">{line.code}</div>
-                        <div className="muted">{line.detail ?? line.name}</div>
-                      </td>
-                      <td className="num">{money(line.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="pr-total-row">
-                    <td>Total</td><td className="num">{money(result.employer_total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            ) : <p className="muted">Nothing.</p>}
+          <div className="st-group">
+            <div className="st-group-head"><span>Employer contributions</span><em>CTC component</em></div>
+            {result.employer_lines.length ? result.employer_lines.map((line) => (
+              <div key={line.code} className="st-line">
+                <div><b>{line.name || line.code}</b><span>{line.detail ?? ''}</span></div>
+                <strong>{money(line.amount)}</strong>
+              </div>
+            )) : <p className="st-note">Nothing on top.</p>}
+            <div className="st-total"><span>Total employer cost</span><b>{money(result.employer_total)}</b></div>
           </div>
+          {takeHome !== null && (
+            <div className="st-take">
+              <div><small>Estimated net take-home</small><span>Before income tax (TDS)</span></div>
+              <b>{money(takeHome)}</b>
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -631,46 +631,49 @@ function RunBody({
       {openSlip && <PayslipDetail payslipId={openSlip} onError={onError} />}
 
       <div className="pr-actions">
-        {run.can_compute && (
-          <button className="btn primary" disabled={busy}
-                  onClick={() => act(() =>
-                    api.post(`/payruns/${run.id}/compute`, { overrides: [] }))}>
-            {run.payslips.length ? 'Recompute' : 'Compute'}
-          </button>
-        )}
-        {run.can_approve && (
-          <button className="btn primary" disabled={busy}
-                  onClick={() => act(() => api.post(`/payruns/${run.id}/approve`))}>
-            Approve
-          </button>
-        )}
-        {run.can_pay && (
-          <>
-            <input placeholder="Payment reference" value={reference}
-                   onChange={(e) => setReference(e.target.value)} />
+        <div className="pr-actions-row">
+          {run.can_compute && (
             <button className="btn primary" disabled={busy}
-                    onClick={() => act(() => api.post(`/payruns/${run.id}/pay`, {
-                      payment_reference: reference || null,
-                    }))}>
-              Mark as paid
+                    onClick={() => act(() =>
+                      api.post(`/payruns/${run.id}/compute`, { overrides: [] }))}>
+              {run.payslips.length ? 'Recompute' : 'Compute'}
             </button>
-            <span className="muted">
-              This also settles the loan instalments and expense claims on these
-              payslips.
-            </span>
-          </>
-        )}
-        {run.can_cancel && (
-          <button className="btn danger" disabled={busy}
-                  onClick={() => act(() => api.post(`/payruns/${run.id}/cancel`))}>
-            Cancel run
-          </button>
+          )}
+          {run.can_approve && (
+            <button className="btn primary" disabled={busy}
+                    onClick={() => act(() => api.post(`/payruns/${run.id}/approve`))}>
+              Approve
+            </button>
+          )}
+          {run.can_pay && (
+            <>
+              <input className="pr-ref" placeholder="Payment reference" value={reference}
+                     onChange={(e) => setReference(e.target.value)} />
+              <button className="btn primary" disabled={busy}
+                      onClick={() => act(() => api.post(`/payruns/${run.id}/pay`, {
+                        payment_reference: reference || null,
+                      }))}>
+                Mark as paid
+              </button>
+            </>
+          )}
+          {run.can_cancel && (
+            <button className="btn danger pr-cancel" disabled={busy}
+                    onClick={() => act(() => api.post(`/payruns/${run.id}/cancel`))}>
+              Cancel run
+            </button>
+          )}
+        </div>
+        {run.can_pay && (
+          <p className="muted-sm pr-note">
+            Marking as paid also settles the loan instalments and expense claims on these payslips.
+          </p>
         )}
         {run.status === 'approved' && (
-          <span className="muted">
+          <p className="muted-sm pr-note">
             Approved{run.approved_by_name ? ` by ${run.approved_by_name}` : ''} —
             the figures are fixed and cannot be recomputed.
-          </span>
+          </p>
         )}
       </div>
 
@@ -1188,10 +1191,10 @@ function Outputs({
                   api.post(`/payruns/${run.id}/file-payslips`))}>
           File payslips
         </button>
-        <span className="muted">
+        <p className="muted-sm pr-note">
           Filing puts a copy of each payslip in that employee’s documents. Running
           it twice is harmless.
-        </span>
+        </p>
       </div>
 
       {showRegister && <RegisterTable runId={run.id} onError={onError} />}

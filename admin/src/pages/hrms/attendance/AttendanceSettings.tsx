@@ -8,7 +8,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { canAdminister, useAuth } from '../../../lib/auth'
 import type { User } from '../../../lib/types'
 import { Empty, EmptyState, ErrorNote, Loading } from '../../../components/ui'
-import { IconCalendar, IconCheck, IconClock, IconEdit, IconGauge, IconPin, IconPlus, IconTrash, IconUser } from '../../../components/Icons'
+import { IconCheck, IconClock, IconEdit, IconGauge, IconPin, IconPlus, IconTrash, IconUser } from '../../../components/Icons'
 import { Dialog, Field } from '../../crm/parts'
 import {
   addDays,
@@ -200,7 +200,6 @@ type AttendanceTab = 'methods' | 'shift' | 'holiday' | 'overtime'
 const ATTENDANCE_TABS: Array<{ key: AttendanceTab; label: string; icon: ReactNode }> = [
   { key: 'methods', label: 'Methods', icon: <IconPin size={15} /> },
   { key: 'shift', label: 'Shift', icon: <IconClock size={15} /> },
-  { key: 'holiday', label: 'Holiday', icon: <IconCalendar size={15} /> },
   { key: 'overtime', label: 'Overtime', icon: <IconGauge size={15} /> },
 ]
 

@@ -1,11 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import '../styles/org.css'
+import '../styles/emailSetup.css'
 import { api } from '../lib/api'
 import { useQuery } from '../lib/useQuery'
 import { useAuth } from '../lib/auth'
 import { dateTime } from '../lib/format'
 import { ErrorNote, Loading } from '../components/ui'
-import { IconAlert, IconCheck } from '../components/Icons'
+import { IconAlert, IconBuilding, IconCheck, IconMail, IconUsers } from '../components/Icons'
 
 /**
  * This workspace's own outbound mail.
@@ -32,6 +33,27 @@ interface MailState {
   last_test: { at: string | null; to: string | null; ok: boolean | null; error: string | null }
 }
 
+/** Where the common providers' SMTP lives; picking one fills the host, port and encryption. */
+const PRESETS: Array<{ name: string; host: string; port: number; tls: boolean; user?: string; note: string }> = [
+  { name: 'Microsoft 365', host: 'smtp.office365.com', port: 587, tls: true, note: 'SMTP AUTH must be enabled for the mailbox.' },
+  { name: 'Google Workspace', host: 'smtp.gmail.com', port: 587, tls: true, note: 'Use an app password, not the account password.' },
+  { name: 'Amazon SES', host: 'email-smtp.us-east-1.amazonaws.com', port: 587, tls: true, note: 'Change the region in the host if yours differs; use the SMTP credentials, not your IAM login.' },
+  { name: 'SendGrid', host: 'smtp.sendgrid.net', port: 587, tls: true, user: 'apikey', note: 'The username is the word apikey; the password is your API key.' },
+]
+
+const parseFrom = (value: string) => {
+  const m = value.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/)
+  return m ? { name: m[1].trim(), address: m[2].trim() } : { name: '', address: value.trim() }
+}
+
+function Section({ n, title }: { n: number; title: string }) {
+  return <div className="es-sec"><span>{n}. {title}</span></div>
+}
+
+function Adorn({ icon, children, mono }: { icon: ReactNode; children: ReactNode; mono?: boolean }) {
+  return <span className={`es-in${mono ? ' is-mono' : ''}`}><i aria-hidden>{icon}</i>{children}</span>
+}
+
 export default function EmailSetup() {
   const { organization } = useAuth()
   const { data, error, loading, reload } = useQuery<MailState>('org-mail', () =>
@@ -44,9 +66,11 @@ export default function EmailSetup() {
   // undefined = leave the stored password alone. Only a deliberate edit sends a
   // value, so saving the host cannot silently wipe the credential.
   const [password, setPassword] = useState<string | undefined>(undefined)
+  const [showPw, setShowPw] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [presetNote, setPresetNote] = useState<string | null>(null)
   const [testTo, setTestTo] = useState('')
   const [testing, setTesting] = useState(false)
 
@@ -65,19 +89,32 @@ export default function EmailSetup() {
   if (error) return <ErrorNote>{error}</ErrorNote>
   if (loading || !data) return <Loading />
 
-  async function save(event: FormEvent) {
-    event.preventDefault()
+  async function put(body: Record<string, unknown>, done?: string) {
     setSaving(true); setFormError(null)
     try {
-      await api.put('/admin/mail', {
-        ...form,
-        ...(password === undefined ? {} : { smtp_password: password }),
-      })
+      await api.put('/admin/mail', body)
       setSaved(true); reload()
       window.setTimeout(() => setSaved(false), 2500)
+      if (done) setPresetNote(done)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Could not save')
     } finally { setSaving(false) }
+  }
+
+  function save(event: FormEvent) {
+    event.preventDefault()
+    void put({ ...form, ...(password === undefined ? {} : { smtp_password: password }) })
+  }
+
+  function resetToShared() {
+    if (!window.confirm('Go back to the platform’s shared mail server? Your own server details and password will be cleared.')) return
+    setPassword(undefined)
+    void put({ smtp_host: '', smtp_port: 587, smtp_user: '', smtp_use_tls: true, email_from: '', smtp_password: '' })
+  }
+
+  function applyPreset(p: (typeof PRESETS)[number]) {
+    setForm((f) => ({ ...f, smtp_host: p.host, smtp_port: p.port, smtp_use_tls: p.tls, smtp_user: p.user ?? f.smtp_user }))
+    setPresetNote(`${p.name}: ${p.note}`)
   }
 
   async function sendTest() {
@@ -92,9 +129,13 @@ export default function EmailSetup() {
 
   const test = data.last_test
   const usingPlatform = data.effective_source === 'platform'
+  const from = parseFrom(form.email_from || '')
+  const previewName = from.name || organization?.name || 'Your company'
+  const previewAddr = from.address || (form.smtp_user.includes('@') ? form.smtp_user : 'alerts@yourcompany.com')
+  const initials = previewName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
-    <div>
+    <div className="es">
       <div className="page-head">
         <div>
           <h1 className="page-title">Email setup</h1>
@@ -104,10 +145,7 @@ export default function EmailSetup() {
         </div>
       </div>
 
-      <div
-        className={`notice${data.configured ? (usingPlatform ? '' : '') : ' notice-warn'}`}
-        style={{ marginBottom: 16 }}
-      >
+      <div className={`notice${data.configured ? '' : ' notice-warn'}`} style={{ marginBottom: 16 }}>
         {data.configured ? <IconCheck size={15} /> : <IconAlert size={15} />}{' '}
         {data.effective_source === 'workspace' && (
           <>
@@ -133,117 +171,151 @@ export default function EmailSetup() {
 
       {formError && <ErrorNote>{formError}</ErrorNote>}
 
-      <form onSubmit={save}>
-        <section className="card" style={{ marginBottom: 14 }}>
-          <div className="card-head">
-            <h2 className="card-title">Your SMTP server</h2>
-            {saved && <span className="card-note">Saved</span>}
-          </div>
-
-          <div className="settings-grid">
-            <label className="setting">
-              Host
-              <input
-                value={form.smtp_host}
-                onChange={(e) => setForm({ ...form, smtp_host: e.target.value })}
-                placeholder="smtp.office365.com"
-                autoComplete="off"
-              />
-              <span className="setting-hint">
-                Leave blank to keep using the platform's shared server.
-              </span>
-            </label>
-            <label className="setting">
-              Port
-              <input placeholder="587"
-                type="number" min={1} max={65535} value={form.smtp_port}
-                onChange={(e) => setForm({ ...form, smtp_port: Number(e.target.value) })}
-              />
-              <span className="setting-hint">587 for STARTTLS, 465 for implicit TLS.</span>
-            </label>
-            <label className="setting">
-              Username
-              <input
-                value={form.smtp_user}
-                onChange={(e) => setForm({ ...form, smtp_user: e.target.value })}
-                placeholder="alerts@yourcompany.com"
-                autoComplete="off"
-              />
-            </label>
-            <label className="setting">
-              Password
-              <input
-                type="password"
-                value={password ?? ''}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={data.has_password ? '•••••••• (unchanged)' : 'not set'}
-                autoComplete="new-password"
-              />
-              <span className="setting-hint">
-                Stored encrypted and never shown again. Leave untouched to keep it.
-              </span>
-            </label>
-            <label className="setting">
-              From address
-              <input
-                value={form.email_from}
-                onChange={(e) => setForm({ ...form, email_from: e.target.value })}
-                placeholder={`${organization?.name ?? 'Your company'} <alerts@yourcompany.com>`}
-              />
-              <span className="setting-hint">
-                Must be an address your provider lets you send from, or messages bounce.
-              </span>
-            </label>
-          </div>
-
-          <label className="switch-row" style={{ marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={form.smtp_use_tls}
-              disabled={form.smtp_port === 465}
-              onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })}
-            />
-            <span>
-              Use STARTTLS
-              {form.smtp_port === 465 && ' — ignored on port 465, which is TLS from the start'}
-            </span>
-          </label>
-
-          <div style={{ marginTop: 16 }}>
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-        </section>
-      </form>
-
-      <section className="card">
-        <div className="card-head">
-          <h2 className="card-title">Send a test message</h2>
-          <span className="card-note">saving only proves the form was valid</span>
-        </div>
-        <div className="filter-row" style={{ marginBottom: 0 }}>
-          <input
-            type="email" value={testTo} placeholder="you@yourcompany.com"
-            onChange={(e) => setTestTo(e.target.value)} style={{ minWidth: 260 }}
-          />
-          <button
-            className="btn" onClick={sendTest}
-            disabled={testing || !testTo.trim() || !data.configured}
-          >
-            {testing ? 'Sending…' : 'Send test'}
-          </button>
-        </div>
-        {test.at && (
-          <div className={`test-result ${test.ok ? 'test-ok' : 'test-bad'}`}>
-            {test.ok ? <IconCheck size={15} /> : <IconAlert size={15} />}
+      <div className="es-grid">
+        <form className="es-card" onSubmit={save}>
+          <header className="es-head">
+            <i className="es-ic" aria-hidden><IconMail size={18} /></i>
             <div>
-              <b>{test.ok ? 'Delivered' : 'Failed'}</b> to {test.to} · {dateTime(test.at)}
-              {test.error && <div className="test-error">{test.error}</div>}
+              <h2>Your SMTP server</h2>
+              <p>Custom relay credentials for your organisation’s own emails</p>
+            </div>
+            <div className="es-presets">
+              <span>Presets:</span>
+              {PRESETS.map((p) => <button key={p.name} type="button" onClick={() => applyPreset(p)}>{p.name}</button>)}
+            </div>
+          </header>
+          {presetNote && <div className="es-presetnote">{presetNote}</div>}
+
+          <div className="es-body">
+            <Section n={1} title="Server & encryption" />
+            <div className="es-two es-hostport">
+              <label className="es-f"><span className="es-fl">Host</span>
+                <Adorn icon={<IconBuilding size={15} />} mono>
+                  <input value={form.smtp_host} placeholder="smtp.office365.com" autoComplete="off"
+                         onChange={(e) => setForm({ ...form, smtp_host: e.target.value })} />
+                </Adorn>
+                <span className="es-hint">Leave blank to keep using the platform’s shared server.</span>
+              </label>
+              <label className="es-f"><span className="es-fl es-fl-row">Port
+                <span className="es-quick">
+                  <button type="button" className={form.smtp_port === 587 ? 'is-on' : ''} onClick={() => setForm({ ...form, smtp_port: 587 })}>587 STARTTLS</button>
+                  <button type="button" className={form.smtp_port === 465 ? 'is-on' : ''} onClick={() => setForm({ ...form, smtp_port: 465 })}>465 SSL/TLS</button>
+                </span></span>
+                <input className="es-plain is-mono" placeholder="587" type="number" min={1} max={65535} value={form.smtp_port}
+                       onChange={(e) => setForm({ ...form, smtp_port: Number(e.target.value) })} />
+                <span className="es-hint">587 for STARTTLS, 465 for implicit TLS.</span>
+              </label>
+            </div>
+            <div className="es-row">
+              <i aria-hidden><IconCheck size={15} /></i>
+              <div>
+                <b>Use STARTTLS</b>
+                <span>{form.smtp_port === 465
+                  ? 'Ignored on port 465, which is encrypted from the start.'
+                  : `Upgrades a plain connection to encrypted TLS on port ${form.smtp_port}`}</span>
+              </div>
+              <button type="button" role="switch" aria-checked={form.smtp_use_tls && form.smtp_port !== 465} aria-label="Use STARTTLS"
+                      disabled={form.smtp_port === 465}
+                      className={`hs-switch${form.smtp_use_tls && form.smtp_port !== 465 ? ' is-on' : ''}`}
+                      onClick={() => setForm({ ...form, smtp_use_tls: !form.smtp_use_tls })}><span /></button>
+            </div>
+
+            <Section n={2} title="Authentication credentials" />
+            <div className="es-two">
+              <label className="es-f"><span className="es-fl">Username</span>
+                <Adorn icon={<IconUsers size={15} />} mono>
+                  <input value={form.smtp_user} placeholder="alerts@yourcompany.com" autoComplete="off"
+                         onChange={(e) => setForm({ ...form, smtp_user: e.target.value })} />
+                </Adorn>
+                <span className="es-hint">Usually your full email address or SMTP key ID.</span>
+              </label>
+              <label className="es-f"><span className="es-fl es-fl-row">Password <em className="es-aes">AES-256 encrypted</em></span>
+                <span className="es-in is-mono">
+                  <i aria-hidden>🔑</i>
+                  <input type={showPw ? 'text' : 'password'} value={password ?? ''} autoComplete="new-password"
+                         placeholder={data.has_password ? '•••••••• (unchanged)' : 'not set'}
+                         onChange={(e) => setPassword(e.target.value)} />
+                  <button type="button" className="es-eye" aria-label={showPw ? 'Hide password' : 'Show password'} onClick={() => setShowPw((v) => !v)}>{showPw ? 'Hide' : 'Show'}</button>
+                </span>
+                <span className="es-hint">Stored encrypted and never shown again. Leave untouched to keep it.</span>
+              </label>
+            </div>
+
+            <Section n={3} title="Sender identity" />
+            <div className="es-two">
+              <label className="es-f"><span className="es-fl">From address</span>
+                <Adorn icon={<span>@</span>}>
+                  <input value={form.email_from} placeholder={`${organization?.name ?? 'Your company'} <alerts@yourcompany.com>`}
+                         onChange={(e) => setForm({ ...form, email_from: e.target.value })} />
+                </Adorn>
+                <span className="es-hint">Must be an address your provider lets you send from, or messages bounce. Left blank, the username is used.</span>
+              </label>
+              <div className="es-preview">
+                <small>Inbox preview</small>
+                <div><i>{initials || 'AD'}</i><div><b>{previewName}</b><span>&lt;{previewAddr}&gt;</span></div></div>
+              </div>
             </div>
           </div>
-        )}
-      </section>
+
+          <footer className="es-foot">
+            <button type="button" className="es-reset" onClick={resetToShared} disabled={saving}>↺ Reset to shared server</button>
+            {saved && <span className="es-saved">Saved</span>}
+            <button className="btn btn-primary es-save" type="submit" disabled={saving}>{saving ? 'Saving…' : '✓ Save configuration'}</button>
+          </footer>
+        </form>
+
+        <aside className="es-side">
+          <section className="es-card">
+            <header className="es-head">
+              <i className="es-ic is-blue" aria-hidden><IconMail size={18} /></i>
+              <div><h2>Send a test message</h2></div>
+              <span className="es-live">Live verification</span>
+            </header>
+            <div className="es-body">
+              <div className="es-warn">
+                <IconAlert size={15} />
+                <p><b>Saving only proves the form is valid</b> — send a real test email to verify credentials, the TLS handshake and inbox delivery.</p>
+              </div>
+              <label className="es-f"><span className="es-fl">Recipient email</span>
+                <input className="es-plain is-mono" type="email" value={testTo} placeholder="admin@yourcompany.com"
+                       onChange={(e) => setTestTo(e.target.value)} />
+              </label>
+              <label className="es-f"><span className="es-fl">Message template</span>
+                <select className="es-plain" value="test" onChange={() => undefined}>
+                  <option value="test">SMTP connection test</option>
+                </select>
+              </label>
+              <button type="button" className="es-send" onClick={() => void sendTest()}
+                      disabled={testing || !testTo.trim() || !data.configured}>
+                {testing ? 'Sending…' : '➤ Send test email'}
+              </button>
+              {!data.configured && <span className="es-hint">Save a host first, then the test can run.</span>}
+              {test.at && (
+                <div className={`test-result ${test.ok ? 'test-ok' : 'test-bad'}`}>
+                  {test.ok ? <IconCheck size={15} /> : <IconAlert size={15} />}
+                  <div>
+                    <b>{test.ok ? 'Delivered' : 'Failed'}</b> to {test.to} · {dateTime(test.at)}
+                    {test.error && <div className="test-error">{test.error}</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="es-card">
+            <header className="es-head">
+              <i className="es-ic is-green" aria-hidden><IconCheck size={18} /></i>
+              <div><h2>Deliverability checklist</h2></div>
+              <span className="es-dns">DNS best practices</span>
+            </header>
+            <ul className="es-list">
+              <li><b>SPF record</b><span>Authorise your mail server’s IP in the domain’s TXT records.</span></li>
+              <li><b>DKIM signing</b><span>Cryptographically sign payslip and HR letter headers.</span></li>
+              <li><b>From-domain match</b><span>Make sure the From domain matches the authenticated SMTP user.</span></li>
+            </ul>
+          </section>
+        </aside>
+      </div>
     </div>
   )
 }

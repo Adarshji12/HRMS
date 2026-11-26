@@ -71,27 +71,52 @@ class ClaimIn(BaseModel):
     #: permission. Absent means "me" — the ordinary case, and the one an
     #: employee's console never sends.
     user_id: uuid.UUID | None = None
+    #: "conveyance" starts the local conveyance claim form; anything else is an ordinary claim.
+    claim_type: str = Field(default="general", pattern=r"^(general|conveyance)$")
+    employee_grade: str | None = Field(default=None, max_length=60)
+    work_location: str | None = Field(default=None, max_length=120)
+    project_label: str | None = Field(default=None, max_length=160)
 
 
 class ClaimUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=4000)
     project_id: uuid.UUID | None = None
+    employee_grade: str | None = Field(default=None, max_length=60)
+    work_location: str | None = Field(default=None, max_length=120)
+    project_label: str | None = Field(default=None, max_length=160)
 
 
 class LineIn(BaseModel):
-    category_id: uuid.UUID
+    #: Omitted on a conveyance claim, which files under its own "Local conveyance" category.
+    category_id: uuid.UUID | None = None
     spent_on: date
-    description: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=300)
     merchant: str | None = Field(default=None, max_length=160)
-    #: Paise, strictly positive. A zero-amount line is a note, not an expense.
-    amount: int = Field(gt=0, le=MAX_LINE_PAISE)
+    #: Paise, strictly positive. A zero-amount line is a note, not an expense. Omitted on a conveyance
+    #: journey, whose amount is its fare plus food plus parking, summed server-side.
+    amount: int | None = Field(default=None, gt=0, le=MAX_LINE_PAISE)
+
+    # --- Local conveyance journey ---------------------------------------
+    start_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    from_location: str | None = Field(default=None, max_length=160)
+    to_location: str | None = Field(default=None, max_length=160)
+    customer_name: str | None = Field(default=None, max_length=160)
+    so_number: str | None = Field(default=None, max_length=60)
+    conveyance_mode: str | None = Field(default=None, max_length=60)
+    distance_km: float | None = Field(default=None, ge=0, le=5000)
+    rate_per_km: int | None = Field(default=None, ge=0, le=MAX_LINE_PAISE)
+    conveyance_amount: int | None = Field(default=None, ge=0, le=MAX_LINE_PAISE)
+    food_amount: int = Field(default=0, ge=0, le=MAX_LINE_PAISE)
+    parking_amount: int = Field(default=0, ge=0, le=MAX_LINE_PAISE)
+    remarks: str | None = Field(default=None, max_length=300)
 
     @field_validator("description", mode="after")
     @classmethod
-    def _described(cls, value: str) -> str:
+    def _described(cls, value: str | None) -> str | None:
         # min_length=1 accepts "   ", which is a line a reviewer cannot assess.
-        if not value.strip():
+        if value is not None and not value.strip():
             raise ValueError("say what the expense was for")
         return value
 
@@ -112,6 +137,19 @@ class LineOut(ORMModel):
     description: str
     merchant: str | None = None
     amount: int
+    start_time: str | None = None
+    end_time: str | None = None
+    from_location: str | None = None
+    to_location: str | None = None
+    customer_name: str | None = None
+    so_number: str | None = None
+    conveyance_mode: str | None = None
+    distance_km: float | None = None
+    rate_per_km: int | None = None
+    conveyance_amount: int | None = None
+    food_amount: int = 0
+    parking_amount: int = 0
+    remarks: str | None = None
     receipt_name: str | None = None
     receipt_type: str | None = None
     receipt_size: int = 0
@@ -147,6 +185,10 @@ class ClaimOut(ORMModel):
     title: str
     note: str | None = None
     project_id: uuid.UUID | None = None
+    claim_type: str = "general"
+    employee_grade: str | None = None
+    work_location: str | None = None
+    project_label: str | None = None
     status: str
     total_amount: int
     currency: str = "INR"

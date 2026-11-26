@@ -43,6 +43,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     Uuid,
@@ -131,6 +132,33 @@ class HelpdeskCategory(UUIDMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     tickets: Mapped[list["HelpdeskTicket"]] = relationship(back_populates="category")
+
+
+class HelpdeskSla(UUIDMixin, TimestampMixin, Base):
+    """How fast each priority should be answered and resolved, per company.
+
+    One row per priority. A company that has never set any gets the defaults in ``DEFAULT_SLA``; saving writes the
+    rows. Minutes of plain clock time -- the clock does not pause overnight or at weekends.
+    """
+
+    __tablename__ = "helpdesk_sla"
+    __table_args__ = (UniqueConstraint("org_id", "priority", name="uq_helpdesk_sla_org_priority"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    priority: Mapped[str] = mapped_column(String(20), nullable=False)
+    respond_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolve_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+#: P1 (urgent) to P4 (low): minutes to first response, minutes to resolution.
+DEFAULT_SLA: dict[str, tuple[int, int]] = {
+    "urgent": (15, 4 * 60),
+    "high": (60, 8 * 60),
+    "normal": (4 * 60, 2 * 24 * 60),
+    "low": (24 * 60, 5 * 24 * 60),
+}
 
 
 class HelpdeskTicket(UUIDMixin, TimestampMixin, Base):
@@ -251,6 +279,27 @@ class HelpdeskTicket(UUIDMixin, TimestampMixin, Base):
     #   caller.
     source_module: Mapped[str | None] = mapped_column(String(40), nullable=True)
     source_ref: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+
+    # SLA: when a first reply and a resolution are due, fixed when the ticket is raised (and re-worked from the
+    # raise time if the priority changes), and when staff first answered.
+    respond_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolve_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The number people quote: INC-1041. A per-company running count, assigned when the ticket is raised.
+    ticket_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Incident details: a ticket raised for a customer's call rather than an employee's own request.
+    # All optional, and plain text copied from the CRM customer at the time -- no foreign key, for the
+    # same reason source_ref has none: helpdesk stands on its own, and a ticket must keep saying who
+    # it was for after the customer record changes.
+    incident_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    contact_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pincode: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     category: Mapped["HelpdeskCategory | None"] = relationship(back_populates="tickets")
     # Two FKs to the same table, so SQLAlchemy cannot infer either join.

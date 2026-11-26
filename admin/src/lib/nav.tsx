@@ -41,6 +41,10 @@ export interface NavItem {
   section?: string
   /** Hidden from employees — an administration surface, not self-service. */
   adminOnly?: boolean
+  /** Self-service for people who do not administer the workspace; administrators have the admin pages instead. */
+  employeeOnly?: boolean
+  /** Where an administrator lands instead of `to` — the same row, a different front door. */
+  adminTo?: string
   /**
    * Needs a role that can see other people. An employee resolves to a scope of
    * themselves everywhere, so these pages render a list of one, or an org chart
@@ -192,10 +196,7 @@ export const NAV: NavGroup[] = [
     key: 'payroll',
     icon: IconSheet,
     items: [
-      { to: '/salary', label: 'My salary', icon: IconCard, section: 'Mine' },
-      { to: '/payslips', label: 'My payslips', icon: IconSheet, section: 'Mine' },
-      { to: '/tax', label: 'Tax declaration', icon: IconSheet, section: 'Mine' },
-      { to: '/form16', label: 'My Form 16', icon: IconSheet, section: 'Mine' },
+      { to: '/payslips', label: 'My payslips', icon: IconSheet, employeeOnly: true },
       /* The module's front door, and first because it answers the question
          somebody arrives with — where is this month, what does it cost, what is
          waiting on me. Payroll had eight screens and no landing page, so
@@ -211,7 +212,6 @@ export const NAV: NavGroup[] = [
       { to: '/payroll/design', label: 'Payslip Design', icon: IconSheet, section: 'Administration', adminOnly: true },
       { to: '/payroll/letters', label: 'Letters', icon: IconMail, section: 'Administration', adminOnly: true },
       { to: '/payroll/letter-templates', label: 'Letter Templates', icon: IconMail, section: 'Administration', adminOnly: true },
-      { to: '/payroll/tax', label: 'Tax declarations', icon: IconCheck, section: 'Administration', adminOnly: true },
       { to: '/payroll/year-end', label: 'Year end & Form 16', icon: IconChart, section: 'Administration', adminOnly: true },
     ],
   },
@@ -225,10 +225,7 @@ export const NAV: NavGroup[] = [
     icon: IconCard,
     items: [
       { to: '/expenses', label: 'My expenses', icon: IconCard, section: 'Expenses', end: true },
-      { to: '/expenses/review', label: 'Approvals', icon: IconCheck, section: 'Expenses', teamOnly: true },
-      { to: '/expenses/payments', label: 'Payments', icon: IconCard, section: 'Expenses', adminOnly: true },
-      { to: '/loans', label: 'My loans', icon: IconCard, section: 'Loans', end: true },
-      { to: '/loans/manage', label: 'Loans & advances', icon: IconCard, section: 'Loans', adminOnly: true },
+      { to: '/loans', label: 'Loans & advances', icon: IconCard, section: 'Loans', end: true },
       { to: '/loans/deductions', label: 'Loan deductions', icon: IconSheet, section: 'Loans', adminOnly: true },
     ],
   },
@@ -260,6 +257,7 @@ export const NAV: NavGroup[] = [
       { to: '/screenshots', label: 'Screenshots', icon: IconCamera },
       { page: 'projects', to: '/projects', label: 'Projects', icon: IconFolder },
       { page: 'reports', to: '/reports', label: 'Reports', icon: IconChart },
+      { to: '/settings/tracking', label: 'Settings', icon: IconGear, adminOnly: true },
     ],
   },
   /* Asset Management and Helpdesk were one module called "Workplace", which is
@@ -298,28 +296,6 @@ export const NAV: NavGroup[] = [
       { to: '/my-onboarding', label: 'My onboarding', icon: IconSheet },
       { to: '/onboarding', label: 'Onboarding', icon: IconUsers, adminOnly: true },
       { to: '/offboarding', label: 'Offboarding', icon: IconReturn, adminOnly: true },
-    ],
-  },
-  {
-    heading: 'Noticeboard',
-    key: 'noticeboard',
-    icon: IconBell,
-    items: [
-      { to: '/noticeboard', label: 'Noticeboard', icon: IconBell, end: true },
-      { to: '/communication', label: 'Communication', icon: IconMail, adminOnly: true },
-    ],
-  },
-  /* Its own module rather than a row under Desk Monitor: an appraisal is not a
-     task, and burying "my review" beside "timesheets" is how it goes unnoticed
-     until the deadline. */
-  {
-    heading: 'Performance',
-    key: 'performance',
-    icon: IconGauge,
-    items: [
-      { to: '/me', label: 'My performance', icon: IconGauge },
-      { to: '/reviews', label: 'My review', icon: IconCheck, end: true },
-      { to: '/appraisals', label: 'Appraisals', icon: IconGauge, teamOnly: true },
     ],
   },
   /* CRM. The only module in this rail that faces outward — everything above it
@@ -367,16 +343,10 @@ export const NAV: NavGroup[] = [
          readable by everyone and the *form* is what an administrator gets.
          Gating the link would hide a page people are allowed to open. */
       { to: '/settings/company', label: 'Company profile', icon: IconBuilding, section: 'Workspace' },
-      { to: '/settings/roles', label: 'Roles & Permissions', icon: IconUsers, section: 'Workspace', adminOnly: true },
-      { to: '/settings/organisation', label: 'Teams & Departments', icon: IconBuilding, section: 'Workspace', teamOnly: true },
       { to: '/settings/notifications', label: 'Notifications', icon: IconBell, section: 'Workspace' },
       { to: '/settings/email', label: 'Email setup', icon: IconMail, section: 'Workspace', ownerOnly: true },
       { to: '/billing', label: 'Subscription & Billing', icon: IconCard, section: 'Workspace', adminOnly: true },
-      { to: '/settings/tracking', label: 'Desk Monitor', icon: IconGauge, section: 'Modules', adminOnly: true },
-      { to: '/settings/attendance', label: 'Attendance', icon: IconClock, section: 'Modules', adminOnly: true },
-      { to: '/settings/leave', label: 'Leave', icon: IconReturn, section: 'Modules', adminOnly: true },
       { to: '/settings/expenses', label: 'Expenses', icon: IconCard, section: 'Modules', adminOnly: true },
-      { to: '/settings/payroll', label: 'Payroll', icon: IconSheet, section: 'Modules', adminOnly: true },
     ],
   },
 ]
@@ -388,14 +358,8 @@ export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/tracking', label: 'Employee Tracking', icon: IconPin, end: true, teamOnly: true },
   { to: '/hrms/leave', label: 'Leave', icon: IconReturn, end: true, teamOnly: true },
   { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },
-  { to: '/salary', label: 'Payroll', icon: IconSheet, end: true },
+  { to: '/salary', adminTo: '/payroll/overview', label: 'Payroll', icon: IconSheet, end: true },
   { to: '/expenses', label: 'Expense', icon: IconCard, end: true },
-  { to: '/settings/approvals', label: 'Workflow', icon: IconSitemap, end: true, adminOnly: true },
-  { page: 'timesheets', to: '/timesheets', label: 'Timesheet', icon: IconSheet },
-  { to: '/workforce', label: 'Workforce Management', icon: IconUsers, end: true, teamOnly: true },
-  { to: '/noticeboard', label: 'Noticeboard', icon: IconBell, end: true },
-  { to: '/me', label: 'Performance', icon: IconStar, end: true },
-  { to: '/hrms/joiners-letters', label: 'Joiners & Letters', icon: IconMail, end: true },
   { to: '/hrms/settings', label: 'HR Settings', icon: IconGear, end: true },
 ]
 
@@ -427,7 +391,6 @@ export const ERP_TRANSACTIONS: {
       icon: IconChart,
       items: [
         { to: '/erp/invoices', label: 'Sale', icon: IconChart, end: true },
-        { to: '/erp/quotation', label: 'Quotation', icon: IconSheet, end: true },
         { to: '/erp/sales-orders', label: 'Sale Order', icon: IconSheet, end: true },
         { to: '/erp/sale-return', label: 'Sale Return', icon: IconReturn, end: true },
         { to: '/erp/stock-issue', label: 'Stock Issue', icon: IconFolder, end: true },
@@ -480,6 +443,11 @@ export function routeOpen(pathname: string, rights: MenuRights | null | undefine
   return best === null || rights[best].access
 }
 
+/** The entry as this person should see it: an administrator's row may open somewhere else. */
+export function forRole(item: NavItem, access: NavAccess): NavItem {
+  return item.adminTo && access.isAdmin ? { ...item, to: item.adminTo } : item
+}
+
 /** Whether this person may open a single entry. */
 /** Whether a tab of the Approvals inbox is open to this person. The role's Approvals
  *  row names the tabs it ticked; a tab it does not mention follows the older rule
@@ -517,6 +485,7 @@ export function canSee(item: NavItem, access: NavAccess): boolean {
   if (item.dashboard) return dashboardOpen(access) && !(item.page && access.hiddenPages.includes(item.page))
   return (
     (!item.adminOnly || access.isAdmin) &&
+    (!item.employeeOnly || !access.isAdmin) &&
     (!item.teamOnly || access.canViewTeam) &&
     (!item.approverOnly || access.canApprove) &&
     (!item.ownerOnly || access.isOwner) &&
@@ -599,7 +568,7 @@ export function locate(
   /* HRMS and ERP keep their pages outside NAV (they open as their own
      sections), so they are searched too, or their pages would have no crumb. */
   const sections = [
-    ...itemsIn({ items: HRMS_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'HRMS' })),
+    ...itemsIn({ items: HRMS_NAV_ITEMS }, access).map((item) => ({ ...forRole(item, access), heading: 'HRMS' })),
     ...itemsIn({ items: ERP_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'ERP' })),
     ...itemsIn({ items: ERP_TRANSACTIONS.groups.flatMap((g) => g.items) }, access).map((item) => ({ ...item, heading: 'ERP' })),
   ]

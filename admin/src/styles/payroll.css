@@ -47,9 +47,13 @@
 .pr-check input { margin-top: 2px; flex: none; }
 
 .pr-actions {
-  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  display: grid; gap: 8px;
+  margin-top: 14px; padding: 16px 4px 0; border-top: 1px solid var(--border);
 }
+.pr-actions-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pr-actions .pr-ref { width: 240px; height: 38px; }
+.pr-actions .pr-cancel { margin-left: auto; }
+.pr-note { margin: 0; line-height: 1.5; }
 
 .pr-title { font-weight: 600; color: var(--text-primary); }
 .pr-code {
@@ -206,8 +210,9 @@ tr.is-off td { opacity: 0.55; }
 
 .pr-outputs {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-  margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
+  margin-top: 14px; padding: 16px 4px 0; border-top: 1px dashed var(--border);
 }
+.pr-outputs .pr-note { flex-basis: 100%; margin-top: 2px; }
 
 /* The register is wide by nature — one column per component — so it scrolls
    inside its own container rather than making the page scroll sideways. */
@@ -695,3 +700,18 @@ tr.is-off td { opacity: 0.55; }
 .lt-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 .lt-preview { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px 20px; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .lt-grid { grid-template-columns: 1fr; } }
+
+/* Payroll overview: a quieter type scale. */
+.pr-page .page-title { font-size: 22px; }
+.pr-page .page-sub { font-size: 12.5px; }
+.pr-page .card-title { font-size: 13.5px; }
+.pr-now-title { font-size: 18px; }
+.pr-now-why { font-size: 12.5px; }
+.pr-figure-value { font-size: 16px; }
+.pr-figure.is-strong .pr-figure-value { font-size: 18px; }
+.pr-figure-label { font-size: 10.5px; }
+.pr-waiting-row, .pr-statutory li { font-size: 13px; }
+.pr-page .card .muted, .pr-page .card-head .muted { font-size: 12px; }
+.pr-jump-link { font-size: 12.5px; }
+
+.crm-dialog.dlg-preview { width: min(800px, 100%); }

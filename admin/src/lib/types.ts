@@ -728,6 +728,20 @@ export interface ExpenseLine {
   receipt_size: number
   created_at: string
   category_name: string | null
+  /* Journey details, set only on local conveyance claims. */
+  start_time?: string | null
+  end_time?: string | null
+  from_location?: string | null
+  to_location?: string | null
+  customer_name?: string | null
+  so_number?: string | null
+  conveyance_mode?: string | null
+  distance_km?: number | null
+  rate_per_km?: number | null
+  conveyance_amount?: number | null
+  food_amount?: number
+  parking_amount?: number
+  remarks?: string | null
   has_receipt: boolean
   /** Whether this line's category demands a receipt — so the gap is visible
    *  before submission is refused. */
@@ -759,6 +773,11 @@ export interface ExpenseClaim {
   /** Present only when somebody else filed it. */
   created_by_name: string | null
   project_name: string | null
+  /** 'conveyance' is the local conveyance claim form; anything else is an ordinary claim. */
+  claim_type?: string
+  employee_grade?: string | null
+  work_location?: string | null
+  project_label?: string | null
   line_count: number
 
   /** Resolved server-side. Render from these rather than re-deriving the rule
