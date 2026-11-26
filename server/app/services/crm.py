@@ -554,6 +554,43 @@ def _refuse(message: str, reason: str = "invalid") -> HTTPException:
     )
 
 
+#: Where a name has to be unique. Most lists are unique across the workspace; a state is unique within its country, and a
+#: district or a city within its state, because two states can each have a Rampur.
+_NAME_SCOPE: dict[str, str] = {"states": "country_id", "districts": "state_id", "cities": "state_id"}
+
+
+def _refuse_duplicate_name(
+    db: Session, org_id: uuid.UUID, kind: str, data: dict[str, Any], row_id: uuid.UUID | None
+) -> None:
+    """A second Kota, kota or  KOTA is the first one again: refuse it, and store the name tidied.
+
+    The database's own unique constraint is case-sensitive, so "Kota" and "kota" would both get in; this compares the
+    names lower-cased with runs of spaces collapsed.
+    """
+    raw = data.get("name")
+    if not isinstance(raw, str):
+        return
+    name = " ".join(raw.split())
+    data["name"] = name
+    model = master_model(kind)
+    stmt = select(model.id, model.name).where(model.org_id == org_id, func.lower(model.name) == name.lower())
+    scope = _NAME_SCOPE.get(kind)
+    if scope is not None and hasattr(model, scope):
+        column = getattr(model, scope)
+        value = data.get(scope)
+        # Scoped when the write names its parent; otherwise the name is compared across the whole list, the stricter reading.
+        if value is not None:
+            stmt = stmt.where(column == value)
+    if row_id is not None:
+        stmt = stmt.where(model.id != row_id)
+    found = db.execute(stmt.limit(1)).first()
+    if found is not None:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={"reason": "duplicate", "message": f"“{found[1]}” already exists. Names are matched without regard to capital letters."},
+        )
+
+
 def prepare_master(
     db: Session, org_id: uuid.UUID, kind: str, data: dict[str, Any], row_id: uuid.UUID | None
 ) -> dict[str, Any]:
@@ -643,6 +680,7 @@ def prepare_master(
                             "closing or switching this one off.",
                             reason="last_open_stage",
                         )
+    _refuse_duplicate_name(db, org_id, kind, data, row_id)
     return data
 
 

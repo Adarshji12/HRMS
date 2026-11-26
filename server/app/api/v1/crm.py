@@ -194,7 +194,7 @@ def create_master(kind: str, payload: dict, viewer: CurrentUser, db: DbSession) 
         db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            detail={"reason": "duplicate", "message": f"“{data.name}” is already on this list."},
+            detail={"reason": "duplicate", "message": f"“{data.name}” already exists."},
         ) from None
     db.refresh(row)
     return _serialise_master(kind, row, db, viewer.org_id)
