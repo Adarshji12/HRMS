@@ -40,7 +40,8 @@ class EmailError(RuntimeError):
 
 def _build(to: str, subject: str, body: str, sender: str, html: str | None = None,
            attachments: list[tuple[str, bytes, str]] | None = None,
-           bcc: list[str] | None = None) -> EmailMessage:
+           bcc: list[str] | None = None,
+           inline_images: list[tuple[str, bytes, str]] | None = None) -> EmailMessage:
     message = EmailMessage()
     name, address = parseaddr(sender)
     message["From"] = formataddr((name or settings.app_name, address or "no-reply@localhost"))
@@ -53,6 +54,10 @@ def _build(to: str, subject: str, body: str, sender: str, html: str | None = Non
     message.set_content(body)
     if html:
         message.add_alternative(html, subtype="html")
+        # Images the HTML refers to as cid:NAME travel inside the message, so the client does not have to fetch them.
+        for cid, data, kind in inline_images or []:
+            maintype, subtype = kind.split("/", 1)
+            message.get_payload()[-1].add_related(data, maintype=maintype, subtype=subtype, cid=f"<{cid}>")
     for filename, data, kind in attachments or []:
         maintype, subtype = kind.split("/", 1)
         message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
@@ -67,6 +72,7 @@ def send(
     org_id=None,
     attachments: list[tuple[str, bytes, str]] | None = None,
     bcc: list[str] | None = None,
+    inline_images: list[tuple[str, bytes, str]] | None = None,
 ) -> bool:
     """Returns True if handed to an SMTP server, False if only logged.
 
@@ -78,7 +84,7 @@ def send(
     # every tenant's mail would leave through the platform default, which is
     # exactly the "why does this arrive from someone else's domain" problem.
     config = mailconfig.resolve(org_id=org_id)
-    message = _build(to, subject, body, config.sender, html, attachments, bcc)
+    message = _build(to, subject, body, config.sender, html, attachments, bcc, inline_images)
 
     if not config.configured:
         log.warning(

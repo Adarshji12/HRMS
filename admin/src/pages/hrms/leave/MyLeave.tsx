@@ -8,6 +8,7 @@ import {
   ColumnSettings, FieldSettings, useColumns, useFieldModes,
   type ColumnDef, type FieldDef, type FieldSection,
 } from '../../../components/ViewSettings'
+import { Dialog } from '../../crm/parts'
 import '../../../styles/leave.css'
 
 /* ===========================================================================
@@ -403,30 +404,25 @@ export default function MyLeave() {
           <section className="card" style={{ marginBottom: 14 }}>
             <div className="card-head">
               <h2 className="card-title">Apply for leave</h2>
-              <button className="btn btn-sm" onClick={() => { setApplying((v) => !v); setNotice(null) }}>
-                {applying ? 'Cancel' : 'New application'}
-              </button>
+              <button className="btn btn-sm" onClick={() => { setApplying(true); setNotice(null) }}>New application</button>
             </div>
-            {applying ? (
-              <ApplyForm
-                types={activeTypes}
-                balances={balances.data}
-                holidays={holidays.data ?? []}
-                onDone={afterWrite}
-              />
-            ) : (
-              <p className="lv-note" style={{ margin: 0 }}>
-                Weekly-offs and public holidays inside a range are skipped, so a Friday-to-Monday
-                request over an ordinary weekend costs two days, not four. The exact figure is
-                worked out and frozen by the server the moment you apply — this form never sends
-                one, and it never changes afterwards even if the holiday calendar does.
-              </p>
-            )}
           </section>
+          {applying && (
+            <Dialog title="Apply for leave" wide onClose={() => setApplying(false)}>
+              <div style={{ padding: '4px 24px 20px', overflowY: 'auto', minHeight: 0 }}>
+                <ApplyForm
+                  types={activeTypes}
+                  balances={balances.data}
+                  holidays={holidays.data ?? []}
+                  onDone={afterWrite}
+                />
+              </div>
+            </Dialog>
+          )}
         </>
       )}
 
-      {compOffType && (
+      {compOffType && (compOffs.data ?? []).length > 0 && (
         <CompOffCard credits={compOffs.data ?? []} typeName={compOffType.name} />
       )}
 

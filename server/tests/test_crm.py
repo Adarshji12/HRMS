@@ -38,8 +38,12 @@ def _masters(client, tenant, kind: str) -> list[dict]:
     return response.json()
 
 
+_LEAD_SEQ = iter(range(1, 10_000))
+
+
 def _new_lead(client, tenant, **overrides) -> dict:
-    payload = {"name": "Rohit Sharma", "mobile": "919000000001", **overrides}
+    # A lead's name is unique unless the setting allows repeats, so each helper lead gets its own.
+    payload = {"name": f"Rohit Sharma {next(_LEAD_SEQ)}", "mobile": "919000000001", **overrides}
     response = client.post("/api/v1/crm/leads", json=payload, headers=tenant.headers())
     assert response.status_code == 201, response.text
     return response.json()
@@ -975,6 +979,11 @@ def test_a_mobile_number_cannot_be_added_twice(client, acme):
     assert again.status_code == 422
     assert again.json()["detail"]["reason"] == "duplicate_mobile"
 
+    # The same number written another way is still the same number.
+    for form in ("9811100001", "09811100001", "+91 98111-00001", "919811100001"):
+        spelled = client.post("/api/v1/crm/leads", json={"name": "Copy", "mobile": form}, headers=acme.headers())
+        assert spelled.status_code == 422, form
+
     other = _new_lead(client, acme, mobile="+919811100003")
     clash = client.patch(
         f"/api/v1/crm/leads/{other['id']}", json={"mobile": "+919811100001"},
@@ -1109,3 +1118,69 @@ def test_assignees_list_whole_workspace_and_owner_change_is_logged(client, acme)
     assert patched.json()["owner_id"] == str(acme.employee.id)
     detail = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=acme.headers()).json()
     assert any(a["kind"] == "assignment" for a in detail["activities"])
+
+
+def test_the_duplicate_lead_switch_decides_whether_a_known_number_is_refused(client, acme):
+    first = _new_lead(client, acme, mobile="+919811100077")
+    assert client.post("/api/v1/crm/leads", json={"name": "Again", "mobile": "9811100077"}, headers=acme.headers()).status_code == 422
+    off = client.put("/api/v1/crm/settings", json={"block_duplicate_leads": False}, headers=acme.headers())
+    assert off.status_code == 200 and off.json()["block_duplicate_leads"] is False
+    allowed = client.post("/api/v1/crm/leads", json={"name": "Again", "mobile": "9811100077"}, headers=acme.headers())
+    assert allowed.status_code == 201, allowed.text
+    assert client.get("/api/v1/crm/leads/check-mobile", params={"mobile": "9811100077"}, headers=acme.headers()).json() == {"exists": False}
+    client.put("/api/v1/crm/settings", json={"block_duplicate_leads": True}, headers=acme.headers())
+    assert client.get("/api/v1/crm/leads/check-mobile", params={"mobile": "9811100077"}, headers=acme.headers()).json()["exists"] is True
+    assert first["mobile"].endswith("9811100077")
+
+
+def test_the_duplicate_customer_switches_decide_what_two_customers_may_share(client, acme):
+    first = _customer(client, acme, name="Sharma Traders", company="Sharma Co", mobile="+919811100055")
+    same = {"name": "sharma  TRADERS", "company": "SHARMA co", "mobile": "9811100055"}
+    # Everything is allowed until a switch is turned off.
+    assert client.post("/api/v1/crm/customers", json={**first, **same, "code": None}, headers=acme.headers()).status_code == 201
+    for flag, field in (("allow_duplicate_customer_name", "name"), ("allow_duplicate_customer_company", "company"),
+                        ("allow_duplicate_customer_mobile", "mobile")):
+        assert client.put("/api/v1/crm/settings", json={flag: False}, headers=acme.headers()).status_code == 200
+        body = {"name": "Someone Else", "company": "Other Co", "mobile": "9000000001", field: same[field]}
+        r = client.post("/api/v1/crm/customers", json=body, headers=acme.headers())
+        assert r.status_code == 409 and r.json()["detail"]["reason"] == "duplicate_customer", field
+        client.put("/api/v1/crm/settings", json={flag: True}, headers=acme.headers())
+        assert client.post("/api/v1/crm/customers", json={**body, "mobile": body["mobile"] if field != "mobile" else "9000000002"}, headers=acme.headers()).status_code == 201
+
+
+def test_a_lead_added_with_no_owner_takes_the_one_the_assignment_rule_names(client, acme):
+    me = client.get("/api/v1/auth/me", headers=acme.headers()).json()["id"]
+    assert client.get("/api/v1/crm/lead-defaults", headers=acme.headers()).json()["owner_id"] is None
+    assert _new_lead(client, acme, mobile="+919811100091")["owner_id"] is None
+    client.put("/api/v1/crm/settings", json={"assignment_rule": "fixed", "default_owner_id": me}, headers=acme.headers())
+    assert client.get("/api/v1/crm/lead-defaults", headers=acme.headers()).json()["owner_id"] == me
+    assert _new_lead(client, acme, mobile="+919811100092")["owner_id"] == me
+
+
+def test_a_lead_name_is_not_used_twice_unless_the_setting_allows_it(client, acme):
+    _new_lead(client, acme, name="Sharma Traders", mobile="+919811100101")
+    r = client.post("/api/v1/crm/leads", json={"name": " sharma  TRADERS", "mobile": "9811100102"}, headers=acme.headers())
+    assert r.status_code == 422 and r.json()["detail"]["reason"] == "duplicate_name"
+    other = _new_lead(client, acme, name="Different", mobile="+919811100103")
+    clash = client.patch(f"/api/v1/crm/leads/{other['id']}", json={"name": "SHARMA traders"}, headers=acme.headers())
+    assert clash.status_code == 422
+    client.put("/api/v1/crm/settings", json={"allow_duplicate_lead_name": True}, headers=acme.headers())
+    ok = client.post("/api/v1/crm/leads", json={"name": "Sharma Traders", "mobile": "9811100104"}, headers=acme.headers())
+    assert ok.status_code == 201, ok.text
+
+
+def test_import_reads_whatsapp_industry_value_and_owner_columns(client, acme):
+    me = client.get("/api/v1/auth/me", headers=acme.headers()).json()
+    rows = [
+        {"name": "Imported One", "mobile": "9811100201", "whatsapp": "9811100299", "industry": "Manufacturing", "value": "₹1,50,000", "owner": me["email"]},
+        {"name": "Imported Two", "mobile": "9811100202", "owner": "Nobody Here"},
+        {"name": "Imported Three", "mobile": "9811100203", "value": "lots"},
+    ]
+    r = client.post("/api/v1/crm/leads/import", json={"rows": rows, "skip_duplicates": True}, headers=acme.headers())
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["created"] == 1 and len(out["errors"]) == 2
+    assert "nobody called" in out["errors"][0] and "not a number" in out["errors"][1]
+    rows_back = client.get("/api/v1/crm/leads", params={"page_size": 100}, headers=acme.headers()).json()["rows"]
+    lead = next(x for x in rows_back if x["name"] == "Imported One")
+    assert lead["owner_id"] == me["id"] and lead["whatsapp"].endswith("9811100299") and lead["value"] in ("150000.00", "150000")

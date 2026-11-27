@@ -523,6 +523,11 @@ class CrmSettingsOut(ORMModel):
     default_owner_id: uuid.UUID | None = None
     assignment_pool: list[uuid.UUID] = []
     intake_enabled: bool
+    block_duplicate_leads: bool = True
+    allow_duplicate_lead_name: bool = False
+    allow_duplicate_customer_name: bool = True
+    allow_duplicate_customer_company: bool = True
+    allow_duplicate_customer_mobile: bool = True
     #: The capture URL, assembled server-side. The raw token is never sent on
     #: its own — there is nothing a caller can do with it that this URL does not
     #: already do, and one field is one place to redact.
@@ -546,6 +551,11 @@ class CrmSettingsIn(CrmBase):
     default_owner_id: uuid.UUID | None = None
     assignment_pool: list[uuid.UUID] | None = None
     intake_enabled: bool | None = None
+    block_duplicate_leads: bool | None = None
+    allow_duplicate_lead_name: bool | None = None
+    allow_duplicate_customer_name: bool | None = None
+    allow_duplicate_customer_company: bool | None = None
+    allow_duplicate_customer_mobile: bool | None = None
     quotation_prefix: str | None = Field(default=None, min_length=1, max_length=12)
     quotation_terms: str | None = None
     quotation_validity_days: int | None = Field(default=None, ge=1, le=365)
@@ -746,11 +756,17 @@ class LeadImportRow(CrmBase):
 
     name: str = Field(min_length=1, max_length=200)
     mobile: str = Field(pattern=MOBILE)
+    whatsapp: str | None = None
     company: str | None = None
     email: str | None = None
     source: str | None = None
     status: str | None = None
+    industry: str | None = None
     product: str | None = None
+    #: The lead's value in rupees; anything that is not a number is reported against the row.
+    value: str | None = None
+    #: A teammate's name or email. Blank takes the owner picked for the whole file, then the assignment rule.
+    owner: str | None = None
     city: str | None = None
     state: str | None = None
     pincode: str | None = None
@@ -1467,3 +1483,10 @@ class AccessMemberOut(CrmBase):
 class AccessPatch(CrmBase):
     lead_scope: str | None = Field(default=None, pattern=ACCESS_SCOPE)
     customer_scope: str | None = Field(default=None, pattern=ACCESS_SCOPE)
+
+
+class QuotationEmailIn(BaseModel):
+    to: str = Field(min_length=5, max_length=200)
+    cc: str | None = Field(default=None, max_length=200)
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=5000)

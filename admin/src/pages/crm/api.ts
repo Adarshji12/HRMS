@@ -429,6 +429,14 @@ export interface CrmSettings {
   ticket_prefix: string
   renewal_window_days: number
   reminders_enabled: boolean
+  /** On: one mobile number may belong to only one lead. */
+  block_duplicate_leads: boolean
+  /** Whether two leads may share a name. */
+  allow_duplicate_lead_name: boolean
+  /** Whether two customers may share a name, a company name or a mobile number. */
+  allow_duplicate_customer_name: boolean
+  allow_duplicate_customer_company: boolean
+  allow_duplicate_customer_mobile: boolean
 }
 
 /** CRM Settings → Quotation, as one document (schemas/crm.py QuotationSetup). */
@@ -640,6 +648,9 @@ export const crm = {
   deleteMaster: (kind: string, id: string) => api.del(`/crm/masters/${kind}/${id}`),
 
   settings: () => api.get<CrmSettings>('/crm/settings'),
+  emailQuotation: (id: string, body: { to: string; cc: string | null; subject: string; message: string }) =>
+    api.post<void>(`/crm/quotations/${id}/email`, body),
+  leadDefaults: () => api.get<{ owner_id: string | null; rule: string }>('/crm/lead-defaults'),
   quotationDefaults: () => api.get<QuotationDefaults>('/crm/quotation-defaults'),
   saveSettings: (body: Partial<CrmSettings>) => api.put<CrmSettings>('/crm/settings', body),
   rotateIntake: () => api.post<CrmSettings>('/crm/settings/intake-token'),

@@ -16,6 +16,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import '../../styles/crm.css'
+import '../../styles/hrsettings.css'
 import { api } from '../../lib/api'
 import { useQuery } from '../../lib/useQuery'
 import { canAdminister, useAuth } from '../../lib/auth'
@@ -105,6 +106,8 @@ function GeneralPanel({ onDirty }: { onDirty: (dirty: boolean) => void }) {
   return (
     <div className="cs-stack">
       <AssignmentCard />
+      <DuplicateLeadCard />
+      <DuplicateCustomerCard />
       {SHOW_SUPPORT_RENEWALS && (
         <SettingsForm
           onDirty={onDirty}
@@ -206,6 +209,115 @@ function AssignmentCard() {
           </div>
         </div>
       )}
+    </section>
+  )
+}
+
+/** Whether a second lead may be saved on a mobile number another lead already has. Saved as it is switched. */
+function DuplicateLeadCard() {
+  const settings = useQuery<Settings>('crm-settings', () => crm.settings())
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
+  const current = settings.data
+
+  async function set(key: 'block_duplicate_leads' | 'allow_duplicate_lead_name', next: boolean) {
+    setError(null)
+    try {
+      await crm.saveSettings({ [key]: next })
+      settings.reload()
+      setSaved(key)
+      setTimeout(() => setSaved(null), 2000)
+    } catch (err) {
+      setError(crmError(err, 'That setting could not be saved'))
+    }
+  }
+
+  if (settings.loading) return <Loading />
+  if (!current) return <ErrorNote>{crmError(settings.cause, 'Could not read the settings')}</ErrorNote>
+  const mobileOn = current.block_duplicate_leads
+  const nameOn = current.allow_duplicate_lead_name
+
+  return (
+    <section className="card cs-card">
+      <CardHead icon={<IconShield size={16} />} title="Duplicate Lead" hint="May two leads share these details?" />
+      {error && <div className="cs-pad"><ErrorNote>{error}</ErrorNote></div>}
+      <div style={{ display: 'grid', gap: 12, padding: '4px 20px 20px' }}>
+        <SwitchRow icon={<IconShield size={18} />} title="Keep one mobile number to one lead" on={mobileOn} saved={saved === 'block_duplicate_leads'}
+                   onToggle={(next) => void set('block_duplicate_leads', next)} state={mobileOn ? 'On' : 'Off'}>
+          {mobileOn ? '— a lead cannot be saved, added or imported with a mobile number another lead already has.' : '— the same mobile number may appear on as many leads as you like.'}
+          <span className="cs-hint" style={{ display: 'block', marginTop: 4 }}>Numbers are compared on their last ten digits, so "+91 98765 43210" and "9876543210" count as the same person.</span>
+        </SwitchRow>
+        <SwitchRow icon={<IconUsers size={18} />} title="Allow duplicate Lead Name" on={nameOn} saved={saved === 'allow_duplicate_lead_name'}
+                   onToggle={(next) => void set('allow_duplicate_lead_name', next)} state={nameOn ? 'Allowed' : 'Not allowed'}>
+          {nameOn ? '— the same lead name may appear on as many leads as you like.' : '— a second lead with the same name is refused.'}
+          <span className="cs-hint" style={{ display: 'block', marginTop: 4 }}>Compared ignoring capitals and extra spaces — "Sharma Traders" and "sharma traders" are the same.</span>
+        </SwitchRow>
+      </div>
+    </section>
+  )
+}
+
+/** One row of a switch: icon, what it controls, and the switch at the right. */
+function SwitchRow({ icon, title, state, children, on, onToggle, saved }: {
+  icon: ReactNode; title: string; state: string; children: ReactNode; on: boolean; onToggle: (next: boolean) => void; saved?: boolean
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 12 }}>
+      <span style={{ display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 12, flex: 'none', background: 'var(--brand-soft, #e5f7fc)', color: 'var(--brand, #004070)' }}>{icon}</span>
+      <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <b style={{ fontSize: 15 }}>{title} {saved && <span className="crm-state crm-state-good" style={{ marginLeft: 8 }}>Saved</span>}</b>
+        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}><b>{state}</b> {children}</span>
+      </div>
+      <button type="button" role="switch" aria-checked={on} aria-label={title}
+              className={`hs-switch${on ? ' is-on' : ''}`} onClick={() => onToggle(!on)}><span /></button>
+    </div>
+  )
+}
+
+/** May two customers share a name, a company name or a mobile number? Each is its own switch, saved as it is toggled. */
+function DuplicateCustomerCard() {
+  const settings = useQuery<Settings>('crm-settings', () => crm.settings())
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
+  const current = settings.data
+
+  async function set(key: 'allow_duplicate_customer_name' | 'allow_duplicate_customer_company' | 'allow_duplicate_customer_mobile', next: boolean) {
+    setError(null)
+    try {
+      await crm.saveSettings({ [key]: next })
+      settings.reload()
+      setSaved(key)
+      setTimeout(() => setSaved(null), 2000)
+    } catch (err) {
+      setError(crmError(err, 'That setting could not be saved'))
+    }
+  }
+
+  if (settings.loading) return <Loading />
+  if (!current) return <ErrorNote>{crmError(settings.cause, 'Could not read the settings')}</ErrorNote>
+
+  const rows: Array<{ key: 'allow_duplicate_customer_name' | 'allow_duplicate_customer_company' | 'allow_duplicate_customer_mobile'; title: string; noun: string; note: string }> = [
+    { key: 'allow_duplicate_customer_name', title: 'Allow duplicate Customer Name', noun: 'customer name', note: 'Compared ignoring capitals and extra spaces — "Sharma Traders" and "sharma traders" are the same.' },
+    { key: 'allow_duplicate_customer_company', title: 'Allow duplicate Company Name', noun: 'company name', note: 'Compared ignoring capitals and extra spaces — "Sharma Traders" and "sharma traders" are the same.' },
+    { key: 'allow_duplicate_customer_mobile', title: 'Allow duplicate Mobile Number', noun: 'mobile number', note: 'Numbers are compared on their last ten digits.' },
+  ]
+
+  return (
+    <section className="card cs-card">
+      <CardHead icon={<IconUsers size={16} />} title="Duplicate Customer" hint="May two customers in My Customers share these details? Allowed by default." />
+      {error && <div className="cs-pad"><ErrorNote>{error}</ErrorNote></div>}
+      <div style={{ display: 'grid', gap: 12, padding: '4px 20px 20px' }}>
+        {rows.map((r) => {
+          const on = current[r.key]
+          return (
+            <SwitchRow key={r.key} icon={<IconUsers size={18} />} title={r.title} on={on} saved={saved === r.key} onToggle={(next) => void set(r.key, next)}
+                       state={on ? 'Allowed' : 'Not allowed'}>
+              {on ? `— the same ${r.noun} may appear on as many customers as you like.` : `— a second customer with the same ${r.noun} is refused.`}
+              <span className="cs-hint" style={{ display: 'block', marginTop: 4 }}>{r.note}</span>
+            </SwitchRow>
+          )
+        })}
+      </div>
     </section>
   )
 }

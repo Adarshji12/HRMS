@@ -24,7 +24,7 @@ def _lead(client, tenant) -> dict:
     # A mobile number can only be a lead once, so each call gets a new one.
     response = client.post(
         "/api/v1/crm/leads",
-        json={"name": "Rohit Sharma", "mobile": f"+{next(_mobiles)}"},
+        json={"name": f"Rohit Sharma {next(_mobiles)}", "mobile": f"+{next(_mobiles)}"},
         headers=tenant.headers(),
     )
     assert response.status_code == 201, response.text
@@ -303,7 +303,7 @@ def test_the_approvals_list_filters_by_status_and_stays_inside_the_company(clien
     rows = client.get(
         "/api/v1/crm/opportunities", params={"costsheet_status": "requested"}, headers=acme.headers()
     ).json()
-    assert all(r["lead_name"] == "Rohit Sharma" and r["lead_code"] for r in rows)
+    assert all(r["lead_name"].startswith("Rohit Sharma") and r["lead_code"] for r in rows)
     assert client.get(
         "/api/v1/crm/opportunities", params={"costsheet_status": "bogus"}, headers=acme.headers()
     ).status_code == 422

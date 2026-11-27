@@ -17,6 +17,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, select
 
+from app.core.names import refuse_duplicate_name
 from app.api.deps import deny_page, AdminUser, CurrentUser, DbSession, TeamViewer, audit, visible_user_ids
 from app.models import Branch, Department, Designation, OfficeLocation, Organization, Team, User, WorkSchedule
 from app.schemas.common import CompanyProfileIn, CompanyProfileOut
@@ -130,15 +131,9 @@ def list_departments(viewer: CurrentUser, db: DbSession) -> list[DepartmentOut]:
 def create_department(
     payload: DepartmentIn, admin: AdminUser, request: Request, db: DbSession
 ) -> DepartmentOut:
-    if db.scalar(
-        select(Department.id).where(
-            Department.org_id == admin.org_id, Department.name == payload.name.strip()
-        )
-    ):
-        raise HTTPException(status.HTTP_409_CONFLICT, "A department with that name exists")
-
+    name = refuse_duplicate_name(db, Department, admin.org_id, payload.name)
     department = Department(org_id=admin.org_id, **payload.model_dump())
-    department.name = payload.name.strip()
+    department.name = name
     db.add(department)
     db.flush()
     audit(db, org_id=admin.org_id, actor=admin, action="department.created", request=request,
@@ -162,9 +157,10 @@ def update_department(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "A department cannot be its own parent"
         )
 
+    name = refuse_duplicate_name(db, Department, admin.org_id, payload.name, exclude_id=department.id)
     for field, value in payload.model_dump().items():
         setattr(department, field, value)
-    department.name = payload.name.strip()
+    department.name = name
     db.commit()
     return DepartmentOut(
         **{c.name: getattr(department, c.name) for c in Department.__table__.columns
@@ -291,15 +287,10 @@ def list_designations(viewer: CurrentUser, db: DbSession) -> list[DesignationOut
 
 @router.post("/designations", response_model=DesignationOut, status_code=status.HTTP_201_CREATED)
 def create_designation(payload: DesignationIn, admin: AdminUser, db: DbSession) -> DesignationOut:
-    if db.scalar(
-        select(Designation.id).where(
-            Designation.org_id == admin.org_id, Designation.name == payload.name.strip()
-        )
-    ):
-        raise HTTPException(status.HTTP_409_CONFLICT, "That designation exists")
+    name = refuse_duplicate_name(db, Designation, admin.org_id, payload.name)
     _validate_owned(db, admin.org_id, Department, payload.department_id)
     designation = Designation(org_id=admin.org_id, **payload.model_dump())
-    designation.name = payload.name.strip()
+    designation.name = name
     db.add(designation)
     db.commit()
     return _designation_out(designation, _department_names(db, admin.org_id), 0)
@@ -312,19 +303,12 @@ def update_designation(
     designation = db.get(Designation, designation_id)
     if designation is None or designation.org_id != admin.org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Designation not found")
-    if db.scalar(
-        select(Designation.id).where(
-            Designation.org_id == admin.org_id,
-            Designation.name == payload.name.strip(),
-            Designation.id != designation.id,
-        )
-    ):
-        raise HTTPException(status.HTTP_409_CONFLICT, "That designation exists")
+    name = refuse_duplicate_name(db, Designation, admin.org_id, payload.name, exclude_id=designation.id)
     _validate_owned(db, admin.org_id, Department, payload.department_id)
 
     for field, value in payload.model_dump().items():
         setattr(designation, field, value)
-    designation.name = payload.name.strip()
+    designation.name = name
     db.commit()
     members = _counts_by(db, User.designation_id, admin.org_id)
     return _designation_out(
@@ -383,9 +367,7 @@ def list_branches(viewer: CurrentUser, db: DbSession) -> list[BranchOut]:
 
 @router.post("/branches", response_model=BranchOut, status_code=status.HTTP_201_CREATED)
 def create_branch(payload: BranchIn, admin: AdminUser, request: Request, db: DbSession) -> BranchOut:
-    name = payload.name.strip()
-    if db.scalar(select(Branch.id).where(Branch.org_id == admin.org_id, Branch.name == name)):
-        raise HTTPException(status.HTTP_409_CONFLICT, "A branch with that name already exists")
+    name = refuse_duplicate_name(db, Branch, admin.org_id, payload.name)
     branch = Branch(org_id=admin.org_id, **payload.model_dump(exclude={"name"}), name=name)
     db.add(branch)
     db.flush()
@@ -402,9 +384,7 @@ def update_branch(branch_id: uuid.UUID, payload: BranchIn, admin: AdminUser, req
     branch = db.get(Branch, branch_id)
     if branch is None or branch.org_id != admin.org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Branch not found")
-    name = payload.name.strip()
-    if db.scalar(select(Branch.id).where(Branch.org_id == admin.org_id, Branch.name == name, Branch.id != branch.id)):
-        raise HTTPException(status.HTTP_409_CONFLICT, "A branch with that name already exists")
+    name = refuse_duplicate_name(db, Branch, admin.org_id, payload.name, exclude_id=branch.id)
     for field, value in payload.model_dump(exclude={"name"}).items():
         setattr(branch, field, value)
     branch.name = name

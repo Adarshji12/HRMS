@@ -55,3 +55,20 @@ def test_the_refusal_says_the_name_already_exists(client, tenants):
     r = _post(client, acme, "dispositions", {"name": "update call"})
     assert r.status_code == 409 and "already exists" in r.json()["detail"]["message"]
     assert "Update Call" in r.json()["detail"]["message"]
+
+
+def test_every_simple_master_list_refuses_a_repeat(client, tenants):
+    acme, _ = tenants
+    kinds = ("statuses", "sources", "industries", "campaigns", "requirement-types", "competitors",
+             "contact-designations", "item-categories", "item-companies", "lost-reasons", "countries")
+    for kind in kinds:
+        first = _post(client, acme, kind, {"name": "Alpha Beta"})
+        assert first.status_code == 201, (kind, first.text)
+        again = _post(client, acme, kind, {"name": " alpha   BETA"})
+        assert again.status_code == 409 and again.json()["detail"]["reason"] == "duplicate", kind
+    stage = _post(client, acme, "opportunity-stages", {"name": "Negotiation", "behaviour": "open"})
+    assert stage.status_code == 201, stage.text
+    assert _post(client, acme, "opportunity-stages", {"name": "negotiation", "behaviour": "open"}).status_code == 409
+    territory = _post(client, acme, "territories", {"name": "North Zone", "state_ids": []})
+    assert territory.status_code == 201, territory.text
+    assert _post(client, acme, "territories", {"name": "north zone", "state_ids": []}).status_code == 409

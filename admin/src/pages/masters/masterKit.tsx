@@ -39,6 +39,8 @@ interface MasterField {
   /** A `parent` field narrowed by another field's value — a city's district
    *  by the city's state. Changing that field clears this one. */
   dependsOn?: string
+  /** A select that takes half the row instead of all of it. */
+  half?: boolean
   hint?: string
   placeholder?: string
   /** Must be filled to save. A name is always required, with or without this. */
@@ -90,6 +92,7 @@ export const LISTS: ListDef[] = [
         key: 'behaviour',
         label: 'Behaviour',
         kind: 'select',
+        half: true,
         hint: 'What this stage means to the funnel, whatever you call it.',
         options: [
           { value: 'default', label: 'Default — new leads land here' },
@@ -754,7 +757,7 @@ function MasterForm({
           }
           if (field.kind === 'select') {
             return (
-              <Field key={field.key} label={field.label} hint={field.hint} wide>
+              <Field key={field.key} label={field.label} hint={field.hint} wide={!field.half}>
                 <select value={String(value ?? '')} onChange={(event) => set(event.target.value)}>
                   {(field.options ?? []).map((option) => (
                     <option key={option.value} value={option.value}>

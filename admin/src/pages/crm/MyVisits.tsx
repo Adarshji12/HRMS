@@ -27,6 +27,7 @@ import {
   IconCheck,
   IconClock,
   IconClose,
+  IconEdit,
   IconFilter,
   IconPin,
   IconPlus,
@@ -53,7 +54,6 @@ import {
   MasterSelect,
   OwnerSelect,
   StateText,
-  WhatsAppButton,
   nationalDigits,
   onlyDigits,
   withDialCode,
@@ -483,12 +483,11 @@ export default function MyVisits() {
                         ))}
                         <td>
                           <div className="crm-row-actions">
-                            <WhatsAppButton mobile={visit.mobile ?? visit.customer_mobile} />
                             {visit.status === 'scheduled' && (
                               <>
                                 {visit.otp_required && (
                                   <button
-                                    className="link-btn"
+                                    className="btn btn-sm"
                                     onClick={async () => {
                                       setRowError(null)
                                       try {
@@ -516,12 +515,12 @@ export default function MyVisits() {
                               </button>
                             )}
                             {(visit.status === 'scheduled' || visit.status === 'in_progress') && (
-                              <button className="link-btn" onClick={() => cancel(visit)}>
-                                Cancel
+                              <button className="crm-icon-btn" onClick={() => cancel(visit)} title="Cancel visit" aria-label={`Cancel ${visit.visit_no}`}>
+                                <IconClose size={15} />
                               </button>
                             )}
-                            <button className="link-btn" onClick={() => setEditing(visit)}>
-                              Edit
+                            <button className="crm-icon-btn" onClick={() => setEditing(visit)} title="Edit" aria-label={`Edit ${visit.visit_no}`}>
+                              <IconEdit size={15} />
                             </button>
                             <button
                               className="crm-icon-btn crm-icon-danger"

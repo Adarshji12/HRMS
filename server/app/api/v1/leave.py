@@ -38,6 +38,7 @@ from app.api.deps import (
     deny_unless,
     visible_user_ids,
 )
+from app.core.names import refuse_duplicate_name
 from app.db.session import SessionLocal
 from app.models import (
     CompOffCredit,
@@ -254,7 +255,8 @@ def create_type(
     payload: LeaveTypeIn, viewer: AdminUser, request: Request, db: DbSession
 ) -> LeaveTypeOut:
     _guard_comp_off_type(db, viewer.org_id, payload)
-    leave_type = LeaveType(org_id=viewer.org_id, **payload.model_dump())
+    clean = refuse_duplicate_name(db, LeaveType, viewer.org_id, payload.name)
+    leave_type = LeaveType(org_id=viewer.org_id, **{**payload.model_dump(), "name": clean})
     db.add(leave_type)
     db.flush()
     audit(
@@ -277,6 +279,7 @@ def update_type(
     leave_type = _leave_type(db, viewer.org_id, leave_type_id)
     _guard_comp_off_type(db, viewer.org_id, payload, current_id=leave_type.id)
     data = payload.model_dump()
+    data["name"] = refuse_duplicate_name(db, LeaveType, viewer.org_id, payload.name, exclude_id=leave_type.id)
     # A client that predates the new fields does not send them: keep what is stored.
     for kept in ("color", "offered_to", "min_service_months", "proof_after_days", "max_per_month_milli_days"):
         if kept not in payload.model_fields_set:
@@ -366,11 +369,18 @@ def list_holidays(
     return out
 
 
+def _refuse_duplicate_holiday(db, org_id: uuid.UUID, payload: HolidayIn, exclude_id: uuid.UUID | None = None) -> None:
+    """The same holiday is not entered twice on one date; the same name on another date (a new year) is fine."""
+    refuse_duplicate_name(db, Holiday, org_id, payload.name, exclude_id=exclude_id,
+                          where=(Holiday.holiday_date == payload.holiday_date,))
+
+
 @router.post("/holidays", response_model=HolidayOut, status_code=status.HTTP_201_CREATED)
 def create_holiday(
     payload: HolidayIn, viewer: AdminUser, request: Request, db: DbSession
 ) -> HolidayOut:
     _own_branch(db, viewer.org_id, payload.branch_id)
+    _refuse_duplicate_holiday(db, viewer.org_id, payload)
     holiday = Holiday(org_id=viewer.org_id, **payload.model_dump())
     db.add(holiday)
     db.flush()
@@ -495,6 +505,7 @@ def update_holiday(
     holiday = db.get(Holiday, holiday_id)
     if holiday is None or holiday.org_id != viewer.org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Holiday not found")
+    _refuse_duplicate_holiday(db, viewer.org_id, payload, exclude_id=holiday.id)
     data = payload.model_dump()
     if "branch_id" not in payload.model_fields_set:
         data.pop("branch_id")  # the older calendar form never sends it: keep what is there

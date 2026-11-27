@@ -864,6 +864,12 @@ export function LeadForm({
   const [industryId, setIndustryId] = useState(lead?.industry_id ?? '')
   const [productId, setProductId] = useState(lead?.product_id ?? '')
   const [ownerId, setOwnerId] = useState(lead?.owner_id ?? '')
+  const defaults = useQuery<{ owner_id: string | null; rule: string }>('crm-lead-defaults', () => crm.leadDefaults())
+  // A new lead starts with the owner CRM Setting names, until the person picks somebody else.
+  const ownerTouched = useRef(false)
+  useEffect(() => {
+    if (!lead && !ownerTouched.current && defaults.data?.owner_id) setOwnerId((cur) => cur || defaults.data!.owner_id!)
+  }, [lead, defaults.data])
   const [statusId, setStatusId] = useState(lead?.status_id ?? '')
   // Inline, the stage can be moved from the panel beside the form. Follow it, or
   // saving the form would put the lead back on the stage it opened with.
@@ -1182,7 +1188,7 @@ export function LeadForm({
           ),
     owner: fm('owner') !== 'hide' && (
           <LfField label="Lead owner" required={rq('owner')}>
-            <OwnerSelect value={ownerId} onChange={setOwnerId} />
+            <OwnerSelect value={ownerId} onChange={(v) => { ownerTouched.current = true; setOwnerId(v) }} />
           </LfField>
           ),
     industry: fm('industry') !== 'hide' && (
@@ -1372,11 +1378,15 @@ function ImportDialog({
     .map((row) => ({
       name: row.name || row['lead name'] || row['full name'] || '',
       mobile: row.mobile || row.phone || row['mobile number'] || '',
+      whatsapp: row.whatsapp || row['whatsapp number'] || undefined,
       company: row.company || undefined,
       email: row.email || undefined,
       source: row.source || row['lead source'] || undefined,
       status: row.status || undefined,
-      product: row.product || row['product / service'] || undefined,
+      industry: row.industry || row['industry / vertical'] || undefined,
+      product: row.item || row.product || row['product / service'] || undefined,
+      value: row.value || row['lead value'] || undefined,
+      owner: row['lead owner'] || row.owner || row['assigned to'] || undefined,
       city: row.city || undefined,
       state: row.state || undefined,
       pincode: row.pincode || undefined,
@@ -1434,12 +1444,12 @@ function ImportDialog({
           />
         
           <SampleFile filename="leads-sample.csv"
-            headers={['Name', 'Mobile', 'Company', 'Email', 'Source', 'Status', 'Product', 'City', 'State', 'Pincode', 'Address', 'Notes']}
-            rows={[['Rahul Sharma', '9876543210', 'Acme Industries', 'rahul@acme.com', 'Website', '', '', 'Pune', 'Maharashtra', '411019', 'Plot 14, MIDC', 'Asked for a demo'],
-                   ['Asha Verma', '9123456780', '', '', 'Referral', '', '', 'Jaipur', 'Rajasthan', '302039', '', '']]} />
+            headers={['Name', 'Mobile', 'WhatsApp', 'Company', 'Email', 'Source', 'Status', 'Industry', 'Item', 'Value', 'Lead Owner', 'City', 'State', 'Pincode', 'Address', 'Notes']}
+            rows={[['Rahul Sharma', '9876543210', '9876543210', 'Acme Industries', 'rahul@acme.com', 'Website', '', 'Manufacturing', '', '150000', 'Rohit Verma', 'Pune', 'Maharashtra', '411019', 'Plot 14, MIDC', 'Asked for a demo'],
+                   ['Asha Verma', '9123456780', '', '', '', 'Referral', '', '', '', '', '', 'Jaipur', 'Rajasthan', '302039', '', '']]} />
         </Field>
         <Field label="Assign every imported lead to">
-          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="Leave unassigned" />
+          <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="As the file says, else the assignment rule" />
         </Field>
         <div className="crm-field">
           <span className="crm-field-label">Duplicates</span>

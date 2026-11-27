@@ -24,6 +24,7 @@ import { useQuery } from '../../lib/useQuery'
 import { ErrorNote, Loading } from '../../components/ui'
 import { IconChevronDown, IconEdit, IconPlus, IconReturn, IconSheet } from '../../components/Icons'
 import QuotationPreview from './QuotationPreview'
+import QuotationEmail from './QuotationEmail'
 import {
   crm,
   crmError,
@@ -105,6 +106,7 @@ export default function QuotationEditor() {
      shows as a summary; Edit opens the fields. */
   const [editingParty, setEditingParty] = useState(!params.get('lead') && !params.get('customer'))
   const [previewing, setPreviewing] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<Quotation | null>(null)
@@ -298,7 +300,7 @@ export default function QuotationEditor() {
     })
   }
 
-  async function save(nextStatus?: string, thenPreview = false) {
+  async function save(nextStatus?: string, thenPreview = false, thenEmail = false) {
     setBusy(true)
     setError(null)
     const body = {
@@ -353,6 +355,7 @@ export default function QuotationEditor() {
       )
       if (!saved) navigate(`/crm/quotations/${final.id}`, { replace: true })
       if (thenPreview) setPreviewing(true)
+      if (thenEmail) setEmailOpen(true)
     } catch (err) {
       setError(crmError(err, 'That quotation could not be saved'))
     } finally {
@@ -432,7 +435,7 @@ export default function QuotationEditor() {
               label={busy ? 'Saving…' : saved ? 'Save changes' : 'Save as Draft'}
               onSave={() => save()}
               // Marks it Sent and opens the document to print or share as PDF.
-              onSend={() => save(saved?.status === 'sent' ? undefined : 'sent', true)}
+              onSend={() => save(saved?.status === 'sent' ? undefined : 'sent', false, true)}
               // The preview is the server's document, so it saves first —
               // an answered quotation is shown as it stands.
               onPreview={() => (decided && saved ? setPreviewing(true) : save(undefined, true))}
@@ -836,6 +839,7 @@ export default function QuotationEditor() {
         </div>
       </section>
       </div>
+      {emailOpen && saved && <QuotationEmail quotation={saved} onClose={() => setEmailOpen(false)} />}
       {previewing && saved && (
         <QuotationPreview quotation={saved} setup={setup} onClose={() => setPreviewing(false)} />
       )}
@@ -975,7 +979,7 @@ function SaveMenu({ busy, decided, label, onSave, onSend, onPreview }: {
           <button role="menuitem" onClick={act(onSend)} disabled={decided}><SvgSend /> Save &amp; Send</button>
           <hr />
           <button role="menuitem" onClick={act(onPreview)}><SvgEye /> Preview</button>
-          <p>Send and Preview save the quotation first. Send marks it Sent and opens the document to print or share as PDF.</p>
+          <p>Send and Preview save the quotation first. Send marks it Sent and opens the email to the customer. Preview opens the document to print.</p>
         </div>
       )}
     </div>

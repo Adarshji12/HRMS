@@ -346,7 +346,7 @@ export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },
   { to: '/payslips', adminTo: '/payroll/overview', label: 'Payroll', icon: IconSheet, end: true },
   { to: '/expenses', label: 'Expense', icon: IconCard, end: true },
-  { to: '/hrms/settings', label: 'HR Settings', icon: IconGear, end: true },
+  { to: '/hrms/settings', label: 'HR Settings', icon: IconGear, end: true, adminOnly: true },
 ]
 
 /* ERP phase one — the operational backbone of the LRS PRD. Every page reads

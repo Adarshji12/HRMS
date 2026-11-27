@@ -907,6 +907,16 @@ def _mobile_digits(value: str | None) -> str:
     return re.sub(r"\D", "", value or "")
 
 
+def _mobile_key(value: str | None) -> str:
+    """The part of a number that identifies the person: its last ten digits.
+
+    "9876543210", "+91 98765-43210", "09876543210" and "919876543210" are one number, so a lead typed in any of those
+    forms is a duplicate of a lead saved in another.
+    """
+    digits = _mobile_digits(value)
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
 def find_lead_by_mobile(
     db: Session, viewer: User, mobile: str, exclude_id: uuid.UUID | None = None
 ) -> dict[str, Any]:
@@ -917,11 +927,14 @@ def find_lead_by_mobile(
     open -- a duplicate is a duplicate whoever owns it -- but a lead outside
     their reach is reported without its name.
     """
-    digits = _mobile_digits(mobile)
-    if len(digits) < 6:
+    key = _mobile_key(mobile)
+    if len(key) < 6 or not get_settings(db, viewer.org_id).block_duplicate_leads:
+        # CRM Setting > General decides: with the switch off, one number may belong to many leads.
         return {"exists": False}
-    stored = func.replace(func.replace(func.replace(CrmLead.mobile, " ", ""), "-", ""), "+", "")
-    stmt = select(CrmLead).where(CrmLead.org_id == viewer.org_id, stored == digits)
+    stored = CrmLead.mobile
+    for junk in (" ", "-", "+", "(", ")", "."):
+        stored = func.replace(stored, junk, "")
+    stmt = select(CrmLead).where(CrmLead.org_id == viewer.org_id, stored.endswith(key))
     if exclude_id is not None:
         stmt = stmt.where(CrmLead.id != exclude_id)
     lead = db.scalars(stmt.order_by(CrmLead.created_at)).first()
@@ -954,6 +967,22 @@ def _refuse_duplicate_mobile(
             "message": f"This mobile number is already lead {found['code']}{who}{owner}.",
         },
     )
+
+
+def _refuse_duplicate_lead_name(db: Session, org_id: uuid.UUID, name: str | None, exclude_id: uuid.UUID | None = None) -> None:
+    """Unless CRM Setting > General allows it, a lead's name is not used twice (capitals and extra spaces ignored)."""
+    clean = " ".join((name or "").split())
+    if not clean or get_settings(db, org_id).allow_duplicate_lead_name:
+        return
+    stmt = select(CrmLead.code, CrmLead.name).where(CrmLead.org_id == org_id, func.lower(CrmLead.name) == clean.lower())
+    if exclude_id is not None:
+        stmt = stmt.where(CrmLead.id != exclude_id)
+    found = db.execute(stmt.limit(1)).first()
+    if found is not None:
+        raise HTTPException(
+            http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"reason": "duplicate_name", "message": f"\u201c{found[1]}\u201d is already lead {found[0]}. Change it in CRM Setting, General, to allow duplicate lead names."},
+        )
 
 
 def list_leads(
@@ -1095,6 +1124,7 @@ def create_lead(
 ) -> S.LeadOut:
     ensure_defaults(db, viewer.org_id)
     _refuse_duplicate_mobile(db, viewer, payload.mobile)
+    _refuse_duplicate_lead_name(db, viewer.org_id, payload.name)
     status_id = payload.status_id
     if status_id is None:
         fallback = default_status(db, viewer.org_id)
@@ -1115,7 +1145,8 @@ def create_lead(
         source_id=payload.source_id,
         industry_id=payload.industry_id,
         product_id=payload.product_id,
-        owner_id=payload.owner_id,
+        # No owner picked on the form: the assignment rule in CRM Setting names one (the person, or the next in the rotation).
+        owner_id=payload.owner_id or _pick_owner(db, viewer.org_id, get_settings(db, viewer.org_id)),
         created_by=viewer.id,
         state_id=payload.state_id,
         city_id=payload.city_id,
@@ -1144,6 +1175,9 @@ def update_lead(
     # rule existed must still be editable.
     if changes.get("mobile") and _mobile_digits(changes["mobile"]) != _mobile_digits(lead.mobile):
         _refuse_duplicate_mobile(db, viewer, changes["mobile"], lead.id)
+
+    if changes.get("name") and " ".join(changes["name"].split()).lower() != " ".join(lead.name.split()).lower():
+        _refuse_duplicate_lead_name(db, viewer.org_id, changes["name"], lead.id)
 
     if "owner_id" in changes and changes["owner_id"] != lead.owner_id:
         require_may_assign(db, viewer, "lead")
@@ -1387,6 +1421,12 @@ def import_leads(
         }
 
     statuses, sources = _cache(CrmLeadStatus), _cache(CrmLeadSource)
+    industries = _cache(CrmIndustry)
+    teammates: dict[str, User] = {}
+    for person in db.scalars(select(User).where(User.org_id == org_id, User.is_active.is_(True))):
+        teammates[person.full_name.strip().lower()] = person
+        teammates[person.email.strip().lower()] = person
+    settings = get_settings(db, org_id)
     states, cities = _cache(CrmState), _cache(CrmCity)
     from app.models.erp import ErpItem
 
@@ -1396,16 +1436,17 @@ def import_leads(
     }
 
     existing_mobiles: set[str] = set()
-    if payload.skip_duplicates:
+    block = payload.skip_duplicates and get_settings(db, org_id).block_duplicate_leads
+    if block:
         existing_mobiles = {
-            m for m in db.scalars(select(CrmLead.mobile).where(CrmLead.org_id == org_id))
+            _mobile_key(m) for m in db.scalars(select(CrmLead.mobile).where(CrmLead.org_id == org_id))
         }
 
     created = skipped = 0
     errors: list[str] = []
     for index, row in enumerate(payload.rows, start=1):
         mobile = row.mobile.strip()
-        if payload.skip_duplicates and mobile in existing_mobiles:
+        if block and _mobile_key(mobile) in existing_mobiles:
             skipped += 1
             continue
         source = sources.get((row.source or "").strip().lower())
@@ -1418,27 +1459,54 @@ def import_leads(
         state = states.get((row.state or "").strip().lower())
         city = cities.get((row.city or "").strip().lower())
         product = products.get((row.product or "").strip().lower())
+        industry = industries.get((row.industry or "").strip().lower())
+        if row.industry and industry is None:
+            industry = CrmIndustry(org_id=org_id, name=row.industry.strip())
+            db.add(industry)
+            db.flush()
+            industries[industry.name.lower()] = industry
 
+        # A savepoint per row: a bad row is undone on its own and the rows before it stay.
+        savepoint = db.begin_nested()
         try:
+            owner_id = payload.owner_id
+            if row.owner and row.owner.strip():
+                person = teammates.get(row.owner.strip().lower())
+                if person is None:
+                    raise ValueError(f"nobody called \u201c{row.owner.strip()}\u201d works here")
+                owner_id = person.id
+            elif owner_id is None:
+                owner_id = _pick_owner(db, org_id, settings)
+            amount = None
+            if row.value and row.value.strip():
+                try:
+                    amount = Decimal(re.sub(r"[,\s\u20b9]", "", row.value))
+                except Exception:  # noqa: BLE001
+                    raise ValueError(f"the value \u201c{row.value}\u201d is not a number") from None
+            _refuse_duplicate_lead_name(db, org_id, row.name)
             lead = CrmLead(
                 org_id=org_id, code=_lead_code(db, org_id), name=row.name.strip(),
-                mobile=mobile, whatsapp=mobile, company=row.company, email=row.email,
+                mobile=mobile, whatsapp=(row.whatsapp or '').strip() or mobile, company=row.company, email=row.email,
                 status_id=status.id if status else None,
                 source_id=source.id if source else None,
-                product_id=product.id if product else None,
+                industry_id=industry.id if industry else None,
+                product_id=product.id if product else None, value=amount,
                 state_id=state.id if state else None,
                 city_id=city.id if city else None,
                 pincode=row.pincode, address=row.address, notes=row.notes,
-                owner_id=payload.owner_id, created_by=viewer.id,
+                owner_id=owner_id, created_by=viewer.id,
             )
             db.add(lead)
             db.flush()
             _log(db, lead, viewer, "note", "Imported from a file")
-            existing_mobiles.add(mobile)
+            savepoint.commit()
+            if block:
+                existing_mobiles.add(_mobile_key(mobile))
             created += 1
         except Exception as exc:  # noqa: BLE001 - one bad row must not lose the batch
-            db.rollback()
-            errors.append(f"Row {index} ({row.name}): {exc}")
+            savepoint.rollback()
+            reason = exc.detail.get("message") if isinstance(exc, HTTPException) and isinstance(exc.detail, dict) else str(exc)
+            errors.append(f"Row {index} ({row.name}): {reason}")
 
     if request is not None:
         audit(db, org_id=viewer.org_id, actor=viewer, action="crm.lead.import", request=request,
@@ -1893,10 +1961,43 @@ def list_customers(
     return rows
 
 
+def _refuse_duplicate_customer(
+    db: Session, org_id: uuid.UUID, *, name: str | None, company: str | None, mobile: str | None,
+    exclude_id: uuid.UUID | None = None,
+) -> None:
+    """CRM Setting > General decides which of name, company and mobile two customers may share (all allowed by default)."""
+    settings = get_settings(db, org_id)
+
+    def clash(column, value, label: str, noun: str) -> None:
+        stmt = select(CrmCustomer.code, column).where(CrmCustomer.org_id == org_id, *value)
+        if exclude_id is not None:
+            stmt = stmt.where(CrmCustomer.id != exclude_id)
+        found = db.execute(stmt.limit(1)).first()
+        if found is not None:
+            raise HTTPException(
+                http_status.HTTP_409_CONFLICT,
+                detail={"reason": "duplicate_customer", "message": f"{noun} is already customer {found[0]}. Change it in CRM Setting, General, to allow {label}."},
+            )
+
+    clean_name = " ".join((name or "").split())
+    if clean_name and not settings.allow_duplicate_customer_name:
+        clash(CrmCustomer.name, (func.lower(CrmCustomer.name) == clean_name.lower(),), "duplicate customer names", f"\u201c{clean_name}\u201d")
+    clean_company = " ".join((company or "").split())
+    if clean_company and not settings.allow_duplicate_customer_company:
+        clash(CrmCustomer.company, (func.lower(CrmCustomer.company) == clean_company.lower(),), "duplicate company names", f"The company \u201c{clean_company}\u201d")
+    key = _mobile_key(mobile)
+    if len(key) >= 6 and not settings.allow_duplicate_customer_mobile:
+        stored = CrmCustomer.mobile
+        for junk in (" ", "-", "+", "(", ")", "."):
+            stored = func.replace(stored, junk, "")
+        clash(CrmCustomer.mobile, (stored.endswith(key),), "duplicate mobile numbers", "This mobile number")
+
+
 def create_customer(
     db: Session, viewer: User, payload: S.CustomerIn, *, request: Request | None = None
 ) -> S.CustomerOut:
     ensure_defaults(db, viewer.org_id)
+    _refuse_duplicate_customer(db, viewer.org_id, name=payload.name, company=payload.company, mobile=payload.mobile)
     code = payload.code or _customer_code(db, viewer.org_id)
     if db.scalar(select(CrmCustomer.id).where(
         CrmCustomer.org_id == viewer.org_id, CrmCustomer.code == code
@@ -1931,6 +2032,10 @@ def update_customer(
     changes = payload.model_dump(exclude_unset=True)
     if "manager_id" in changes and changes["manager_id"] != row.manager_id:
         require_may_assign(db, viewer, "customer")
+    if {"name", "company", "mobile"} & changes.keys():
+        _refuse_duplicate_customer(
+            db, viewer.org_id, name=changes.get("name", row.name), company=changes.get("company", row.company),
+            mobile=changes.get("mobile", row.mobile), exclude_id=row.id)
     for field, value in changes.items():
         setattr(row, field, value)
     db.commit()
@@ -2115,6 +2220,7 @@ def convert_lead(
             },
         )
 
+    _refuse_duplicate_customer(db, viewer.org_id, name=lead.name, company=lead.company, mobile=lead.mobile)
     code = payload.code or _customer_code(db, viewer.org_id)
     customer = CrmCustomer(
         org_id=viewer.org_id, code=code, name=lead.name, company=lead.company,

@@ -24,6 +24,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 
+from app.core.names import refuse_duplicate_name
 from app.api.deps import (
     AdminUser,
     CurrentUser,
@@ -452,20 +453,7 @@ def list_locations(viewer: CurrentUser, db: DbSession) -> list[OfficeLocationOut
 def create_location(
     payload: OfficeLocationIn, admin: AdminUser, request: Request, db: DbSession
 ) -> OfficeLocationOut:
-    name = payload.name.strip()
-    clash = db.scalar(
-        select(OfficeLocation.id).where(
-            OfficeLocation.org_id == admin.org_id, OfficeLocation.name == name
-        )
-    )
-    if clash:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={
-                "reason": "duplicate_location",
-                "message": "An office location with that name already exists.",
-            },
-        )
+    name = refuse_duplicate_name(db, OfficeLocation, admin.org_id, payload.name)
     _own_branch(db, admin.org_id, payload.branch_id)
     location = OfficeLocation(
         org_id=admin.org_id, **payload.model_dump(exclude={"name"}), name=name
@@ -488,12 +476,13 @@ def update_location(
     db: DbSession,
 ) -> OfficeLocationOut:
     location = _office(db, admin.org_id, location_id)
+    name = refuse_duplicate_name(db, OfficeLocation, admin.org_id, payload.name, exclude_id=location.id)
     _own_branch(db, admin.org_id, payload.branch_id)
     if location.is_active and not payload.is_active:
         _guard_last_active_location(db, admin.org_id, location_id)
     for field, value in payload.model_dump().items():
         setattr(location, field, value)
-    location.name = payload.name.strip()
+    location.name = name
     audit(db, org_id=admin.org_id, actor=admin, action="attendance.location_updated",
           request=request, target_type="office_location", target_id=str(location.id))
     db.commit()

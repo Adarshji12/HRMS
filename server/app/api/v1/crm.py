@@ -35,6 +35,7 @@ from app.api.tenancy import CurrentTenant
 from app.schemas import crm as S
 from app.schemas.crm_opportunity import RequirementTypeIn, RequirementTypeOut
 from app.services import crm as svc
+from app.services import quotation_mail as qmail
 from app.services import crm_geography
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -237,6 +238,11 @@ def read_settings(viewer: CurrentUser, db: DbSession, request: Request) -> S.Crm
         default_owner_id=row.default_owner_id,
         assignment_pool=[uuid.UUID(str(x)) for x in (row.assignment_pool or [])],
         intake_enabled=row.intake_enabled,
+        block_duplicate_leads=row.block_duplicate_leads,
+        allow_duplicate_lead_name=row.allow_duplicate_lead_name,
+        allow_duplicate_customer_name=row.allow_duplicate_customer_name,
+        allow_duplicate_customer_company=row.allow_duplicate_customer_company,
+        allow_duplicate_customer_mobile=row.allow_duplicate_customer_mobile,
         # Assembled here rather than stored: the host is a deployment fact, not
         # a tenant one, and a stored URL would be wrong the day the API moves.
         intake_url=(
@@ -291,6 +297,20 @@ def write_settings(
         row.intake_token = secrets.token_urlsafe(24)
     db.commit()
     return read_settings(viewer, db, request)
+
+
+@router.get("/lead-defaults")
+def lead_defaults(viewer: CurrentUser, db: DbSession) -> dict:
+    """What the add-lead form starts with. Any CRM user may read it.
+
+    ``owner_id`` is the person the assignment rule sends every lead to, when the rule is "always to one person"; the form
+    shows them in the owner box and the person adding the lead can change it. Under round robin the server picks the next
+    person on save, so nothing is shown ahead of time.
+    """
+    row = svc.get_settings(db, viewer.org_id)
+    db.commit()
+    owner_id = row.default_owner_id if row.assignment_rule == "fixed" else None
+    return {"owner_id": str(owner_id) if owner_id else None, "rule": row.assignment_rule}
 
 
 @router.get("/quotation-defaults", response_model=S.QuotationDefaults)
@@ -927,6 +947,19 @@ def set_quotation_status(
     quotation_id: uuid.UUID, payload: S.QuotationStatusIn, viewer: CurrentUser, db: DbSession
 ) -> S.QuotationOut:
     return svc.set_quotation_status(db, viewer, quotation_id, payload)
+
+
+@router.post("/quotations/{quotation_id}/email", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def email_quotation(
+    quotation_id: uuid.UUID, payload: S.QuotationEmailIn, viewer: CurrentUser, db: DbSession, request: Request
+) -> None:
+    """Email the quotation to the customer from the company's own mail connector."""
+    q = svc.get_quotation(db, viewer, quotation_id)
+    qmail.send_quotation(db, viewer.org_id, q, to=payload.to.strip(), subject=payload.subject.strip(),
+                         message=payload.message, cc=(payload.cc or "").strip() or None)
+    audit(db, org_id=viewer.org_id, actor=viewer, action="crm.quotation_emailed", request=request,
+          target_type="quotation", target_id=str(quotation_id), detail={"number": q.number, "to": payload.to.strip()})
+    db.commit()
 
 
 @router.post("/quotations/{quotation_id}/duplicate", response_model=S.QuotationOut,

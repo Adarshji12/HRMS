@@ -685,6 +685,15 @@ class CrmSettings(UUIDMixin, TimestampMixin, Base):
     intake_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     intake_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    #: Whether one mobile number may belong to only one lead. On: a second lead with a known number is refused.
+    block_duplicate_leads: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Whether two leads may share a name. Not allowed unless switched on: a second "Sharma Traders" is usually the same enquiry twice.
+    allow_duplicate_lead_name: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Whether two customers may share a name, a company name or a mobile number. Allowed unless switched off.
+    allow_duplicate_customer_name: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allow_duplicate_customer_company: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allow_duplicate_customer_mobile: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     quotation_prefix: Mapped[str] = mapped_column(String(12), default="QT", nullable=False)
     #: Printed under the totals. Company-wide, over-ridable per quotation.
     quotation_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
