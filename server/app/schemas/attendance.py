@@ -118,6 +118,7 @@ class AttendanceSettingsIn(BaseModel):
     overtime_pay_through_payroll: bool | None = None
 
     # Punch methods. None leaves them as they are.
+    gps_tracking_enabled: bool | None = None
     manual_enabled: bool | None = None
     manual_web_enabled: bool | None = None
     manual_mobile_enabled: bool | None = None
@@ -139,6 +140,7 @@ class AttendanceSettingsOut(ORMModel):
     geofence_work_from_home: str | None = None
     geofence_on_duty: str | None = None
 
+    gps_tracking_enabled: bool = True
     overtime_enabled: bool = True
     overtime_min_minutes: int = 0
     overtime_on_off_days: bool = True

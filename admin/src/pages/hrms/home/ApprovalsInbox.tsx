@@ -24,6 +24,7 @@ import {
 } from '../attendance/regularization'
 import { dayLabel, days as leaveDays, errorText, rangeLabel, type LeaveApplication } from '../leave/MyLeave'
 import { permits } from '../helpdesk/Helpdesk'
+import type { ExpenseClaimDetail } from '../../../lib/types'
 import { CostsheetApprovalsPanel, costsheetsWaiting, useCostsheetQueue } from '../../crm/CostsheetApprovals'
 import { approvalTabOpen, mayApproveCostsheets } from '../../../lib/nav'
 
@@ -100,6 +101,7 @@ interface PendingClaim {
   created_at: string
   line_count: number
   note: string | null
+  claim_type?: string
 }
 
 /** One row of `GET /loans?status=requested`. */
@@ -141,7 +143,7 @@ interface TeamSheet {
   rows: TeamSheetRow[]
 }
 
-type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'loan' | 'performance' | 'incentive'
+type Lane = 'regularization' | 'leave' | 'timesheet' | 'expense' | 'conveyance' | 'loan' | 'performance' | 'incentive'
 
 /** One row of the merged queue, whichever module produced it. */
 interface InboxItem {
@@ -175,6 +177,7 @@ const LANE_LABEL: Record<Lane, string> = {
   leave: 'Leave',
   timesheet: 'Timesheet',
   expense: 'Expense',
+  conveyance: 'Claim Expenses',
   loan: 'Loan',
   performance: 'Review',
 }
@@ -242,6 +245,58 @@ function mins(minutes: number): string {
    them here only stops us rendering a button that always 403s. */
 
 /* ============================================================== the page === */
+
+/** A local conveyance claim as the approver reads it: who it is for, then every journey and the totals. */
+function ConveyanceFacts({ claimId }: { claimId: string }) {
+  const q = useQuery<ExpenseClaimDetail>(`inbox-claim:${claimId}`, () => api.get<ExpenseClaimDetail>(`/expenses/${claimId}`))
+  if (q.loading) return <span className="ai-cv-note">Loading the journeys...</span>
+  const c = q.data
+  if (!c) return <span className="ai-cv-note">The journeys could not be loaded.</span>
+  const lines = [...c.lines].sort((a, b) => (a.spent_on + (a.start_time ?? '')).localeCompare(b.spent_on + (b.start_time ?? '')))
+  const sum = (pick: (l: ExpenseClaimDetail['lines'][number]) => number | null | undefined) => lines.reduce((n, l) => n + (pick(l) ?? 0), 0)
+  return (
+    <div className="ai-cv">
+      <div className="ai-cv-head">
+        <span><em>Employee</em><b>{c.user_name ?? '-'}{c.user_code ? ` (${c.user_code})` : ''}</b></span>
+        <span><em>Grade</em><b>{c.employee_grade || c.user_designation || '-'}</b></span>
+        <span><em>Location</em><b>{c.work_location || c.user_location || '-'}</b></span>
+        <span><em>Department</em><b>{c.user_department || '-'}</b></span>
+        <span><em>Project</em><b>{c.project_name || '-'}</b></span>
+      </div>
+      <div className="ai-cv-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Time</th><th>From</th><th>To</th><th>Customer</th><th>Mode</th><th className="r">Km</th>
+              <th className="r">Fare</th><th className="r">Food</th><th className="r">Parking</th><th className="r">Grand total</th><th>Remarks</th></tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => (
+              <tr key={l.id}>
+                <td>{l.spent_on}</td>
+                <td>{[l.start_time, l.end_time].filter(Boolean).join(' - ') || '-'}</td>
+                <td>{l.from_location}</td><td>{l.to_location}</td>
+                <td>{l.customer_name || '-'}</td><td>{l.conveyance_mode || '-'}</td>
+                <td className="r">{l.distance_km ?? '-'}</td>
+                <td className="r">{money(l.conveyance_amount ?? 0, c.currency)}</td>
+                <td className="r">{l.food_amount ? money(l.food_amount, c.currency) : '-'}</td>
+                <td className="r">{l.parking_amount ? money(l.parking_amount, c.currency) : '-'}</td>
+                <td className="r"><b>{money(l.amount, c.currency)}</b></td>
+                <td>{l.remarks || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={7}><b>Total</b></td>
+              <td className="r"><b>{money(sum((l) => l.conveyance_amount), c.currency)}</b></td>
+              <td className="r"><b>{money(sum((l) => l.food_amount), c.currency)}</b></td>
+              <td className="r"><b>{money(sum((l) => l.parking_amount), c.currency)}</b></td>
+              <td className="r"><b>{money(c.total_amount, c.currency)}</b></td><td /></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 export default function ApprovalsInbox() {
   const { user, organization } = useAuth()
@@ -536,9 +591,10 @@ export default function ApprovalsInbox() {
     }
 
     for (const row of expenseQ.data ?? []) {
+      const conveyance = row.claim_type === 'conveyance'
       out.push({
         key: `expense:${row.id}`,
-        lane: 'expense',
+        lane: conveyance ? 'conveyance' : 'expense',
         userId: row.user_id,
         personName: row.user_name ?? 'Unknown employee',
         waitingSince: row.submitted_at ?? row.created_at,
@@ -556,6 +612,7 @@ export default function ApprovalsInbox() {
               {row.line_count} {row.line_count === 1 ? 'line' : 'lines'}
             </span>
             <span>Approving does not pay it — finance records that separately.</span>
+            {conveyance && <ConveyanceFacts claimId={row.id} />}
           </>
         ),
         quote: row.note || null,
@@ -821,6 +878,7 @@ export default function ApprovalsInbox() {
     { id: 'leave', allowed: mayLeave || tabTicked('leave') },
     { id: 'timesheet', allowed: mayTimesheet || tabTicked('timesheet') },
     { id: 'expense', allowed: mayExpense || tabTicked('expense') },
+    { id: 'conveyance', allowed: mayExpense || tabTicked('expense') },
     { id: 'loan', allowed: mayLoan || tabTicked('loan') },
     { id: 'incentive', allowed: mayIncentive || tabTicked('incentive') },
     { id: 'performance', allowed: mayReview || tabTicked('performance') },

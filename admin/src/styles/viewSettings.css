@@ -96,3 +96,6 @@
 
 .lf-section-head { position: relative; }
 .lf-section-action { margin-left: auto; align-self: flex-start; }
+
+/* An employee gets no settings button, so its row would otherwise leave an empty gap. */
+.lf-settings:empty, .lf-section-action:empty { display: none; }

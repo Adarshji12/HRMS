@@ -209,7 +209,7 @@ export const NAV: NavGroup[] = [
       { to: '/payroll/setup', label: 'Salary setup', icon: IconGear, section: 'Administration', adminOnly: true },
       { to: '/payroll/targets', label: 'Sales Targets', icon: IconChart, section: 'Administration', adminOnly: true },
       { to: '/payroll/forms', label: 'Forms & Registers', icon: IconSheet, section: 'Administration', adminOnly: true },
-      { to: '/payroll/design', label: 'Payslip Design', icon: IconSheet, section: 'Administration', adminOnly: true },
+      { to: '/payroll/design', label: 'Payslip & Letterhead designs', icon: IconSheet, section: 'Administration', adminOnly: true },
       { to: '/payroll/letters', label: 'Letters', icon: IconMail, section: 'Administration', adminOnly: true },
       { to: '/payroll/letter-templates', label: 'Letter Templates', icon: IconMail, section: 'Administration', adminOnly: true },
       { to: '/payroll/year-end', label: 'Year end & Form 16', icon: IconChart, section: 'Administration', adminOnly: true },
@@ -226,7 +226,6 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/expenses', label: 'My expenses', icon: IconCard, section: 'Expenses', end: true },
       { to: '/loans', label: 'Loans & advances', icon: IconCard, section: 'Loans', end: true },
-      { to: '/loans/deductions', label: 'Loan deductions', icon: IconSheet, section: 'Loans', adminOnly: true },
     ],
   },
   /* Workflow, lifted out of Settings. It was "Approval workflow", one row among

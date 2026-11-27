@@ -354,3 +354,18 @@ tbody tr.ai-detail:hover { background: none; }
   .ai-search input { width: 100%; }
   .ai-bulk-hint { margin-left: 0; }
 }
+
+/* Claim Expenses lane: the conveyance form as the approver reads it. */
+.ai-cv { flex-basis: 100%; display: grid; gap: 10px; margin-top: 4px; min-width: 0; }
+.ai-cv-head { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2, #f7f9fb); }
+@media (max-width: 760px) { .ai-cv-head { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ai-cv-head span { display: grid; gap: 2px; min-width: 0; }
+.ai-cv-head em { font-style: normal; font-size: 11px; color: var(--text-muted); }
+.ai-cv-head b { font-size: 12.5px; overflow-wrap: anywhere; }
+.ai-cv-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.ai-cv table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+.ai-cv th { text-align: left; padding: 7px 10px; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); background: var(--surface-2, #f4f7fa); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ai-cv td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.ai-cv .r { text-align: right; white-space: nowrap; }
+.ai-cv tfoot td { border-top: 2px solid var(--border); border-bottom: 0; background: var(--surface-2, #f7f9fb); }
+.ai-cv-note { font-size: 12px; color: var(--text-muted); }

@@ -16,7 +16,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { createPortal } from 'react-dom'
 import { IconCog } from './Icons'
 import '../styles/viewSettings.css'
-import { useAuth } from '../lib/auth'
+import { canAdminister, useAuth } from '../lib/auth'
 
 /* ------------------------------------------------------------------ storage -- */
 
@@ -158,6 +158,8 @@ export function ColumnSettings({
   onReset: () => void
 }) {
   const { open, setOpen, ref, render } = usePopover(340)
+  // Arranging columns is an administrator's tool; everybody else gets the refresh button alone.
+  const admin = canAdminister(useAuth().user)
   const [list, setList] = useState(order)
   const [off, setOff] = useState(new Set(hidden))
   const [dragging, setDragging] = useState<number | null>(null)
@@ -198,7 +200,7 @@ export function ColumnSettings({
         <path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4" />
       </svg>
     </button>
-    <div className="vw-wrap" ref={ref}>
+    {admin && <div className="vw-wrap" ref={ref}>
       <button type="button" className={`btn vw-btn${open ? ' is-open' : ''}`} aria-haspopup="dialog" aria-expanded={open}
               onClick={openPopover}>
         <IconCog size={14} /> Columns
@@ -239,7 +241,7 @@ export function ColumnSettings({
             </button>
           </div>
       </>)}
-    </div>
+    </div>}
     </>
   )
 }
@@ -309,6 +311,7 @@ export function FieldSettings({
   onReset: () => void
   title?: string
 }) {
+  const admin = canAdminister(useAuth().user)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'show' | 'arrange'>('show')
   const [draft, setDraft] = useState(modes)
@@ -454,6 +457,9 @@ export function FieldSettings({
         document.body,
       )
     : null
+
+  // Arranging a form is an administrator's tool; for everybody else the form simply has no settings button.
+  if (!admin) return null
 
   return (
     <>

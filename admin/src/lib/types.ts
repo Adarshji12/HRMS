@@ -776,6 +776,10 @@ export interface ExpenseClaim {
   /** 'conveyance' is the local conveyance claim form; anything else is an ordinary claim. */
   claim_type?: string
   employee_grade?: string | null
+  user_code?: string | null
+  user_designation?: string | null
+  user_department?: string | null
+  user_location?: string | null
   work_location?: string | null
   project_label?: string | null
   line_count: number

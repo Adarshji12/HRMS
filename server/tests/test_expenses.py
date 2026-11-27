@@ -442,21 +442,28 @@ def test_a_rejection_needs_a_reason(client, tenants):
     assert ok.json()["status"] == "rejected"
 
 
-def test_nobody_approves_their_own_claim(client, tenants):
-    """Not even an owner. Somebody else signs off your spending."""
+def test_only_the_owner_may_approve_their_own_claim(client, tenants):
+    """The owner has nobody above them, so their own claim is in their queue and they may decide it. A manager still
+    needs somebody else to sign off their spending."""
     acme, _ = tenants
     category = _category(client, acme)
     claim = _claim(client, acme)  # owner's own claim
     _line(client, acme, claim["id"], category["id"])
     client.post(f"/api/v1/expenses/{claim['id']}/submit", headers=acme.headers())
 
-    response = client.post(
-        f"/api/v1/expenses/{claim['id']}/review",
-        json={"status": "approved"},
-        headers=acme.headers(),
-    )
-    assert response.status_code == 403
-    assert response.json()["detail"]["reason"] == "self_review"
+    queue = client.get("/api/v1/expenses/review", headers=acme.headers()).json()
+    assert [row["id"] for row in queue] == [claim["id"]] and queue[0]["can_review"] is True
+    ok = client.post(f"/api/v1/expenses/{claim['id']}/review", json={"status": "approved"}, headers=acme.headers())
+    assert ok.status_code == 200 and ok.json()["status"] == "approved"
+
+    # A manager's own claim is not theirs to approve, and is not in their queue.
+    manager_id, manager_token = _manager(acme)
+    mine = _claim(client, acme, manager_token)
+    _line(client, acme, mine["id"], category["id"], token=manager_token)
+    client.post(f"/api/v1/expenses/{mine['id']}/submit", headers=acme.headers(manager_token))
+    assert all(r["id"] != mine["id"] for r in client.get("/api/v1/expenses/review", headers=acme.headers(manager_token)).json())
+    refused = client.post(f"/api/v1/expenses/{mine['id']}/review", json={"status": "approved"}, headers=acme.headers(manager_token))
+    assert refused.status_code == 403 and refused.json()["detail"]["reason"] == "self_review"
 
 
 def test_an_employee_cannot_approve(client, tenants):
@@ -739,6 +746,13 @@ def test_a_conveyance_claim_goes_through_approval_and_payment_and_the_form_shows
     submitted = client.post(f"/api/v1/expenses/{claim['id']}/submit", headers=acme.headers(token))
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["status"] == "submitted"
+    # An approver other than the claimant finds it in the review queue, typed as a conveyance claim.
+    queue = client.get("/api/v1/expenses/review", headers=acme.headers()).json()
+    row = next(r for r in queue if r["id"] == claim["id"])
+    assert row["claim_type"] == "conveyance" and row["line_count"] == 12
+    # The claimant never sees their own claim in their review queue, since they cannot decide it.
+    mine = client.get("/api/v1/expenses/review", headers=acme.headers(token))
+    assert mine.status_code == 403 or all(r["id"] != claim["id"] for r in mine.json())
     # Frozen once submitted.
     frozen = client.post(url, json={**base, "from_location": "A", "to_location": "B", "conveyance_amount": 100}, headers=acme.headers(token))
     assert frozen.status_code in (403, 409)

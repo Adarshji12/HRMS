@@ -827,10 +827,11 @@ def review_queue(db: Session, viewer: User) -> list[ExpenseClaim]:
     statement = select(ExpenseClaim).where(
         ExpenseClaim.org_id == viewer.org_id,
         ExpenseClaim.status == ClaimStatus.SUBMITTED.value,
-        # Never your own, since you cannot decide it — showing it in the queue
-        # would be an action that always fails.
-        ExpenseClaim.user_id != viewer.id,
     )
+    # Never your own, since you cannot decide it — showing it in the queue would be an action that always fails.
+    # The owner is the exception: they may decide their own claim, so it belongs in their queue.
+    if viewer.role != Role.OWNER.value:
+        statement = statement.where(ExpenseClaim.user_id != viewer.id)
     allowed = scope_ids(db, viewer)
     if allowed is not None:
         statement = statement.where(ExpenseClaim.user_id.in_(allowed))

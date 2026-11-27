@@ -98,16 +98,21 @@ export default function CrmSettings() {
 
 /* ---------------------------------------------------------------- general --- */
 
+/** The Support & renewals card (ticket prefix, renewal window) is hidden for now; switch this on to bring it back. */
+const SHOW_SUPPORT_RENEWALS = false
+
 function GeneralPanel({ onDirty }: { onDirty: (dirty: boolean) => void }) {
   return (
     <div className="cs-stack">
       <AssignmentCard />
-      <SettingsForm
-        onDirty={onDirty}
-        title="Support & renewals"
-        hint="How support tickets are numbered, and how early a customer shows as due for renewal."
-        fields={['ticket_prefix', 'renewal_window_days']}
-      />
+      {SHOW_SUPPORT_RENEWALS && (
+        <SettingsForm
+          onDirty={onDirty}
+          title="Support & renewals"
+          hint="How support tickets are numbered, and how early a customer shows as due for renewal."
+          fields={['ticket_prefix', 'renewal_window_days']}
+        />
+      )}
     </div>
   )
 }

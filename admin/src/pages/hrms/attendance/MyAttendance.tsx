@@ -100,6 +100,8 @@ export interface OfficeLocation {
 }
 
 export interface AttendanceSettingsPayload {
+  /** Whether employees may share their live position. HR switches it for the whole company. */
+  gps_tracking_enabled?: boolean
   geofence_enforcement: Enforcement
   active_location_count: number
   /* Per-work-mode overrides. `null` on the wire means "follow

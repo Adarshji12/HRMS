@@ -284,9 +284,9 @@ EXPENSE = Policy(
     pending=("submitted",),
     approved="approved",
     rejected="rejected",
-    # Not even the owner. Somebody else signs off your spending, and unlike
-    # leave there is always somebody who can: finance, or a second director.
-    self_review=SelfReview.FORBIDDEN,
+    # The owner may decide their own claim: in a company of one there is nobody above them to sign it off, and an
+    # owner who cannot approve their own claim cannot be reimbursed. Everybody else still needs somebody else.
+    self_review=SelfReview.OWNER_MAY,
     reason_on_reject=True,
     audit_action="expenses.reviewed",
     target_type="expense_claim",

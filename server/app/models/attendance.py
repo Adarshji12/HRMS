@@ -220,6 +220,10 @@ class AttendanceSettings(TimestampMixin, Base):
     geofence_work_from_home: Mapped[str | None] = mapped_column(String(16), nullable=True)
     geofence_on_duty: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    #: Whether employees may share their live position with their manager. On by default, as before; an administrator
+    #: can switch it off for the whole company, and the server then keeps no pings.
+    gps_tracking_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     # --- overtime policy -----------------------------------------------------
     # Defaults reproduce what timesheets did before there was a policy: overtime counts,
     # from the first minute past the expected day, and a day off counts whole.

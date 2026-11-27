@@ -261,6 +261,10 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
         ))}
       </nav>
 
+      {sub === 'methods' && settings && (
+        <GpsTrackingCard enabled={settings.gps_tracking_enabled ?? true} onSaved={() => settingsQ.reload()} />
+      )}
+
       {sub === 'methods' && (
         <MethodsTab
           settings={settings}
@@ -286,6 +290,32 @@ export default function AttendanceSettings({ embedded = false }: { embedded?: bo
         />
       )}
     </div>
+  )
+}
+
+/** The company-wide GPS tracking switch: saved the moment it is flipped, like any other setting row. */
+function GpsTrackingCard({ enabled, onSaved }: { enabled: boolean; onSaved: () => void }) {
+  const action = useAction(onSaved)
+  return (
+    <section className="card hs-gps" style={{ marginBottom: 14 }}>
+      <div className="hs-gps-row">
+        <span className="hs-method-icon" aria-hidden><IconPin size={18} /></span>
+        <div className="hs-method-titles">
+          <h2>GPS tracking</h2>
+          <p>
+            Let employees share their live position with their manager while the app is open. Each person still turns it on from
+            their own My attendance page, and can turn it off again at any moment. With this off, nobody sees that switch and the
+            server keeps no positions.
+          </p>
+        </div>
+        <button type="button" role="switch" aria-checked={enabled} aria-label="GPS tracking" disabled={action.busy}
+                className={`hs-switch${enabled ? ' is-on' : ''}`}
+                onClick={() => void action.run(() => api.put('/attendance/settings', { gps_tracking_enabled: !enabled }), enabled ? 'GPS tracking switched off.' : 'GPS tracking switched on.')}>
+          <span />
+        </button>
+      </div>
+      {action.failure && <ErrorNote>{action.failure.message}</ErrorNote>}
+    </section>
   )
 }
 

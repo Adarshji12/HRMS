@@ -77,13 +77,15 @@ def _signature_block(db: Session, claim: ExpenseClaim) -> str:
 def _conveyance(db: Session, claim: ExpenseClaim, org: Organization | None, lines: list[ExpenseLine]) -> str:
     employee = db.get(User, claim.user_id)
     company = (org.legal_name or org.name) if org else ""
+    grade = claim.employee_grade or (employee.designation.name if employee and employee.designation else "")
+    place = claim.work_location or (employee.work_location if employee else None) or ""
     rows = []
     for line in lines:
         rows.append(
             "<tr>"
             f"<td class='b'>{_d(line.spent_on)}</td><td class='c'>{escape(line.start_time or '')}</td><td class='c'>{escape(line.end_time or '')}</td>"
             f"<td>{escape(line.from_location or '')}</td><td>{escape(line.to_location or '')}</td>"
-            f"<td>{escape(line.customer_name or '')}</td><td class='c'>{escape(line.so_number or '')}</td>"
+            f"<td>{escape(line.customer_name or '')}</td>"
             f"<td>{escape(line.conveyance_mode or '')}</td>"
             f"<td class='c'>{'' if line.distance_km is None else f'{line.distance_km:g}'}</td>"
             f"<td class='c'>{'' if not line.rate_per_km else _plain(line.rate_per_km)}</td>"
@@ -102,18 +104,18 @@ def _conveyance(db: Session, claim: ExpenseClaim, org: Organization | None, line
 <tr><td class="b">S.No.</td><td>Description</td><td></td></tr>
 <tr><td>1</td><td>Name of Employee:</td><td class="b">{escape(employee.full_name if employee else '')}</td></tr>
 <tr><td>2</td><td>Employee Code:</td><td class="b">{escape((employee.employee_code if employee else '') or '')}</td></tr>
-<tr><td>3</td><td>Employee Grade:</td><td class="b">{escape(claim.employee_grade or '')}</td></tr>
-<tr><td>4</td><td>Location:</td><td class="b">{escape(claim.work_location or '')}</td></tr>
+<tr><td>3</td><td>Employee Grade:</td><td class="b">{escape(grade)}</td></tr>
+<tr><td>4</td><td>Location:</td><td class="b">{escape(place)}</td></tr>
 <tr><td>5</td><td>Project:</td><td class="b">{escape(claim.project_label or '')}</td></tr>
 </table>
 <table><tr><td class="ttl">DETAILS OF THE LOCAL CONVEYANCE CLAIMS</td></tr></table>
 <table>
-<tr><th colspan="3">Date of Journey &amp; Time</th><th colspan="2">Particulars</th><th rowspan="2">Customer Name</th><th rowspan="2">SO No</th>
+<tr><th colspan="3">Date of Journey &amp; Time</th><th colspan="2">Particulars</th><th rowspan="2">Customer Name</th>
 <th rowspan="2">Mode of Conveyance</th><th rowspan="2">Distance in Kms</th><th rowspan="2">Rate per KM (as per Policy)</th>
 <th rowspan="2">Total</th><th rowspan="2">Food Bill</th><th rowspan="2">Parking / Toll</th><th rowspan="2">Grand Total Amount (Rs.)</th><th rowspan="2">Remarks</th></tr>
 <tr><th>DATE</th><th>START TIME</th><th>END TIME</th><th>FROM (Start Location)</th><th>TO (End Location)</th></tr>
 {''.join(rows)}
-<tr class="tot"><td colspan="3"></td><td></td><td>Total</td><td colspan="5"></td><td class="c">{_plain(fare)}</td><td class="c">{_plain(food)}</td><td class="c">{_plain(park)}</td><td class="r">{_rs(grand)}</td><td></td></tr>
+<tr class="tot"><td colspan="3"></td><td></td><td>Total</td><td colspan="4"></td><td class="c">{_plain(fare)}</td><td class="c">{_plain(food)}</td><td class="c">{_plain(park)}</td><td class="r">{_rs(grand)}</td><td></td></tr>
 </table>
 {_signature_block(db, claim)}
 </div>"""

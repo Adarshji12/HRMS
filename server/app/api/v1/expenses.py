@@ -139,6 +139,15 @@ def _claim_out(
     if claim.created_by_user_id and claim.created_by_user_id != claim.user_id:
         out.created_by_name = names.get(claim.created_by_user_id)
     out.project_name = projects.get(claim.project_id) or claim.project_label
+    if claim.claim_type == "conveyance":
+        who = db.get(User, claim.user_id)
+        if who is not None:
+            out.user_code = who.employee_code
+            out.user_designation = who.designation.name if who.designation else None
+            out.user_department = who.department.name if who.department else None
+            out.user_location = who.work_location
+            out.employee_grade = claim.employee_grade or out.user_designation
+            out.work_location = claim.work_location or out.user_location
     out.line_count = counts.get(claim.id, 0)
 
     state = claim.status_enum
@@ -148,7 +157,7 @@ def _claim_out(
     out.can_review = (
         svc.is_approver(viewer)
         and state.value == "submitted"
-        and claim.user_id != viewer.id
+        and (claim.user_id != viewer.id or viewer.role == "owner")
     )
     out.can_reimburse = svc.is_finance(viewer) and state.value == "approved"
     out.can_cancel = (owns or svc.is_approver(viewer)) and state.value in (

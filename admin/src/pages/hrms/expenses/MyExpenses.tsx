@@ -24,6 +24,7 @@ import { api, download, openPrintable } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
+import { Dialog } from '../../crm/parts'
 import { IconPlus } from '../../../components/Icons'
 import type {
   ExpenseCategory,
@@ -63,10 +64,29 @@ export default function MyExpenses() {
     summaryQ.reload()
   }, [claimsQ, summaryQ])
 
-  async function create(body: Record<string, unknown>) {
+  /* Create claim does the whole job: the claim, every journey, and the submission for approval. A journey that fails
+     stops it before the submit, so a half-filled claim is never sent to an approver. */
+  async function create(body: Record<string, unknown>, journeys: Array<Record<string, unknown>> = []) {
     setError(null)
     try {
       const claim = await api.post<ExpenseClaimDetail>('/expenses', body)
+      let complete = true
+      for (let i = 0; i < journeys.length; i += 1) {
+        try {
+          await api.post(`/expenses/${claim.id}/lines`, journeys[i])
+        } catch (caught) {
+          setError(`The claim was created as a draft, but journey ${i + 1} could not be added: ${(caught as Error).message}`)
+          complete = false
+          break
+        }
+      }
+      if (complete && journeys.length > 0) {
+        try {
+          await api.post(`/expenses/${claim.id}/submit`)
+        } catch (caught) {
+          setError(`The claim was created but could not be submitted for approval: ${(caught as Error).message}`)
+        }
+      }
       setCreating(false)
       setOpen(claim.id)
       reload()
@@ -139,59 +159,152 @@ function Tile({ label, value, meta }: { label: string; value: string; meta: stri
   )
 }
 
+type JourneyRow = {
+  spent_on: string; start: string; end: string; from: string; to: string; customer: string; mode: string
+  km: string; rate: string; fare: string; food: string; parking: string; remarks: string
+}
+
+const blankRow = (spent_on: string, mode = 'Metro/Auto'): JourneyRow => ({
+  spent_on, start: '', end: '', from: '', to: '', customer: '', mode, km: '', rate: '', fare: '', food: '', parking: '', remarks: '',
+})
+
+/** One journey row as the amounts it adds up to: the fare (or distance x rate when no fare is typed), food, parking. */
+function rowAmounts(r: JourneyRow) {
+  const km = r.km.trim() ? Number(r.km) : null
+  const rate = toPaise(r.rate)
+  const computed = km && rate ? Math.round(km * rate) : null
+  // With a distance and a rate the fare is worked out and cannot be typed over; without them it is entered.
+  const fare = computed ?? toPaise(r.fare) ?? 0
+  const food = toPaise(r.food) ?? 0
+  const parking = toPaise(r.parking) ?? 0
+  return { km, rate, computed, fare, food, parking, grand: fare + food + parking }
+}
+
+/** The fields of one journey, shared by the New claim popup and the add-journey popup. */
+function JourneyFields({ r, today, onChange }: { r: JourneyRow; today: string; onChange: (patch: Partial<JourneyRow>) => void }) {
+  const a = rowAmounts(r)
+  return (
+        <div className="ecv-fields">
+          <label className="ecv-f">Date
+            <input type="date" value={r.spent_on} max={today} onChange={(e) => onChange({ spent_on: e.target.value })} /></label>
+          <label className="ecv-f">Start time
+            <input type="time" value={r.start} onChange={(e) => onChange({ start: e.target.value })} /></label>
+          <label className="ecv-f">End time
+            <input type="time" value={r.end} onChange={(e) => onChange({ end: e.target.value })} /></label>
+          <label className="ecv-f">Mode of conveyance
+            <select value={r.mode} onChange={(e) => onChange({ mode: e.target.value })}>
+              {[...MODES, ...(MODES.includes(r.mode) ? [] : [r.mode])].map((m) => <option key={m} value={m}>{m}</option>)}
+            </select></label>
+
+          <label className="ecv-f ecv-w2">From (start location)
+            <input value={r.from} maxLength={160} placeholder="Noida Sec-62" onChange={(e) => onChange({ from: e.target.value })} /></label>
+          <label className="ecv-f ecv-w2">To (end location)
+            <input value={r.to} maxLength={160} placeholder="CDOT, Chattarpur" onChange={(e) => onChange({ to: e.target.value })} /></label>
+
+          <label className="ecv-f ecv-w2">Customer name
+            <input value={r.customer} maxLength={160} onChange={(e) => onChange({ customer: e.target.value })} /></label>
+          <label className="ecv-f">Distance (km)
+            <input type="number" min={0} step="any" value={r.km} onChange={(e) => onChange({ km: e.target.value })} /></label>
+          <label className="ecv-f">Rate per km
+            <input type="number" min={0} step="any" value={r.rate} onChange={(e) => onChange({ rate: e.target.value })} /></label>
+
+          <label className="ecv-f">Total fare
+            {a.computed !== null ? (
+              <input readOnly className="ecv-ro" value={money(a.computed)} />
+            ) : (
+              <input type="number" min={0} step="any" value={r.fare} placeholder="0" onChange={(e) => onChange({ fare: e.target.value })} />
+            )}
+            <small className="ecv-hint">{a.computed !== null ? `Calculated: ${r.km} km x ${r.rate} per km` : 'Type the fare, or give a distance and rate'}</small></label>
+          <label className="ecv-f">Food bill
+            <input type="number" min={0} step="any" value={r.food} placeholder="0" onChange={(e) => onChange({ food: e.target.value })} /></label>
+          <label className="ecv-f">Parking / toll
+            <input type="number" min={0} step="any" value={r.parking} placeholder="0" onChange={(e) => onChange({ parking: e.target.value })} /></label>
+          <label className="ecv-f">Grand total
+            <input readOnly value={a.grand ? money(a.grand) : ''} placeholder="0.00" className="ecv-ro" />
+            <small className="ecv-hint">Fare + food + parking</small></label>
+
+          <label className="ecv-f ecv-w4">Remarks
+            <input value={r.remarks} maxLength={300} onChange={(e) => onChange({ remarks: e.target.value })} /></label>
+        </div>
+  )
+}
+
+/** New claim, as a popup: the local conveyance claim form, one card for every journey. */
 function NewClaim({
   onCreate,
   onCancel,
 }: {
-  onCreate: (body: Record<string, unknown>) => void
+  onCreate: (body: Record<string, unknown>, journeys: Array<Record<string, unknown>>) => Promise<void>
   onCancel: () => void
 }) {
+  const today = new Date().toISOString().slice(0, 10)
   const month = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-  const [kind, setKind] = useState<'general' | 'conveyance'>('general')
   const [title, setTitle] = useState('')
-  const [grade, setGrade] = useState('')
-  const [location, setLocation] = useState('')
-  const [project, setProject] = useState('')
-  const conveyance = kind === 'conveyance'
-  const finalTitle = title.trim() || (conveyance ? `Local conveyance - ${month}` : '')
-  const create = () => onCreate({
-    title: finalTitle, claim_type: kind,
-    ...(conveyance ? { employee_grade: grade.trim() || null, work_location: location.trim() || null, project_label: project.trim() || null } : {}),
-  })
+  const [rows, setRows] = useState<JourneyRow[]>([blankRow(today)])
+  const [busy, setBusy] = useState(false)
+
+  const filled = rows.filter((r) => r.from.trim() || r.to.trim() || r.fare.trim() || r.food.trim() || r.parking.trim() || r.km.trim())
+  const bad = filled.some((r) => !r.from.trim() || !r.to.trim() || rowAmounts(r).grand <= 0)
+  const total = filled.reduce((n, r) => n + rowAmounts(r).grand, 0)
+  const finalTitle = title.trim() || `Local conveyance - ${month}`
+  const ready = filled.length > 0 && !bad
+
+  const setRow = (i: number, patch: Partial<JourneyRow>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)))
+  const addRow = () => setRows((rs) => [...rs, blankRow(rs[rs.length - 1]?.spent_on ?? today, rs[rs.length - 1]?.mode)])
+  const removeRow = (i: number) => setRows((rs) => (rs.length > 1 ? rs.filter((_, k) => k !== i) : rs))
+
+  async function create() {
+    setBusy(true)
+    try {
+      await onCreate(
+        { title: finalTitle, claim_type: 'conveyance' },
+        filled.map((r) => {
+          const a = rowAmounts(r)
+          return {
+            spent_on: r.spent_on, start_time: r.start || null, end_time: r.end || null,
+            from_location: r.from.trim(), to_location: r.to.trim(), customer_name: r.customer.trim() || null,
+            conveyance_mode: r.mode.trim() || null, distance_km: a.km, rate_per_km: a.rate,
+            conveyance_amount: a.fare, food_amount: a.food, parking_amount: a.parking, remarks: r.remarks.trim() || null,
+          }
+        }),
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <section className="card ex-newclaim">
-      <h2 className="card-title">New claim</h2>
-      <div className="ecv-kinds" role="radiogroup" aria-label="Claim type">
-        <button type="button" role="radio" aria-checked={!conveyance} className={!conveyance ? 'is-on' : ''} onClick={() => setKind('general')}>
-          <b>General claim</b><span>Travel, meals, supplies - one line per receipt</span>
-        </button>
-        <button type="button" role="radio" aria-checked={conveyance} className={conveyance ? 'is-on' : ''} onClick={() => setKind('conveyance')}>
-          <b>Local conveyance claim</b><span>Journeys to customers: from, to, mode, fare, food and parking</span>
-        </button>
+    <Dialog title="New conveyance claim" subtitle="Add a card for every journey. Your name, code, grade and location come from your profile." wide onClose={onCancel}
+            footer={<>
+              <span className="ecv-dlg-total">Total claim <strong>{money(total)}</strong></span>
+              <button className="btn" onClick={onCancel}>Cancel</button>
+              <button className="btn btn-primary" disabled={!ready || busy} onClick={() => void create()}>{busy ? 'Submitting...' : 'Create & submit claim'}</button>
+            </>}>
+      <div className="ecv-dlg-body">
+        <label className="ecv-f">Claim name
+          <input value={title} autoFocus placeholder={`Local conveyance - ${month}`} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+
+        {rows.map((r, i) => {
+          const a = rowAmounts(r)
+          return (
+            <section className="ecv-card" key={i}>
+              <header>
+                <b>Journey {i + 1}</b>
+                <span className="ecv-card-sum">{a.grand ? money(a.grand) : ''}</span>
+                {rows.length > 1 && <button type="button" className="ecv-x" onClick={() => removeRow(i)} aria-label={`Remove journey ${i + 1}`} title="Remove this journey">&times;</button>}
+              </header>
+              <JourneyFields r={r} today={today} onChange={(patch) => setRow(i, patch)} />
+            </section>
+          )
+        })}
+
+        <div className="ecv-dlg-actions">
+          <button type="button" className="btn" onClick={addRow}>+ Add journey</button>
+          {bad && <span className="ecv-dlg-bad">Every journey needs a from, a to and an amount.</span>}
+        </div>
       </div>
-      <div className="ex-row">
-        <input
-          autoFocus
-          placeholder={conveyance ? `Local conveyance - ${month}` : 'What is this claim for? e.g. Client visit, Mumbai'}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && finalTitle) create()
-          }}
-        />
-        {conveyance && (
-          <>
-            <input placeholder="Employee grade" value={grade} onChange={(e) => setGrade(e.target.value)} aria-label="Employee grade" />
-            <input placeholder="Location, e.g. Noida" value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Location" />
-            <input placeholder="Project" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project" />
-          </>
-        )}
-        <button className="btn primary" disabled={!finalTitle} onClick={create}>
-          Create
-        </button>
-        <button className="btn" onClick={onCancel}>Cancel</button>
-      </div>
-    </section>
+    </Dialog>
   )
 }
 
@@ -242,6 +355,7 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
   )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [addingJourney, setAddingJourney] = useState(false)
 
   /* Every mutation returns the whole claim, so the local copy is replaced from
      the response rather than patched — which is what keeps the displayed total
@@ -284,17 +398,19 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
         </p>
       )}
 
-      {claim.claim_type === 'conveyance' && (
+      {claim.claim_type === 'conveyance' && (claim.can_review || claim.can_reimburse) && (
         <div className="ecv-head">
-          <span><em>Employee</em><b>{claim.user_name ?? '-'}</b></span>
-          <span><em>Grade</em><b>{claim.employee_grade || '-'}</b></span>
-          <span><em>Location</em><b>{claim.work_location || '-'}</b></span>
-          <span><em>Project</em><b>{claim.project_label || '-'}</b></span>
+          <span><em>Employee</em><b>{claim.user_name ?? '-'}{claim.user_code ? ` (${claim.user_code})` : ''}</b></span>
+          <span><em>Grade</em><b>{claim.employee_grade || claim.user_designation || '-'}</b></span>
+          <span><em>Location</em><b>{claim.work_location || claim.user_location || '-'}</b></span>
+          <span><em>Department</em><b>{claim.user_department || '-'}</b></span>
         </div>
       )}
 
       {claim.can_edit && (claim.claim_type === 'conveyance' ? (
-        <ConveyanceAddLine claimId={claim.id} busy={busy} act={act} />
+        <div className="ecv-addbar">
+          <button className="btn" disabled={busy} onClick={() => setAddingJourney(true)}>+ Add journey</button>
+        </div>
       ) : (
         <AddLine
           claimId={claim.id}
@@ -307,6 +423,8 @@ function ClaimDetail({ claimId, onChanged }: { claimId: string; onChanged: () =>
       {claim.claim_type === 'conveyance'
         ? <ConveyanceTable claim={claim} busy={busy} act={act} />
         : <LineTable claim={claim} busy={busy} act={act} />}
+
+      {addingJourney && <AddJourneyDialog claimId={claim.id} act={act} onClose={() => setAddingJourney(false)} />}
 
       <div className="ex-actions">
         <div className="ex-total">
@@ -533,80 +651,45 @@ function AddLine({
 const MODES = ['Metro/Auto', 'Cab', 'Bus', 'Train', 'Own vehicle']
 const rupee = (paise: number | null | undefined, currency?: string) => money(paise ?? 0, currency)
 
-/** One journey: date and times, from and to, customer and SO number, mode, distance, fare, food and parking. */
-function ConveyanceAddLine({
-  claimId,
-  busy,
-  act,
-}: {
+/** Add one journey to an open claim, in a popup with the same fields as the New claim form. */
+function AddJourneyDialog({ claimId, act, onClose }: {
   claimId: string
-  busy: boolean
   act: (run: () => Promise<unknown>) => Promise<void>
+  onClose: () => void
 }) {
   const today = new Date().toISOString().slice(0, 10)
-  const blank = { spent_on: today, start: '', end: '', from: '', to: '', customer: '', so: '', mode: 'Metro/Auto', km: '', rate: '', fare: '', food: '', parking: '', remarks: '' }
-  const [f, setF] = useState(blank)
-  const set = (patch: Partial<typeof blank>) => setF((p) => ({ ...p, ...patch }))
-
-  const km = f.km.trim() ? Number(f.km) : null
-  const rate = toPaise(f.rate)
-  // Own vehicle is paid by the kilometre: with a distance and a rate and no fare typed, the fare is their product.
-  const computed = km && rate ? Math.round(km * rate) : null
-  const fare = toPaise(f.fare) ?? computed ?? 0
-  const food = toPaise(f.food) ?? 0
-  const parking = toPaise(f.parking) ?? 0
-  const grand = fare + food + parking
-  const ready = Boolean(f.from.trim() && f.to.trim() && grand > 0)
+  const [r, setR] = useState<JourneyRow>(blankRow(today))
+  const [busy, setBusy] = useState(false)
+  const a = rowAmounts(r)
+  const ready = Boolean(r.from.trim() && r.to.trim() && a.grand > 0)
 
   async function add() {
+    setBusy(true)
     await act(() =>
       api.post(`/expenses/${claimId}/lines`, {
-        spent_on: f.spent_on,
-        start_time: f.start || null,
-        end_time: f.end || null,
-        from_location: f.from.trim(),
-        to_location: f.to.trim(),
-        customer_name: f.customer.trim() || null,
-        so_number: f.so.trim() || null,
-        conveyance_mode: f.mode.trim() || null,
-        distance_km: km,
-        rate_per_km: rate,
-        conveyance_amount: fare,
-        food_amount: food,
-        parking_amount: parking,
-        remarks: f.remarks.trim() || null,
+        spent_on: r.spent_on, start_time: r.start || null, end_time: r.end || null,
+        from_location: r.from.trim(), to_location: r.to.trim(), customer_name: r.customer.trim() || null,
+        conveyance_mode: r.mode.trim() || null, distance_km: a.km, rate_per_km: a.rate,
+        conveyance_amount: a.fare, food_amount: a.food, parking_amount: a.parking, remarks: r.remarks.trim() || null,
       }),
     )
-    // Dates and the mode carry over: a day's journeys are usually entered together.
-    setF({ ...blank, spent_on: f.spent_on, mode: f.mode })
+    setBusy(false)
+    onClose()
   }
 
   return (
-    <div className="ecv-add">
-      <div className="ecv-grid">
-        <label>Date<input type="date" value={f.spent_on} max={today} onChange={(e) => set({ spent_on: e.target.value })} /></label>
-        <label>Start time<input type="time" value={f.start} onChange={(e) => set({ start: e.target.value })} /></label>
-        <label>End time<input type="time" value={f.end} onChange={(e) => set({ end: e.target.value })} /></label>
-        <label className="is-2">From (start location)<input value={f.from} maxLength={160} placeholder="Noida Sec-62" onChange={(e) => set({ from: e.target.value })} /></label>
-        <label className="is-2">To (end location)<input value={f.to} maxLength={160} placeholder="CDOT, Chattarpur" onChange={(e) => set({ to: e.target.value })} /></label>
-        <label>Customer<input value={f.customer} maxLength={160} onChange={(e) => set({ customer: e.target.value })} /></label>
-        <label>SO no<input value={f.so} maxLength={60} onChange={(e) => set({ so: e.target.value })} /></label>
-        <label>Mode of conveyance
-          <input list="ecv-modes" value={f.mode} maxLength={60} onChange={(e) => set({ mode: e.target.value })} />
-          <datalist id="ecv-modes">{MODES.map((m) => <option key={m} value={m} />)}</datalist>
-        </label>
-        <label>Distance (km)<input type="number" min={0} step="any" value={f.km} onChange={(e) => set({ km: e.target.value })} /></label>
-        <label>Rate per km (as per policy)<input type="number" min={0} step="any" value={f.rate} onChange={(e) => set({ rate: e.target.value })} /></label>
-        <label>Fare (total)<input type="number" min={0} step="any" value={f.fare} placeholder={computed ? String(computed / 100) : '0'} onChange={(e) => set({ fare: e.target.value })} /></label>
-        <label>Food bill<input type="number" min={0} step="any" value={f.food} placeholder="0" onChange={(e) => set({ food: e.target.value })} /></label>
-        <label>Parking / toll<input type="number" min={0} step="any" value={f.parking} placeholder="0" onChange={(e) => set({ parking: e.target.value })} /></label>
-        <label className="is-2">Remarks<input value={f.remarks} maxLength={300} onChange={(e) => set({ remarks: e.target.value })} /></label>
+    <Dialog title="Add a journey" wide onClose={onClose}
+            footer={<>
+              <span className="ecv-dlg-total">Grand total for this journey <strong>{money(a.grand)}</strong></span>
+              <button className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!ready || busy} onClick={() => void add()}>{busy ? 'Adding...' : 'Add journey'}</button>
+            </>}>
+      <div className="ecv-dlg-body">
+        <section className="ecv-card">
+          <JourneyFields r={r} today={today} onChange={(patch) => setR((cur) => ({ ...cur, ...patch }))} />
+        </section>
       </div>
-      <div className="ecv-add-foot">
-        <span>Grand total for this journey <strong>{money(grand)}</strong></span>
-        <button className="btn primary" disabled={!ready || busy} onClick={add}>Add journey</button>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -629,7 +712,7 @@ function ConveyanceTable({
       <table className="table ecv-table">
         <thead>
           <tr>
-            <th>Date</th><th>Time</th><th>From</th><th>To</th><th>Customer</th><th>SO no</th><th>Mode</th>
+            <th>Date</th><th>Time</th><th>From</th><th>To</th><th>Customer</th><th>Mode</th>
             <th className="num">Km</th><th className="num">Fare</th><th className="num">Food</th><th className="num">Parking</th>
             <th className="num">Grand total</th><th>Remarks</th><th />
           </tr>
@@ -640,7 +723,7 @@ function ConveyanceTable({
               <td>{l.spent_on}</td>
               <td className="muted">{[l.start_time, l.end_time].filter(Boolean).join(' - ') || '-'}</td>
               <td>{l.from_location}</td><td>{l.to_location}</td>
-              <td>{l.customer_name || '-'}</td><td>{l.so_number || '-'}</td><td>{l.conveyance_mode || '-'}</td>
+              <td>{l.customer_name || '-'}</td><td>{l.conveyance_mode || '-'}</td>
               <td className="num">{l.distance_km ?? '-'}</td>
               <td className="num">{rupee(l.conveyance_amount, claim.currency)}</td>
               <td className="num">{l.food_amount ? rupee(l.food_amount, claim.currency) : '-'}</td>
@@ -657,7 +740,7 @@ function ConveyanceTable({
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={8}><strong>Total</strong></td>
+            <td colSpan={7}><strong>Total</strong></td>
             <td className="num"><strong>{rupee(sum((l) => l.conveyance_amount), claim.currency)}</strong></td>
             <td className="num"><strong>{rupee(sum((l) => l.food_amount), claim.currency)}</strong></td>
             <td className="num"><strong>{rupee(sum((l) => l.parking_amount), claim.currency)}</strong></td>

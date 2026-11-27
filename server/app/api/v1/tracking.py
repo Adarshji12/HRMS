@@ -62,6 +62,12 @@ def _people(db, viewer: User) -> list[User]:
 
 @router.post("/location/pings")
 def post_pings(payload: PingsIn, viewer: CurrentUser, db: DbSession) -> dict:
+    # HR can switch GPS tracking off for the company (HR Settings > Attendance); nothing is kept while it is off.
+    from app.models import AttendanceSettings
+
+    policy = db.get(AttendanceSettings, viewer.org_id)
+    if policy is not None and not policy.gps_tracking_enabled:
+        return {"saved": 0, "enabled": False}
     now = datetime.now(timezone.utc)
     kept = 0
     for p in payload.points:

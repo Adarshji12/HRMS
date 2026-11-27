@@ -142,9 +142,55 @@
 @media (max-width: 600px) { .ecv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ecv-grid label { display: grid; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); min-width: 0; }
 .ecv-grid label.is-2 { grid-column: span 2; }
-.ecv-grid input { width: 100%; height: 36px; font-size: 13px; font-weight: 400; }
+.ecv-grid input, .ecv-grid select { width: 100%; height: 36px; font-size: 13px; font-weight: 400; }
 .ecv-add-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
 
 .ecv-table { font-size: 12.5px; }
 .ecv-table th { white-space: nowrap; }
 .ecv-table tfoot td { border-top: 2px solid var(--border); background: var(--surface-2, #f7f9fb); }
+
+/* New claim popup: the conveyance claim form, filled in row by row. */
+.crm-dialog.ecv-dlg { width: min(1360px, 97vw); }
+.ecv-dlg-body { padding: 6px 24px 18px; display: grid; gap: 14px; }
+.ecv-hdr { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; }
+.ecv-hdr label { display: grid; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); min-width: 0; }
+.ecv-hdr input { width: 100%; height: 36px; font-size: 13px; font-weight: 400; }
+@media (max-width: 760px) { .ecv-hdr { grid-template-columns: 1fr 1fr; } }
+.ecv-sheet { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.ecv-sheet table { border-collapse: collapse; min-width: 1500px; width: 100%; }
+.ecv-sheet th { padding: 9px 8px; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); background: var(--surface-2, #f4f7fa); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.ecv-sheet td { padding: 5px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ecv-sheet tr:last-child td { border-bottom: 0; }
+.ecv-sheet input { width: 100%; height: 34px; padding: 0 8px; font-size: 12.5px; border-radius: 8px; }
+.ecv-sheet td:nth-child(1) { min-width: 130px; } .ecv-sheet td:nth-child(2), .ecv-sheet td:nth-child(3) { min-width: 100px; }
+.ecv-sheet td:nth-child(4), .ecv-sheet td:nth-child(5) { min-width: 170px; } .ecv-sheet td:nth-child(6) { min-width: 130px; } .ecv-sheet td:nth-child(7) { min-width: 120px; }
+.ecv-sheet td:nth-child(8), .ecv-sheet td:nth-child(9), .ecv-sheet td:nth-child(10), .ecv-sheet td:nth-child(11), .ecv-sheet td:nth-child(12) { min-width: 84px; }
+.ecv-sheet td:nth-child(14) { min-width: 150px; }
+.ecv-grand { text-align: right; font-weight: 700; padding-right: 10px !important; white-space: nowrap; min-width: 110px; }
+.ecv-x { border: 0; background: transparent; font-size: 20px; line-height: 1; color: var(--text-muted); cursor: pointer; padding: 0 8px; }
+.ecv-x:hover:not(:disabled) { color: #b42318; }
+.ecv-x:disabled { opacity: .3; cursor: not-allowed; }
+.ecv-dlg-actions { display: flex; align-items: center; gap: 14px; }
+.ecv-dlg-bad { font-size: 12.5px; color: #b42318; }
+.ecv-dlg-total { margin-right: auto; font-size: 13.5px; }
+
+/* New conveyance claim popup: one card per journey. */
+.ecv-card { border: 1px solid var(--border); border-radius: 14px; background: var(--surface-1, #fff); overflow: hidden; }
+.ecv-card > header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface-2, #f7f9fb); border-bottom: 1px solid var(--border); font-size: 13px; }
+.ecv-card-sum { margin-left: auto; font-weight: 700; }
+.ecv-card > header .ecv-x { padding: 0 4px; }
+.ecv-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 14px; padding: 14px 16px 16px; }
+@media (max-width: 760px) { .ecv-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ecv-f { display: grid; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); min-width: 0; align-content: start; }
+.ecv-f input, .ecv-f select { width: 100%; height: 38px; font-size: 13px; font-weight: 400; }
+.ecv-w2 { grid-column: span 2; } .ecv-w4 { grid-column: 1 / -1; }
+.ecv-ro { background: var(--surface-2, #f1f4f8); font-weight: 700; }
+
+/* The popup body scrolls inside the dialog, so its footer is never pushed off the bottom. */
+.ecv-dlg-body { overflow-y: auto; min-height: 0; }
+
+/* Cards must keep their own height: an overflow:hidden grid item may otherwise shrink to fit the popup instead of letting it scroll. */
+.ecv-dlg-body { grid-auto-rows: max-content; align-content: start; }
+.ecv-hint { font-size: 10.5px; font-weight: 400; color: var(--text-muted); }
+
+.ecv-addbar { display: flex; margin-bottom: 12px; }

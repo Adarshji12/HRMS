@@ -19,7 +19,7 @@
       wording here, and the ledger shows waived rows distinctly, because
       reporting a written-down amount as recovered would overstate collections. */
 
-import { Fragment, useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { money, toPaise } from '../../../lib/format'
@@ -31,6 +31,7 @@ import type {
   LoanType,
 } from '../../../lib/types'
 import { FieldSettings, useFieldModes, type FieldDef, type FieldSection } from '../../../components/ViewSettings'
+import { Dialog } from '../../crm/parts'
 import '../../../styles/loans.css'
 
 const REQUEST_FIELDS: FieldDef[] = [
@@ -112,6 +113,7 @@ export default function MyLoans() {
 
       {asking && (
         <RequestForm
+          onClose={() => setAsking(false)}
           onDone={() => { setAsking(false); reload() }}
           onError={setError}
         />
@@ -560,9 +562,11 @@ function Repay({
 
 function RequestForm({
   onDone,
+  onClose,
   onError,
 }: {
   onDone: () => void
+  onClose: () => void
   onError: (message: string) => void
 }) {
   const [loanType, setLoanType] = useState<LoanType>('salary_advance')
@@ -618,27 +622,33 @@ function RequestForm({
     ),
   }
 
+  const labels: Record<string, string> = {
+    type: 'Type', amount: 'Amount (₹)', months: 'Number of months', purpose: rq('purpose') ? 'What is it for? *' : 'What is it for?',
+  }
   return (
-    <section className="card ln-request">
-      <h2 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        Request an advance
-        <FieldSettings defs={REQUEST_FIELDS} sections={REQUEST_SECTIONS} modes={fields.modes} order={fields.order}
-                       onSave={fields.save} onReset={fields.reset} title="Request fields" />
-      </h2>
-      <div className="ln-row">
-        {fields.orderOf('request').map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)}
-        <button className="btn primary" disabled={!ready || busy} onClick={submit}>
-          {busy ? 'Sending…' : 'Request'}
-        </button>
+    <Dialog title="Request an advance" subtitle="An administrator sanctions the amount and the term; it is deducted from payroll." onClose={onClose}
+            footer={<>
+              <button className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!ready || busy} onClick={submit}>{busy ? 'Sending…' : 'Request'}</button>
+            </>}>
+      <div className="ln-dlg">
+        <div className="lf-settings">
+          <FieldSettings defs={REQUEST_FIELDS} sections={REQUEST_SECTIONS} modes={fields.modes} order={fields.order}
+                         onSave={fields.save} onReset={fields.reset} title="Request fields" />
+        </div>
+        <div className="ln-dlg-grid">
+          {fields.orderOf('request').map((key) => fieldNodes[key] && (
+            <label className="setting" key={key}>{labels[key]}{fieldNodes[key]}</label>
+          ))}
+        </div>
+        {missing && <p className="muted">Fill in the fields marked <b className="lf-req">*</b>.</p>}
+        {ready && (
+          <p className="muted">
+            Roughly {money(Math.round((paise as number) / months))} a month for{' '}
+            {months} months, deducted from payroll.
+          </p>
+        )}
       </div>
-      {missing && <p className="muted">Fill in the fields marked <b className="lf-req">*</b>.</p>}
-      {ready && (
-        <p className="muted">
-          Roughly {money(Math.round((paise as number) / months))} a month for{' '}
-          {months} months, deducted from payroll. An administrator sanctions the
-          amount and the term.
-        </p>
-      )}
-    </section>
+    </Dialog>
   )
 }

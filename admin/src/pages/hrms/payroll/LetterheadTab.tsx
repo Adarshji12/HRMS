@@ -5,6 +5,7 @@ import { api, postHtml } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { ErrorNote, Loading } from '../../../components/ui'
 import { Dialog } from '../../crm/parts'
+import TemplateThumb from './TemplateThumb'
 import '../../../styles/payroll.css'
 
 interface Settings {
@@ -141,16 +142,13 @@ export default function LetterheadTab() {
           <h2 className="card-title">Letterhead templates</h2>
           <span className="muted-sm">Prints on every letter — offer, confirmation, experience, relieving</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginTop: 12 }}>
           {data.templates.map((t) => {
             const on = saved.template === t.key
             return (
               <article key={t.key} style={{ border: `2px solid ${on ? 'var(--status-good, #0f9d8a)' : 'var(--border)'}`, borderRadius: 12, padding: 10, display: 'grid', gap: 8, cursor: 'pointer' }}
                        onClick={() => void open(t.key)}>
-                <div style={{ height: 230, overflow: 'hidden', background: '#eef2f6', borderRadius: 8 }}>
-                  {thumbs[t.key] ? <iframe title={t.name} srcDoc={thumbs[t.key]} tabIndex={-1}
-                                           style={{ width: 800, height: 1100, border: 0, transform: 'scale(.26)', transformOrigin: 'top left', pointerEvents: 'none' }} /> : <Loading />}
-                </div>
+                <TemplateThumb html={thumbs[t.key]} title={t.name} />
                 <div><b>{t.name}</b><div className="muted-sm">{t.blurb}</div></div>
                 <button className={`btn small ${on ? '' : 'btn-primary'}`} disabled={on || busy}
                         onClick={(e) => { e.stopPropagation(); void save({ ...draft, template: t.key }) }}>{on ? 'In use' : 'Use'}</button>

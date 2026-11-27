@@ -37,3 +37,23 @@ def test_old_positions_are_last_seen_and_bad_points_are_refused(client, tenants)
     assert mine["state"] == "earlier" and mine["moving"] is False
     bad = client.post("/api/v1/location/pings", json={"points": [{"lat": 123, "lng": 0}]}, headers=acme.headers(acme.employee_token))
     assert bad.status_code == 422
+
+
+def test_hr_can_switch_gps_tracking_off_for_the_company(client, tenants):
+    """On by default; with it off the server keeps no pings, and only an administrator can change it."""
+    acme, _ = tenants
+    assert client.get("/api/v1/attendance/settings", headers=acme.headers(acme.employee_token)).json()["gps_tracking_enabled"] is True
+
+    denied = client.put("/api/v1/attendance/settings", json={"gps_tracking_enabled": False}, headers=acme.headers(acme.employee_token))
+    assert denied.status_code in (401, 403)
+
+    off = client.put("/api/v1/attendance/settings", json={"gps_tracking_enabled": False}, headers=acme.headers())
+    assert off.status_code == 200 and off.json()["gps_tracking_enabled"] is False
+    at = datetime.now(timezone.utc).isoformat()
+    sent = client.post("/api/v1/location/pings", json={"points": [{"lat": 28.6, "lng": 77.2, "at": at}]}, headers=acme.headers(acme.employee_token))
+    assert sent.status_code == 200 and sent.json() == {"saved": 0, "enabled": False}
+
+    on = client.put("/api/v1/attendance/settings", json={"gps_tracking_enabled": True}, headers=acme.headers())
+    assert on.json()["gps_tracking_enabled"] is True
+    kept = client.post("/api/v1/location/pings", json={"points": [{"lat": 28.6, "lng": 77.2, "at": at}]}, headers=acme.headers(acme.employee_token))
+    assert kept.json()["saved"] == 1

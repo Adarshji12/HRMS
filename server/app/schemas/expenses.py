@@ -187,6 +187,12 @@ class ClaimOut(ORMModel):
     project_id: uuid.UUID | None = None
     claim_type: str = "general"
     employee_grade: str | None = None
+    #: The claimant's own details, read from their profile, for the approver: code, designation (their grade),
+    #: department and work location.
+    user_code: str | None = None
+    user_designation: str | None = None
+    user_department: str | None = None
+    user_location: str | None = None
     work_location: str | None = None
     project_label: str | None = None
     status: str

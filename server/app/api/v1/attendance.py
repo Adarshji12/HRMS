@@ -542,6 +542,7 @@ def get_settings(viewer: CurrentUser, db: DbSession) -> AttendanceSettingsOut:
         geofence_office=row.geofence_office if row else None,
         geofence_work_from_home=row.geofence_work_from_home if row else None,
         geofence_on_duty=row.geofence_on_duty if row else None,
+        gps_tracking_enabled=row.gps_tracking_enabled if row else True,
         overtime_enabled=row.overtime_enabled if row else True,
         overtime_min_minutes=row.overtime_min_minutes if row else 0,
         overtime_on_off_days=row.overtime_on_off_days if row else True,
@@ -583,6 +584,7 @@ def put_settings(
             "manual_mobile_enabled": payload.manual_mobile_enabled,
             "face_enabled": payload.face_enabled,
             "biometric_enabled": payload.biometric_enabled,
+            "gps_tracking_enabled": payload.gps_tracking_enabled,
         },
         overtime={
             "overtime_enabled": payload.overtime_enabled,
@@ -615,6 +617,7 @@ def put_settings(
         geofence_office=row.geofence_office,
         geofence_work_from_home=row.geofence_work_from_home,
         geofence_on_duty=row.geofence_on_duty,
+        gps_tracking_enabled=row.gps_tracking_enabled,
         overtime_enabled=row.overtime_enabled,
         overtime_min_minutes=row.overtime_min_minutes,
         overtime_on_off_days=row.overtime_on_off_days,

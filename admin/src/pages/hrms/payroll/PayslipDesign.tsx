@@ -6,6 +6,7 @@ import { useQuery } from '../../../lib/useQuery'
 import { ErrorNote, Loading } from '../../../components/ui'
 import { Dialog } from '../../crm/parts'
 import LetterheadTab from './LetterheadTab'
+import TemplateThumb from './TemplateThumb'
 import '../../../styles/payroll.css'
 import '../../../styles/leavedesk.css'
 
@@ -27,16 +28,6 @@ function pick(s: Settings): Draft {
   const out: Record<string, unknown> = { template: s.template }
   for (const k of TEXT_KEYS) out[k] = s[k]
   return out as unknown as Draft
-}
-
-function Thumb({ html }: { html: string | undefined }) {
-  return (
-    <div style={{ height: 210, overflow: 'hidden', background: '#eef2f6', borderRadius: 8, position: 'relative' }}>
-      {html ? <iframe title="Template" srcDoc={html} tabIndex={-1}
-                      style={{ width: 800, height: 1100, border: 0, transform: 'scale(.26)', transformOrigin: 'top left', pointerEvents: 'none' }} />
-        : <Loading />}
-    </div>
-  )
 }
 
 function openForPrint(html: string) {
@@ -148,13 +139,13 @@ function PayslipTab() {
           <h2 className="card-title">Payslip templates</h2>
           <span className="muted-sm">Prints on every payslip and payslip email</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginTop: 12 }}>
           {data.templates.map((t) => {
             const on = saved.template === t.key
             return (
               <article key={t.key} style={{ border: `2px solid ${on ? 'var(--status-good, #0f9d8a)' : 'var(--border)'}`, borderRadius: 12, padding: 10, display: 'grid', gap: 8, cursor: 'pointer' }}
                        onClick={() => void open(t.key)}>
-                <Thumb html={thumbs[t.key]} />
+                <TemplateThumb html={thumbs[t.key]} title={t.name} />
                 <div><b>{t.name}</b><div className="muted-sm">{t.blurb}</div></div>
                 <button className={`btn small ${on ? '' : 'btn-primary'}`} disabled={on || busy}
                         onClick={(e) => { e.stopPropagation(); void save({ ...draft, template: t.key }) }}>{on ? 'In use' : 'Use'}</button>

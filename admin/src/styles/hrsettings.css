@@ -342,3 +342,9 @@
   .hs > .hs-tabs { flex-direction: row; width: auto; align-self: stretch; position: static; overflow-x: auto; }
   .hs > .hs-tabs .hs-tab { width: auto; }
 }
+
+/* The company GPS tracking switch row. */
+.hs-gps-row { display: flex; align-items: center; gap: 14px; padding: 16px 20px; }
+.hs-gps-row .hs-method-titles { flex: 1; min-width: 0; }
+.hs-gps-row .hs-method-titles h2 { margin: 0; font-size: 15px; }
+.hs-gps-row .hs-method-titles p { margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
