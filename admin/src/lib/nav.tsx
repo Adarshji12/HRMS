@@ -284,19 +284,6 @@ export const NAV: NavGroup[] = [
       { to: '/helpdesk/queue', label: 'Ticket queue', icon: IconInfo, teamOnly: true },
     ],
   },
-  /* No `page:` keys, for the same reason the modules above have none:
-     PAGE_GUARDS has no onboarding or offboarding entry, and a key with no guard
-     behind it hides the link while leaving the data reachable. */
-  {
-    heading: 'Joiners & Leavers',
-    key: 'lifecycle',
-    icon: IconSitemap,
-    items: [
-      { to: '/my-onboarding', label: 'My onboarding', icon: IconSheet },
-      { to: '/onboarding', label: 'Onboarding', icon: IconUsers, adminOnly: true },
-      { to: '/offboarding', label: 'Offboarding', icon: IconReturn, adminOnly: true },
-    ],
-  },
   /* CRM. The only module in this rail that faces outward — everything above it
      is about the people who work here, this one is about the people who buy.
      It carries its own Settings row rather than joining the Settings module
@@ -320,7 +307,7 @@ export const NAV: NavGroup[] = [
       { to: '/crm/support', label: 'My Support Desk', icon: IconLifebuoy },
       { to: '/crm/customers', label: 'My Customers', icon: IconBuilding },
       /* Opens a new quotation; the row stays lit in the builder and the list. */
-      { to: '/crm/quotations', label: 'Quatation', icon: IconSheet },
+      { to: '/crm/quotations', label: 'Quotation', icon: IconSheet },
       { to: '/crm/settings', label: 'Setting', icon: IconGear, adminOnly: true },
     ],
   },
@@ -357,7 +344,7 @@ export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/tracking', label: 'Employee Tracking', icon: IconPin, end: true, teamOnly: true },
   { to: '/hrms/leave', label: 'Leave', icon: IconReturn, end: true, teamOnly: true },
   { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },
-  { to: '/salary', adminTo: '/payroll/overview', label: 'Payroll', icon: IconSheet, end: true },
+  { to: '/payslips', adminTo: '/payroll/overview', label: 'Payroll', icon: IconSheet, end: true },
   { to: '/expenses', label: 'Expense', icon: IconCard, end: true },
   { to: '/hrms/settings', label: 'HR Settings', icon: IconGear, end: true },
 ]

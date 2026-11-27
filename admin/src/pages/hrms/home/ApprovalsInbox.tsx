@@ -338,7 +338,10 @@ export default function ApprovalsInbox() {
      So these two check their own flag and nothing else — the same rule the
      services enforce, rather than a stricter one invented here that would hide
      rows the server would happily have decided. */
-  const mayExpense = permits(user, 'can_approve_expenses') && tabOpen('expense')
+  const mayDecideExpenses = permits(user, 'can_approve_expenses')
+  const mayExpense = mayDecideExpenses && tabOpen('expense')
+  // Local conveyance claims have their own tab, so a role can be given one queue without the other.
+  const mayConveyance = mayDecideExpenses && tabOpen('conveyance')
   const mayLoan = permits(user, 'can_approve_loans') && tabOpen('loan')
   /* Sales incentives are asked of the person's manager (or an administrator); the endpoint returns
      only the ones this reader may decide. */
@@ -354,9 +357,9 @@ export default function ApprovalsInbox() {
   const mayCostsheet = mayApproveCostsheets({ canViewTeam: isTeamViewer, menuRights: user?.menu_rights ?? null })
   const costsheetQ = useCostsheetQueue(mayCostsheet)
   const showCostsheets = mayCostsheet && !costsheetQ.error
-  const ticked = ['regularization', 'leave', 'timesheet', 'expense', 'loan', 'performance', 'incentive', 'costsheet'].some(tabTicked)
+  const ticked = ['regularization', 'leave', 'timesheet', 'expense', 'conveyance', 'loan', 'performance', 'incentive', 'costsheet'].some(tabTicked)
   const mayAnything =
-    mayLeave || mayReg || mayTimesheet || mayExpense || mayLoan || mayIncentive || mayReview || ticked
+    mayLeave || mayReg || mayTimesheet || mayExpense || mayConveyance || mayLoan || mayIncentive || mayReview || ticked
 
   /* The lanes fetch in parallel and fail independently. A leave outage must
      not hide the four regularizations that are also waiting. */
@@ -391,7 +394,7 @@ export default function ApprovalsInbox() {
   const expenseQ = useQuery<PendingClaim[]>(
     `inbox-expense:${reloadKey}`,
     () => api.get<PendingClaim[]>('/expenses/review'),
-    { enabled: mayExpense },
+    { enabled: mayExpense || mayConveyance },
   )
   const incentiveQ = useQuery<Array<{ id: string; user_id: string; name: string | null; period_year: number; period_month: number; target: number; achieved: number; amount: number; created_at: string | null }>>(
     `inbox-incentive:${reloadKey}`,
@@ -592,6 +595,7 @@ export default function ApprovalsInbox() {
 
     for (const row of expenseQ.data ?? []) {
       const conveyance = row.claim_type === 'conveyance'
+      if (conveyance ? !mayConveyance : !mayExpense) continue
       out.push({
         key: `expense:${row.id}`,
         lane: conveyance ? 'conveyance' : 'expense',
@@ -755,7 +759,7 @@ export default function ApprovalsInbox() {
     }
     return out.sort((a, b) => at(a) - at(b))
   }, [regQ.data, leaveQ.data, tsNowQ.data, tsPrevQ.data, expenseQ.data,
-      loanQ.data, reviewQ.data, incentiveQ.data, tz])
+      loanQ.data, reviewQ.data, incentiveQ.data, tz, mayExpense, mayConveyance])
 
   if (!mayAnything) {
     return (
@@ -813,7 +817,7 @@ export default function ApprovalsInbox() {
     (mayReg && regQ.loading) ||
     (mayLeave && leaveQ.loading) ||
     (mayTimesheet && (tsNowQ.loading || tsPrevQ.loading)) ||
-    (mayExpense && expenseQ.loading) ||
+    ((mayExpense || mayConveyance) && expenseQ.loading) ||
     (mayLoan && loanQ.loading) ||
     (mayIncentive && incentiveQ.loading) ||
     (mayReview && (cyclesQ.loading || reviewQ.loading))
@@ -878,7 +882,7 @@ export default function ApprovalsInbox() {
     { id: 'leave', allowed: mayLeave || tabTicked('leave') },
     { id: 'timesheet', allowed: mayTimesheet || tabTicked('timesheet') },
     { id: 'expense', allowed: mayExpense || tabTicked('expense') },
-    { id: 'conveyance', allowed: mayExpense || tabTicked('expense') },
+    { id: 'conveyance', allowed: mayConveyance || tabTicked('conveyance') },
     { id: 'loan', allowed: mayLoan || tabTicked('loan') },
     { id: 'incentive', allowed: mayIncentive || tabTicked('incentive') },
     { id: 'performance', allowed: mayReview || tabTicked('performance') },
@@ -934,7 +938,7 @@ export default function ApprovalsInbox() {
           Timesheets: {errorText(tsNowQ.error ?? tsPrevQ.error, 'could not be loaded')}
         </ErrorNote>
       )}
-      {mayExpense && expenseQ.error && (
+      {(mayExpense || mayConveyance) && expenseQ.error && (
         <ErrorNote>Expense claims: {errorText(expenseQ.error, 'could not be loaded')}</ErrorNote>
       )}
       {mayIncentive && incentiveQ.error && (

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models.user import UserStatus
 
@@ -124,6 +124,24 @@ class UserOut(ORMModel):
     @classmethod
     def _none_is_empty(cls, v: object) -> object:
         return v or []
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _flags_from_the_role(cls, value: object, handler):  # type: ignore[no-untyped-def]
+        """Report each ``can_*`` flag as the role answers it, not the stale column.
+
+        The columns default to True and are only the truth for people with no
+        named role; `User.has` is the single reading order. Without this an
+        employee on a role that grants nothing was told they could approve
+        everything, so the console showed them Approvals.
+        """
+        out = handler(value)
+        has = getattr(value, "has", None)
+        if callable(has):
+            for name in type(out).model_fields:
+                if name.startswith("can_"):
+                    setattr(out, name, bool(has(name)))
+        return out
 
 class UserWithKeyOut(UserOut):
     enrollment_key: str

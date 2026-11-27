@@ -5,7 +5,7 @@ import '../styles/tracking.css'
 import { useQuery } from '../lib/useQuery'
 import { IconPin } from './Icons'
 
-const KEY = 'hr.share-location'
+const KEY = 'hr.share-location.v2'
 const EVERY_MS = 60_000
 
 /**
@@ -13,7 +13,7 @@ const EVERY_MS = 60_000
  * open. It is a choice they make and can undo at any moment; nothing is read until it is on.
  */
 export default function LocationSharing() {
-  const [on, setOn] = useState(() => { try { return localStorage.getItem(KEY) === '1' } catch { return false } })
+  const [on, setOn] = useState(() => { try { return localStorage.getItem(KEY) !== '0' } catch { return true } })
   const [note, setNote] = useState<string | null>(null)
   const latest = useRef<GeolocationPosition | null>(null)
   // HR switches GPS tracking on or off for the whole company (HR Settings > Attendance). Off: no switch, no watching.

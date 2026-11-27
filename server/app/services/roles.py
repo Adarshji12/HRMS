@@ -167,7 +167,7 @@ def create_role(db: Session, org_id: uuid.UUID, *, name: str, description: str |
         base_role=base_role,
         data_scope=data_scope,
         permissions=clean_permissions(permissions),
-        menu_rights=clean_menu_rights(menu_rights),
+        menu_rights=clean_menu_rights(menu_rights, base_role, data_scope),
         is_builtin=False,
     )
     db.add(row)
@@ -235,7 +235,10 @@ def update_role(db: Session, org_id: uuid.UUID, role_id: uuid.UUID, *,
         if row.base_role == "owner":
             raise _refuse("owner_unrestricted",
                           "The owner always has every menu. Their access cannot be limited.")
-        row.menu_rights = clean_menu_rights(menu_rights)
+        row.menu_rights = clean_menu_rights(menu_rights, row.base_role, row.data_scope)
+    elif row.menu_rights is not None and (base_role is not None or data_scope is not None):
+        # A role lowered to a level that cannot use a menu loses the grant on it.
+        row.menu_rights = clean_menu_rights(row.menu_rights, row.base_role, row.data_scope)
     db.flush()
     return row
 

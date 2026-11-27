@@ -73,7 +73,7 @@ def _out(role, counts: dict[uuid.UUID, int]) -> RoleOut:
         base_role=role.base_role,
         data_scope=role.data_scope,
         permissions={key: bool(role.permissions.get(key)) for key in PERMISSION_KEYS},
-        menu_rights=role.menu_rights,
+        menu_rights=menus.normalise(role.menu_rights),
         is_builtin=role.is_builtin,
         member_count=counts.get(role.id, 0),
     )
@@ -109,6 +109,8 @@ class MenuOut(BaseModel):
     rights: list[str]
     #: Tabs a role can be limited to inside this screen.
     tabs: list[dict[str, str]] = []
+    #: The lowest level that can use this menu: team, admin, owner or None (everybody).
+    level: str | None = None
 
 
 class MenuGroupOut(BaseModel):
@@ -126,7 +128,7 @@ def list_menus(admin: AdminUser) -> list[MenuGroupOut]:
             key=g.key, label=g.label, description=g.description,
             menus=[MenuOut(key=m.key, label=m.label, parent=m.parent, note=m.note,
                            actions=list(m.actions), rights=list(m.rights),
-                           tabs=[{"key": k, "label": lab} for k, lab in m.tabs]) for m in g.menus],
+                           level=m.level, tabs=[{"key": k, "label": lab} for k, lab in m.tabs]) for m in g.menus],
         )
         for g in menus.GROUPS
     ]

@@ -59,7 +59,7 @@ const DESCRIPTIONS: Record<string, string> = {
   '/payroll/overview': 'Pay runs, payslips and salary structures',
   '/attendance': 'Daily punches, presence and regularisation',
   '/hrms/working-hours': 'Hours worked across the team',
-  '/salary': 'Salary structure, payslips and pay runs',
+  '/payslips': 'Salary structure, payslips and pay runs',
   '/expenses': 'Claims, approvals and reimbursements',
   '/settings/approvals': 'Who approves what, level by level',
   '/timesheets': 'Time logged against projects and tasks',

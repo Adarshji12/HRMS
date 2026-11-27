@@ -389,7 +389,7 @@ def enforce_menu_rights(
     role never restricted by menu (``menu_rights`` is None), or for a path that
     belongs to no menu. Reads are not checked here; see ``core.menus``.
     """
-    from app.core.menus import action_for, menu_for_write
+    from app.core.menus import action_for, menu_for_write, normalise
 
     # A WebSocket (the chat socket) has no method and is not a write; this
     # dependency sees it because it is attached to every route.
@@ -423,7 +423,7 @@ def enforce_menu_rights(
     action = action_for(method, remainder)
     if action is None:
         return
-    row = role.menu_rights.get(menu.key) or {}
+    row = (normalise(role.menu_rights) or {}).get(menu.key) or {}
     if not row.get("access"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,

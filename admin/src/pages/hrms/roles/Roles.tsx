@@ -54,6 +54,8 @@ interface MenuDef {
   rights: string[]
   /** Tabs a role can be limited to inside this screen (Approvals). */
   tabs?: Array<{ key: string; label: string }>
+  /** The lowest level that can use the menu: team, admin, owner, or null for everybody. */
+  level?: string | null
 }
 
 interface MenuGroup {
@@ -135,6 +137,16 @@ interface Draft {
   data_scope: string
   permissions: Record<string, boolean>
   rights: MenuRights
+}
+
+/** Why a role cannot use a menu, or null when it can. Ticking Access on a menu above the role's level would change
+ *  nothing for its people: the page stays hidden and the server refuses its data. */
+function whyBlocked(menu: MenuDef, baseRole: string, scope: string): string | null {
+  if (!menu.level) return null
+  const canTeam = baseRole === 'manager' || baseRole === 'admin' || scope !== 'self'
+  if (menu.level === 'team') return canTeam ? null : 'Needs a Team or Company data scope, or the Manager level'
+  if (menu.level === 'admin') return baseRole === 'admin' ? null : 'Administrator level only'
+  return 'The account owner only'
 }
 
 function allMenus(groups: MenuGroup[]): MenuDef[] {
@@ -443,6 +455,7 @@ function MenuMatrix({
   }
 
   function setRowAll(menu: MenuDef, value: boolean) {
+    if (value && whyBlocked(menu, draft.base_role, draft.data_scope)) return
     setRow(menu, fullRow(menu, value, true), Object.fromEntries(menu.rights.map((k) => [k, value])))
   }
 
@@ -450,8 +463,9 @@ function MenuMatrix({
     const rights: MenuRights = {}
     const perms: Record<string, boolean> = { ...draft.permissions }
     for (const m of menus) {
-      rights[m.key] = fullRow(m, value, true)
-      for (const k of m.rights) perms[k] = value
+      const on = value && !whyBlocked(m, draft.base_role, draft.data_scope)
+      rights[m.key] = fullRow(m, on, true)
+      for (const k of m.rights) perms[k] = on
     }
     setDraft({ ...draft, rights, permissions: perms })
   }
@@ -511,7 +525,7 @@ function MenuMatrix({
                   <span role="columnheader" className="r">Select all</span>
                 </div>
                 {g.menus.map((m) => (
-                  <MenuRow key={m.key} baseRole={draft.base_role} menu={m} icon={<Icon size={15} />} row={draft.rights[m.key] ?? { access: false }}
+                  <MenuRow key={m.key} baseRole={draft.base_role} scope={draft.data_scope} menu={m} icon={<Icon size={15} />} row={draft.rights[m.key] ?? { access: false }}
                            perms={draft.permissions} locked={locked} setRow={setRow} setRowAll={setRowAll} commitRow={commitRow} />
                 ))}
               </div>
@@ -524,9 +538,10 @@ function MenuMatrix({
 }
 
 function MenuRow({
-  menu, icon, row, perms, locked, setRow, setRowAll, commitRow, baseRole,
+  menu, icon, row, perms, locked, setRow, setRowAll, commitRow, baseRole, scope,
 }: {
   baseRole: string
+  scope: string
   commitRow: (menu: MenuDef, row: MenuRight) => void
   menu: MenuDef
   icon: ReactNode
@@ -536,20 +551,24 @@ function MenuRow({
   setRow: (menu: MenuDef, row: MenuRight, perms?: Record<string, boolean>) => void
   setRowAll: (menu: MenuDef, value: boolean) => void
 }) {
-  const off = !row.access
+  const blockedWhy = whyBlocked(menu, baseRole, scope)
+  const blocked = blockedWhy !== null
+  // A menu above the role's level is shown off whatever was ticked before: it cannot take effect.
+  const off = !row.access || blocked
   return (
-    <div className={`rp-row${menu.parent ? ' is-child' : ''}${off ? ' is-off' : ''}`} role="row">
+    <div className={`rp-row${menu.parent ? ' is-child' : ''}${off ? ' is-off' : ''}${blocked ? ' is-blocked' : ''}`} role="row">
       <span className="rp-menu" role="cell">
         <span className="rp-menu-icon" aria-hidden>{icon}</span>
         <span className="rp-menu-text">
           <span className="rp-menu-name">{menu.label}</span>
           {menu.note && <span className="rp-menu-path">{menu.note}</span>}
+          {blocked && <span className="rp-lock" title={blockedWhy ?? undefined}>{blockedWhy}</span>}
         </span>
       </span>
 
       <span className="c" role="cell">
-        <button type="button" role="switch" aria-checked={row.access} aria-label={`Access to ${menu.label}`}
-                className={`rp-switch${row.access ? ' is-on' : ''}`} disabled={locked}
+        <button type="button" role="switch" aria-checked={row.access && !blocked} aria-label={`Access to ${menu.label}`}
+                className={`rp-switch${row.access && !blocked ? ' is-on' : ''}`} disabled={locked || blocked} title={blockedWhy ?? undefined}
                 onClick={() => {
                   // Closing a menu takes everything inside it with it.
                   if (row.access) setRow(menu, fullRow(menu, false), Object.fromEntries(menu.rights.map((k) => [k, false])))
@@ -591,7 +610,7 @@ function MenuRow({
       </span>
 
       <span className="r rp-selectall" role="cell">
-        <button type="button" className="rp-mini" disabled={locked} onClick={() => setRowAll(menu, true)}>All</button>
+        <button type="button" className="rp-mini" disabled={locked || blocked} onClick={() => setRowAll(menu, true)}>All</button>
         <button type="button" className="rp-mini" disabled={locked} onClick={() => setRowAll(menu, false)}>None</button>
       </span>
     </div>
