@@ -399,9 +399,6 @@ export default function Hierarchy() {
 
               {editable && (
                 <>
-                  <button className="btn" onClick={() => setDialog({ manager: null })}>
-                    Assign top-level manager
-                  </button>
                   <button className="btn" onClick={() => setDialog({ manager: undefined, from: '' })}>
                     Mass transfer
                   </button>

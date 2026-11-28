@@ -2,7 +2,7 @@
  *
  * There is no single HR summary endpoint, so this page reads the ones each
  * module already serves — employees, departments, today's attendance, the
- * approvals counts, leave, onboarding, exits, probation, documents, payroll,
+ * approvals counts, leave, probation, documents, payroll,
  * helpdesk — and lays them out as one overview.
  *
  * Every read is soft: a call the viewer has no right to, or one that fails,
@@ -22,8 +22,8 @@ import type { ApprovalCounts, Department, EmployeeDocument, EmployeeProfile, Use
 import { Avatar, Loading } from '../../../components/ui'
 import { Donut, type Slice } from '../../../components/charts'
 import {
-  IconAlert, IconBuilding, IconCheck, IconChevronRight, IconClock, IconLifebuoy, IconMail,
-  IconPlus, IconReturn, IconSheet, IconStar, IconUsers,
+  IconAlert, IconBuilding, IconCheck, IconChevronRight, IconClock, IconLifebuoy,
+  IconPlus, IconReturn, IconStar, IconUsers,
 } from '../../../components/Icons'
 
 /* ------------------------------------------------------------- shapes --- */
@@ -42,17 +42,6 @@ interface LeaveOverview {
     user_id: string; user_name: string; leave_type_name: string
     start_date: string; end_date: string; is_half_day: boolean
   }>
-}
-
-interface Onboarding {
-  id: string; user_name: string | null; designation_name: string | null; joining_date: string
-  status: string; total_tasks: number; closed_tasks: number; overdue_tasks: number
-}
-
-interface ExitRequest {
-  id: string; user_name: string | null; designation_name: string | null
-  last_working_day: string | null; status: string; task_total: number; task_settled: number
-  blocking_task_count: number
 }
 
 interface PayRun {
@@ -94,11 +83,6 @@ export default function HrDashboard() {
       ? api.get<LeaveOverview>(
         `/leave/overview?year=${now.getFullYear()}&month=${now.getMonth() + 1}&window_start=${today}&window_end=${plusDays(today, 7)}`)
       : Promise.resolve(null)))
-  const onboarding = useQuery('hrd-onboarding', soft(() =>
-    admin ? api.get<Onboarding[]>('/onboarding/instances') : Promise.resolve(null)))
-  const exits = useQuery('hrd-exits', soft(() =>
-    admin ? api.get<ExitRequest[]>('/offboarding/requests?open_only=true') : Promise.resolve(null)))
-  // The warning windows come from HR Settings → General.
   const hrs = useQuery('hrd-settings', soft(() =>
     api.get<{ probation_warn_days: number; document_warn_days: number; birthday_lookahead_days: number }>('/hr/settings')))
   const probWin = hrs.data?.probation_warn_days ?? 30
@@ -142,19 +126,16 @@ export default function HrDashboard() {
   const away = leave.data?.on_leave ?? []
   const awayToday = away.filter((a) => a.start_date <= today && a.end_date >= today)
 
-  const openOnboarding = (onboarding.data ?? []).filter((o) => o.status !== 'completed' && o.status !== 'cancelled')
-  const openExits = exits.data ?? []
   const latestRun = [...(payruns.data ?? [])]
     .sort((a, b) => b.period_year * 100 + b.period_month - (a.period_year * 100 + a.period_month))[0]
   const openTickets = tickets.data ?? null
 
   const kpis: Array<{ label: string; value: ReactNode; hint: string; tone: string; to?: string; icon: ReactNode }> = [
     { label: 'Headcount', value: headcount, hint: preJoining ? `${preJoining} pre-joining` : 'Active employees', tone: 'brand', to: '/employees', icon: <IconUsers size={16} /> },
-    { label: 'New joiners', value: joinedThisMonth.length, hint: `Joined in ${MONTHS[now.getMonth()]}`, tone: 'good', to: '/hrms/joiners-letters', icon: <IconPlus size={16} /> },
+    { label: 'New joiners', value: joinedThisMonth.length, hint: `Joined in ${MONTHS[now.getMonth()]}`, tone: 'good', to: '/employees', icon: <IconPlus size={16} /> },
     { label: 'Present today', value: rows ? present.length : '—', hint: rows ? `${late} late · ${headcount ? Math.round((present.length / headcount) * 100) : 0}% in` : 'Not available', tone: 'good', to: team ? '/attendance/team' : undefined, icon: <IconCheck size={16} /> },
-    { label: 'On leave today', value: leave.data ? awayToday.length : rows ? onLeaveRows : '—', hint: `${away.length} away in the next 7 days`, tone: 'warn', to: team ? '/workforce' : undefined, icon: <IconReturn size={16} /> },
+    { label: 'On leave today', value: leave.data ? awayToday.length : rows ? onLeaveRows : '—', hint: `${away.length} away in the next 7 days`, tone: 'warn', to: team ? '/attendance/team' : undefined, icon: <IconReturn size={16} /> },
     { label: 'Pending approvals', value: approvals.data?.total ?? '—', hint: 'Waiting on a decision', tone: (approvals.data?.total ?? 0) > 0 ? 'bad' : 'idle', to: '/approvals', icon: <IconClock size={16} /> },
-    { label: 'Exits in progress', value: exits.data ? openExits.length : '—', hint: exits.data ? 'Open offboarding' : 'Admins only', tone: 'idle', to: admin ? '/offboarding' : undefined, icon: <IconSheet size={16} /> },
   ]
 
   const slices: Slice[] = [
@@ -282,7 +263,7 @@ export default function HrDashboard() {
           )}
         </Panel>
 
-        <Panel title="Who’s away" note="Today and the next 7 days" link={team ? { to: '/workforce', label: 'Workforce' } : undefined}>
+        <Panel title="Who’s away" note="Today and the next 7 days" link={team ? { to: '/attendance/team', label: 'Team attendance' } : undefined}>
           {!leave.data ? <NA what="Leave is visible to managers and administrators." /> : away.length === 0 ? (
             <p className="hrd-empty">Nobody is on approved leave this week.</p>
           ) : (
@@ -356,65 +337,6 @@ export default function HrDashboard() {
         </Panel>
       </div>
 
-      {/* ------------------------------------------- onboarding + exits */}
-      <div className="hrd-row hrd-row-2">
-        <Panel title="Onboarding in progress" link={admin ? { to: '/onboarding', label: 'Onboarding' } : undefined}>
-          {!onboarding.data ? <NA what="Onboarding is for administrators." /> : openOnboarding.length === 0 ? (
-            <p className="hrd-empty">No joiners being onboarded right now.</p>
-          ) : (
-            <ul className="hrd-progress">
-              {openOnboarding.slice(0, 5).map((o) => {
-                const pct = o.total_tasks ? Math.round((o.closed_tasks / o.total_tasks) * 100) : 0
-                return (
-                  <li key={o.id}>
-                    <Avatar name={o.user_name ?? '?'} small />
-                    <span className="hrd-person">
-                      <span className="hrd-person-name">{o.user_name ?? 'New joiner'}</span>
-                      <span className="hrd-person-meta">
-                        {o.designation_name ?? 'Joining'} · {shortDate(o.joining_date)}
-                        {o.overdue_tasks > 0 && <span className="hrd-late"> · {o.overdue_tasks} overdue</span>}
-                      </span>
-                    </span>
-                    <span className="hrd-meter">
-                      <span className="hrd-meter-track"><span style={{ width: `${pct}%` }} /></span>
-                      <span className="hrd-meter-text">{o.closed_tasks}/{o.total_tasks}</span>
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </Panel>
-
-        <Panel title="Exits in progress" link={admin ? { to: '/offboarding', label: 'Offboarding' } : undefined}>
-          {!exits.data ? <NA what="Offboarding is for administrators." /> : openExits.length === 0 ? (
-            <p className="hrd-empty">Nobody is serving notice.</p>
-          ) : (
-            <ul className="hrd-progress">
-              {openExits.slice(0, 5).map((x) => {
-                const pct = x.task_total ? Math.round((x.task_settled / x.task_total) * 100) : 0
-                return (
-                  <li key={x.id}>
-                    <Avatar name={x.user_name ?? '?'} small />
-                    <span className="hrd-person">
-                      <span className="hrd-person-name">{x.user_name ?? 'Employee'}</span>
-                      <span className="hrd-person-meta">
-                        Last day {x.last_working_day ? shortDate(x.last_working_day) : 'not set'}
-                        {x.blocking_task_count > 0 && <span className="hrd-late"> · {x.blocking_task_count} blocking</span>}
-                      </span>
-                    </span>
-                    <span className="hrd-meter is-exit">
-                      <span className="hrd-meter-track"><span style={{ width: `${pct}%` }} /></span>
-                      <span className="hrd-meter-text">{x.task_settled}/{x.task_total}</span>
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </Panel>
-      </div>
-
       {/* --------------------------------- joiners + payroll + helpdesk */}
       <div className="hrd-row hrd-row-wide">
         <Panel title="Recent joiners" link={{ to: '/employees', label: 'All employees' }}>
@@ -483,9 +405,7 @@ export default function HrDashboard() {
             )}
           </Panel>
           <div className="hrd-shortcuts">
-            <Link to="/hrms/joiners-letters" className="hrd-shortcut"><IconMail size={15} /> Letters</Link>
             <Link to="/hierarchy" className="hrd-shortcut"><IconBuilding size={15} /> Hierarchy</Link>
-            <Link to="/noticeboard" className="hrd-shortcut"><IconSheet size={15} /> Noticeboard</Link>
           </div>
         </div>
       </div>

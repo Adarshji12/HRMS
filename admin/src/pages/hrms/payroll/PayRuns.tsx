@@ -120,7 +120,8 @@ function RunsList({ runs, loading, error, onOpen, onReload }: {
     setBusy(true); setFail(null)
     try {
       let run = runs.find((r) => r.period_year === year && r.period_month === month)
-      if (!run) run = await api.post<PayRun>('/payruns', { period_year: year, period_month: month, pay_date: null })
+      // A cancelled month is opened afresh by the server, so it can be run again.
+      if (!run || run.status === 'cancelled') run = await api.post<PayRun>('/payruns', { period_year: year, period_month: month, pay_date: null })
       if (run.status === 'draft' || run.status === 'computed') {
         await api.post(`/payruns/${run.id}/compute`, { overrides: [] })
       }
@@ -527,15 +528,19 @@ function RunBody({
   const [busy, setBusy] = useState(false)
   const [reference, setReference] = useState('')
   const [openSlip, setOpenSlip] = useState<string | null>(null)
+  // A refusal is also shown beside the buttons: the page-level banner is at the top, out of sight when this is scrolled.
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const act = useCallback(
     async (run: () => Promise<unknown>) => {
       setBusy(true)
+      setActionError(null)
       try {
         await run()
         detailQ.reload()
         onChanged()
       } catch (caught) {
+        setActionError((caught as Error).message)
         onError((caught as Error).message)
       } finally {
         setBusy(false)
@@ -631,6 +636,7 @@ function RunBody({
       {openSlip && <PayslipDetail payslipId={openSlip} onError={onError} />}
 
       <div className="pr-actions">
+        {actionError && <ErrorNote>{actionError}</ErrorNote>}
         <div className="pr-actions-row">
           {run.can_compute && (
             <button className="btn primary" disabled={busy}

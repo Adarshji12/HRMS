@@ -547,6 +547,28 @@ def test_cancelling_removes_the_payslips(client, tenants):
         assert db.scalars(select(Payslip)).all() == []
 
 
+def test_a_cancelled_month_can_be_run_again(client, tenants):
+    acme, _ = tenants
+    catalogue = _catalogue(client, acme)
+    _salary(client, acme, acme.employee.id, catalogue)
+    run = _run(client, acme)
+    _computed(client, acme, run["id"])
+    client.post(f"/api/v1/payruns/{run['id']}/cancel", headers=acme.headers())
+
+    again = client.post("/api/v1/payruns", headers=acme.headers(),
+                        json={"period_year": run["period_year"], "period_month": run["period_month"]})
+    assert again.status_code == 201, again.text
+    body = again.json()
+    assert body["status"] == "draft" and body["employee_count"] == 0 and body["id"] == run["id"]
+    assert body["can_compute"] is True
+    # ...and it computes like any new month.
+    assert _computed(client, acme, run["id"])["employee_count"] == 1
+    # A live run still blocks a second one.
+    blocked = client.post("/api/v1/payruns", headers=acme.headers(),
+                          json={"period_year": run["period_year"], "period_month": run["period_month"]})
+    assert blocked.status_code == 409
+
+
 # --------------------------------------------------------------------------- #
 # 6. Access
 # --------------------------------------------------------------------------- #

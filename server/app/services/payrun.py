@@ -243,6 +243,24 @@ def create_run(
             PayRun.period_month == payload.period_month,
         )
     )
+    if existing is not None and existing.status_enum is PayRunStatus.CANCELLED:
+        # A cancelled month can be run again. The one-run-per-month index keeps the row, so it is reopened as a fresh
+        # draft: its payslips went with the cancel, and nothing from the abandoned attempt is carried over.
+        existing.status = PayRunStatus.DRAFT.value
+        existing.pay_date = payload.pay_date
+        existing.notes = (payload.notes or "").strip() or None
+        existing.total_gross = existing.total_deductions = existing.total_net = 0
+        existing.employee_count = 0
+        existing.computed_at = existing.computed_by = None
+        existing.approved_at = existing.approved_by = None
+        existing.paid_at = existing.paid_by = None
+        existing.payment_reference = None
+        audit(db, org_id=viewer.org_id, actor=viewer, action="payrun.reopened",
+              request=request, target_type="pay_run", target_id=str(existing.id),
+              detail={"period": f"{payload.period_year}-{payload.period_month:02d}"})
+        db.commit()
+        db.refresh(existing)
+        return existing
     if existing is not None:
         raise PayRunError(
             "run_exists",
