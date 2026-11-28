@@ -1400,3 +1400,19 @@ def test_leave_policy_flags_and_new_type_fields_round_trip(client, leave_org):
     assert edited.json()["offered_to"] == "male" and edited.json()["color"] == "#ff8800"
     assert client.post("/api/v1/leave/types", headers=tenant.headers(), json={
         "name": "X", "accrual_type": "none", "offered_to": "other"}).status_code == 422
+
+
+def test_a_contact_number_on_a_leave_application_must_be_ten_digits():
+    from datetime import date
+    import pytest
+    from pydantic import ValidationError
+    from app.schemas.leave import LeaveApplyIn
+
+    base = {"leave_type_id": "00000000-0000-0000-0000-000000000001", "start_date": date(2026, 12, 1), "end_date": date(2026, 12, 1)}
+    assert LeaveApplyIn(**base).contact_phone is None
+    assert LeaveApplyIn(**base, contact_phone="  ").contact_phone is None
+    assert LeaveApplyIn(**base, contact_phone="98765 43210").contact_phone == "9876543210"
+    assert LeaveApplyIn(**base, contact_phone="+91 98765-43210").contact_phone == "9876543210"
+    for bad in ("12345", "98765432101", "abcdefghij"):
+        with pytest.raises(ValidationError):
+            LeaveApplyIn(**base, contact_phone=bad)

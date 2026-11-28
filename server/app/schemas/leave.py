@@ -23,7 +23,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import ORMModel
 
@@ -265,6 +265,21 @@ class LeaveApplyIn(BaseModel):
     half_day_session: str | None = Field(default=None, pattern=r"^(first_half|second_half)$")
     reason: str | None = Field(default=None, max_length=2000)
     contact_phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("contact_phone")
+    @classmethod
+    def _contact_is_ten_digits(cls, v: str | None) -> str | None:
+        """Optional, but when given it is a 10-digit mobile number (a +91 or leading 0 is dropped)."""
+        if v is None or not v.strip():
+            return None
+        digits = "".join(ch for ch in v if ch.isdigit())
+        if digits.startswith("91") and len(digits) == 12:
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) == 11:
+            digits = digits[1:]
+        if len(digits) != 10:
+            raise ValueError("contact number must be 10 digits")
+        return digits
 
     @model_validator(mode="after")
     def _range_and_half_day_agree(self) -> "LeaveApplyIn":

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useQuery } from '../lib/useQuery'
 import { canAdminister, useAuth } from '../lib/auth'
@@ -111,6 +111,10 @@ export default function Employees() {
   const [departmentId, setDepartmentId] = useState('')
   const [role, setRole] = useState('')
   const [status, setStatus] = useState('active')
+  // The dashboard's "New joiners" tile arrives here with ?joined=month, so the list shows the same people it counted.
+  const [urlParams, setUrlParams] = useSearchParams()
+  const [joinedMonth, setJoinedMonth] = useState(urlParams.get('joined') === 'month')
+  const thisMonth = new Date().toISOString().slice(0, 7)
 
   /* Filtered in the browser, not re-fetched. The roster is loaded whole and is
      a few hundred rows at most, so a round trip per keystroke would be slower
@@ -123,6 +127,7 @@ export default function Employees() {
       if (role && e.role !== role) return false
       if (status === 'active' && !e.is_active) return false
       if (status === 'inactive' && e.is_active) return false
+      if (joinedMonth && !(e.joined_on ?? '').startsWith(thisMonth)) return false
       if (!needle) return true
       return (
         e.full_name.toLowerCase().includes(needle) ||
@@ -130,14 +135,16 @@ export default function Employees() {
         (e.employee_code ?? '').toLowerCase().includes(needle)
       )
     })
-  }, [data, q, teamId, departmentId, role, status])
+  }, [data, q, teamId, departmentId, role, status, joinedMonth, thisMonth])
 
-  const filtered = q || teamId || departmentId || role || status !== 'active'
+  const filtered = q || teamId || departmentId || role || status !== 'active' || joinedMonth
   /* How many popover filters differ from the defaults — the badge on the
      Filters button, so a narrowed list is never mistaken for the whole one. */
   const activeFilters = [teamId, departmentId, role].filter(Boolean).length + (status !== 'active' ? 1 : 0)
   const reset = () => {
     setQ(''); setTeamId(''); setDepartmentId(''); setRole(''); setStatus('active')
+    setJoinedMonth(false)
+    if (urlParams.has('joined')) setUrlParams({}, { replace: true })
   }
 
   /* The popover edits a draft and applies it on Search, so changing three
@@ -262,6 +269,11 @@ export default function Employees() {
             )}
           </div>
 
+          {joinedMonth && (
+            <button className="emp-reset" onClick={() => { setJoinedMonth(false); setUrlParams({}, { replace: true }) }} title="Show everyone again">
+              Joined this month &times;
+            </button>
+          )}
           <span className="emp-count">
             <strong>{rows.length}</strong> of {data.length}
           </span>

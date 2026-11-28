@@ -171,7 +171,7 @@ export const NAV: NavGroup[] = [
      the data reachable — see the note on NavItem.page above. `leave` HAS a
      guard, so the leave rows carry it and the attendance rows do not. */
   {
-    heading: 'Workforce Management',
+    heading: 'HRMS',
     key: 'workforce',
     icon: IconClock,
     items: [
@@ -340,7 +340,7 @@ export const NAV: NavGroup[] = [
 export const HRMS_NAV_ITEMS: NavItem[] = [
   { to: '/hrms', label: 'Overview', icon: IconDashboard, end: true },
   { to: '/hrms/dashboard', label: 'HR Dashboard', icon: IconDashboard, end: true },
-  { to: '/attendance', label: 'Attandance', icon: IconClock, end: true },
+  { to: '/attendance', label: 'Attendance', icon: IconClock, end: true },
   { to: '/tracking', label: 'Employee Tracking', icon: IconPin, end: true, teamOnly: true },
   { to: '/hrms/leave', label: 'Leave', icon: IconReturn, end: true, teamOnly: true },
   { to: '/hrms/working-hours', label: 'Working Hours', icon: IconGauge, teamOnly: true },

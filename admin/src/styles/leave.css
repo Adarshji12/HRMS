@@ -44,7 +44,7 @@
 
 /* -------------------------------------------------------------- balances --- */
 
-.lv-balances { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.lv-balances { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 
 .lv-bal { display: flex; flex-direction: column; gap: 10px; }
 .lv-bal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -190,3 +190,9 @@
 .card.lv-bal { padding: 10px 14px; gap: 6px; }
 .lv-bal-value { font-size: 22px; }
 .lv-bal-foot { padding-top: 0; }
+
+/* The New application button sits above the summary tiles, at the right. */
+.lv-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
+/* Inside the Apply for leave popup the form is the content itself, not a second card within a card. */
+.crm-dialog .lv-form { background: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; }

@@ -147,7 +147,7 @@ export default function CompanyOverview() {
             link={{ to: '/dashboards/hr', label: 'HR dashboard' }}>
         <div className="co-kpis">
           <Kpi label="Headcount" value={fmt(headcount)} hint={`${depts.length} departments`} tone="brand" to="/employees" icon={<IconUsers size={16} />} />
-          <Kpi label="New joiners" value={fmt(joiners)} hint="This month" tone="good" to="/employees" icon={<IconPlus size={16} />} />
+          <Kpi label="New joiners" value={fmt(joiners)} hint="This month" tone="good" to="/employees?joined=month" icon={<IconPlus size={16} />} />
           <Kpi label="On leave today" value={rows ? fmt(onLeave) : '—'} hint={rows ? `${absent} absent` : 'No attendance data'} tone={owed(onLeave, 'warn')} to="/dashboards/hr" icon={<IconClock size={16} />} />
           <Kpi label="Leave requests" value={fmt(approvals.data?.leave)} hint={`${fmt(approvals.data?.regularization)} attendance corrections`} tone={owed(approvals.data?.leave, 'warn')} to="/approvals" icon={<IconAlert size={16} />} />
         </div>

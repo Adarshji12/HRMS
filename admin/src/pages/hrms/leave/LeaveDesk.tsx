@@ -1,7 +1,7 @@
 /* HRMS → Leave: Requests, Balances and Calendar for the people the viewer sees.
  * An administrator sees the company, a manager their reporting line. */
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import '../../../styles/leavedesk.css'
 import { api } from '../../../lib/api'
@@ -12,6 +12,7 @@ import { Empty, ErrorNote, Loading } from '../../../components/ui'
 import { IconCalendar, IconCheck, IconClose, IconClock, IconPlus, IconReturn } from '../../../components/Icons'
 import { Dialog } from '../../crm/parts'
 import { errorText } from './MyLeave'
+import ApplyDialog from './ApplyLeaveDialog'
 
 type Tab = 'requests' | 'balances' | 'calendar'
 type Status = 'pending' | 'approved' | 'rejected' | 'cancelled'
@@ -72,7 +73,6 @@ const TILES: Array<{ key: Status; label: string; icon: JSX.Element; tone: string
 
 function RequestsTab({ refresh, notice: outer }: { refresh: number; notice: string | null }) {
   const [view, setView] = useState<Status | 'all'>('pending')
-  const [mine, setMine] = useState(false)
   const [inner, setNotice] = useState<string | null>(null)
   const notice = inner ?? outer
   const q = useQuery<Requests>('leave-desk-requests', () => api.get<Requests>('/leave/requests'))
@@ -80,7 +80,7 @@ function RequestsTab({ refresh, notice: outer }: { refresh: number; notice: stri
   if (q.error) return <ErrorNote>{errorText(q.error)}</ErrorNote>
   if (!q.data) return <Loading />
   const data = q.data
-  const rows = data.items.filter((i) => (view === 'all' || i.status === view) && (!mine || i.waiting_on_me))
+  const rows = data.items.filter((i) => view === 'all' || i.status === view)
 
   return (
     <>
@@ -102,11 +102,6 @@ function RequestsTab({ refresh, notice: outer }: { refresh: number; notice: stri
               </button>
             ))}
           </div>
-          <div className="ld-bar-right">
-            <button type="button" className={`btn ld-wait${mine ? ' is-on' : ''}`} onClick={() => setMine(!mine)}>
-              <span className="ld-wait-dot" /> Waiting on me{data.waiting_on_me ? ` (${data.waiting_on_me})` : ''}
-            </button>
-          </div>
         </div>
         {notice && <div className="notice notice-ok" style={{ margin: 16 }}>{notice}</div>}
         {rows.length === 0 ? (
@@ -114,7 +109,7 @@ function RequestsTab({ refresh, notice: outer }: { refresh: number; notice: stri
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Employee</th><th>Leave</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Employee</th><th>Leave</th><th>Dates</th><th>Days</th><th>Reason</th><th>Contact</th><th>Status</th><th /></tr></thead>
               <tbody>
                 {rows.map((r) => <Row key={r.id} r={r} onDone={(m) => { setNotice(m); void q.reload() }} />)}
               </tbody>
@@ -150,7 +145,8 @@ function Row({ r, onDone }: { r: Item; onDone: (message: string) => void }) {
       <td><span className="ld-dot" style={{ background: r.color ?? '#0ea5e9' }} />{r.leave_type}</td>
       <td>{range(r.start_date, r.end_date)}{r.is_half_day && <div className="muted-sm">{r.half_day_session === 'second_half' ? 'Second half' : 'First half'}</div>}</td>
       <td>{days(r.duration_milli_days)}</td>
-      <td className="muted-sm">{r.reason ?? '—'}{r.contact_phone && <div>☎ {r.contact_phone}</div>}</td>
+      <td className="muted-sm">{r.reason ?? '—'}</td>
+      <td className="muted-sm" style={{ whiteSpace: 'nowrap' }}>{r.contact_phone ? `+91 ${r.contact_phone}` : '—'}</td>
       <td><span className={`ld-status ld-s-${r.status}`}>{r.status === 'pending' ? 'Awaiting' : r.status[0].toUpperCase() + r.status.slice(1)}</span>{error && <div className="muted-sm" style={{ color: 'var(--unprod)' }}>{error}</div>}</td>
       <td className="ld-act">
         {r.waiting_on_me && (
@@ -165,97 +161,6 @@ function Row({ r, onDone }: { r: Item; onDone: (message: string) => void }) {
 }
 
 /* ---------------------------------------------------------------- apply -- */
-
-interface Person { id: string; name: string; code: string | null }
-interface LeaveType { id: string; name: string; allow_half_day: boolean; is_active: boolean }
-interface Preview { duration_milli_days: number; available_milli_days: number; pending_milli_days: number; used_milli_days: number }
-
-function ApplyDialog({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
-  const { user } = useAuth()
-  const people = useQuery<Person[]>('leave-desk-people', () => api.get<Person[]>('/leave/people'))
-  const types = useQuery<LeaveType[]>('leave-desk-types', () => api.get<LeaveType[]>('/leave/types'))
-  const today = todayISO()
-  const [who, setWho] = useState(user?.id ?? '')
-  const [typeId, setTypeId] = useState('')
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
-  const [half, setHalf] = useState(false)
-  const [session, setSession] = useState('first_half')
-  const [reason, setReason] = useState('')
-  const [contact, setContact] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const activeTypes = (types.data ?? []).filter((t) => t.is_active)
-  const type = activeTypes.find((t) => t.id === typeId) ?? activeTypes[0]
-  const typeKey = type?.id ?? ''
-  const end = half ? from : to < from ? from : to
-  const preview = useQuery<Preview>(`leave-preview:${who}:${typeKey}:${from}:${end}:${half}`,
-    () => api.get<Preview>(`/leave/preview?user_id=${who}&leave_type_id=${typeKey}&start=${from}&end=${end}&half=${half}`),
-    { enabled: Boolean(who && typeKey) })
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!reason.trim()) { setError('Say why — the approver reads it.'); return }
-    setBusy(true); setError(null)
-    try {
-      await api.post(`/leave/applications${who && who !== user?.id ? `?user_id=${who}` : ''}`, {
-        leave_type_id: typeKey, start_date: from, end_date: end, is_half_day: half,
-        half_day_session: half ? session : null, reason: reason.trim(), contact_phone: contact.trim() || null,
-      })
-      onDone('Leave applied. It goes to the reporting manager first.')
-    } catch (err) {
-      setError(errorText(err))
-    } finally { setBusy(false) }
-  }
-
-  const p = preview.data
-  return (
-    <Dialog title="Apply for leave" subtitle="Goes to the reporting manager first, then HR" onClose={onClose} medium
-            footer={<><button className="btn" type="button" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" form="ld-apply" disabled={busy || !typeKey || !who}>{busy ? 'Applying…' : 'Apply'}</button></>}>
-      <form id="ld-apply" className="ld-form" onSubmit={submit}>
-        <div className="ld-section">WHO, AND WHAT KIND</div>
-        <div className="ld-two">
-          <label><span className="ld-lbl">Employee <i className="lf-req">*</i></span>
-            <select value={who} onChange={(e) => setWho(e.target.value)}>
-              {(people.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}{x.code ? ` (${x.code})` : ''}</option>)}
-            </select></label>
-          <label><span className="ld-lbl">Leave type <i className="lf-req">*</i></span>
-            <select value={typeKey} onChange={(e) => { setTypeId(e.target.value); if (!activeTypes.find((t) => t.id === e.target.value)?.allow_half_day) setHalf(false) }}>
-              {activeTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select></label>
-        </div>
-        <div className="ld-section">WHEN</div>
-        <div className="ld-two">
-          <label><span className="ld-lbl">From <i className="lf-req">*</i></span><input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to < e.target.value) setTo(e.target.value) }} /></label>
-          <label><span className="ld-lbl">To <i className="lf-req">*</i>{half && <span className="muted-sm"> Locked — a half day is one date</span>}</span>
-            <input type="date" value={end} min={from} disabled={half} onChange={(e) => setTo(e.target.value)} /></label>
-        </div>
-        <div className="ld-half">
-          <label className="crm-check"><input type="checkbox" checked={half} disabled={!type?.allow_half_day} onChange={(e) => setHalf(e.target.checked)} /> <IconClock size={14} /> Half day only</label>
-          {half && <select value={session} onChange={(e) => setSession(e.target.value)}><option value="first_half">First half</option><option value="second_half">Second half</option></select>}
-        </div>
-        <div className="ld-summary">
-          <b><IconCheck size={15} /> {p ? (p.duration_milli_days === 500 ? 'half a day' : days(p.duration_milli_days)) : '…'}</b>
-          <div className="ld-summary-grid">
-            <span><b>{p ? days(p.available_milli_days).replace(/ days?$/, '') : '—'}</b>Available</span>
-            <span><b>{p ? days(p.pending_milli_days).replace(/ days?$/, '') : '—'}</b>Awaiting approval</span>
-            <span><b>{p ? days(p.used_milli_days).replace(/ days?$/, '') : '—'}</b>Taken this year</span>
-          </div>
-        </div>
-        <div className="ld-section">WHY</div>
-        <div className="ld-two">
-          <label><span className="ld-lbl">Reason <i className="lf-req">*</i> <span className="muted-sm">This is what the approver reads</span></span>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Family function out of town" /></label>
-          <label><span className="ld-lbl">Contact while away <span className="muted-sm">Optional — somebody always asks</span></span>
-            <input value={contact} maxLength={40} onChange={(e) => setContact(e.target.value)} placeholder="Mobile or an alternate number" /></label>
-        </div>
-        {error && <ErrorNote>{error}</ErrorNote>}
-      </form>
-    </Dialog>
-  )
-}
 
 /* ------------------------------------------------------------- balances -- */
 
@@ -283,8 +188,8 @@ function BalancesTab() {
       <div className="ld-bar">
         <div><b>Leave Balance</b><div className="muted-sm">Leave year {label}</div></div>
         <div className="ld-bar-right">
-          <select value={m.year} onChange={(e) => setYear(Number(e.target.value))}>{m.years.map((y) => <option key={y.year} value={y.year}>{y.label}</option>)}</select>
           <select value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All departments</option>{depts.map((d) => <option key={d}>{d}</option>)}</select>
+          <select value={m.year} onChange={(e) => setYear(Number(e.target.value))}>{m.years.map((y) => <option key={y.year} value={y.year}>{y.label}</option>)}</select>
           {canAdminister(user) && <button type="button" className="btn" onClick={() => setCarry(true)}>↻ Carry forward</button>}
         </div>
       </div>
@@ -350,7 +255,6 @@ function CalendarTab() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [dept, setDept] = useState('')
   const q = useQuery<{ items: CalItem[] }>(`leave-desk-cal:${year}-${month}`, () => api.get<{ items: CalItem[] }>(`/leave/calendar?year=${year}&month=${month}`))
-  const step = (by: number) => { const d = new Date(year, month - 1 + by, 1); setYear(d.getFullYear()); setMonth(d.getMonth() + 1) }
   const items = (q.data?.items ?? []).filter((i) => !dept || i.department === dept)
   const depts = useMemo(() => Array.from(new Set((q.data?.items ?? []).map((i) => i.department).filter(Boolean))) as string[], [q.data])
   const last = new Date(year, month, 0).getDate()
@@ -360,18 +264,16 @@ function CalendarTab() {
   return (
     <section className="card ld-card">
       <div className="ld-bar">
+        <select value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All departments</option>{depts.map((d) => <option key={d}>{d}</option>)}</select>
         <div className="ld-bar-right">
-          <button type="button" className="btn" aria-label="Previous month" onClick={() => step(-1)}>‹</button>
           <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))}>{[year - 2, year - 1, year, year + 1, year + 2].map((y) => <option key={y}>{y}</option>)}</select>
-          <button type="button" className="btn" aria-label="Next month" onClick={() => step(1)}>›</button>
         </div>
-        <select value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All departments</option>{depts.map((d) => <option key={d}>{d}</option>)}</select>
       </div>
       {q.error ? <ErrorNote>{errorText(q.error)}</ErrorNote> : !q.data ? <Loading /> : people.length === 0 ? (
         <div className="ld-empty"><b>Nobody is on leave this month</b><p>Approved and pending leave both appear here.</p></div>
       ) : (
-        <div className="table-wrap">
+        <div className="ld-cal-wrap">
           <table className="ld-cal">
             <thead><tr><th>Employee</th>{Array.from({ length: last }, (_, i) => {
               const dow = new Date(year, month - 1, i + 1).getDay()

@@ -22,7 +22,7 @@ import type { ApprovalCounts, Department, EmployeeDocument, EmployeeProfile, Use
 import { Avatar, Loading } from '../../../components/ui'
 import { Donut, type Slice } from '../../../components/charts'
 import {
-  IconAlert, IconBuilding, IconCheck, IconChevronRight, IconClock, IconLifebuoy,
+  IconAlert, IconCheck, IconChevronRight, IconClock, IconLifebuoy,
   IconPlus, IconReturn, IconStar, IconUsers,
 } from '../../../components/Icons'
 
@@ -132,9 +132,9 @@ export default function HrDashboard() {
 
   const kpis: Array<{ label: string; value: ReactNode; hint: string; tone: string; to?: string; icon: ReactNode }> = [
     { label: 'Headcount', value: headcount, hint: preJoining ? `${preJoining} pre-joining` : 'Active employees', tone: 'brand', to: '/employees', icon: <IconUsers size={16} /> },
-    { label: 'New joiners', value: joinedThisMonth.length, hint: `Joined in ${MONTHS[now.getMonth()]}`, tone: 'good', to: '/employees', icon: <IconPlus size={16} /> },
-    { label: 'Present today', value: rows ? present.length : '—', hint: rows ? `${late} late · ${headcount ? Math.round((present.length / headcount) * 100) : 0}% in` : 'Not available', tone: 'good', to: team ? '/attendance/team' : undefined, icon: <IconCheck size={16} /> },
-    { label: 'On leave today', value: leave.data ? awayToday.length : rows ? onLeaveRows : '—', hint: `${away.length} away in the next 7 days`, tone: 'warn', to: team ? '/attendance/team' : undefined, icon: <IconReturn size={16} /> },
+    { label: 'New joiners', value: joinedThisMonth.length, hint: `Joined in ${MONTHS[now.getMonth()]}`, tone: 'good', to: '/employees?joined=month', icon: <IconPlus size={16} /> },
+    { label: 'Present today', value: rows ? present.length : '—', hint: rows ? `${late} late · ${headcount ? Math.round((present.length / headcount) * 100) : 0}% in` : 'Not available', tone: 'good', to: team ? '/attendance/team?status=present' : undefined, icon: <IconCheck size={16} /> },
+    { label: 'On leave today', value: leave.data ? awayToday.length : rows ? onLeaveRows : '—', hint: `${away.length} away in the next 7 days`, tone: 'warn', to: team ? '/attendance/team?status=on_leave' : undefined, icon: <IconReturn size={16} /> },
     { label: 'Pending approvals', value: approvals.data?.total ?? '—', hint: 'Waiting on a decision', tone: (approvals.data?.total ?? 0) > 0 ? 'bad' : 'idle', to: '/approvals', icon: <IconClock size={16} /> },
   ]
 
@@ -404,9 +404,6 @@ export default function HrDashboard() {
               </div>
             )}
           </Panel>
-          <div className="hrd-shortcuts">
-            <Link to="/hierarchy" className="hrd-shortcut"><IconBuilding size={15} /> Hierarchy</Link>
-          </div>
         </div>
       </div>
     </div>

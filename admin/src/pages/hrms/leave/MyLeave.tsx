@@ -1,14 +1,11 @@
-import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { useAuth } from '../../../lib/auth'
 import { dateTime, shortDate, todayISO } from '../../../lib/format'
 import { Empty, EmptyState, ErrorNote, Loading, Meter, StatTile } from '../../../components/ui'
-import {
-  ColumnSettings, FieldSettings, useColumns, useFieldModes,
-  type ColumnDef, type FieldDef, type FieldSection,
-} from '../../../components/ViewSettings'
-import { Dialog } from '../../crm/parts'
+import { ColumnSettings, useColumns, type ColumnDef } from '../../../components/ViewSettings'
+import ApplyDialog from './ApplyLeaveDialog'
 import '../../../styles/leave.css'
 
 /* ===========================================================================
@@ -294,9 +291,6 @@ export default function MyLeave() {
   const applications = useQuery<LeaveApplication[]>(`leave-apps:${reloadKey}`, () =>
     api.get<LeaveApplication[]>('/leave/applications'),
   )
-  const holidays = useQuery<Holiday[]>('leave-holidays-all', () =>
-    api.get<Holiday[]>('/leave/holidays'),
-  )
 
   const compOffType = types.data?.find((t) => t.is_comp_off) ?? null
   const compOffs = useQuery<CompOffCredit[]>(
@@ -352,6 +346,9 @@ export default function MyLeave() {
         </section>
       ) : (
         <>
+          <div className="lv-toolbar">
+            <button className="btn btn-primary" onClick={() => { setApplying(true); setNotice(null) }}>New application</button>
+          </div>
           <div className="grid grid-tiles" style={{ marginBottom: 14 }}>
             <StatTile
               label="Available to apply for"
@@ -401,24 +398,7 @@ export default function MyLeave() {
             </div>
           </section>
 
-          <section className="card" style={{ marginBottom: 14 }}>
-            <div className="card-head">
-              <h2 className="card-title">Apply for leave</h2>
-              <button className="btn btn-sm" onClick={() => { setApplying(true); setNotice(null) }}>New application</button>
-            </div>
-          </section>
-          {applying && (
-            <Dialog title="Apply for leave" wide onClose={() => setApplying(false)}>
-              <div style={{ padding: '4px 24px 20px', overflowY: 'auto', minHeight: 0 }}>
-                <ApplyForm
-                  types={activeTypes}
-                  balances={balances.data}
-                  holidays={holidays.data ?? []}
-                  onDone={afterWrite}
-                />
-              </div>
-            </Dialog>
-          )}
+          {applying && <ApplyDialog onClose={() => setApplying(false)} onDone={afterWrite} />}
         </>
       )}
 
@@ -523,336 +503,6 @@ function BalanceCard({ balance, leaveType }: { balance: LeaveBalance; leaveType:
         </div>
       )}
     </div>
-  )
-}
-
-/* ----------------------------------------------------------------- apply -- */
-
-interface ApplyState {
-  leave_type_id: string
-  start_date: string
-  end_date: string
-  is_half_day: boolean
-  half_day_session: 'first_half' | 'second_half'
-  reason: string
-}
-
-const APPLY_FIELDS: FieldDef[] = [
-  { key: 'leave_type_id', label: 'Leave type', section: 'dates', fixed: true },
-  { key: 'start_date', label: 'First day', section: 'dates', fixed: true },
-  { key: 'end_date', label: 'Last day', section: 'dates', fixed: true },
-  { key: 'is_half_day', label: 'Half day', section: 'dates', optionalOnly: true },
-  { key: 'reason', label: 'Reason', section: 'reason' },
-]
-const APPLY_SECTIONS: FieldSection[] = [
-  { id: 'dates', label: 'Leave' },
-  { id: 'reason', label: 'Reason' },
-]
-
-function ApplyForm({
-  types,
-  balances,
-  holidays,
-  onDone,
-}: {
-  types: LeaveType[]
-  balances: LeaveBalance[]
-  holidays: Holiday[]
-  onDone: (message: ReactNode) => void
-}) {
-  const today = todayISO()
-  const [form, setForm] = useState<ApplyState>({
-    leave_type_id: types[0]?.id ?? '',
-    start_date: today,
-    end_date: today,
-    is_half_day: false,
-    half_day_session: 'first_half',
-    reason: '',
-  })
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [reason, setReason] = useState<string | null>(null)
-  const fields = useFieldModes('leave-apply-form', APPLY_FIELDS)
-  const fm = fields.mode
-  const rq = (key: string) => fm(key) === 'mandatory'
-
-  const selected = types.find((t) => t.id === form.leave_type_id) ?? null
-  const balance = balances.find((b) => b.leave_type_id === form.leave_type_id) ?? null
-
-  /* Holidays inside the range that are days off for *this* employee. The server
-     answers `opted_in` per caller, so an optional holiday somebody did not
-     choose correctly does not appear here — they are expected at work. */
-  const skipped = useMemo(
-    () =>
-      holidays
-        .filter((h) => isOffFor(h) && h.holiday_date >= form.start_date && h.holiday_date <= form.end_date)
-        .sort((a, b) => a.holiday_date.localeCompare(b.holiday_date)),
-    [holidays, form.start_date, form.end_date],
-  )
-
-  const span = calendarSpan(form.start_date, form.end_date)
-  const earliest =
-    selected && selected.min_notice_days > 0 ? addDaysISO(today, selected.min_notice_days) : null
-
-  function patch(next: Partial<ApplyState>) {
-    setForm((prev) => {
-      const merged = { ...prev, ...next }
-      // A half day covers exactly one date; the API refuses anything else, so
-      // the form should not let you build it in the first place.
-      if (merged.is_half_day) merged.end_date = merged.start_date
-      if (merged.end_date < merged.start_date) merged.end_date = merged.start_date
-      return merged
-    })
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!selected) return
-    if (rq('reason') && !form.reason.trim()) {
-      setError('Fill in the fields marked *.')
-      return
-    }
-    setBusy(true)
-    setError(null)
-    setReason(null)
-    try {
-      /* No duration field, on purpose. The number of days a range costs depends
-         on the holiday calendar and this employee's working days, so the server
-         computes it and freezes it (D-013). A client-supplied duration would be
-         forgeable balance. */
-      const created = await api.post<LeaveApplication>('/leave/applications', {
-        leave_type_id: form.leave_type_id,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        is_half_day: form.is_half_day,
-        half_day_session: form.is_half_day ? form.half_day_session : null,
-        reason: form.reason.trim() || null,
-      })
-      onDone(
-        <>
-          <b>
-            Applied for {dayLabel(created.duration_milli_days)} of{' '}
-            {created.leave_type_name ?? selected.name}
-          </b>{' '}
-          ({rangeLabel(created.start_date, created.end_date)}).{' '}
-          {/* Compared in milli-days rather than dividing the frozen figure —
-              the integer unit is the point. */}
-          {span * MILLI_DAYS_PER_DAY > created.duration_milli_days && !created.is_half_day && (
-            <>
-              The range spans {span} calendar days; weekly-offs and holidays inside it were
-              skipped.{' '}
-            </>
-          )}
-          That figure is now frozen — later changes to the holiday calendar will not move it.{' '}
-          {created.status === 'approved'
-            ? 'This type does not require approval, so it is already approved and your balance has been debited.'
-            : 'It is with your approver, and is holding that much of your balance until they decide.'}
-        </>,
-      )
-    } catch (err) {
-      setError(errorText(err, 'Could not file that application'))
-      setReason(errorReason(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const fieldNodes: Record<string, ReactNode> = {
-    leave_type_id: (
-      <label className="setting">
-        Leave type
-        <select
-          value={form.leave_type_id}
-          onChange={(e) => patch({ leave_type_id: e.target.value, is_half_day: false })}
-          required
-        >
-          {types.map((t) => {
-            const b = balances.find((x) => x.leave_type_id === t.id)
-            return (
-              <option key={t.id} value={t.id}>
-                {t.name}
-                {b ? ` — ${days(b.available_milli_days)} available` : ''}
-              </option>
-            )
-          })}
-        </select>
-        {selected && !selected.requires_approval && (
-          <span className="setting-hint">
-            Approved on submission — this type is a declaration, not a request. It debits
-            straight away.
-          </span>
-        )}
-      </label>
-    ),
-    start_date: (
-      <label className="setting">
-        {form.is_half_day ? 'Date' : 'First day'}
-        <input
-          type="date"
-          value={form.start_date}
-          onChange={(e) => patch({ start_date: e.target.value })}
-          required
-        />
-        {earliest && (
-          <span className="setting-hint">
-            {selected?.name} needs {selected?.min_notice_days} days’ notice — the earliest
-            you can start is {shortDate(earliest)}.
-          </span>
-        )}
-      </label>
-    ),
-    end_date: !form.is_half_day && (
-      <label className="setting">
-        Last day
-        <input
-          type="date"
-          value={form.end_date}
-          min={form.start_date}
-          onChange={(e) => patch({ end_date: e.target.value })}
-          required
-        />
-      </label>
-    ),
-    is_half_day: fm('is_half_day') !== 'hide' && selected?.allow_half_day && (
-      <div className="setting">
-        Half day
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.is_half_day}
-            onChange={(e) => patch({ is_half_day: e.target.checked })}
-          />
-          <span>Take half of one day</span>
-        </label>
-        {form.is_half_day && (
-          <>
-            <div className="lv-session" style={{ marginTop: 6 }}>
-              {(['first_half', 'second_half'] as const).map((session) => (
-                <label className="check-field" key={session}>
-                  <input
-                    type="radio"
-                    name="half_day_session"
-                    checked={form.half_day_session === session}
-                    onChange={() => patch({ half_day_session: session })}
-                  />
-                  <span>{session === 'first_half' ? 'First half' : 'Second half'}</span>
-                </label>
-              ))}
-            </div>
-            <span className="setting-hint">
-              Which half matters: attendance records the other one as a day you were
-              expected in.
-            </span>
-          </>
-        )}
-      </div>
-    ),
-    reason: fm('reason') !== 'hide' && (
-      <label className="setting" style={{ marginTop: 14 }}>
-        Reason{rq('reason') && <span className="lf-req"> *</span>}{' '}
-        <span className="setting-hint">{rq('reason') ? 'Your approver reads it.' : 'Optional, but your approver reads it.'}</span>
-        <textarea
-          className="set-textarea"
-          value={form.reason}
-          maxLength={2000}
-          onChange={(e) => setForm({ ...form, reason: e.target.value })}
-          placeholder="Family wedding, medical appointment…"
-        />
-      </label>
-    ),
-  }
-  const fieldsOf = (section: string) =>
-    fields.orderOf(section).map((key) => <Fragment key={key}>{fieldNodes[key]}</Fragment>)
-
-  return (
-    <form className="lv-form" onSubmit={submit}>
-      <div className="lf-settings">
-        <FieldSettings defs={APPLY_FIELDS} sections={APPLY_SECTIONS} modes={fields.modes} order={fields.order}
-                       onSave={fields.save} onReset={fields.reset} title="Leave application fields" />
-      </div>
-      {error && (
-        <div style={{ marginBottom: 12 }}>
-          <ErrorNote>
-            {error}
-            {reason === 'insufficient_balance' && (
-              <div className="lv-sub" style={{ marginTop: 6 }}>
-                Anything already awaiting a decision is still holding balance. Open the balance
-                card above to see the working.
-              </div>
-            )}
-            {reason === 'overlapping_leave' && (
-              <div className="lv-sub" style={{ marginTop: 6 }}>
-                Cancel the existing application in your history below first, then re-apply.
-              </div>
-            )}
-            {reason === 'no_working_days' && (
-              <div className="lv-sub" style={{ marginTop: 6 }}>
-                Every date in that range is a weekly-off or a holiday you are already off for,
-                so there is nothing to spend balance on.
-              </div>
-            )}
-          </ErrorNote>
-        </div>
-      )}
-
-      <div className="settings-grid">
-        {fieldsOf('dates')}
-      </div>
-
-      {fieldsOf('reason')}
-
-      <div className="lv-cost">
-        <div className="lv-cost-head">What this will cost</div>
-        {form.is_half_day ? (
-          <>
-            Half a day, taken as the{' '}
-            <b>{form.half_day_session === 'first_half' ? 'first half' : 'second half'}</b> of{' '}
-            {shortDate(form.start_date)} — unless that date is a weekly-off or a holiday, in
-            which case there is nothing to apply for and the server will say so.
-          </>
-        ) : (
-          <>
-            The range covers <b>{span}</b> calendar {span === 1 ? 'day' : 'days'}. Your weekly-offs
-            and any holiday you are off for are skipped, so the number of days it actually spends
-            is lower.{' '}
-            {skipped.length > 0 ? (
-              <>
-                {skipped.length} {skipped.length === 1 ? 'holiday falls' : 'holidays fall'} inside it:
-                <ul className="lv-skip-list">
-                  {skipped.map((h) => (
-                    <li key={h.id}>
-                      <span className="lv-skip-date">{shortDate(h.holiday_date)}</span>
-                      <span>
-                        {h.name}
-                        {h.is_optional && ' (optional — you opted in)'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              'No public holiday falls inside it.'
-            )}
-          </>
-        )}
-        <div className="lv-sub" style={{ marginTop: 8 }}>
-          The exact figure is computed by the server and frozen onto the application when you
-          submit — this form deliberately does not send one, and cannot guess your weekly-offs.
-          You will see the frozen number in the confirmation and in your history below.
-        </div>
-        {balance && (
-          <div className="lv-sub" style={{ marginTop: 4 }}>
-            You have {days(balance.available_milli_days)} available in {selected?.name}.
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <button className="btn btn-primary" disabled={busy || !selected}>
-          {busy ? 'Filing…' : 'Apply'}
-        </button>
-      </div>
-    </form>
   )
 }
 

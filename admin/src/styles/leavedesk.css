@@ -93,3 +93,36 @@
 
 .ld-tabs-sm { padding: 5px; gap: 2px; }
 .ld-tabs-sm .ld-tab { padding: 7px 14px; font-size: 12.5px; }
+
+/* Not enough balance for the range: the summary turns amber and says why, and Apply stays off. */
+.ld-summary.is-short { border-color: #f1c98b; background: #fff6e8; color: #9a5a00; }
+.ld-summary.is-short .ld-summary-grid { border-top-color: #f1c98b; }
+.ld-short { margin-top: 8px; font-size: 12.5px; font-weight: 500; line-height: 1.45; color: #7a4a00; }
+
+.ld-bad { color: var(--danger, #d92d50); font-size: 12px; font-weight: 500; }
+.ld-form input[aria-invalid=true] { border-color: var(--danger, #d92d50); }
+
+/* Leave calendar: the grid sits inside the card's padding like the toolbar above it, with rounded corners, and the legend
+   swatches use the same colour the cells do. */
+.ld-cal-wrap { margin: 16px 18px 6px; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.ld-cal-wrap .ld-cal { border: 0; }
+.ld-cal-wrap .ld-cal th:first-child, .ld-cal-wrap .ld-cal td:first-child { border-left: 0; }
+.ld-cal-wrap .ld-cal tr:first-child th { border-top: 0; }
+.ld-cal-wrap .ld-cal tr:last-child td { border-bottom: 0; }
+.ld-cal-wrap .ld-cal th:last-child, .ld-cal-wrap .ld-cal td:last-child { border-right: 0; }
+.ld-legend .ld-key { background: #0ea5e9; }
+.ld-legend .ld-key.ld-pend { background: repeating-linear-gradient(135deg, #0ea5e9 0 3px, #fff 3px 6px); }
+.ld-legend { gap: 8px; }
+.ld-legend .muted-sm { margin-left: 6px; }
+
+/* Leave balance: toolbar controls share one height, and the matrix keeps an even rhythm instead of stretching its columns. */
+.ld-bar .btn { height: 42px; padding: 0 16px; border-radius: 10px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+.ld-matrix { width: 100%; table-layout: fixed; }
+.ld-matrix th:first-child, .ld-matrix td:first-child { width: 280px; text-align: left; }
+.ld-matrix .ld-c { text-align: center; }
+.ld-matrix thead th { padding-top: 14px; padding-bottom: 14px; background: var(--surface-2, #f4f7fa); border-bottom: 1px solid var(--border); }
+.ld-matrix tbody td { border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ld-matrix tbody tr:last-child td { border-bottom: 0; }
+.ld-matrix tbody tr:hover td { background: var(--surface-hover, rgba(0, 64, 112, .035)); }
+.ld-matrix .ld-c b { font-size: 15px; }
+.ld-matrix .ld-c .muted-sm { margin-top: 2px; font-size: 11.5px; }

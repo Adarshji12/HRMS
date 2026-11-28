@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import '../../../styles/attendance.css'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
@@ -88,7 +89,9 @@ export default function TeamAttendance() {
   const tz = organization?.timezone
   const today = orgToday(tz)
   const [day, setDay] = useState(today)
-  const [status, setStatus] = useState('')
+  // Tiles on the HR dashboard arrive here with ?status=present or ?status=on_leave.
+  const [urlParams] = useSearchParams()
+  const [status, setStatus] = useState(urlParams.get('status') ?? '')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [q, setQ] = useState('')
   const [subject, setSubject] = useState<{ id: string; name: string } | null>(null)
@@ -177,9 +180,7 @@ export default function TeamAttendance() {
               <div style={{ display: 'grid', gap: 14, padding: '4px 22px 10px' }}>
                 <label style={{ display: 'grid', gap: 6, fontWeight: 600, fontSize: 13 }}>Date
                   <span className="att-cal-nav">
-                    <button type="button" className="btn btn-sm" onClick={() => setDay(addDays(day, -1))} aria-label="Previous day">←</button>
                     <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Day" />
-                    <button type="button" className="btn btn-sm" onClick={() => setDay(addDays(day, 1))} aria-label="Next day">→</button>
                     <button type="button" className="btn btn-sm" onClick={() => setDay(today)} disabled={day === today}>Today</button>
                   </span>
                 </label>

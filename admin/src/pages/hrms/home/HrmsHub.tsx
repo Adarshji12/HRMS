@@ -112,7 +112,7 @@ export default function HrmsHub() {
                 <i className="hh-ic is-brand" aria-hidden><Icon size={18} /></i>
                 <span className="hh-go" aria-hidden><IconChevronRight size={14} /></span>
               </div>
-              <h3>{m.label === 'Attandance' ? 'Attendance' : m.label}</h3>
+              <h3>{m.label}</h3>
               <p>{MODULES[m.to].text}</p>
               {fig && <div className="hh-card-foot"><span>{fig[0]}</span><b>{fig[1]}</b></div>}
             </Link>
