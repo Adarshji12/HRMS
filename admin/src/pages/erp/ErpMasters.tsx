@@ -26,7 +26,6 @@ import FilterPopup, { FilterField } from '../../components/FilterPopup'
 import Ledgers from './ErpLedgers'
 import Accounts from './ErpAccounts'
 import Salesmen from './ErpSalesmen'
-import Walkins from './ErpWalkins'
 import Lookups from './ErpLookups'
 import Companies from './ErpCompanies'
 import BillSeriesPage from './ErpBillSeries'
@@ -49,13 +48,13 @@ function StateSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'walkins' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies' | 'stations' | 'ledger-openings' | 'stock-openings' | 'rack-update' | 'print-barcode'
+type Tab = 'items' | 'warehouses' | 'vendors' | 'customers' | 'ledgers' | 'accounts' | 'salesmen' | 'subcategories' | 'units' | 'hsn' | 'racks' | 'billseries' | 'companies' | 'stations' | 'ledger-openings' | 'stock-openings' | 'rack-update' | 'print-barcode'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'items', label: 'Items' }, { key: 'warehouses', label: 'Warehouses' },
   { key: 'vendors', label: 'Vendors' }, { key: 'customers', label: 'Customer accounts' },
   { key: 'ledgers', label: 'Ledger' }, { key: 'accounts', label: 'List of accounts' },
-  { key: 'salesmen', label: 'Salesman' }, { key: 'walkins', label: 'Walk-in customers' },
+  { key: 'salesmen', label: 'Salesman' },
   { key: 'subcategories', label: 'Sub categories' }, { key: 'units', label: 'Units' }, { key: 'hsn', label: 'HSN / SAC' },
   { key: 'racks', label: 'Racks' }, { key: 'billseries', label: 'Bill series' },
   { key: 'companies', label: 'Companies' }, { key: 'stations', label: 'Stations' },
@@ -83,7 +82,7 @@ export default function ErpMasters() {
       {only && (
         <MasterTrail crumbs={[
           { label: 'Master', to: '/masters' },
-          { label: ['ledgers', 'accounts', 'salesmen', 'walkins'].includes(only.key) ? 'Ledger Master'
+          { label: ['ledgers', 'accounts', 'salesmen'].includes(only.key) ? 'Ledger Master'
               : only.key === 'stations' ? 'Geography'
               : ['ledger-openings', 'stock-openings', 'rack-update', 'print-barcode'].includes(only.key) ? 'Update Master'
               : ['items', 'warehouses', 'subcategories', 'units', 'hsn', 'racks', 'billseries', 'companies'].includes(only.key) ? 'Inventory Masters' : 'ERP Master', to: '/masters' },
@@ -101,7 +100,6 @@ export default function ErpMasters() {
           {tab === 'ledgers' && <Ledgers />}
           {tab === 'accounts' && <Accounts />}
           {tab === 'salesmen' && <Salesmen />}
-          {tab === 'walkins' && <Walkins />}
           {tab === 'subcategories' && <Lookups kind="subcategory" />}
           {tab === 'units' && <Lookups kind="unit" />}
           {tab === 'hsn' && <Lookups kind="hsn" />}
@@ -127,7 +125,6 @@ export default function ErpMasters() {
           {tab === 'ledgers' && <Ledgers />}
           {tab === 'accounts' && <Accounts />}
           {tab === 'salesmen' && <Salesmen />}
-          {tab === 'walkins' && <Walkins />}
           {tab === 'subcategories' && <Lookups kind="subcategory" />}
           {tab === 'units' && <Lookups kind="unit" />}
           {tab === 'hsn' && <Lookups kind="hsn" />}

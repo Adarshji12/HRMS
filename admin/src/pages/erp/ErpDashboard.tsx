@@ -25,7 +25,6 @@ import { DateText, ErpState } from './parts'
 export default function ErpDashboard() {
   const q = useQuery<Dashboard>('erp-dashboard', () => erp.dashboard())
   const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const waiting = q.data ? approvalsWaiting(q.data) : 0
   return (
     <div className="crm hrd ed">
       <header className="hrd-hero">
@@ -34,11 +33,6 @@ export default function ErpDashboard() {
           <h1 className="hrd-title">ERP Dashboard</h1>
         </div>
         <div className="hrd-hero-actions">
-          <Link className="btn" to="/erp/approvals">
-            Approvals
-            {waiting > 0 && <span className="hrd-pill-count">{waiting}</span>}
-          </Link>
-          <Link className="btn" to="/erp/purchase-orders"><IconCard size={15} /> Purchase order</Link>
           <Link className="btn btn-primary" to="/erp/sales-orders"><IconPlus size={15} /> Sales order</Link>
         </div>
       </header>
@@ -55,10 +49,6 @@ export default function ErpDashboard() {
 
 /* ------------------------------------------------------------ helpers --- */
 
-function approvalsWaiting({ procurement: p, inventory: i, sales: s, billing: b }: Dashboard): number {
-  return [p.requisitions_pending, p.pos_pending, i.adjustments_pending, s.orders_pending, b.credit_notes_pending]
-    .reduce<number>((n, v) => n + Number(v || 0), 0)
-}
 
 /** ₹ in lakh / crore for tiles and axes, where the full figure won't fit. */
 function inr(value: string | number): string {

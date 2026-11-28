@@ -233,6 +233,8 @@ GROUPS: tuple[Group, ...] = (
        _m("/erp/purchase", "Purchase", "erp"),
        _m("/erp/purchase-returns", "Purchase Return", "erp"),
        _m("/erp/inventory", "Stock Receive", "erp", ("/erp/stock-docs",), ("can_manage_inventory", "can_approve_stock")),
+       _m("/erp/receipt-voucher", "Receipt voucher", "erp"),
+       _m("/erp/payment-voucher", "Payment voucher", "erp"),
        _m("/erp/settings", "ERP Setting", "erp", ("/erp/settings", "/erp/bill-series"))),
     _g("settings", "Settings", "The workspace itself.",
        _m("/settings/company", "Company profile", "settings", ("/org/company",)),

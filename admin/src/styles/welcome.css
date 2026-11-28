@@ -360,3 +360,5 @@
   .fav-tile, .wel-chip { transition: none; }
   .fav-tile:hover { transform: none; }
 }
+
+.wel-body { grid-template-columns: minmax(0, 1fr); }

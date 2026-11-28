@@ -363,11 +363,15 @@ export const ERP_NAV_ITEMS: NavItem[] = [
  * each hold the pages that belong to them, so the day-to-day documents are one
  * click under their own heading instead of a flat run of eight rows.
  */
-export const ERP_TRANSACTIONS: {
+export interface ErpMenu {
+  key: string
   label: string
   icon: NavItem['icon']
   groups: Array<{ key: string; label: string; icon: NavItem['icon']; items: NavItem[] }>
-} = {
+}
+
+export const ERP_TRANSACTIONS: ErpMenu = {
+  key: 'transactions',
   label: 'Transactions',
   icon: IconSheet,
   groups: [
@@ -395,6 +399,26 @@ export const ERP_TRANSACTIONS: {
     },
   ],
 }
+
+/** ERP → Account: its own menu beside Transactions, not inside it. */
+export const ERP_ACCOUNT: ErpMenu = {
+  key: 'account',
+  label: 'Account',
+  icon: IconCard,
+  groups: [
+    {
+      key: 'voucher',
+      label: 'Voucher Entry',
+      icon: IconSheet,
+      items: [
+        { to: '/erp/receipt-voucher', label: 'Receipt', icon: IconSheet, end: true },
+        { to: '/erp/payment-voucher', label: 'Payment', icon: IconCard, end: true },
+      ],
+    },
+  ],
+}
+
+export const ERP_MENUS: ErpMenu[] = [ERP_TRANSACTIONS, ERP_ACCOUNT]
 
 export interface NavAccess {
   isAdmin: boolean
@@ -556,7 +580,7 @@ export function locate(
   const sections = [
     ...itemsIn({ items: HRMS_NAV_ITEMS }, access).map((item) => ({ ...forRole(item, access), heading: 'HRMS' })),
     ...itemsIn({ items: ERP_NAV_ITEMS }, access).map((item) => ({ ...item, heading: 'ERP' })),
-    ...itemsIn({ items: ERP_TRANSACTIONS.groups.flatMap((g) => g.items) }, access).map((item) => ({ ...item, heading: 'ERP' })),
+    ...itemsIn({ items: ERP_MENUS.flatMap((m) => m.groups.flatMap((g) => g.items)) }, access).map((item) => ({ ...item, heading: 'ERP' })),
   ]
   for (const entry of [...visibleItems(access), ...sections]) {
     const path = entry.to.split('?')[0]

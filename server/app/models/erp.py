@@ -1872,3 +1872,50 @@ class ErpSaleBillLine(UUIDMixin, Base):
     taxable: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     tax: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+
+
+class ErpVoucher(UUIDMixin, TimestampMixin, Base):
+    """A receipt or payment voucher: a dated, numbered set of debit and credit lines that balance.
+
+    Money in is a receipt (credit the party or income, debit the cash or bank it landed in); money out is a
+    payment. The lines are free to be any ledgers, so the same voucher records a customer receipt, an expense
+    paid in cash, or a transfer between banks. A cancelled voucher stays in the book but no longer posts.
+    """
+
+    __tablename__ = "erp_vouchers"
+    __table_args__ = (UniqueConstraint("org_id", "number", name="uq_erp_vouchers_org_number"),)
+
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    #: receipt | payment
+    voucher_type: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    number: Mapped[str] = mapped_column(String(32), nullable=False)
+    voucher_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    narration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    #: posted | cancelled
+    status: Mapped[str] = mapped_column(String(12), default="posted", nullable=False)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = _user_fk()
+
+    lines: Mapped[list["ErpVoucherLine"]] = relationship(
+        back_populates="voucher", cascade="all, delete-orphan", order_by="ErpVoucherLine.sort_order"
+    )
+
+
+class ErpVoucherLine(UUIDMixin, Base):
+    __tablename__ = "erp_voucher_lines"
+
+    voucher_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("erp_vouchers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ledger_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("erp_ledgers.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: dr | cr
+    entry: Mapped[str] = mapped_column(String(2), nullable=False)
+    debit: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    credit: Mapped[Decimal] = mapped_column(MONEY, default=ZERO, nullable=False)
+    narration: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    voucher: Mapped["ErpVoucher"] = relationship(back_populates="lines")

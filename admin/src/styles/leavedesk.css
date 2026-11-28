@@ -126,3 +126,6 @@
 .ld-matrix tbody tr:hover td { background: var(--surface-hover, rgba(0, 64, 112, .035)); }
 .ld-matrix .ld-c b { font-size: 15px; }
 .ld-matrix .ld-c .muted-sm { margin-top: 2px; font-size: 11.5px; }
+
+.ld-carry { padding: 8px 24px 20px; display: grid; gap: 4px; }
+.ld-carry .ld-two { gap: 16px; }

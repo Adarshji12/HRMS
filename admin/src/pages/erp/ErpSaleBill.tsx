@@ -503,7 +503,7 @@ const fromCustomer = (c: CustomerAccount): PickRow => ({
 
 /** The Select Party list. With `customers` it lists those (the invoice form bills customer
  *  records); without, it lists ledgers. Either way a walk-in row sits on top. */
-export function PartyPicker({ onClose, onPick, customers, rows: given, noWalkin }: { onClose: () => void; onPick: (p: PickResult) => void; customers?: CustomerAccount[]; rows?: PickRow[]; noWalkin?: boolean }) {
+export function PartyPicker({ onClose, onPick, customers, rows: given, noWalkin = true }: { onClose: () => void; onPick: (p: PickResult) => void; customers?: CustomerAccount[]; rows?: PickRow[]; noWalkin?: boolean }) {
   const fixed = Boolean(customers || given)
   const ledgers = useQuery<Ledger[]>('erp-sb-ledgers', () => erp.ledgers(), { enabled: !fixed })
   const [tab, setTab] = useState<Tab>('customers')

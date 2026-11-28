@@ -728,7 +728,7 @@ function VisitForm({
         </Field>
         ),
     purpose: fm('purpose') !== 'hide' && (
-          <Field label="Visit Purpose / Reason" wide required={rq('purpose')}>
+          <Field label="Visit Purpose / Reason" required={rq('purpose')}>
           <textarea
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
@@ -770,6 +770,10 @@ function VisitForm({
       title={visit ? `Edit ${visit.visit_no}` : 'New Visit'}
       subtitle="Book any kind of field call — service, sales, collection, a demo — for a lead or a customer."
       onClose={onClose}
+      headAction={
+        <FieldSettings defs={VISIT_FIELDS} sections={VISIT_SECTIONS} modes={fields.modes} order={fields.order}
+                       onSave={fields.save} onReset={fields.reset} title="Visit fields" />
+      }
       footer={
         <>
           {missing && <span className="lf-foot-note lf-foot-link">Fill in the fields marked <b className="lf-req">*</b></span>}
@@ -783,10 +787,6 @@ function VisitForm({
       }
     >
       <div className="crm-form">
-        <div className="crm-form-wide lf-settings">
-          <FieldSettings defs={VISIT_FIELDS} sections={VISIT_SECTIONS} modes={fields.modes} order={fields.order}
-                         onSave={fields.save} onReset={fields.reset} title="Visit fields" />
-        </div>
         {error && (
           <div className="crm-form-wide">
             <ErrorNote>{error}</ErrorNote>

@@ -190,6 +190,26 @@ export interface AccountGroup {
   is_system: boolean
 }
 
+export type VoucherType = 'receipt' | 'payment'
+
+export interface VoucherPosting {
+  ledger_id: string; ledger: string; station: string | null; entry: 'dr' | 'cr'
+  debit: string; credit: string; narration: string | null
+}
+
+export interface Voucher {
+  id: string; voucher_type: VoucherType; number: string; voucher_date: string; party: string
+  narration: string | null; amount: string; status: 'posted' | 'cancelled'
+  debit: string; credit: string; entered_at: string | null; entered_by: string | null
+  cancel_reason: string | null; postings: VoucherPosting[]
+}
+
+export interface VoucherBody {
+  voucher_date: string
+  narration: string | null
+  lines: Array<{ ledger_id: string; entry: 'dr' | 'cr'; amount: string; narration: string | null }>
+}
+
 export interface Ledger {
   id: string
   code: string
@@ -1072,6 +1092,11 @@ export const erp = {
   ledger: (id: string) => api.get<Ledger>(`${B}/ledgers/${id}`),
   accountGroups: () => api.get<AccountGroup[]>(`${B}/account-groups`),
   addAccountGroup: (body: Body) => api.post<AccountGroup>(`${B}/account-groups`, body),
+  vouchers: (type: VoucherType, p: { start?: string; end?: string } = {}) => api.get<Voucher[]>(`${B}/vouchers/${type}${qs(p)}`),
+  voucherNumber: (type: VoucherType, on: string) => api.get<{ number: string }>(`${B}/vouchers/${type}/next-number${qs({ on })}`),
+  createVoucher: (type: VoucherType, body: VoucherBody) => api.post<Voucher>(`${B}/vouchers/${type}`, body),
+  cancelVoucher: (id: string, reason: string) => api.post<Voucher>(`${B}/vouchers/item/${id}/cancel`, { reason }),
+  ledgerBalance: (id: string) => api.get<{ ledger_id: string; name: string; balance: string; side: 'dr' | 'cr' }>(`${B}/vouchers/ledger-balance/${id}`),
   ledgers: (p: { q?: string } = {}) => api.get<Ledger[]>(`${B}/ledgers${qs(p)}`),
   saveLedger: (body: Body, id?: string) =>
     id ? api.put<Ledger>(`${B}/ledgers/${id}`, body) : api.post<Ledger>(`${B}/ledgers`, body),

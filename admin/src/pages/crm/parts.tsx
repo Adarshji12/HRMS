@@ -242,9 +242,12 @@ export function Dialog({
   narrow,
   medium,
   className,
+  headAction,
 }: {
   title: string
   subtitle?: ReactNode
+  /** A control that sits in the title row, beside the close button. */
+  headAction?: ReactNode
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
@@ -282,6 +285,7 @@ export function Dialog({
         <div className="crm-dialog-head">
           <h2 className="crm-dialog-title">{title}</h2>
           {subtitle && <div className="crm-dialog-sub">{subtitle}</div>}
+          {headAction && <div className="crm-dialog-head-action">{headAction}</div>}
           <button className="crm-icon-btn crm-dialog-close" onClick={onClose} aria-label="Close">
             <IconClose size={16} />
           </button>

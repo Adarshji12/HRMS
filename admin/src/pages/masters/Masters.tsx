@@ -24,6 +24,8 @@ import {
   IconBuilding, IconChevronRight, IconFolder, IconGlobe, IconLifebuoy, IconSearch, IconUsers,
 } from '../../components/Icons'
 import { crm } from '../crm/api'
+import { useAuth } from '../../lib/auth'
+import { menuOpen } from '../../lib/nav'
 import { api } from '../../lib/api'
 import { erp } from '../erp/api'
 import { LISTS, MASTER_GROUPS, shortLabel, type MasterGroup } from './masterKit'
@@ -67,10 +69,12 @@ const ON_MENU = MASTER_GROUPS.filter((g) => !g.path)
 export default function Masters() {
   const [q, setQ] = useState('')
   const needle = q.trim().toLowerCase()
+  const { user } = useAuth()
+  const rights = user?.menu_rights ?? null
 
   const groups = ON_MENU
     .map((group) => {
-      const rows = rowsOf(group)
+      const rows = rowsOf(group).filter((r) => menuOpen(r.to, rights))
       const hit = !needle || group.title.toLowerCase().includes(needle)
       return { group, total: rows.length, rows: hit ? rows : rows.filter((r) => r.label.toLowerCase().includes(needle)) }
     })
@@ -157,7 +161,6 @@ const LINK_COUNTS: Record<string, () => Promise<number>> = {
   '/masters/erp/ledgers': () => erp.ledgers().then((r) => r.length),
   '/masters/erp/accounts': () => erp.accountTree().then((r) => r.ledgers.length),
   '/masters/erp/salesmen': () => erp.salesmen().then((r) => r.length),
-  '/masters/erp/walkins': () => erp.walkins().then((r) => r.length),
   '/departments': () => api.get<unknown[]>('/org/departments').then((r) => r.length),
   '/designations': () => api.get<unknown[]>('/org/designations').then((r) => r.length),
   '/branches': () => api.get<unknown[]>('/org/branches').then((r) => r.length),

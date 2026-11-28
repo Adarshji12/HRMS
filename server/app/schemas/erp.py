@@ -1016,3 +1016,16 @@ class SaleBillIn(_In):
     warehouse_id: uuid.UUID | None = None
     notes: str | None = Field(default=None, max_length=2000)
     lines: list[SaleBillLineIn] = Field(min_length=1, max_length=200)
+
+
+class VoucherLineIn(_In):
+    ledger_id: uuid.UUID
+    entry: str = Field(pattern=r"^(dr|cr)$")
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    narration: str | None = Field(default=None, max_length=200)
+
+
+class VoucherIn(_In):
+    voucher_date: date
+    lines: list[VoucherLineIn] = Field(min_length=2, max_length=60)
+    narration: str | None = Field(default=None, max_length=1000)

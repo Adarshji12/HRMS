@@ -1,13 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import '../../../styles/welcome.css'
-import { api } from '../../../lib/api'
 import { useAuth } from '../../../lib/auth'
-import { useQuery } from '../../../lib/useQuery'
-/* `relativeTime`, not `shortDate`: `published_at` is a timestamp and shortDate
-   parses date-only strings — handing it one would silently render an invalid
-   date. "3 days ago" is also the more useful reading of an announcement. */
-import { relativeTime } from '../../../lib/format'
+import { EmptyState } from '../../../components/ui'
 import type { NavAccess } from '../../../lib/nav'
 import {
   MAX_FAVOURITES,
@@ -16,9 +11,7 @@ import {
   writeFavourites,
   type Favourite,
 } from '../../../lib/favourites'
-import { EmptyState, ErrorNote, Loading } from '../../../components/ui'
 import {
-  IconBell,
   IconCheck,
   IconClose,
   IconChevronRight,
@@ -53,19 +46,6 @@ import {
  */
 
 /* ---------------------------------------------------------------- types --- */
-
-/** `engagement.py` — `AnnouncementOut`, only the fields this card reads. */
-interface Announcement {
-  id: string
-  title: string
-  body: string
-  is_pinned: boolean
-  requires_acknowledgement: boolean
-  published_at?: string | null
-  published_by_name?: string | null
-  read_at?: string | null
-  acknowledged_at?: string | null
-}
 
 /* -------------------------------------------------------------- helpers --- */
 
@@ -155,10 +135,6 @@ export default function Welcome({ access }: { access: NavAccess }) {
             </section>
           )}
         </div>
-
-        <aside className="wel-aside">
-          <Noticeboard />
-        </aside>
       </div>
     </div>
   )
@@ -296,79 +272,6 @@ function Favourites({ access, catalogue: all }: { access: NavAccess; catalogue: 
 }
 
 /* ---------------------------------------------------------- noticeboard --- */
-
-/**
- * The newest thing the company said.
- *
- * One request, and it owns its own failure — the shortcuts beside it must keep
- * working when engagement is down. Pinned first and then newest, which is the
- * order the noticeboard itself uses; a card that disagreed with the page it
- * links to would be showing a "latest" that is not the top of the list.
- */
-function Noticeboard() {
-  const q = useQuery<Announcement[]>('welcome-announcements', () =>
-    api.get<Announcement[]>('/engagement/announcements'),
-  )
-
-  const posts = useMemo(() => {
-    const rows = q.data ?? []
-    return [...rows].sort((a, b) => {
-      if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
-      return (b.published_at ?? '').localeCompare(a.published_at ?? '')
-    })
-  }, [q.data])
-
-  const unread = posts.filter((post) => !post.read_at).length
-
-  return (
-    <section className="card wel-card wel-notice">
-      <div className="card-head">
-        <h2 className="card-title">
-          <IconBell size={15} /> Noticeboard
-        </h2>
-        {/* Counted from the rows on screen, never read out of a count field —
-            D-026. */}
-        {unread > 0 && <span className="wel-badge">{unread} unread</span>}
-      </div>
-
-      {q.loading ? (
-        <Loading label="Reading the noticeboard…" />
-      ) : q.error ? (
-        <ErrorNote>{q.error}</ErrorNote>
-      ) : posts.length === 0 ? (
-        <EmptyState
-          icon={<IconBell size={20} />}
-          title="Nothing posted"
-          body="Company announcements land here. You will see them the moment they go out."
-        />
-      ) : (
-        <>
-          {posts.slice(0, 2).map((post) => (
-            <article className={`wel-post${post.read_at ? ' wel-post-read' : ''}`} key={post.id}>
-              <h3 className="wel-post-title">
-                {post.is_pinned && <span className="wel-pin">Pinned</span>}
-                {post.title}
-              </h3>
-              <p className="wel-post-body">{post.body}</p>
-              <p className="wel-post-meta">
-                {post.published_by_name ?? 'Your company'}
-                {post.published_at ? ` · ${relativeTime(post.published_at)}` : ''}
-                {post.requires_acknowledgement && !post.acknowledged_at && (
-                  <b> · needs your acknowledgement</b>
-                )}
-              </p>
-            </article>
-          ))}
-          <div className="wel-notice-foot">
-            <Link to="/noticeboard">
-              {posts.length > 2 ? `All ${posts.length} announcements` : 'Open the noticeboard'} →
-            </Link>
-          </div>
-        </>
-      )}
-    </section>
-  )
-}
 
 /* -------------------------------------------------------------- skyline --- */
 

@@ -1,5 +1,5 @@
 /* Human Resources landing page */
-.hh { max-width: 1280px; margin: 0 auto; padding: 24px 28px 40px; display: grid; gap: 18px; }
+.hh { max-width: 1760px; margin: 0 auto; padding: 24px 28px 40px; display: grid; gap: 18px; }
 .hh-head { position: relative; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 22px 24px 22px 28px;
   background: var(--surface-1, #fff); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
 .hh-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--brand); }

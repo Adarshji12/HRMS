@@ -19,6 +19,7 @@ import { downloadCsv, downloadXlsx } from '../../lib/sheet'
 import { CrmPage, OwnerSelect } from '../crm/parts'
 import '../../styles/invoice.css'
 import '../../styles/salebill.css'
+import '../../styles/salebill-theme.css'
 import InvoicePrint, { downloadInvoicePdf } from './InvoicePrint'
 import RowShare from '../../components/RowShare'
 import type { IoColumn } from '../../components/ImportExport'
@@ -969,8 +970,6 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   const dueBad = fm('due_date') !== 'hide' && due < invoiceDate
   const ready = (Boolean(customerId) || walkinMode) && filled.length > 0 && !dueBad && transportOk && discOk && !posMissing && !cessBad && !missing
 
-  const active = rows.find((l) => l.key === activeKey) ?? null
-  const activeItem = active?.item_id ? (items.data ?? []).find((i) => i.id === active.item_id) ?? null : null
 
   const withBlank = (ls: BillLine[]) => (ls.length && !isFilled(ls[ls.length - 1]) ? ls : [...ls, blankBillLine()])
   function setLine(key: string, patch: Partial<BillLine>) {
@@ -1257,7 +1256,7 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
   }
 
   const bill = (
-    <div className={`sb${inline ? ' sb-page' : ''}`} onKeyDown={onNavKey}>
+    <div className={`sb sb-themed${inline ? ' sb-page' : ''}`} onKeyDown={onNavKey}>
       <div className="sb-bar">
         <span className="sb-bar-icon" aria-hidden><IconSheet size={17} /></span>
         <div className="sb-bar-text">
@@ -1306,6 +1305,31 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
           {fields.orderOf('notes').map((key) => <Fragment key={key}>{moreNodes[key]}</Fragment>)}
         </div>
       )}
+
+      <div className="sb-lines-bar">
+        <h3>Items</h3>
+        <span className="sb-lines-tools">
+          <span className="sb-mini-seg" role="radiogroup" aria-label="Item entry">
+            {([['list', 'Item list'], ['manual', 'Manual']] as const).map(([m, label]) => (
+              <button key={m} type="button" role="radio" aria-checked={itemMode === m}
+                className={itemMode === m ? 'is-on' : ''} onClick={() => setItemMode(m)}
+                title={m === 'list' ? 'Pick from the item master: HSN, unit, rate and GST come from the item' : 'Type the line yourself, with no item lookup'}>
+                {label}
+              </button>
+            ))}
+          </span>
+          <label>Discount <span className="sb-mini-seg">
+            {(['pct', 'amt'] as const).map((m) => (
+              <button key={m} type="button" className={discMode === m ? 'is-on' : ''} onClick={() => setDiscMode(m)}>{m === 'pct' ? '%' : '₹'}</button>
+            ))}
+          </span></label>
+          <label>Discount 2 <span className="sb-mini-seg">
+            {(['pct', 'amt'] as const).map((m) => (
+              <button key={m} type="button" className={discMode2 === m ? 'is-on' : ''} onClick={() => setDiscMode2(m)}>{m === 'pct' ? '%' : '₹'}</button>
+            ))}
+          </span></label>
+        </span>
+      </div>
 
       <div className="sb-grid">
         <table>
@@ -1356,8 +1380,8 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
               const m = isFilled(l) ? mathByKey.get(l.key) ?? billMath(l, discMode, billPct, false, discMode2, ratesIncl) : null
               return (
                 <tr key={l.key} className={l.key === activeKey ? 'is-active' : ''} onFocusCapture={() => setActiveKey(l.key)}>
-                  <td className="sb-c-sr">{i + 1}</td>
-                  <td className="sb-c-item">
+                  <td className="sb-c-sr" data-label="Sr">{i + 1}</td>
+                  <td className="sb-c-item" data-label="Item name">
                     <ItemPicker value={l.name} items={sellable} manual={itemMode === 'manual'}
                       inputRef={(el) => { itemRefs.current[l.key] = el }}
                       onText={(name) => setLine(l.key, { name, item_id: '' })}
@@ -1367,14 +1391,14 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
                       })} />
                     {l.item_id && codeOf.get(l.item_id) && <span className="sb-code">{codeOf.get(l.item_id)}</span>}
                   </td>
-                  <td className="sb-c-hsn"><input placeholder="8471" value={l.hsn_sac} onChange={(e) => setLine(l.key, { hsn_sac: e.target.value })} /></td>
-                  <td className="sb-c-qty"><input placeholder="1" inputMode="decimal" value={isFilled(l) ? l.quantity : ''} onChange={(e) => setLine(l.key, { quantity: e.target.value })} /></td>
-                  <td className="sb-c-free"><input placeholder="0" inputMode="decimal" value={l.free} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
-                  <td className="sb-c-unit"><input placeholder="e.g. Nos" value={isFilled(l) ? l.uom : ''} onChange={(e) => setLine(l.key, { uom: e.target.value })} /></td>
-                  <td className="sb-c-rate"><input inputMode="decimal" value={l.rate} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { rate: e.target.value })} /></td>
-                  <td className="sb-c-dis"><input inputMode="decimal" value={l.discount} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount: e.target.value })} /></td>
-                  <td className="sb-c-dis"><input inputMode="decimal" value={l.discount2} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount2: e.target.value })} /></td>
-                  <td className="sb-c-gst">
+                  <td className="sb-c-hsn" data-label="HSN / SAC"><input placeholder="8471" value={l.hsn_sac} onChange={(e) => setLine(l.key, { hsn_sac: e.target.value })} /></td>
+                  <td className="sb-c-qty" data-label="Qty"><input placeholder="1" inputMode="decimal" value={isFilled(l) ? l.quantity : ''} onChange={(e) => setLine(l.key, { quantity: e.target.value })} /></td>
+                  <td className="sb-c-free" data-label="Free"><input placeholder="0" inputMode="decimal" value={l.free} onChange={(e) => setLine(l.key, { free: e.target.value })} /></td>
+                  <td className="sb-c-unit" data-label="Unit"><input placeholder="e.g. Nos" value={isFilled(l) ? l.uom : ''} onChange={(e) => setLine(l.key, { uom: e.target.value })} /></td>
+                  <td className="sb-c-rate" data-label="Rate"><input inputMode="decimal" value={l.rate} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { rate: e.target.value })} /></td>
+                  <td className="sb-c-dis" data-label={`Discount ${discMode === "pct" ? "%" : "₹"}`}><input inputMode="decimal" value={l.discount} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount: e.target.value })} /></td>
+                  <td className="sb-c-dis" data-label={`Discount 2 ${discMode2 === "pct" ? "%" : "₹"}`}><input inputMode="decimal" value={l.discount2} placeholder={isFilled(l) ? '0' : ''} onChange={(e) => setLine(l.key, { discount2: e.target.value })} /></td>
+                  <td className="sb-c-gst" data-label="GST %">
                     {isFilled(l) ? (
                       <select value={l.gst_percent} onChange={(e) => setLine(l.key, { gst_percent: e.target.value })}>
                         {!GST_RATES.includes(l.gst_percent) && <option value={l.gst_percent}>{l.gst_percent}%</option>}
@@ -1383,12 +1407,12 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
                     ) : null}
                   </td>
                   {cessOn && (
-                    <td className="sb-c-cess">
+                    <td className="sb-c-cess" data-label="Cess %">
                       <input type="number" data-spin min={0} step="any" value={l.cess} placeholder={isFilled(l) ? '0' : ''} aria-label="Cess %"
                         onChange={(e) => setLine(l.key, { cess: money2(e.target.value, 300) })} />
                     </td>
                   )}
-                  <td className="sb-c-amt">{m ? fmt(m.amount) : ''}</td>
+                  <td className="sb-c-amt" data-label="Amount">{m ? fmt(m.amount) : ''}</td>
                   <td className="sb-c-x">
                     {isFilled(l) && <button type="button" className="sb-del" title="Remove line" aria-label="Remove line" onClick={() => removeLine(l.key)}><IconTrash size={13} /></button>}
                   </td>
@@ -1410,15 +1434,6 @@ export function ManualInvoice({ onClose, onSaved, inline, onShowAll, invoice, co
 
       <div className="sb-foot">
         <section className="sb-panel sb-panel-split">
-          <div>
-            <h4><IconFolder size={12} /> Item details</h4>
-            <dl>
-              <dt>Item</dt><dd title={active?.name}>{active && isFilled(active) ? <>{active.name}{activeItem && <small> ({activeItem.code})</small>}</> : '—'}</dd>
-              <dt>HSN / GST</dt><dd>{active && isFilled(active) ? `${active.hsn_sac || '—'} · ${Number(active.gst_percent || 0)}%` : '—'}</dd>
-              <dt>Stock</dt><dd>{activeItem ? (activeItem.is_stocked ? `${qtyText(activeItem.available_qty)} ${activeItem.uom}` : 'Not stocked') : '—'}</dd>
-              <dt>Rate from</dt><dd>{activeItem ? 'Sale rate' : active && isFilled(active) ? 'Manual' : '—'}</dd>
-            </dl>
-          </div>
           <div>
             <h4><IconCard size={12} /> Discount &amp; charges</h4>
             <div className="sb-dc">

@@ -201,7 +201,13 @@ def can_administer_crm(user: User) -> bool:
     a migration on a table every module reads — so this is the role check.
     Restricts only: it never widens what ``sees_others`` already allows.
     """
-    return user.role_enum.can_administer
+    if user.role_enum.can_administer:
+        return True
+    # A named role that ticks Master page may edit the master lists; the role's own rows for each list (and
+    # enforce_menu_rights on every write) still decide which lists and which actions.
+    rights = user.menu_rights
+    row = (rights or {}).get("/masters")
+    return bool(row and row.get("access"))
 
 
 def require_admin_crm(user: User) -> None:

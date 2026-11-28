@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '../../lib/useQuery'
 import { Loading, ErrorNote } from '../../components/ui'
 import {
-  IconChevronDown, IconClose, IconDownload, IconFilter, IconFolder, IconPlus, IconPrinter, IconSearch, IconSheet,
+  IconDownload, IconFilter, IconPlus, IconPrinter, IconSearch,
 } from '../../components/Icons'
 import { downloadCsv } from '../../lib/sheet'
 import { todayISO } from '../crm/api'
@@ -205,30 +205,7 @@ export default function ErpSale() {
   return (
     <CrmPage>
       <div className="sl">
-        {/* ----------------------------------------------------------- tabs -- */}
-        <div className="sl-tabs" role="tablist">
-          <button role="tab" aria-selected={!billOpen} className={`sl-tab${!billOpen ? ' is-on' : ''}`} onClick={() => setBillOpen(false)}>
-            <IconFolder size={15} /> Sale
-          </button>
-          {billOpen && (
-            <span role="tab" aria-selected className="sl-tab is-on sl-tab-bill">
-              <IconSheet size={15} /> Sale Bill
-              <button type="button" className="sl-x" aria-label="Close the bill" onClick={() => setBillOpen(false)}><IconClose size={12} /></button>
-            </span>
-          )}
-          <button type="button" className="sl-newwin" onClick={() => window.open(window.location.href, '_blank')}>
-            <IconPlus size={14} /> New Window <IconChevronDown size={12} />
-          </button>
-        </div>
-
-        {!loaded ? <Loading /> : billOpen && biller ? (
-          <ManualInvoice
-            inline
-            onClose={() => setBillOpen(false)}
-            onShowAll={() => setBillOpen(false)}
-            onSaved={(inv) => { setReload((n) => n + 1); setBillOpen(false); setOpenId(inv.id) }}
-          />
-        ) : (
+        {!loaded ? <Loading /> : (
           <>
             {/* ------------------------------------------------------ toolbar -- */}
             <div className="sl-bar">
@@ -237,6 +214,7 @@ export default function ErpSale() {
                 <IconSearch size={15} />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Bill no. or party" aria-label="Search bills" />
               </label>
+              <span className="sl-total">Total no. of bills: {rows.length}</span>
               <div className="sl-tools">
                 <button type="button" className={`sl-btn${filtersOpen ? ' is-on' : ''}`} aria-pressed={filtersOpen} onClick={() => setFiltersOpen((o) => !o)}>
                   <IconFilter size={14} /> Filters{(activeFilters > 0 || from !== firstOfMonth() || to !== todayISO()) && <span className="sl-count">{activeFilters + (from !== firstOfMonth() || to !== todayISO() ? 1 : 0)}</span>}
@@ -245,7 +223,7 @@ export default function ErpSale() {
                 <ColumnSettings defs={SALE_COLUMNS} order={columns.pref.order} hidden={columns.pref.hidden} onSave={columns.save} onReset={columns.reset} />
                 {biller && (
                   <button type="button" className="sl-btn sl-btn-primary" onClick={() => setBillOpen(true)}>
-                    <IconPlus size={14} /> New <kbd>F2</kbd>
+                    <IconPlus size={14} /> Create <kbd>F2</kbd>
                   </button>
                 )}
               </div>
@@ -332,6 +310,13 @@ export default function ErpSale() {
           </>
         )}
       </div>
+
+      {billOpen && biller && (
+        <ManualInvoice
+          onClose={() => setBillOpen(false)}
+          onSaved={(inv) => { setReload((n) => n + 1); setBillOpen(false); setOpenId(inv.id) }}
+        />
+      )}
 
       {openId && (
         <InvoiceDrawer id={openId} onOpen={setOpenId} onClose={() => setOpenId(null)} onChanged={() => setReload((n) => n + 1)} />

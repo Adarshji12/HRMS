@@ -233,6 +233,7 @@ function CarryDialog({ years, current, onClose, onDone }: { years: Matrix['years
   return (
     <Dialog title="Carry balances forward" onClose={result ? onDone : onClose} narrow
             footer={result ? <button className="btn btn-primary" onClick={onDone}>Done</button> : <><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy} onClick={() => void run()}>{busy ? 'Running…' : 'Run'}</button></>}>
+      <div className="ld-carry">
       <div className="ld-two">
         <label>From<select value={from} onChange={(e) => setFrom(Number(e.target.value))}>{[current - 2, current - 1, current].map((y) => <option key={y} value={y}>{label(y)}</option>)}</select></label>
         <label>Into<select value={into} disabled><option>{label(into)}</option></select></label>
@@ -240,6 +241,7 @@ function CarryDialog({ years, current, onClose, onDone }: { years: Matrix['years
       <p className="muted-sm" style={{ marginTop: 12 }}>Types that carry forward move what is left, up to each type’s cap. Types that do not carry forward are written off as lapsed, so the ledger explains where the days went. Running this twice does nothing the second time.</p>
       {result && <div className="notice notice-ok">{result}</div>}
       {error && <ErrorNote>{error}</ErrorNote>}
+      </div>
     </Dialog>
   )
 }

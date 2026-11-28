@@ -5,7 +5,7 @@ import {
   NAV,
   HRMS_NAV_ITEMS,
   ERP_NAV_ITEMS,
-  ERP_TRANSACTIONS,
+  ERP_MENUS,
   canSee,
   firstRouteIn,
   itemsIn,
@@ -46,6 +46,7 @@ import ErpBilling from './pages/erp/ErpBilling'
 import ErpSale from './pages/erp/ErpSale'
 import ErpMasters from './pages/erp/ErpMasters'
 import ErpPlaceholder from './pages/erp/ErpPlaceholder'
+import { VoucherBook, VoucherEntry } from './pages/erp/ErpVouchers'
 import ErpSettingsPage from './pages/erp/ErpSettingsPage'
 import NotificationsTab from './pages/hrms/NotificationsTab'
 import EmailSetup from './pages/EmailSetup'
@@ -159,6 +160,8 @@ function Shell() {
   const location = useLocation()
   const isAdmin = canAdminister(user)
   const owner = isOwner(user)
+  // Master: administrators, and anybody whose role ticks Master page (Roles & Permission decides the rest).
+  const mastersOpen = isAdmin || user?.menu_rights?.['/masters']?.access === true
   const hiddenPages = user?.hidden_pages ?? []
   const access = {
     isAdmin, canViewTeam: canViewTeam(user), isOwner: owner, hiddenPages,
@@ -185,7 +188,7 @@ function Shell() {
   /* A menu row that carries a query (…?tab=docs) is lit only on that exact view,
      so two rows pointing at one page do not both light up. */
   const rowOn = (to: string) => (to.includes('?') ? `${location.pathname}${location.search}` === to : onPath(to))
-  const txGroupHere = ERP_TRANSACTIONS.groups.find((g) => g.items.some((item) => onPath(item.to)))
+  const txGroupHere = ERP_MENUS.flatMap((m) => m.groups).find((g) => g.items.some((item) => onPath(item.to)))
   const erpRouteActive = erpItems.some((item) => onPath(item.to)) || Boolean(txGroupHere)
   /* Where a bare /settings lands. An employee holds none of the admin pages,
      so a fixed target would be a redirect into a permission bounce; the first
@@ -209,7 +212,7 @@ function Shell() {
     )
     const [erpExpanded, setErpExpanded] = useState(() => erpRouteActive)
     // Transactions, and which of its two groups (Sale / Purchase) is open.
-    const [txOpen, setTxOpen] = useState(() => Boolean(txGroupHere))
+    const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => Object.fromEntries(ERP_MENUS.map((m) => [m.key, m.groups.some((g) => g.key === txGroupHere?.key)])))
     const [txGroup, setTxGroup] = useState<string | null>(() => txGroupHere?.key ?? null)
     const [crmExpanded, setCrmExpanded] = useState(
       () => crmRouteActive,
@@ -255,7 +258,8 @@ function Shell() {
     // closing on its own. Top-level links close the groups explicitly.
     const hrmsActive = hrmsRouteActive || hrmsHomeRouteActive
     if (txGroupHere) {
-      setTxOpen(true)
+      const owner = ERP_MENUS.find((m) => m.groups.some((g) => g.key === txGroupHere.key))
+      if (owner) setOpenMenus((open) => ({ ...open, [owner.key]: true }))
       setTxGroup(txGroupHere.key)
     }
     if (crmRouteActive || erpRouteActive || hrmsActive) {
@@ -385,7 +389,7 @@ function Shell() {
           )}
           {/* Every reference list in one place — see pages/masters/Masters.tsx.
               Administrator-only, matching the route and the server's writes. */}
-          {isAdmin && menuOpen('/masters', access.menuRights) && (
+          {mastersOpen && menuOpen('/masters', access.menuRights) && (
             <NavLink
               to="/masters"
               className="nav-link"
@@ -527,25 +531,25 @@ function Shell() {
                     <item.icon />
                     <span className="nav-label">{item.label}</span>
                   </NavLink>
-                  {index === 0 && (
-                    <>
+                  {index === 0 && ERP_MENUS.map((menu) => (
+                    <Fragment key={menu.key}>
                       <button
                         type="button"
                         className="nav-link nav-sub erp-nav-link erp-tx-toggle"
-                        aria-expanded={txOpen}
-                        aria-current={txGroupHere ? 'page' : undefined}
+                        aria-expanded={openMenus[menu.key]}
+                        aria-current={menu.groups.some((g) => g.key === txGroupHere?.key) ? 'page' : undefined}
                         onClick={(event) => {
                           event.stopPropagation()
-                          setTxOpen((open) => !open)
+                          setOpenMenus((open) => ({ ...open, [menu.key]: !open[menu.key] }))
                         }}
                       >
-                        <ERP_TRANSACTIONS.icon />
-                        <span className="nav-label">{ERP_TRANSACTIONS.label}</span>
+                        <menu.icon />
+                        <span className="nav-label">{menu.label}</span>
                         <IconChevronDown size={13} className="nav-disclosure-arrow" />
                       </button>
-                      {txOpen && (
+                      {openMenus[menu.key] && (
                         <div className="erp-tx-menu">
-                          {ERP_TRANSACTIONS.groups.map((group) => (
+                          {menu.groups.map((group) => (
                             <Fragment key={group.key}>
                               <button
                                 type="button"
@@ -585,8 +589,8 @@ function Shell() {
                           ))}
                         </div>
                       )}
-                    </>
-                  )}
+                    </Fragment>
+                  ))}
                 </Fragment>
               ))}
             </div>
@@ -718,6 +722,10 @@ function Shell() {
           <Route path="/erp/billing" element={<ErpBilling key={location.search} />} />
           <Route path="/erp/purchase" element={<ErpPlaceholder title="Purchase" />} />
           <Route path="/erp/purchase-returns" element={<ErpPlaceholder title="Purchase Return" />} />
+          <Route path="/erp/receipt-voucher" element={<VoucherBook type="receipt" />} />
+          <Route path="/erp/receipt-voucher/new" element={<VoucherEntry type="receipt" />} />
+          <Route path="/erp/payment-voucher" element={<VoucherBook type="payment" />} />
+          <Route path="/erp/payment-voucher/new" element={<VoucherEntry type="payment" />} />
           <Route path="/erp/masters" element={<ErpMasters />} />
           <Route path="/erp/settings" element={<ErpSettingsPage />} />
           {/* The old placeholder. The general ledger is a later phase; billing
@@ -994,12 +1002,12 @@ function Shell() {
               a document, it is long, and people expect to be able to send
               somebody a link to one. */}
           {/* Master: a destination, not a module, so it renders bare. */}
-          <Route path="/masters" element={isAdmin ? <Masters /> : <Navigate to="/" replace />} />
+          <Route path="/masters" element={mastersOpen ? <Masters /> : <Navigate to="/" replace />} />
           {/* The ERP Master card's lists, opened here rather than under /erp so the
               Master section stays put instead of switching to the ERP module. */}
           <Route
             path="/masters/erp/:tab"
-            element={isAdmin ? <ErpMasters /> : <Navigate to="/" replace />}
+            element={mastersOpen ? <ErpMasters /> : <Navigate to="/" replace />}
           />
           {/* Organisation Master's two lists, each on its own page. Keyed so
               moving between them starts the page fresh on the right tab. */}
@@ -1033,14 +1041,14 @@ function Shell() {
           />
           <Route
             path="/masters/:kind"
-            element={isAdmin ? <MasterListPage /> : <Navigate to="/" replace />}
+            element={mastersOpen ? <MasterListPage /> : <Navigate to="/" replace />}
           />
           {/* Products and plans now sit on the Lead Master card. */}
           <Route path="/product-master" element={<Navigate to="/masters" replace />} />
           <Route path="/product-master/:kind" element={<Navigate to="/masters" replace />} />
           {(['sales'] as const).flatMap((g) => [
             <Route key={g} path={`/${g}-master`}
-                   element={isAdmin ? <MasterHub key={g} groupKey={g} /> : <Navigate to="/" replace />} />,
+                   element={mastersOpen ? <MasterHub key={g} groupKey={g} /> : <Navigate to="/" replace />} />,
             <Route key={`${g}-kind`} path={`/${g}-master/:kind`}
                    element={isAdmin ? <MasterHub key={g} groupKey={g} /> : <Navigate to="/" replace />} />,
           ])}

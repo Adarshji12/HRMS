@@ -4667,3 +4667,6 @@ table.sol .crm-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 
 /* Row actions: every text button the same compact size, so Start/Close, Cancel and Edit line up. */
 .crm td .crm-row-actions .btn.btn-sm { height: 30px; padding: 0 12px; font-size: 12.5px; white-space: nowrap; }
+
+.crm-dialog-head-action { position: absolute; top: var(--space-4); right: calc(var(--space-4) + 44px); }
+.crm-dialog-head:has(.crm-dialog-head-action) { padding-right: 190px; }

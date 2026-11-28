@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query, Request, Response, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.schemas import erp as S
-from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stations, sale_bills, stock, stock_openings, walkins
+from app.services.erp import bill_series, billing, ledgers, lookups, masters, purchase, reports, salesmen, sales, stations, sale_bills, stock, stock_openings, vouchers, walkins
 from app.services.erp.common import capabilities, get_settings, record_audit, require, row_dict
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -1053,3 +1053,41 @@ def receipt_proof(receipt_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> 
 def reverse_receipt(receipt_id: uuid.UUID, payload: S.ReasonIn, viewer: CurrentUser, db: DbSession,
                     request: Request) -> dict:
     return billing.reverse_receipt(db, viewer, receipt_id, payload.reason, request=request)
+
+
+
+# --------------------------------------------------------------------------- #
+# Vouchers (receipt / payment)
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/vouchers/ledger-balance/{ledger_id}")
+def voucher_ledger_balance(ledger_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
+    return vouchers.ledger_balance(db, viewer, ledger_id)
+
+
+@router.get("/vouchers/{voucher_type}/next-number")
+def voucher_next_number(voucher_type: str, viewer: CurrentUser, db: DbSession, on: date | None = None) -> dict:
+    return vouchers.next_voucher_number(db, viewer, voucher_type, on or date.today())
+
+
+@router.get("/vouchers/{voucher_type}")
+def list_vouchers(
+    voucher_type: str, viewer: CurrentUser, db: DbSession, start: date | None = None, end: date | None = None,
+) -> list[dict]:
+    return vouchers.list_vouchers(db, viewer, voucher_type, start=start, end=end)
+
+
+@router.post("/vouchers/{voucher_type}", status_code=status.HTTP_201_CREATED)
+def create_voucher(voucher_type: str, payload: S.VoucherIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return vouchers.create_voucher(db, viewer, voucher_type, payload, request=request)
+
+
+@router.get("/vouchers/item/{voucher_id}")
+def get_voucher(voucher_id: uuid.UUID, viewer: CurrentUser, db: DbSession) -> dict:
+    return vouchers.get_voucher(db, viewer, voucher_id)
+
+
+@router.post("/vouchers/item/{voucher_id}/cancel")
+def cancel_voucher(voucher_id: uuid.UUID, payload: S.ReasonIn, viewer: CurrentUser, db: DbSession, request: Request) -> dict:
+    return vouchers.cancel_voucher(db, viewer, voucher_id, payload.reason, request=request)
