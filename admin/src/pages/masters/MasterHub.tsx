@@ -37,7 +37,6 @@ const TAGLINES: Record<string, string> = {
   cities: 'Within a district',
   statuses: 'Where a lead stands',
   sources: 'Where a lead came from',
-  campaigns: 'Which campaign brought it',
   industries: 'What the customer does',
   dispositions: 'How a support call ended',
   'visit-types': 'Kinds of field visit',

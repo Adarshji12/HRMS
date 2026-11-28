@@ -54,6 +54,38 @@ LOST_OUTCOME = r"^(lost|no_decision)$"
 #: it cannot sell in another tomorrow. The console formats; the server stores
 #: what it was given.
 MOBILE = r"^\+?[0-9][0-9 \-]{7,19}$"
+
+
+def check_mobile(value: str | None) -> str | None:
+    """A mobile number is ten digits, any digits.
+
+    "+91 98765 43210", "09876543210", "919876543210" and "5555555555" are all fine; "98765" and "555555555" (nine
+    digits) are not. A number with another country's dial code (anything starting "+" but not "+91") only has to
+    be 8-15 digits, because the length differs by country.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    digits = re.sub(r"\D", "", text)
+    if re.sub(r"[\d\s\-().+]", "", text):
+        raise ValueError("A mobile number has digits only.")
+    if text.startswith("+") and not text.startswith("+91"):
+        if 8 <= len(digits) <= 15:
+            return value
+        raise ValueError("Enter a valid mobile number.")
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 13 and digits.startswith("091"):
+        digits = digits[3:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        raise ValueError("Enter a 10-digit mobile number.")
+    return value
+
+
 COLOUR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
 
 
@@ -629,7 +661,7 @@ class LeadPage(BaseModel):
 
 class LeadIn(CrmBase):
     name: str = Field(min_length=1, max_length=200)
-    mobile: str = Field(pattern=MOBILE)
+    mobile: str = Field(max_length=24)
     company: str | None = Field(default=None, max_length=200)
     whatsapp: str | None = Field(default=None, max_length=24)
     email: str | None = Field(default=None, max_length=255)
@@ -649,12 +681,14 @@ class LeadIn(CrmBase):
         "company", "whatsapp", "email", "pincode", "address", "notes", mode="before"
     )(_blank_to_none)
 
+    _mobile_ok = field_validator("mobile", "whatsapp", mode="after")(lambda v: check_mobile(v))
+
 
 class LeadPatch(CrmBase):
     """Every field optional. Absent means "leave alone"."""
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    mobile: str | None = Field(default=None, pattern=MOBILE)
+    mobile: str | None = Field(default=None, max_length=24)
     company: str | None = Field(default=None, max_length=200)
     whatsapp: str | None = Field(default=None, max_length=24)
     email: str | None = Field(default=None, max_length=255)
@@ -675,6 +709,8 @@ class LeadPatch(CrmBase):
         "company", "whatsapp", "email", "pincode", "address", "notes", "lost_reason",
         mode="before",
     )(_blank_to_none)
+
+    _mobile_ok = field_validator("mobile", "whatsapp", mode="after")(lambda v: check_mobile(v))
 
 
 class LeadBulkAssign(CrmBase):
@@ -755,7 +791,8 @@ class LeadImportRow(CrmBase):
     """
 
     name: str = Field(min_length=1, max_length=200)
-    mobile: str = Field(pattern=MOBILE)
+    #: Checked per row in the service, so one bad number is reported against its row and does not reject the file.
+    mobile: str = Field(min_length=1, max_length=40)
     whatsapp: str | None = None
     company: str | None = None
     email: str | None = None
@@ -972,7 +1009,7 @@ class CustomerDetailOut(CustomerOut):
 
 class CustomerIn(CrmBase):
     name: str = Field(min_length=1, max_length=200)
-    mobile: str = Field(pattern=MOBILE)
+    mobile: str = Field(max_length=24)
     #: The company's own reference. Generated when absent, never overwritten.
     code: str | None = Field(default=None, max_length=40)
     company: str | None = Field(default=None, max_length=200)
@@ -996,26 +1033,14 @@ class CustomerIn(CrmBase):
         "address", "notes", mode="before",
     )(_blank_to_none)
 
-    @field_validator("mobile", "whatsapp")
-    @classmethod
-    def _indian_mobile(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        digits = re.sub(r"[\s\-]", "", value)
-        if digits.startswith("+91"):
-            digits = digits[3:]
-        elif len(digits) == 12 and digits.startswith("91"):
-            digits = digits[2:]
-        if not re.fullmatch(r"[6-9][0-9]{9}", digits):
-            raise ValueError("Enter a valid 10-digit mobile number.")
-        return value
+    _mobile_ok = field_validator("mobile", "whatsapp", mode="after")(lambda v: check_mobile(v))
 
 
 class CustomerPatch(CustomerIn):
     """Same fields, all optional."""
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    mobile: str | None = Field(default=None, pattern=MOBILE)
+    mobile: str | None = Field(default=None, max_length=24)
     status: str | None = Field(default=None, pattern=CUSTOMER_STATUS)
 
 
@@ -1133,6 +1158,8 @@ class VisitIn(CrmBase):
         if bool(self.customer_id) == bool(self.lead_id):
             raise ValueError("A visit is for a lead or for a customer — choose exactly one.")
         return self
+
+    _mobile_ok = field_validator("mobile", mode="after")(lambda v: check_mobile(v))
 
 
 class VisitPatch(VisitIn):
@@ -1296,6 +1323,8 @@ class QuotationIn(CrmBase):
         mode="before",
     )(_blank_to_none)
 
+    _mobile_ok = field_validator("mobile", "whatsapp", mode="after")(lambda v: check_mobile(v))
+
 
 class QuotationStatusIn(CrmBase):
     status: str = Field(pattern=QUOTATION_STATUS)
@@ -1316,7 +1345,9 @@ class QuotationSummary(BaseModel):
 
 class ReminderRecipientIn(CrmBase):
     name: str | None = Field(default=None, max_length=200)
-    mobile: str = Field(pattern=MOBILE)
+    mobile: str = Field(max_length=24)
+
+    _mobile_ok = field_validator("mobile", mode="after")(lambda v: check_mobile(v))
 
 
 class ReminderRecipientOut(ORMModel):

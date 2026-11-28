@@ -124,7 +124,6 @@ GROUPS: tuple[Group, ...] = (
        # Lead Master
        _m("/masters/statuses", "Lead status", "masters", ("/crm/masters/statuses",), parent="/masters"),
        _m("/masters/sources", "Lead source", "masters", ("/crm/masters/sources",), parent="/masters"),
-       _m("/masters/campaigns", "Campaign", "masters", ("/crm/masters/campaigns",), parent="/masters"),
        _m("/masters/industries", "Industry", "masters", ("/crm/masters/industries",), parent="/masters"),
        _m("/masters/requirement-types", "Requirement type", "masters", ("/crm/masters/requirement-types",), parent="/masters"),
        # Geography

@@ -337,25 +337,6 @@ export const LISTS: ListDef[] = [
     ],
   },
   {
-    kind: 'campaigns',
-    label: 'Campaigns',
-    description: 'Marketing pushes leads are attributed to. The source is the channel; the campaign is which spend on it.',
-    columns: [
-      { key: 'name', label: 'Campaign' },
-      { key: 'source_name', label: 'Source' },
-      { key: 'starts_on', label: 'Starts' },
-      { key: 'ends_on', label: 'Ends' },
-      { key: 'budget', label: 'Budget' },
-    ],
-    fields: [
-      { key: 'name', label: 'Name', kind: 'text', placeholder: 'e.g. Diwali offer 2026' },
-      { key: 'source_id', label: 'Lead source', kind: 'parent', parentKind: 'sources' },
-      { key: 'starts_on', label: 'Starts on', kind: 'date' },
-      { key: 'ends_on', label: 'Ends on', kind: 'date' },
-      { key: 'budget', label: 'Budget (₹)', kind: 'number', placeholder: '50000' },
-    ],
-  },
-  {
     kind: 'item-categories',
     label: 'Item Categories',
     description: 'Groups for ERP items. The item form picks its category from this list.',
@@ -891,7 +872,7 @@ export const MASTER_GROUPS: MasterGroup[] = [
     key: 'lead',
     title: 'Lead Master',
     description: 'How a lead is described from the moment it is captured.',
-    kinds: ['statuses', 'sources', 'campaigns', 'industries', 'requirement-types'],
+    kinds: ['statuses', 'sources', 'industries', 'requirement-types'],
   },
   {
     key: 'inventory',

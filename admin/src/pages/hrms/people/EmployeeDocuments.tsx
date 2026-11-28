@@ -21,6 +21,7 @@ import { useCallback, useRef, useState } from 'react'
 import { api, download } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { Empty, ErrorNote, Loading } from '../../../components/ui'
+import { IconFolder } from '../../../components/Icons'
 import type { EmployeeDocument } from '../../../lib/types'
 import '../../../styles/people.css'
 
@@ -88,8 +89,15 @@ export default function EmployeeDocuments({
 
   return (
     <section className="card hr-section hr-section-wide">
-      <h2 className="card-title">Documents</h2>
-      {error && <ErrorNote>{error}</ErrorNote>}
+      <header className="hr-section-head">
+        <span className="hr-section-icon tone-amber"><IconFolder size={20} /></span>
+        <div className="hr-section-titles">
+          <h2 className="hr-section-title">Documents</h2>
+          <p className="hr-section-blurb">Upload KYC identity proofs, offer letters, and compliance records (PDF, JPG, PNG up to 10 MB).</p>
+        </div>
+        <span className="hr-section-count">{docsQ.data?.length ?? 0} files</span>
+      </header>
+      {error && <div className="hr-section-pad"><ErrorNote>{error}</ErrorNote></div>}
 
       <UploadRow userId={userId} onUploaded={docsQ.reload} onError={setError} />
 

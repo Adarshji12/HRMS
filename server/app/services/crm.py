@@ -1436,7 +1436,8 @@ def import_leads(
     }
 
     existing_mobiles: set[str] = set()
-    block = payload.skip_duplicates and get_settings(db, org_id).block_duplicate_leads
+    # CRM Setting > General decides. The file's own tick-box can no longer let duplicates in when the setting forbids them.
+    block = get_settings(db, org_id).block_duplicate_leads
     if block:
         existing_mobiles = {
             _mobile_key(m) for m in db.scalars(select(CrmLead.mobile).where(CrmLead.org_id == org_id))
@@ -1446,6 +1447,13 @@ def import_leads(
     errors: list[str] = []
     for index, row in enumerate(payload.rows, start=1):
         mobile = row.mobile.strip()
+        try:
+            S.check_mobile(mobile)
+            if row.whatsapp and row.whatsapp.strip():
+                S.check_mobile(row.whatsapp.strip())
+        except ValueError as exc:
+            errors.append(f"Row {index} ({row.name}): {exc}")
+            continue
         if block and _mobile_key(mobile) in existing_mobiles:
             skipped += 1
             continue

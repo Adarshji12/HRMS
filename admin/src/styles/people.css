@@ -203,3 +203,103 @@
   font-size: 13px; cursor: pointer;
 }
 .hr-same input { width: auto; margin: 0; }
+
+/* ---------------------------------------------------- tabs, chips, hero -- */
+.hr-hero-name { overflow-wrap: anywhere; }
+.hr-hero-done {
+  flex: 1 1 320px; max-width: 560px; min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.02));
+}
+.hr-hero-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.hr-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent;
+  font: 12px var(--font-mono, ui-monospace, monospace); color: var(--text-secondary);
+  cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hr-chip:hover { border-color: var(--border-strong); }
+.hr-chip-plain { cursor: default; border-color: transparent; padding-left: 0; }
+.hr-chip-act { font: 600 11px var(--font-sans, inherit); color: var(--accent, var(--text-muted)); }
+
+.hr-tabs {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  margin: 0 0 var(--space-4); padding: 6px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface, transparent);
+}
+.hr-tab {
+  padding: 8px 14px; border: 0; border-radius: 9px; background: transparent;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+}
+.hr-tab:hover { color: var(--text-primary); }
+.hr-tab.on { background: var(--accent, #0e7490); color: #fff; }
+
+/* Filtered to one tab: that section takes the full width. */
+.hr-profile-grid.is-single { grid-template-columns: minmax(0, 1fr); }
+.hr-profile-grid.is-single > * { grid-column: 1 / -1; }
+
+/* Controls that were being squeezed to a stub in narrow rows. */
+.hr-upload .btn, .hr-upload input[type='file'] { flex: 0 0 auto; white-space: nowrap; }
+.hr-confirm-row input, .hr-field input { text-overflow: ellipsis; }
+
+/* ----------------------------------------------------- section cards -- */
+.hr-section { padding: 0; overflow: hidden; }
+.hr-section > .hr-field-grid { padding: var(--space-4) var(--space-5); }
+.hr-section > .err-note, .hr-section > [role='alert'] { margin: var(--space-3) var(--space-5) 0; }
+.hr-section-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.hr-section-icon {
+  flex: none; width: 40px; height: 40px; border-radius: 11px;
+  display: grid; place-items: center;
+  border: 1px solid transparent;
+}
+.hr-section-icon.tone-teal { background: rgba(14, 116, 144, 0.10); color: #0e7490; border-color: rgba(14, 116, 144, 0.25); }
+.hr-section-icon.tone-indigo { background: rgba(79, 70, 229, 0.10); color: #4f46e5; border-color: rgba(79, 70, 229, 0.25); }
+.hr-section-icon.tone-green { background: rgba(16, 185, 129, 0.12); color: #059669; border-color: rgba(16, 185, 129, 0.28); }
+.hr-section-titles { flex: 1 1 auto; min-width: 0; }
+.hr-section-title { margin: 0; font-size: var(--text-lg, 17px); font-weight: 680; letter-spacing: -0.01em; }
+.hr-section-blurb { margin: 2px 0 0; font-size: var(--text-sm, 13px); color: var(--text-secondary); }
+.hr-section-count {
+  flex: none; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: rgba(0, 0, 0, 0.03);
+  font: 12px var(--font-mono, ui-monospace, monospace); color: var(--text-secondary);
+}
+.hr-group {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+  margin-top: var(--space-2);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+}
+.hr-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.hr-group:first-child { margin-top: 0; }
+.hr-section-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border); background: rgba(0, 0, 0, 0.02);
+}
+
+.hr-field input[type='number'] { width: 100%; max-width: none; }
+
+/* .card sets its own padding later in the cascade; match its specificity so the header and footer run edge to edge. */
+.card.hr-section { padding: 0; overflow: hidden; }
+.card.hr-section > .hr-section-head { padding: 18px 24px; }
+.card.hr-section > .hr-field-grid { padding: 20px 24px; gap: 16px 20px; }
+.card.hr-section > .hr-section-actions { padding: 14px 24px; margin: 0; }
+.hr-group { margin-top: 8px; }
+.hr-field input, .hr-field select { height: 42px; }
+.hr-field textarea { min-height: 84px; }
+
+.hr-section-icon.tone-amber { background: rgba(217, 119, 6, 0.10); color: #b45309; border-color: rgba(217, 119, 6, 0.28); }
+.hr-section-pad { padding: 12px 24px 0; }
+.card.hr-section > .hr-upload {
+  margin: 0; padding: 16px 24px; background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border);
+}
+.card.hr-section > .table-wrap { padding: 0 24px 16px; }
+.card.hr-section > .empty, .card.hr-section > [class*='empty'] { padding: 40px 24px; }
+
+.page.hr-profile-page { max-width: 1120px; margin-inline: auto; }

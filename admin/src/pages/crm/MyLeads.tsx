@@ -1346,7 +1346,6 @@ function ImportDialog({
 }) {
   const [rows, setRows] = useState<Array<Record<string, string>>>([])
   const [fileName, setFileName] = useState('')
-  const [skipDuplicates, setSkipDuplicates] = useState(true)
   const [ownerId, setOwnerId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1401,7 +1400,6 @@ function ImportDialog({
     try {
       const result = await crm.importLeads({
         rows: mapped,
-        skip_duplicates: skipDuplicates,
         owner_id: ownerId || null,
       })
       if (result.errors.length > 0) {
@@ -1451,17 +1449,9 @@ function ImportDialog({
         <Field label="Assign every imported lead to">
           <OwnerSelect value={ownerId} onChange={setOwnerId} placeholder="As the file says, else the assignment rule" />
         </Field>
-        <div className="crm-field">
-          <span className="crm-field-label">Duplicates</span>
-          <label className="crm-check">
-            <input
-              type="checkbox"
-              checked={skipDuplicates}
-              onChange={(event) => setSkipDuplicates(event.target.checked)}
-            />
-            Skip a row whose mobile is already in the pipeline
-          </label>
-        </div>
+        <p className="muted crm-form-wide">
+          Mobile numbers must be 10 digits. Duplicates follow CRM Setting &rarr; General: a row whose mobile is already a lead is skipped.
+        </p>
 
         {error && (
           <div className="crm-form-wide">

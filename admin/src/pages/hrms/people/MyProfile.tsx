@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../../lib/api'
 import { useQuery } from '../../../lib/useQuery'
 import { Avatar, ErrorNote, Loading, Meter } from '../../../components/ui'
+import { IconBriefcase, IconBuilding, IconUser } from '../../../components/Icons'
 import type { EmployeeProfile } from '../../../lib/types'
 import EmployeeDocuments from './EmployeeDocuments'
 import { crm, type CityRow, type Country, type StateRow } from '../../crm/api'
@@ -54,6 +55,14 @@ const PROFILE_FIELDS = [
   'bank_account_name',
   'employment_type', 'work_location', 'probation_months', 'notice_period_days',
   'father_name', 'attendance_type',
+] as const
+
+const TABS = [
+  { key: 'all', label: 'All Sections' },
+  { key: 'personal', label: 'Personal Details' },
+  { key: 'statutory', label: 'Statutory & Bank' },
+  { key: 'employment', label: 'Employment' },
+  { key: 'documents', label: 'Documents' },
 ] as const
 
 const GENDERS = ['female', 'male', 'other', 'undisclosed'] as const
@@ -102,9 +111,19 @@ function ProfileBody({
   }).length
   const pct = Math.round((filled / PROFILE_FIELDS.length) * 100)
   const displayName = profile.full_name || profile.email || 'Unnamed record'
+  const [tab, setTab] = useState<(typeof TABS)[number]['key']>('all')
+  const show = (k: string) => tab === 'all' || tab === k
+  const [copied, setCopied] = useState(false)
+  const copyEmail = () => {
+    if (!profile.email) return
+    void navigator.clipboard?.writeText(profile.email).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   return (
-    <div className="page">
+    <div className="page hr-profile-page">
       {/* An identity header, not a page title. This is a record ABOUT a person
           and it opened with their name in the same 25px type every list page
           uses — no face, no role, no sense of whose record you were editing. */}
@@ -127,6 +146,15 @@ function ProfileBody({
               <span className="hr-hero-since">Joined {profile.joined_on.slice(0, 10)}</span>
             )}
           </div>
+          <div className="hr-hero-chips">
+            {profile.email && (
+              <button type="button" className="hr-chip" onClick={copyEmail} title="Copy email">
+                {profile.email}
+                <span className="hr-chip-act">{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+            )}
+            {profile.employee_code && <span className="hr-chip hr-chip-plain">ID: {profile.employee_code}</span>}
+          </div>
         </div>
 
         <div className="hr-hero-done">
@@ -141,14 +169,23 @@ function ProfileBody({
         </div>
       </header>
 
-      <div className="hr-profile-grid">
+      <nav className="hr-tabs" aria-label="Profile sections">
+        {TABS.map((t) => (
+          <button key={t.key} type="button" className={`hr-tab${tab === t.key ? ' on' : ''}`}
+                  onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className={`hr-profile-grid${tab === 'all' ? '' : ' is-single'}`}>
         {/* Personal carries twice the fields of the other two, so it takes the
             full width rather than a third of it. Side by side they left two
             columns of dead space six hundred pixels tall. */}
-        <PersonalSection profile={profile} onSaved={onSaved} />
-        <StatutorySection profile={profile} onSaved={onSaved} />
-        <EmploymentSection profile={profile} onSaved={onSaved} />
-        <EmployeeDocuments userId={profile.user_id} canManage={profile.can_edit_employment} />
+        {show('personal') && <PersonalSection profile={profile} onSaved={onSaved} />}
+        {show('statutory') && <StatutorySection profile={profile} onSaved={onSaved} />}
+        {show('employment') && <EmploymentSection profile={profile} onSaved={onSaved} />}
+        {show('documents') && <EmployeeDocuments userId={profile.user_id} canManage={profile.can_edit_employment} />}
       </div>
 
       {profile.updated_by_name && (
@@ -250,20 +287,50 @@ function Field({
   )
 }
 
+/** A labelled divider inside a section, full width. */
+function Group({ title }: { title: string }) {
+  return <div className="hr-group"><span>{title}</span></div>
+}
+
+/** How many of a draft's fields hold something. */
+function countFilled(draft: Record<string, unknown>, skip: string[] = [], on: string[] = []): [number, number] {
+  const keys = Object.keys(draft).filter((k) => !skip.includes(k))
+  const done = keys.filter((k) => draft[k] !== '' && draft[k] !== null && draft[k] !== undefined || on.includes(k)).length
+  return [done, keys.length]
+}
+
 function SectionShell({
   heading,
+  blurb,
+  icon,
+  tone,
+  count,
+  headAction,
   editable,
   state,
   children,
 }: {
   heading: string
+  blurb?: string
+  icon?: React.ReactNode
+  tone?: 'teal' | 'indigo' | 'green'
+  count?: [number, number]
+  headAction?: React.ReactNode
   editable: boolean
   state: ReturnType<typeof useSection<never>> | ReturnType<typeof useSection<any>>
   children: React.ReactNode
 }) {
   return (
     <section className="card hr-section">
-      <h2 className="card-title">{heading}</h2>
+      <header className="hr-section-head">
+        {icon && <span className={`hr-section-icon tone-${tone ?? 'teal'}`}>{icon}</span>}
+        <div className="hr-section-titles">
+          <h2 className="hr-section-title">{heading}</h2>
+          {blurb && <p className="hr-section-blurb">{blurb}</p>}
+        </div>
+        {headAction}
+        {count && <span className="hr-section-count">{count[0]} / {count[1]} fields</span>}
+      </header>
       {state.error && <ErrorNote>{state.error}</ErrorNote>}
       <div className="hr-field-grid">{children}</div>
       {editable && (
@@ -344,7 +411,11 @@ function PersonalSection({
 
   const ro = !editable
   return (
-    <SectionShell heading="Personal details" editable={editable} state={state}>
+    <SectionShell heading="Personal details" icon={<IconUser size={20} />} tone="teal"
+                  blurb="Basic identity, personal contact channels, residential address, and emergency contact."
+                  count={countFilled(state.draft, same ? ADDRESS_PARTS.map((x) => `permanent_${x}`) : [])}
+                  editable={editable} state={state}>
+      <Group title="Basic identity" />
       <Field label="Date of birth">
         <input type="date" value={state.draft.date_of_birth} disabled={ro}
                onChange={(e) => state.set('date_of_birth', e.target.value)} />
@@ -375,6 +446,7 @@ function PersonalSection({
         <input placeholder="e.g. Suresh Sharma" value={state.draft.father_name} disabled={ro} maxLength={160}
                onChange={(e) => state.set('father_name', e.target.value)} />
       </Field>
+      <Group title="Contact channels" />
       <Field label="Personal email" hint="Reachable after the work address stops working.">
         <input placeholder="name@gmail.com" type="email" value={state.draft.personal_email} disabled={ro}
                onChange={(e) => state.set('personal_email', e.target.value)} />
@@ -384,6 +456,7 @@ function PersonalSection({
                onChange={(e) => state.set('alternate_phone', e.target.value)} />
       </Field>
 
+      <Group title="Residential address" />
       <AddressFields side="current" label="Current address" geo={geo} ro={ro}
                      draft={state.draft} set={state.set} />
 
@@ -397,6 +470,7 @@ function PersonalSection({
                        draft={state.draft} set={state.set} />
       )}
 
+      <Group title="Emergency contact" />
       <Field label="Emergency contact">
         <input placeholder="e.g. Meena Sharma" value={state.draft.emergency_name} disabled={ro}
                onChange={(e) => state.set('emergency_name', e.target.value)} />
@@ -556,7 +630,11 @@ function StatutorySection({
 
   const ro = !editable
   return (
-    <SectionShell heading="Statutory & bank" editable={editable} state={state}>
+    <SectionShell heading="Statutory & bank" icon={<IconBuilding size={20} />} tone="indigo"
+                  blurb="Tax IDs, social security numbers, and salary payout account."
+                  count={countFilled(state.draft, [], [...(profile.has_pan ? ['pan'] : []), ...(profile.has_aadhaar ? ['aadhaar'] : []), ...(profile.has_bank_account ? ['bank_account'] : [])])}
+                  editable={editable} state={state}>
+      <Group title="Tax & social security" />
       <Secret label="PAN" masked={profile.pan_masked} present={profile.has_pan}
               canReveal={profile.can_reveal} userId={profile.user_id} field="pan"
               value={state.draft.pan} disabled={ro}
@@ -580,6 +658,7 @@ function StatutorySection({
                onChange={(e) => state.set('esi_number', e.target.value)} />
       </Field>
 
+      <Group title="Salary bank account" />
       <Field label="Bank">
         <input placeholder="e.g. HDFC Bank" value={state.draft.bank_name} disabled={ro}
                onChange={(e) => state.set('bank_name', e.target.value)} />
@@ -712,7 +791,10 @@ function EmploymentSection({
 
   const ro = !editable
   return (
-    <SectionShell heading="Employment" editable={editable} state={state}>
+    <SectionShell heading="Employment" icon={<IconBriefcase size={20} />} tone="green"
+                  blurb="Joining timeline, work location, background verification, and confirmation log."
+                  count={countFilled(state.draft)}
+                  editable={editable} state={state}>
       <Field label="Joined on">
         {/* From `users`, not this record — attendance and leave accrual already
             read it there, and a second copy is the one that drifts. */}
@@ -761,6 +843,7 @@ function EmploymentSection({
         <input type="date" value={state.draft.probation_end_on} disabled={ro}
                onChange={(e) => state.set('probation_end_on', e.target.value)} />
       </Field>
+      <Group title="Background verification" />
       <Field label="Background check">
         <input value={state.draft.bgv_status} disabled={ro} placeholder="pending / clear / flagged"
                onChange={(e) => state.set('bgv_status', e.target.value)} />
