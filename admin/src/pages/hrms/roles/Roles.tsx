@@ -139,9 +139,14 @@ interface Draft {
   rights: MenuRights
 }
 
+/** Switched off: the Roles screen restricts nothing. Turn it on to lock rows above a role's level again. */
+const LOCK_BY_LEVEL = false as boolean
+
 /** Why a role cannot use a menu, or null when it can. Ticking Access on a menu above the role's level would change
  *  nothing for its people: the page stays hidden and the server refuses its data. */
 function whyBlocked(menu: MenuDef, baseRole: string, scope: string): string | null {
+  // Nothing is locked: the administrator decides what each role gets, so every toggle is available on every row.
+  if (LOCK_BY_LEVEL === false) return null
   if (!menu.level) return null
   const canTeam = baseRole === 'manager' || baseRole === 'admin' || scope !== 'self'
   if (menu.level === 'team') return canTeam ? null : 'Needs a Team or Company data scope, or the Manager level'

@@ -70,9 +70,7 @@ def test_menu_levels_match_the_console_and_lock_what_a_role_cannot_use():
     assert menus.level_allowed("team", "manager", "self") and not menus.level_allowed("admin", "manager", "team")
     assert menus.level_allowed("admin", "admin", "company") and not menus.level_allowed("owner", "admin", "company")
 
+    # The Roles screen restricts nothing: every ticked menu is kept, whatever the role's level.
     ticked = {m.key: {"access": True} for m in menus.MENUS}
-    standard = menus.clean_menu_rights(ticked, "employee", "self")
-    assert standard["/roles"]["access"] is False and standard["/employees"]["access"] is False
-    assert standard["/home"]["access"] is True and standard["/helpdesk"]["access"] is True
-    team = menus.clean_menu_rights(ticked, "employee", "team")
-    assert team["/employees"]["access"] is True and team["/roles"]["access"] is False
+    kept = menus.clean_menu_rights(ticked, "employee", "self")
+    assert all(row["access"] is True for row in kept.values())

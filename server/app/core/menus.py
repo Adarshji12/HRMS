@@ -318,6 +318,10 @@ def normalise(rights: dict | None) -> dict | None:
     return out
 
 
+#: When True, ``clean_menu_rights`` switches off any menu above the role's level. Off: the Roles screen restricts nothing.
+ENFORCE_LEVELS = False
+
+
 def clean_menu_rights(raw: dict | None, base_role: str | None = None, data_scope: str | None = None) -> dict[str, dict[str, bool]] | None:
     """Keep only known menus and the actions each one has. ``None`` stays None.
 
@@ -334,7 +338,9 @@ def clean_menu_rights(raw: dict | None, base_role: str | None = None, data_scope
             continue
         access = bool(value.get("access"))
         # A menu above the role's level cannot be granted: it would show nothing but a refusal.
-        if access and base_role is not None and not level_allowed(menu.level, base_role, data_scope or "self"):
+        # Nothing is forced off by level: what a role may tick is the administrator's call (see ``level_allowed`` for
+        # the level a menu really needs, which the console and the API still apply on their own).
+        if ENFORCE_LEVELS and access and base_role is not None and not level_allowed(menu.level, base_role, data_scope or "self"):
             access = False
         row = {"access": access}
         for action in menu.actions:
